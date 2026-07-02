@@ -193,7 +193,6 @@
               };
 
               dwindle = {
-                pseudotile = true;
                 preserve_split = true;
                 force_split = 2;
               };
@@ -311,7 +310,6 @@
                   function()
                     hl.exec_cmd("hyprsunset -t 4500")
                     hl.exec_cmd("wl-clip-persist --clipboard regular")
-                    hl.exec_cmd("dms run")
                     hl.exec_cmd("bash -c 'wl-paste --watch cliphist store &'")
                   end
                 '')
