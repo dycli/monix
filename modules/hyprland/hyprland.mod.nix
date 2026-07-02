@@ -11,7 +11,6 @@
       ...
     }:
     let
-      inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
     in
     {
@@ -23,16 +22,9 @@
         xdg.portal.enable = true;
         xdg.portal.extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
 
-        # tuigreet stores its --remember state here; nothing else creates it.
-        systemd.tmpfiles.rules = [ "d /var/cache/tuigreet 0755 greeter greeter -" ];
-
-        services.greetd = {
-          enable = true;
-          settings.default_session = {
-            command = "${getExe pkgs.tuigreet} --time --remember --cmd Hyprland";
-            user = "greeter";
-          };
-        };
+        # greetd itself, and the session launch command (start-hyprland when
+        # present, see the dms-greeter asset script), are configured by the
+        # DankMaterialShell greeter module (see dank.mod.nix).
 
         # Secret storage for desktop applications, unlocked at greetd login.
         services.gnome.gnome-keyring.enable = true;

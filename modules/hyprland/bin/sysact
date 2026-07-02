@@ -10,7 +10,7 @@ choice=$(printf "%b" "$options" | tofi)
 
 case "$choice" in
 " Lock")
-  hyprctl dispatch exec "hyprlock" || hyprlock &
+  dms ipc call lock lock
   ;;
 "󰒲 Sleep")
   systemctl suspend
