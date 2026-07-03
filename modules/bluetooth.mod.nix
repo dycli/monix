@@ -1,6 +1,6 @@
-# Bluetooth on desktops. The GUI is blueberry (waybar's on-click target),
-# installed via the desktop packages bundle; the source's additional blueman
-# service was redundant with it and is dropped.
+# Bluetooth on desktops. The GUI is blueberry, installed via the desktop
+# packages bundle; the source's additional blueman service was redundant
+# with it and is dropped.
 {
   flake.nixosModules.bluetooth =
     { config, lib, ... }:

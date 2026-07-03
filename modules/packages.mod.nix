@@ -42,8 +42,7 @@
       ];
     };
 
-  # The Hyprland session's loose utilities. hyprshot wraps its own grim/slurp dependencies. jq is used
-  # directly by modules/hyprland/bin/show-keybindings.
+  # The Hyprland session's loose utilities. hyprshot wraps its own grim/slurp dependencies.
   flake.homeModules.packages-desktop =
     {
       lib,
@@ -63,7 +62,6 @@
           pkgs.hyprpicker
           pkgs.hyprshot
           pkgs.hyprsunset
-          pkgs.jq
           pkgs.nautilus
           pkgs.pamixer
           pkgs.pavucontrol

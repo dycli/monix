@@ -42,12 +42,11 @@
   # against a live Hyprland — neither exists in the environment this was
   # written in. Rebuild and test before trusting it.
   #
-  # Every bind carries a `description`, which is not decorative: with no
-  # config file for Hyprland to introspect (Lua is executed, not parsed),
-  # `~/.local/bin/show-keybindings` below reads these back at runtime via
-  # `hyprctl binds -j`, which is the only reliable source of the live bind
-  # list regardless of config language. Keep descriptions and behavior in
-  # sync — nothing regenerates one from the other.
+  # Every bind carries a `description`, which is not decorative: the DMS
+  # keybinds overlay (SUPER+K, see the bind list below) reads these back at
+  # runtime via `hyprctl binds -j`, which is the only reliable source of the
+  # live bind list since Lua is executed, not parsed. Keep descriptions and
+  # behavior in sync — nothing regenerates one from the other.
   #
   # Renames of note versus the prior hyprlang config, confirmed against
   # current docs while translating:
@@ -112,16 +111,6 @@
     in
     {
       config = mkIf osConfig.isDesktop {
-        home.file.".local/bin/sysact" = {
-          source = ./bin/sysact;
-          executable = true;
-        };
-        home.file.".local/bin/show-keybindings" = {
-          source = ./bin/show-keybindings;
-          executable = true;
-        };
-        home.sessionPath = [ "$HOME/.local/bin" ];
-
         wayland.windowManager.hyprland = {
           enable = true;
           configType = "lua";
@@ -172,7 +161,7 @@
               (mkEnv "MOZ_ENABLE_WAYLAND" "1")
               (mkEnv "ELECTRON_OZONE_PLATFORM_HINT" "wayland")
               (mkEnv "OZONE_PLATFORM" "wayland")
-              (mkEnv "XDG_DATA_DIRS" "$XDG_DATA_DIRS:$HOME/.nix-profile/share:/nix/var/nix/profiles/default/share")
+              (mkEnv "XDG_DATA_DIRS" "$XDG_DATA_DIRS:/etc/profiles/per-user/$USER/share:/run/current-system/sw/share")
               (mkEnv "EDITOR" "nvim")
               (mkEnv "GTK_THEME" "Adwaita:dark")
             ];
@@ -349,7 +338,7 @@
             bind =
               [
                 (mkBind "SUPER + RETURN" ''hl.dsp.exec_cmd("ghostty")'' "Open terminal" { })
-                (mkBind "SUPER + BACKSPACE" ''hl.dsp.exec_cmd("~/.local/bin/sysact")'' "Power menu" { })
+                (mkBind "SUPER + BACKSPACE" ''hl.dsp.exec_cmd("dms ipc call powermenu toggle")'' "Power menu" { })
                 (mkBind "SUPER + SLASH" ''hl.dsp.exec_cmd("keepassxc")'' "Open password manager" { })
                 (mkBind "SUPER + C" ''hl.dsp.send_shortcut({ mods = "CTRL", key = "Insert" })''
                   "Copy (send Ctrl+Insert to focused window)"
@@ -380,7 +369,7 @@
                 )
 
                 (mkBind "SUPER + SHIFT + SPACE" ''hl.dsp.exec_cmd("dms ipc call bar toggle index 0")''
-                  "Restart waybar"
+                  "Toggle bar"
                   { }
                 )
 
