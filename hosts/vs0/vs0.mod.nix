@@ -27,7 +27,6 @@ in
         secrets."open-webui".file = ./open-webui.env.age;
 
         # TAILSCALE
-        services.tailscale.enable = true;
         services.tailscale.authKeyFile = config.secrets.tailscale.path;
 
         # AI STACK ---------------------------------------------------------

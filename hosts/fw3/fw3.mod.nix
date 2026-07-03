@@ -62,7 +62,6 @@ in
         hardware.keyboard.zsa.enable = true;
 
         # SERVICES
-        services.tailscale.enable = true;
         services.syncthing.enable = true;
         services.printing.enable = true;
 
