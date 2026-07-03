@@ -39,6 +39,10 @@
             quit-after-last-window-closed = false;
             initial-window = false;
           };
+
+          # The upstream unit (systemd.enable default) would duplicate our
+          # ghostty.service, which starts after the session env import instead.
+          systemd.enable = false;
         };
 
         # Daemon started explicitly from Hyprland's autostart (after the
