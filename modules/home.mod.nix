@@ -7,9 +7,10 @@
     { config, lib, ... }:
     let
       inherit (lib.attrsets) attrValues;
+      inherit (lib.lists) singleton;
     in
     {
-      imports = [ inputs.home-manager.nixosModules.home-manager ];
+      imports = singleton inputs.home-manager.nixosModules.home-manager;
 
       home-manager.useGlobalPkgs = true;
       home-manager.useUserPackages = true;

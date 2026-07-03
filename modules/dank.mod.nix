@@ -15,9 +15,10 @@
     { config, lib, ... }:
     let
       inherit (lib.modules) mkIf;
+      inherit (lib.lists) singleton;
     in
     {
-      imports = [ inputs.dank-material-shell.nixosModules.greeter ];
+      imports = singleton inputs.dank-material-shell.nixosModules.greeter;
 
       config = mkIf config.isDesktop {
         programs.dms-shell.enable = true;

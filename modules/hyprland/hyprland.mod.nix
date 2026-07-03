@@ -84,6 +84,7 @@
     {
       lib,
       osConfig,
+      pkgs,
       ...
     }:
     let
@@ -91,6 +92,7 @@
       inherit (lib.generators) mkLuaInline;
       inherit (lib.lists) concatMap range;
       inherit (lib.attrsets) recursiveUpdate;
+      inherit (lib.meta) getExe getExe';
 
       # One `hl.bind(keys, dispatcher, opts)` call per list element.
       # `dispatcherLua` is raw Lua source (a `hl.dsp....(...)` expression);
@@ -326,9 +328,9 @@
                 "hyprland.start"
                 (mkLuaInline ''
                   function()
-                    hl.exec_cmd("hyprsunset -t 4500")
-                    hl.exec_cmd("wl-clip-persist --clipboard regular")
-                    hl.exec_cmd("bash -c 'wl-paste --watch cliphist store &'")
+                    hl.exec_cmd("${getExe pkgs.hyprsunset} -t 4500")
+                    hl.exec_cmd("${getExe pkgs.wl-clip-persist} --clipboard regular")
+                    hl.exec_cmd("bash -c '${getExe' pkgs.wl-clipboard "wl-paste"} --watch ${getExe pkgs.cliphist} store &'")
                   end
                 '')
               ];
@@ -337,9 +339,9 @@
             # BINDINGS
             bind =
               [
-                (mkBind "SUPER + RETURN" ''hl.dsp.exec_cmd("ghostty")'' "Open terminal" { })
+                (mkBind "SUPER + RETURN" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty}")'' "Open terminal" { })
                 (mkBind "SUPER + BACKSPACE" ''hl.dsp.exec_cmd("dms ipc call powermenu toggle")'' "Power menu" { })
-                (mkBind "SUPER + SLASH" ''hl.dsp.exec_cmd("keepassxc")'' "Open password manager" { })
+                (mkBind "SUPER + SLASH" ''hl.dsp.exec_cmd("${getExe pkgs.keepassxc}")'' "Open password manager" { })
                 (mkBind "SUPER + C" ''hl.dsp.send_shortcut({ mods = "CTRL", key = "Insert" })''
                   "Copy (send Ctrl+Insert to focused window)"
                   { }
@@ -350,10 +352,19 @@
                 )
                 (mkBind "SUPER + E" ''hl.dsp.exec_cmd("thunderbird")'' "Open email" { })
                 (mkBind "SUPER + M" ''hl.dsp.exec_cmd("spotify")'' "Open music" { })
-                (mkBind "SUPER + N" ''hl.dsp.exec_cmd("ghostty -e nvim")'' "Open editor" { })
-                (mkBind "SUPER + SHIFT + N" ''hl.dsp.exec_cmd("ghostty -e newsboat")'' "Open RSS reader" { })
-                (mkBind "SUPER + R" ''hl.dsp.exec_cmd("nautilus --new-window")'' "Open file manager" { })
-                (mkBind "SUPER + SHIFT + R" ''hl.dsp.exec_cmd("ghostty -e btop")'' "Open system monitor" { })
+                (mkBind "SUPER + N" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e nvim")'' "Open editor" { })
+                (mkBind "SUPER + SHIFT + N" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e newsboat")''
+                  "Open RSS reader"
+                  { }
+                )
+                (mkBind "SUPER + R" ''hl.dsp.exec_cmd("${getExe pkgs.nautilus} --new-window")''
+                  "Open file manager"
+                  { }
+                )
+                (mkBind "SUPER + SHIFT + R" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e btop")''
+                  "Open system monitor"
+                  { }
+                )
                 (mkBind "SUPER + S" ''hl.dsp.exec_cmd("signal-desktop")'' "Open messenger" { })
                 (mkBind "SUPER + V" ''hl.dsp.send_shortcut({ mods = "SHIFT", key = "Insert" })''
                   "Paste (send Shift+Insert to focused window)"
@@ -363,7 +374,8 @@
                   "Send Ctrl+X to focused window"
                   { }
                 )
-                (mkBind "SUPER + W" ''hl.dsp.exec_cmd("brave --new-window --ozone-platform=wayland")''
+                (mkBind "SUPER + W"
+                  ''hl.dsp.exec_cmd("${getExe pkgs.brave} --new-window --ozone-platform=wayland")''
                   "Open browser"
                   { }
                 )
@@ -429,10 +441,19 @@
                   { }
                 )
 
-                (mkBind "PRINT" ''hl.dsp.exec_cmd("hyprshot -m region")'' "Screenshot region" { })
-                (mkBind "SHIFT + PRINT" ''hl.dsp.exec_cmd("hyprshot -m window")'' "Screenshot window" { })
-                (mkBind "CTRL + PRINT" ''hl.dsp.exec_cmd("hyprshot -m output")'' "Screenshot output" { })
-                (mkBind "SUPER + PRINT" ''hl.dsp.exec_cmd("hyprpicker -a")'' "Pick color" { })
+                (mkBind "PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprshot} -m region")''
+                  "Screenshot region"
+                  { }
+                )
+                (mkBind "SHIFT + PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprshot} -m window")''
+                  "Screenshot window"
+                  { }
+                )
+                (mkBind "CTRL + PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprshot} -m output")''
+                  "Screenshot output"
+                  { }
+                )
+                (mkBind "SUPER + PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprpicker} -a")'' "Pick color" { })
 
                 (mkBind "CTRL + SUPER + V" ''hl.dsp.exec_cmd("dms ipc call clipboard toggle")''
                   "Clipboard history"
@@ -470,14 +491,14 @@
                     repeating = true;
                   }
                 )
-                (mkBind "XF86MonBrightnessUp" ''hl.dsp.exec_cmd("brightnessctl set 655+")''
+                (mkBind "XF86MonBrightnessUp" ''hl.dsp.exec_cmd("${getExe pkgs.brightnessctl} set 655+")''
                   "Brightness up"
                   {
                     locked = true;
                     repeating = true;
                   }
                 )
-                (mkBind "XF86MonBrightnessDown" ''hl.dsp.exec_cmd("brightnessctl set 655-")''
+                (mkBind "XF86MonBrightnessDown" ''hl.dsp.exec_cmd("${getExe pkgs.brightnessctl} set 655-")''
                   "Brightness down"
                   {
                     locked = true;
@@ -485,10 +506,22 @@
                   }
                 )
 
-                (mkBind "XF86AudioNext" ''hl.dsp.exec_cmd("playerctl next")'' "Next track" { locked = true; })
-                (mkBind "XF86AudioPause" ''hl.dsp.exec_cmd("playerctl play-pause")'' "Play/pause" { locked = true; })
-                (mkBind "XF86AudioPlay" ''hl.dsp.exec_cmd("playerctl play-pause")'' "Play/pause" { locked = true; })
-                (mkBind "XF86AudioPrev" ''hl.dsp.exec_cmd("playerctl previous")'' "Previous track" { locked = true; })
+                (mkBind "XF86AudioNext" ''hl.dsp.exec_cmd("${getExe pkgs.playerctl} next")''
+                  "Next track"
+                  { locked = true; }
+                )
+                (mkBind "XF86AudioPause" ''hl.dsp.exec_cmd("${getExe pkgs.playerctl} play-pause")''
+                  "Play/pause"
+                  { locked = true; }
+                )
+                (mkBind "XF86AudioPlay" ''hl.dsp.exec_cmd("${getExe pkgs.playerctl} play-pause")''
+                  "Play/pause"
+                  { locked = true; }
+                )
+                (mkBind "XF86AudioPrev" ''hl.dsp.exec_cmd("${getExe pkgs.playerctl} previous")''
+                  "Previous track"
+                  { locked = true; }
+                )
               ]
               # Switch to / move to workspaces 1-9, generated to cut
               # transcription risk on a repetitive block.
