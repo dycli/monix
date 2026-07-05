@@ -230,8 +230,9 @@
               (mkEnv "GDK_SCALE" "2")
               (mkEnv "XCURSOR_SIZE" "24")
               (mkEnv "HYPRCURSOR_SIZE" "24")
-              (mkEnv "XCURSOR_THEME" "Adwaita")
-              (mkEnv "HYPRCURSOR_THEME" "Adwaita")
+              # Theme installed + GTK/hyprcursor config via cursor.mod.nix.
+              (mkEnv "XCURSOR_THEME" "Bibata-Modern-Classic")
+              (mkEnv "HYPRCURSOR_THEME" "Bibata-Modern-Classic")
               (mkEnv "GDK_BACKEND" "wayland")
               (mkEnv "QT_QPA_PLATFORM" "wayland")
               (mkEnv "SDL_VIDEODRIVER" "wayland")
