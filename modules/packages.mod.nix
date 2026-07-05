@@ -143,6 +143,7 @@
       config = mkIf osConfig.isDesktop {
         home.packages = [
           pkgs.claude-code
+          pkgs.codex
           pkgs.hugo
         ];
       };
