@@ -41,6 +41,14 @@ in
         # tailnet SSH); any machine is just a terminal into it.
         cockpit.enable = true;
 
+        # BOOTSTRAP LOGIN — a throwaway console password so a fresh headless
+        # install is reachable: log in at the console, `sudo tailscale up` to
+        # join the tailnet, then change it with `passwd`. `initialPassword`
+        # only applies when the account is first created and is inert once a
+        # real password is set. NOTE: this repo is public, so treat "temp1" as
+        # bootstrap-only and change it on first login.
+        users.users.max.initialPassword = "temp1";
+
         nixpkgs.hostPlatform = "x86_64-linux";
 
         # HARDWARE — CPU/GPU/pstate/microcode come from the nixos-hardware
