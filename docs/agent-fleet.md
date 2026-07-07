@@ -122,12 +122,12 @@ tasks on a cheaper model and keep the strong models for review.
 
 A worker that gets stuck can consult a stronger model: the agent runs
 `ask-cockpit "<question>"` (it is told about this in its system prompt),
-which drops `question-N.md` into the task share and blocks. On the host, a
-path unit fires `agent-guidance`, which answers with
-`agentFleet.guidanceModel` (default `opus`) running headless as the cockpit
-user — same subscription login as the cockpit session — and writes
-`answer-N.md` back through the share; `ask-cockpit` prints it and the worker
-continues. Capped at 5 questions per task, 15 min wait each; the Q/A pairs
+which drops `question-N.md` into the task share and blocks. The worker's
+drainer notices the pending question on its poll and starts
+`agent-guidance`, which answers with `agentFleet.guidanceModel` (default
+`opus`) running headless as the cockpit user — same subscription login as
+the cockpit session — and writes `answer-N.md` back through the share;
+`ask-cockpit` prints it and the worker continues. Capped at 5 questions per task, 15 min wait each; the Q/A pairs
 are archived with the results. The question text comes from inside a guest
 and is untrusted, so the answering claude runs with all tools disallowed —
 it can only produce text.

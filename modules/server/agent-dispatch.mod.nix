@@ -90,6 +90,13 @@
                   fi
                   break
                 fi
+                # An ask-cockpit question is pending: kick the answerer.
+                # (This poll is the trigger — inotify path units can't watch
+                # this deep. Re-kicking while it runs is a no-op.)
+                set -- "$work"/question-*.md
+                if [ -e "$1" ]; then
+                  systemctl start --no-block agent-guidance.service
+                fi
                 sleep 10
               done
               systemctl stop microvm@${worker}.service
@@ -141,11 +148,6 @@
           pathConfig.DirectoryNotEmpty = "${tasksDir}/queue";
         };
 
-        systemd.paths.agent-guidance = {
-          description = "Watch for workers' ask-cockpit questions";
-          wantedBy = [ "multi-user.target" ];
-          pathConfig.PathExistsGlob = "/var/lib/agents/work/*/task/question-*.md";
-        };
 
         systemd.services = {
           # The path-triggered starter: kick every worker's drainer (no-op
