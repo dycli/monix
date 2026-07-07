@@ -106,6 +106,18 @@ vim /tmp/mytask.md                              # write the prompt
 mv /tmp/mytask.md /var/lib/agents/tasks/queue/  # mv, so no half-written file is seen
 ```
 
+An optional front-matter block sets task options (unknown keys are ignored):
+
+```markdown
+---
+model: sonnet
+---
+The prompt starts here…
+```
+
+`model` is handed to `claude --model` in the guest — use it to run routine
+tasks on a cheaper model and keep the strong models for review.
+
 A path unit fires when the queue becomes non-empty and starts one drainer
 per roster worker (`agent-dispatch-<worker>`). Each drainer claims tasks
 off the queue with an atomic rename — losers of the race just re-scan — so

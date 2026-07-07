@@ -233,6 +233,7 @@
                 path = [
                   pkgs.claude-code
                   pkgs.coreutils
+                  pkgs.gawk
                 ];
                 serviceConfig = {
                   Type = "oneshot";
@@ -246,10 +247,29 @@
                     "NO_PROXY=127.0.0.1,localhost"
                   ];
                 };
+                # The prompt may start with a front-matter block setting task
+                # options; unknown keys are ignored. Currently understood:
+                #   ---
+                #   model: sonnet        <- passed to `claude --model`
+                #   ---
                 script = ''
                   . /run/agent-env
+                  prompt=${guestTaskMount}/prompt.md
+
+                  model="$(awk '
+                    NR==1 && $0=="---" { h=1; next }
+                    h && $0=="---" { exit }
+                    h && /^model:/ { sub(/^model:[[:space:]]*/, ""); print; exit }
+                  ' "$prompt")"
+                  awk '
+                    NR==1 && $0=="---" { h=1; next }
+                    h && $0=="---" { h=0; next }
+                    h { next }
+                    { print }
+                  ' "$prompt" > /tmp/prompt-body.md
+
                   rc=0
-                  claude -p "$(cat ${guestTaskMount}/prompt.md)" \
+                  claude -p "$(cat /tmp/prompt-body.md)" ''${model:+--model "$model"} \
                     > ${guestTaskMount}/report.md \
                     2> ${guestTaskMount}/agent.log || rc=$?
                   echo "$rc" > ${guestTaskMount}/exit-code
