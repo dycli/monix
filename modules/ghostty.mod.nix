@@ -5,6 +5,15 @@
 # restore the original. Theming removed in the simplification pass; ghostty
 # uses its default theme.
 {
+  # Every host carries ghostty's terminfo (tiny), so SSH sessions from a
+  # ghostty terminal (TERM=xterm-ghostty) work on servers too — without it,
+  # tmux/less/etc. fail with "missing or unsuitable terminal".
+  flake.nixosModules.ghostty-terminfo =
+    { pkgs, ... }:
+    {
+      environment.systemPackages = [ pkgs.ghostty.terminfo ];
+    };
+
   flake.homeModules.ghostty =
     {
       lib,
