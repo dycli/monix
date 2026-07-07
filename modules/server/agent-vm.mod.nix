@@ -47,6 +47,14 @@
       credsDir = name: "/run/agents/creds/${name}";
       guestCredsMount = "/run/host-creds";
 
+      # Per-worker task exchange: the dispatcher (agent-dispatch.mod.nix)
+      # writes prompt.md here before booting the VM; the guest's agent-task
+      # unit writes report.md/agent.log/exit-code back. The guest `agent`
+      # user is uid 1000/gid 100, which passes through virtiofs verbatim, so
+      # the host-side directory is owned by uid 1000.
+      workDir = name: "/var/lib/agents/work/${name}/task";
+      guestTaskMount = "/run/task";
+
       # Per-worker volume images, wiped on every VM start (see ExecStartPre).
       volumes = [
         {
@@ -121,6 +129,13 @@
                     source = credsDir name;
                     mountPoint = guestCredsMount;
                     readOnly = true;
+                  }
+                  # Task in, report out (see agent-task below).
+                  {
+                    proto = "virtiofs";
+                    tag = "task";
+                    source = workDir name;
+                    mountPoint = guestTaskMount;
                   }
                 ];
 
@@ -199,6 +214,47 @@
                 '';
               };
               environment.extraInit = ''[ -r /run/agent-env ] && . /run/agent-env'';
+
+              # TASK RUNNER — if the dispatcher staged a prompt in the task
+              # share before boot, run it headless as the agent user and
+              # write the results back. One task per VM lifetime: the volumes
+              # are wiped on start, so boot state is always pristine and this
+              # unit's ConditionPathExists decides whether this is a task run
+              # or an idle/debugging boot.
+              systemd.services.agent-task = {
+                description = "Run the dispatched task";
+                wantedBy = [ "multi-user.target" ];
+                requires = [ "agent-credentials.service" ];
+                after = [ "agent-credentials.service" ];
+                unitConfig = {
+                  ConditionPathExists = "${guestTaskMount}/prompt.md";
+                  RequiresMountsFor = [ guestTaskMount ];
+                };
+                path = [
+                  pkgs.claude-code
+                  pkgs.coreutils
+                ];
+                serviceConfig = {
+                  Type = "oneshot";
+                  User = "agent";
+                  Group = "users";
+                  WorkingDirectory = "/workspace";
+                  # Units don't read /etc/set-environment; restate the proxy.
+                  Environment = [
+                    "HTTP_PROXY=${proxyUrl}"
+                    "HTTPS_PROXY=${proxyUrl}"
+                    "NO_PROXY=127.0.0.1,localhost"
+                  ];
+                };
+                script = ''
+                  . /run/agent-env
+                  rc=0
+                  claude -p "$(cat ${guestTaskMount}/prompt.md)" \
+                    > ${guestTaskMount}/report.md \
+                    2> ${guestTaskMount}/agent.log || rc=$?
+                  echo "$rc" > ${guestTaskMount}/exit-code
+                '';
+              };
 
               # git pushes over HTTPS with the PAT; gh turns $GH_TOKEN into
               # git credentials, so no token is ever written into gitconfig.
@@ -290,6 +346,10 @@
 
       config = mkIf cfg.enable {
         microvm.vms = listToAttrs (map (w: nameValuePair w.name (mkAgentGuest w)) cfg.workers);
+
+        # Task-share sources must exist before virtiofsd starts, VM-managed
+        # or not. Writable by the guest agent (uid 1000, see workDir above).
+        systemd.tmpfiles.rules = map (w: "d ${workDir w.name} 0755 1000 100 -") cfg.workers;
 
         systemd.services = listToAttrs (
           concatMap (w: [

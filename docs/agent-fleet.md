@@ -12,6 +12,8 @@ it, both gated on `agentFleet.enable`:
   microVM plus its `agents.slice` unit override and credential plumbing. The
   roster (and the `agentFleet.credentials` paths) are set per host, in
   `hosts/fw0/fw0.mod.nix`.
+- `modules/server/agent-dispatch.mod.nix` — the task queue and dispatcher:
+  drop a prompt file in the queue, get a report back (see Dispatch below).
 
 ## Containment model
 
@@ -92,6 +94,31 @@ Every worker's `microvm@<name>` unit and squid run in `agents.slice`
 (48G `MemoryMax`, declared in `hosts/fw0/fw0.mod.nix`). Guest memory is
 static (no ballooning), default 8 vCPU / 8 GiB. Guest state lives on the
 `@agents` btrfs subvolume (`/var/lib/agents/microvms`).
+
+## Dispatch
+
+A task is a markdown prompt. From the cockpit:
+
+```sh
+vim /tmp/mytask.md                              # write the prompt
+mv /tmp/mytask.md /var/lib/agents/tasks/queue/  # mv, so no half-written file is seen
+```
+
+A path unit fires when the queue becomes non-empty and the dispatcher drains
+it serially on the first roster worker: it stages `prompt.md` into the
+worker's task share (`/var/lib/agents/work/<worker>/task`, mounted at
+`/run/task` in the guest), restarts the VM — the volume wipe makes every
+task run pristine — and the guest's `agent-task` unit runs
+`claude -p "$(cat /run/task/prompt.md)"` as the agent user, writing
+`report.md`, `agent.log`, and `exit-code` back through the share. The
+dispatcher polls for the exit code, stops the VM, and files everything under
+`/var/lib/agents/tasks/done/<id>/` (nonzero exit or `agentFleet.taskTimeout`
+— default 90 min — go to `failed/` instead). Progress is in
+`journalctl -u agent-dispatcher`.
+
+The dispatcher owns worker lifecycle: a manually started VM is restarted out
+from under you when a task arrives. Results land on the host disk only —
+tasks need no forge access and no push credentials.
 
 ## Operating a worker
 
