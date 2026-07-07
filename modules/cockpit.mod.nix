@@ -34,7 +34,7 @@
         # The cockpit is where secrets get created/rotated (`agenix -e ...`
         # from the repo root) — fleet credentials in particular originate
         # here (`claude setup-token`, Codex's auth.json).
-        environment.systemPackages = singleton inputs.agenix.packages.${pkgs.system}.default;
+        environment.systemPackages = singleton inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default;
       };
     };
 }

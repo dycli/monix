@@ -68,6 +68,12 @@
                 hypervisor = "cloud-hypervisor";
                 inherit vcpu mem;
 
+                # Unique per-VM vsock context ID (any u32 >= 3); lets the
+                # guest's systemd send readiness notifications to the runner.
+                # The host side is a unix socket in the VM's state dir, not a
+                # network path out.
+                vsock.cid = 100 + index;
+
                 interfaces = singleton {
                   type = "tap";
                   id = "vm-${name}"; # enslaved to br-agents by the networkd vm-* match
