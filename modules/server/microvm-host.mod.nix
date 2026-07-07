@@ -40,6 +40,8 @@
       # also list the specific hosts (squid rejects the redundancy).
       allowedDomains = [
         ".anthropic.com" # Claude API + Claude Code auth/telemetry
+        ".openai.com" # Codex: OpenAI API + auth
+        ".chatgpt.com" # Codex: ChatGPT-subscription backend/auth
         ".github.com" # git over https, codeload
         ".githubusercontent.com" # raw/objects
         ".nixos.org" # nix binary cache, channels, releases
