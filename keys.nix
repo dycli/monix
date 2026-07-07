@@ -10,7 +10,7 @@
 # (which exposes the keys as flake outputs `keys` and `keys-admin`).
 {
   hosts = {
-    fw0 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHhyRG7/WM9uuYwv42V24pzhqfnfcdlHROdR75vZWzoK fw0";
+    fw0 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINLRVD/zQrWUetJ3VxVJtZ6Zc6wOck05M9l0opF/Emb8 fw0";
     fw3 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAREPLACE_WITH_FW3_HOST_KEY fw3";
   };
 
