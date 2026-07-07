@@ -5,10 +5,10 @@ A single-repo, modular NixOS configuration built on the **Dendritic Pattern**
 that adding a host is a few lines.
 
 Hosts: **fw3** (Framework 13 AMD 7040 running a Hyprland desktop shelled by
-DankMaterialShell; formerly "fwork") and **fw0** (Framework Desktop, Ryzen AI
-Max+ 395, 128GB — headless always-on AI server: LiteLLM, Open WebUI, Tailscale,
-and the user's persistent cockpit session; agent-fleet microVMs and local
-inference land in later phases of the agent-host plan).
+DankMaterialShell) and **fw0** (Framework Desktop, Ryzen AI Max+ 395, 128GB —
+headless always-on AI server: the agent-fleet microVM host, the user's
+persistent cockpit session, Tailscale, and a LiteLLM/Open WebUI gateway that
+is declared but disabled until real secrets exist).
 
 ## How it fits together
 
@@ -30,8 +30,8 @@ Nix concern in `modules/nix.mod.nix`. There is no separate `home/` directory —
 concern file registers its Home Manager aspect directly, and may also register a
 NixOS aspect (as `hyprland.mod.nix` does for the compositor and the session).
 
-`lib/` extends nixpkgs' lib. `lib.systems.nixosSystem "<name>" <module>` defines
-`nixosConfigurations.<name>`.
+`lib/` extends nixpkgs' lib under its own namespace. `lib.monix.nixosSystem
+"<name>" <module>` defines `nixosConfigurations.<name>`.
 
 A host (`hosts/<name>/<name>.mod.nix`) just imports the collections, sets its
 class and hardware, and enables the services it wants:
@@ -81,12 +81,13 @@ agenix is used only for fw0's three service credentials (Tailscale, LiteLLM,
 Open WebUI); login passwords are set imperatively (see below), so no user or
 host needs a password secret to boot.
 
-> **Warning — this repo's secrets are placeholders.** `keys.nix` currently
-> holds the real admin key but **placeholder host keys**, and all three
-> `.age` files under `hosts/fw0/` are **unencrypted placeholder text**
-> (present only so test builds succeed). Before any real deploy: put the
-> real host SSH keys in `keys.nix`, then recreate every `.age` file with
-> `agenix -e`.
+> **Warning — this repo's secret files are placeholders.** All three `.age`
+> files under `hosts/fw0/` are **unencrypted placeholder text** (present only
+> so test builds succeed), which is why the AI stack in `fw0.mod.nix` is
+> commented out. `keys.nix` holds the real admin and fw0 host keys, but
+> fw3's host key is still a placeholder. Before targeting a secret at a
+> host: put its real host SSH key in `keys.nix`, then create the `.age`
+> files with `agenix -e`.
 
 `keys.nix` is the single source of truth for SSH public keys (host keys + admin
 keys). `secrets.nix` maps each secret file to the keys it is encrypted to and is
@@ -113,7 +114,17 @@ key (`/etc/ssh/ssh_host_ed25519_key`).
 > login password imperatively with `passwd`. Login never depends on agenix,
 > so a host can be built and activated with no secrets present at all.
 
+## The agent fleet on fw0
+
+fw0 hosts worker microVMs in which coding agents run fully-permissioned,
+contained by a host-only bridge and a default-deny squid egress proxy
+(guests have no route and no DNS; the proxy's domain allowlist is the only
+way out). See [docs/agent-fleet.md](docs/agent-fleet.md).
+
 ## The AI stack on fw0
+
+Declared in `hosts/fw0/fw0.mod.nix` but currently commented out (the `.age`
+secret files are placeholders — see the warning above). When enabled:
 
 - **LiteLLM** runs on `127.0.0.1:4000` as an OpenAI-compatible gateway. Its
   `model_list` (in `hosts/fw0/fw0.mod.nix`) is illustrative — edit it for your
@@ -169,48 +180,26 @@ sudo nixos-install --flake .#<host>
   key partition.
 - **No pipe operators** — see AGENTS.md.
 
-## Hyprland notes
+## The desktop (fw3)
 
 - **Hyprland config is written in Lua** (`configType = "lua"`), not hyprlang.
   Hyprland deprecated hyprlang at 0.55 (nixpkgs currently ships 0.55.4) in
-  favor of Lua, with hyprlang stated to be dropped "1-2 releases" after 0.55
-  (no specific version number given). `modules/hyprland/hyprland.mod.nix`
-  carries a full rename table in its module-level comment (dispatcher names,
-  window-rule effect names, the env-var mechanism, the bind/bindm/bindel/bindl
-  merge) for anyone diffing it against hyprlang syntax. Binds are built with a
-  small `mkBind`/`mkEnv` helper rather than hand-repeated `_args` blocks —
-  this is also what makes `show-keybindings` work: each bind carries a
-  `description`, read back at runtime via `hyprctl binds -j`, since a `.lua`
-  config is executed rather than parseable the way a grep-based script would
-  assume. None of this has been evaluated by `nix` or run against a live
-  Hyprland — there is neither in this environment — so treat it as unverified
-  until built.
-- **Hyprland is pulled from nixpkgs**, not a git flake input — there are no
-  Hyprland-specific flake inputs to track. UWSM is not used; greetd launches
-  Hyprland directly.
-- fw3's `system.stateVersion` is `"26.05"`. CaskaydiaMono Nerd Font is the
-  desktop's default font.
-
-### Desktop shell: DankMaterialShell
-
-fw3's desktop shell is **DankMaterialShell** (DMS), enabled via the native
-nixpkgs NixOS module `programs.dms-shell`
-(nixpkgs ≥ 26.05, no extra flake input) in `modules/dank.mod.nix`, gated on
-`isDesktop`. Hyprland starts it with `exec-once = dms run` plus a
-`wl-paste --watch cliphist store` clipboard watcher. DMS supplies the bar,
-notifications, app launcher (spotlight), OSD, control center, lock screen
-with idle handling, wallpaper manager, clipboard history UI, and its own
-polkit agent — replacing the `waybar`, `mako`, `tofi`, `hyprpaper`,
-`hyprlock`, and `hypridle` aspects (all deleted) and home's
-`services.hyprpolkitagent` (also deleted); `clipse` was replaced by
-`cliphist`. Five binds were rewired to `dms ipc call ...`; the rest of the
-66 `mkBind` entries are unchanged.
-
-### Theming
-
-Custom theming has been removed. `modules/theme/` (a static base16
-gruvbox-dark-hard palette, a GTK Adwaita override, and the Bierstadt
-wallpaper) is deleted; every app now uses its default theme — Hyprland's
-default border colors, ghostty and btop's default palettes. hyprlock itself
-is gone entirely rather than left unthemed. Theming may return in a future
-pass.
+  favor of Lua, with hyprlang stated to be dropped "1-2 releases" after 0.55.
+  Binds are built with a small `mkBind`/`mkEnv` helper in
+  `modules/desktop/hyprland.mod.nix`; each bind carries a `description`,
+  read back at runtime via `hyprctl binds -j` to power the DMS keybinds
+  overlay (SUPER+K) — a `.lua` config is executed, not parseable, so the
+  live bind list is the only reliable source.
+- **Hyprland is pulled from nixpkgs**, not a git flake input. The session is
+  managed by UWSM (greetd → `uwsm start` → Hyprland; see the session-entry
+  comment in `hyprland.mod.nix`).
+- The desktop shell is **DankMaterialShell** (DMS): the bar, notifications,
+  app launcher (spotlight), OSD, control center, lock screen with idle
+  handling, wallpaper manager, clipboard history UI, and polkit agent all
+  come from it (`modules/desktop/dank.mod.nix`, `programs.dms-shell` from
+  nixpkgs; the `dank-material-shell` flake input supplies the greetd greeter
+  and a newer shell build — see the comments there).
+- **Theming:** DMS's dynamic (wallpaper-synced) theming is enabled for
+  GTK/Qt apps via matugen + adw-gtk3 + qt5ct/qt6ct; other apps (ghostty,
+  btop, Hyprland borders) use their default themes. CaskaydiaMono Nerd Font
+  is the desktop's default monospace font.

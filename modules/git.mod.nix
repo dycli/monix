@@ -1,6 +1,4 @@
-# git + gh. Uses `programs.git.settings`: home-manager renamed `extraConfig`
-# to `settings` and deprecated `userName`/`userEmail` in favour of
-# `settings.user.{name,email}` (verified against home-manager master).
+# git + gh.
 {
   flake.homeModules.git =
     { ... }:
@@ -15,7 +13,8 @@
           init.defaultBranch = "main";
           pull.rebase = true;
 
-          credential.helper = "store";
+          # Credentials are handled by gh (below) — no plaintext
+          # `credential.helper = store`.
         };
       };
 

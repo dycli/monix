@@ -53,8 +53,6 @@ Never make an aspect apply unconditionally unless it is genuinely universal.
   `foo.bar = mkIf c v;` not `foo = mkIf c { bar = v; };`.
 - Put a blank line between unrelated options.
 - Section comments are uppercase, no trailing period: `# AI STACK`.
-- The OS is always referred to as "darwin" in names, never "macOS" — but note
-  this repo is Linux-only and contains no darwin modules.
 
 ## Packages
 

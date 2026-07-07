@@ -1,5 +1,4 @@
-# System monitor. Universal (useful on servers). Theming removed in the
-# simplification pass; btop uses its default theme.
+# System monitor. Universal (useful on servers); default theme.
 {
   flake.homeModules.btop = {
     programs.btop = {

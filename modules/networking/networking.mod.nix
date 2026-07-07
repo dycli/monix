@@ -8,8 +8,8 @@
       networking.firewall.enable = mkDefault true;
       networking.nftables.enable = mkDefault true;
 
-      # Desktops use NetworkManager + systemd-resolved; servers rely on the
-      # DHCP configured by their generated hardware-configuration.nix.
+      # Desktops use NetworkManager + systemd-resolved; servers configure
+      # their uplink (DHCP or networkd) in their host module.
       networking.networkmanager.enable = mkIf config.isDesktop true;
       services.resolved.enable = mkIf config.isDesktop true;
     };

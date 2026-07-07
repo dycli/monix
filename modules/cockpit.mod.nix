@@ -3,8 +3,7 @@
 # machine. The session runs as the primary user with normal interactive
 # permission prompts — it is the human's seat, not an autonomous agent, so it
 # carries full user privileges (contrast with the locked-down fleet workers
-# and orchestrator VM of later phases). Usage: `ssh fw0` then
-# `tmux new -As main`.
+# of agent-vm.mod.nix). Usage: `ssh fw0` then `tmux new -As main`.
 #
 # The agent tooling itself (claude-code, codex, CLAUDE.md) comes from the
 # existing home aspects in packages.mod.nix / claude.mod.nix, which gate on

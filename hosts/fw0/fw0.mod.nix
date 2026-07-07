@@ -1,8 +1,8 @@
 # fw0 — Framework Desktop (Ryzen AI Max+ 395 "Strix Halo", 128GB unified
-# LPDDR5X), repurposed as the headless always-on AI server. Roles per the
-# agent-host plan: local LLM inference, agent-fleet microVM host (later
-# phases), and the user's persistent cockpit session. Websites/Minecraft are
-# deliberately out of scope. All admin and service access is tailnet-only —
+# LPDDR5X), the headless always-on AI server. Roles: agent-fleet microVM
+# host (see docs/agent-fleet.md), the user's persistent cockpit session,
+# and the LiteLLM/Open WebUI gateway (declared but disabled below until
+# real secrets exist). All admin and service access is tailnet-only —
 # zero inbound ports on the home IP (public SSH is closed by ssh.mod.nix for
 # servers; every service binds localhost or is reached via the trusted
 # tailscale0 interface).
@@ -20,8 +20,8 @@ let
 in
 {
   imports = singleton (
-    lib.systems.nixosSystem "fw0" (
-      { config, lib, ... }:
+    lib.monix.nixosSystem "fw0" (
+      { lib, ... }:
       let
         inherit (lib.attrsets) attrValues;
         inherit (lib.lists) singleton;
@@ -41,17 +41,16 @@ in
         # tailnet SSH); any machine is just a terminal into it.
         cockpit.enable = true;
 
-        # Agent-fleet microVM host (Phase 2). Brings up the host-only bridge +
+        # Agent-fleet microVM host. Brings up the host-only bridge +
         # egress proxy + microvm.nix runner (see microvm-host.mod.nix).
         agentFleet.enable = true;
 
-        # BOOTSTRAP LOGIN — a throwaway console password so a fresh headless
-        # install is reachable: log in at the console, `sudo tailscale up` to
-        # join the tailnet, then change it with `passwd`. `initialPassword`
-        # only applies when the account is first created and is inert once a
-        # real password is set. NOTE: this repo is public, so treat "temp1" as
-        # bootstrap-only and change it on first login.
-        users.users.max.initialPassword = "temp1";
+        # BOOTSTRAP LOGIN — no password is committed here (this repo is
+        # public, and `max` is the wheel/sudo account). On a fresh install,
+        # set the password from the installer before the first boot:
+        #   `nixos-enter --root /mnt -c 'passwd max'`
+        # then log in at the console and `sudo tailscale up`. On the running
+        # host the password is already set imperatively (users.mod.nix).
 
         nixpkgs.hostPlatform = "x86_64-linux";
 
@@ -147,11 +146,10 @@ in
         };
 
         # SLICES — coarse resource fences so no tenant starves another.
-        # agents = worker microVMs + dispatcher (Phase 2+), inference = LLM
-        # serving (Phase 6 declares the full mode tables; the ceilings below
-        # are the fleet-mode budget), services = everything else (litellm,
-        # open-webui, ...). CPUWeight stays at the default 100 for all —
-        # equal shares under contention.
+        # agents = the worker microVMs + squid, inference = local LLM
+        # serving, services = everything else (litellm, open-webui, ...).
+        # CPUWeight stays at the default 100 for all — equal shares under
+        # contention.
         systemd.slices.agents.sliceConfig.MemoryMax = "48G";
         systemd.slices.inference.sliceConfig.MemoryMax = "96G";
         systemd.slices.services.sliceConfig.MemoryMax = "16G";

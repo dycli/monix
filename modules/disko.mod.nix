@@ -1,7 +1,7 @@
 # Declarative disk layouts (nix-community/disko). Each host declares its
 # layout under `disko.devices` in its host module; disko generates the
-# `fileSystems`/LUKS mount config from it (replacing the old generated
-# hardware-configuration.nix stanzas) and can format a blank disk to match:
+# `fileSystems`/LUKS mount config from it and can format a blank disk to
+# match:
 #
 #   nix run github:nix-community/disko -- --mode disko --flake .#<host>
 #   nixos-install --flake .#<host>

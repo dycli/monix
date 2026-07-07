@@ -102,10 +102,7 @@
       };
     };
 
-  # Desktop applications wired into the Hyprland quick-app bindings. The
-  # source's wider personal list (second/third browsers, alacritty, libreoffice,
-  # gamescope, ollama, prismlauncher, ...) is deliberately not ported; re-add
-  # per host or here as needed.
+  # Desktop applications wired into the Hyprland quick-app bindings.
   flake.homeModules.packages-apps =
     {
       lib,

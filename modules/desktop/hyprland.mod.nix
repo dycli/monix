@@ -1,7 +1,6 @@
 # The Hyprland desktop concern: compositor + session at the system level, the
-# user's full Hyprland configuration at the home level. (nixpkgs Hyprland
-# instead of the hyprwm/Hyprland git flake; option layer collapsed into
-# concrete settings).
+# user's full Hyprland configuration at the home level. Hyprland comes from
+# nixpkgs; there are no Hyprland-specific flake inputs.
 {
   flake.nixosModules.hyprland =
     {
@@ -17,9 +16,9 @@
       config = mkIf config.isDesktop {
         programs.hyprland.enable = true;
 
-        # UWSM (Universal Wayland Session Manager) now owns the systemd
-        # session lifecycle instead of the home-manager Hyprland module's own
-        # hook (see the homeModules.hyprland aspect below). In this nixpkgs
+        # UWSM (Universal Wayland Session Manager) owns the systemd session
+        # lifecycle; the home-manager Hyprland module's own hook is disabled
+        # (see the homeModules.hyprland aspect below). In this nixpkgs
         # pin, `withUWSM` by itself only flips `programs.uwsm.enable`; it does
         # NOT register Hyprland with UWSM or add a session entry (confirmed
         # by reading nixos/modules/programs/wayland/hyprland.nix: the
@@ -114,48 +113,13 @@
   # home-manager's hyprland module infers configType from home.stateVersion
   # (< 26.05 => hyprlang), so this is pinned explicitly rather than left
   # implicit — an unrelated future stateVersion bump must not silently
-  # switch config generation. This has not been evaluated by `nix` or run
-  # against a live Hyprland — neither exists in the environment this was
-  # written in. Rebuild and test before trusting it.
+  # switch config generation.
   #
   # Every bind carries a `description`, which is not decorative: the DMS
   # keybinds overlay (SUPER+K, see the bind list below) reads these back at
   # runtime via `hyprctl binds -j`, which is the only reliable source of the
   # live bind list since Lua is executed, not parsed. Keep descriptions and
   # behavior in sync — nothing regenerates one from the other.
-  #
-  # Renames of note versus the prior hyprlang config, confirmed against
-  # current docs while translating:
-  #   - env vars: no more `general.env` list; each is its own `hl.env(k, v)`
-  #     call.
-  #   - `killactive` -> `hl.dsp.window.close()`.
-  #   - `togglesplit` is no longer a dispatcher; it is a `layout` message:
-  #     `hl.dsp.layout("togglesplit")`.
-  #   - `pseudo` -> `hl.dsp.window.pseudo()`.
-  #   - `togglefloating` -> `hl.dsp.window.float()`; `fullscreen` ->
-  #     `hl.dsp.window.fullscreen({ mode = "fullscreen" })`.
-  #   - `movefocus`/`swapwindow` -> `hl.dsp.focus({direction=...})` /
-  #     `hl.dsp.window.swap({direction=...})`.
-  #   - `workspace`/`movetoworkspace` -> `hl.dsp.focus({workspace=...})` /
-  #     `hl.dsp.window.move({workspace=...})`. Relative selectors ("+1",
-  #     "-1", "e+1") stay strings; absolute targets are plain ints.
-  #   - `resizeactive` -> `hl.dsp.window.resize({x=,y=,relative=true})`.
-  #   - `togglespecialworkspace` -> `hl.dsp.workspace.toggle_special(name)`.
-  #   - `sendshortcut` -> `hl.dsp.send_shortcut({mods=,key=})`.
-  #   - `bindm`/`bindel`/`bindl` collapse into one `bind` list; the old
-  #     flag letters become an options table: `{mouse=true}`,
-  #     `{locked=true, repeating=true}`, `{locked=true}`.
-  #   - window-rule effect names changed: `nofocus` -> `no_focus`,
-  #     `stayfocused` -> `stay_focused`, `suppressevent maximize` ->
-  #     `suppress_event = "maximize"`. Match props: `floating` -> `float`,
-  #     `pinned` -> `pin`.
-  #   - `exec`/`exec-once` both fold into one `hl.on("hyprland.start", fn)`
-  #     callback. This drops one piece of prior behavior: an old bare `exec`
-  #     line in the source re-ran a restart-or-launch command on every config
-  #     reload (`hyprctl reload`), not just at startup. No documented Lua
-  #     event equivalent to "on config reload" was found — that specific
-  #     behavior (a program auto-restarting when you edit and reload its own
-  #     config) is not reproduced for anything started via the callback below.
   flake.homeModules.hyprland =
     {
       lib,
@@ -203,7 +167,7 @@
           package = null;
           portalPackage = null;
 
-          # UWSM owns the systemd session now (see the NixOS-level
+          # UWSM owns the systemd session (see the NixOS-level
           # `programs.hyprland.withUWSM` / `programs.uwsm.waylandCompositors.hyprland`
           # in the nixosModules.hyprland aspect above): the "Hyprland (UWSM)"
           # session entry runs `uwsm start -F -- Hyprland`, which launches the
@@ -219,9 +183,8 @@
           # HYPRCURSOR_THEME/SIZE and XCURSOR_THEME/SIZE are added
           # automatically by uwsm's built-in hyprland.sh plugin
           # (`UWSM_FINALIZE_VARNAMES`); XDG_CURRENT_DESKTOP, XDG_SESSION_TYPE
-          # and XDG_SESSION_ID are passed explicitly to `uwsm finalize` to
-          # preserve this module's prior variable-import behavior (uwsm
-          # finalize silently skips undefined vars, so this is safe even if
+          # and XDG_SESSION_ID are passed explicitly to `uwsm finalize`
+          # (which silently skips undefined vars, so this is safe even if
           # one of them isn't set).
           systemd.enable = false;
 
@@ -409,11 +372,10 @@
               }
             ];
 
-            # AUTOSTART — see the module-level comment for the dropped
-            # reload-restart behavior. dms/ghostty startup are not done here:
-            # they're handled by each unit's own
-            # `Install.WantedBy = graphical-session.target` (see
-            # ghostty.mod.nix, dank.mod.nix), which UWSM now brings up (see
+            # AUTOSTART — runs once at compositor startup (`hl.on` has no
+            # config-reload event). dms and ghostty start via their own
+            # units' `Install.WantedBy = graphical-session.target` (see
+            # ghostty.mod.nix, dank.mod.nix), which UWSM brings up (see
             # `wayland.windowManager.hyprland.systemd` above).
             #
             # `uwsm finalize` MUST run first, and only once
@@ -429,11 +391,6 @@
             # unwrapped (see the bind list below) — `uwsm app` is for
             # long-lived autostarts, not one-shot interactive launches.
             #
-            # hyprsunset is dropped in favor of DMS's built-in night mode
-            # (DisplayService.qml's `wayland.gamma.*` calls), which talks
-            # directly to the compositor over the `wlr-gamma-control-unstable-v1`
-            # Wayland protocol from the `dms` daemon — no external process,
-            # and Hyprland natively implements that protocol.
             on = {
               _args = [
                 "hyprland.start"
@@ -546,7 +503,7 @@
                 (mkBind "SUPER + mouse_down" ''hl.dsp.focus({ workspace = "e+1" })'' "Next open workspace" { })
                 (mkBind "SUPER + mouse_up" ''hl.dsp.focus({ workspace = "e-1" })'' "Previous open workspace" { })
 
-                # On SUPER+U: SUPER+S collides with $messenger.
+                # SUPER+U, not SUPER+S: S is taken by the messenger bind.
                 (mkBind "SUPER + U" ''hl.dsp.workspace.toggle_special("magic")'' "Toggle special workspace" { })
                 (mkBind "SUPER + SHIFT + U" ''hl.dsp.window.move({ workspace = "special:magic" })''
                   "Move window to special workspace"
@@ -635,8 +592,7 @@
                   { locked = true; }
                 )
               ]
-              # Switch to / move to workspaces 1-9, generated to cut
-              # transcription risk on a repetitive block.
+              # Switch to / move to workspaces 1-9.
               ++ (
                 concatMap
                   (

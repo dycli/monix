@@ -1,26 +1,22 @@
-# Agent-fleet worker guests (Phase 2, step 2 — one worker, manual lifecycle).
-# See docs/phase2-agent-vm.md §4. Each worker is a minimal, purpose-built
-# NixOS microVM — deliberately NOT composed from self.nixosModules (workers
-# are not fleet hosts; no tailnet, no monorepo, no host secrets, by absence).
-# Claude Code runs fully-permissioned inside; containment is the host's
-# default-deny egress, not anything the guest promises: the guest has no
-# default route and no DNS, so the squid allowlist proxy on the bridge IP is
-# structurally the only way out.
+# Agent-fleet worker guests. See docs/agent-fleet.md. Each worker is a
+# minimal, purpose-built NixOS microVM — deliberately NOT composed from
+# self.nixosModules (workers are not fleet hosts; no tailnet, no monorepo,
+# no host secrets, by absence). Claude Code runs fully-permissioned inside;
+# containment is the host's default-deny egress, not anything the guest
+# promises: the guest has no default route and no DNS, so the squid
+# allowlist proxy on the bridge IP is structurally the only way out.
 #
 # Ephemerality: the guest root is tmpfs (microvm.nix default) and the nix
 # store is the host's, read-only over virtiofs. Only the two volume images
-# (store overlay + /workspace scratch) persist across restarts — the
-# wipe-on-start hook is step 4 of the plan, not yet installed.
-#
-# Secrets are STUBBED at this step (plan §8 step 2): no credentialFiles yet,
-# so Claude Code inside the guest has no API key until step 3 lands.
+# (store overlay + /workspace scratch) persist across restarts.
 { self, ... }:
 {
   flake.nixosModules.agent-guests =
     { config, lib, ... }:
     let
-      inherit (lib.modules) mkIf;
+      inherit (lib.attrsets) listToAttrs nameValuePair;
       inherit (lib.lists) singleton;
+      inherit (lib.modules) mkIf;
       inherit (lib.strings) fixedWidthString;
 
       cfg = config.agentFleet;
@@ -28,7 +24,17 @@
       hostAddr = "10.100.0.1";
       proxyUrl = "http://${hostAddr}:3128";
 
-      # One worker class per repo (plan §6); `index` numbers workers within
+      # The fleet roster. Everything derived from a worker (the VM definition
+      # AND its slice fence) is generated from this one list, so a worker can
+      # never exist outside the agents.slice memory budget.
+      workers = [
+        {
+          name = "lfish-0";
+          index = 1;
+        }
+      ];
+
+      # One worker class per repo; `index` numbers workers within
       # the fleet and derives both the bridge address (10.100.0.10+index) and
       # a locally-administered MAC. The decimal index doubles as the MAC's
       # last octet — unique for index <= 99, which is plenty.
@@ -37,15 +43,15 @@
           name,
           index,
           vcpu ? 8,
-          mem ? 8192, # MiB, static — no ballooning (plan invariant 9)
+          mem ? 8192, # MiB, static — no ballooning
         }:
         let
           addr = "10.100.0.${toString (10 + index)}";
           mac = "02:00:00:00:00:${fixedWidthString 2 "0" (toString index)}";
         in
         {
-          # Phase 2 is manual lifecycle: the cockpit starts/stops
-          # microvm@<name> by hand; nothing autostarts at boot.
+          # Manual lifecycle: the cockpit starts/stops microvm@<name> by
+          # hand; nothing autostarts at boot.
           autostart = false;
 
           config =
@@ -129,9 +135,8 @@
               # cache on the egress allowlist (.nixos.org).
 
               # The sole account. No wheel, no sudo; it owns /workspace and
-              # nothing else. Keyed to the admin keys for Phase 2 (the human
-              # cockpit is the dispatcher; a dedicated dispatch keypair
-              # arrives with Phase 3).
+              # nothing else. Keyed to the admin keys: the human cockpit
+              # session is the dispatcher.
               users.users.agent = {
                 isNormalUser = true;
                 description = "fleet worker";
@@ -147,8 +152,8 @@
 
               # Root autologin on the serial console: reaching the console at
               # all requires host-root (the microvm@ unit's PTY), and guest
-              # containment never rests on in-guest auth. Keeps §7
-              # verification and debugging one `microvm -s <name>` away.
+              # containment never rests on in-guest auth. Keeps verification
+              # and debugging one `microvm -s <name>` away.
               services.getty.autologinUser = "root";
 
               system.stateVersion = "26.05";
@@ -157,14 +162,13 @@
     in
     {
       config = mkIf cfg.enable {
-        microvm.vms.lfish-0 = mkAgentGuest {
-          name = "lfish-0";
-          index = 1;
-        };
+        microvm.vms = listToAttrs (map (w: nameValuePair w.name (mkAgentGuest w)) workers);
 
-        # microvm.nix has no slice option; standard unit override so the
+        # microvm.nix has no slice option; standard unit override so every
         # worker counts against the fleet's 48G/agents.slice fence.
-        systemd.services."microvm@lfish-0".serviceConfig.Slice = "agents.slice";
+        systemd.services = listToAttrs (
+          map (w: nameValuePair "microvm@${w.name}" { serviceConfig.Slice = "agents.slice"; }) workers
+        );
       };
     };
 }

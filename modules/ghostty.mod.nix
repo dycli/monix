@@ -1,9 +1,5 @@
-# Terminal (replaces kitty). font-family
-# falls back from the source's "ComicCodeLigatures Nerd Font" (a proprietary
-# font installed manually, not shippable) to CaskaydiaMono, which fonts.mod.nix
-# installs. Install Comic Code to ~/.local/share/fonts and change this to
-# restore the original. Theming removed in the simplification pass; ghostty
-# uses its default theme.
+# Terminal. font-family is CaskaydiaMono Nerd Font (installed by
+# fonts.mod.nix); ghostty uses its default theme.
 {
   # Every host carries ghostty's terminfo (tiny), so SSH sessions from a
   # ghostty terminal (TERM=xterm-ghostty) work on servers too — without it,

@@ -9,8 +9,8 @@ let
 in
 {
   imports = singleton (
-    lib.systems.nixosSystem "fw3" (
-      { config, lib, pkgs, ... }:
+    lib.monix.nixosSystem "fw3" (
+      { lib, pkgs, ... }:
       let
         inherit (lib.attrsets) attrValues;
         inherit (lib.lists) singleton;
@@ -27,8 +27,8 @@ in
 
         nixpkgs.hostPlatform = "x86_64-linux";
 
-        # HARDWARE (was hardware-configuration.nix; quirks/power tuning come
-        # from the nixos-hardware framework module above)
+        # HARDWARE (quirks/power tuning come from the nixos-hardware
+        # framework module above)
         boot.initrd.availableKernelModules = [
           "nvme"
           "xhci_pci"
@@ -87,9 +87,8 @@ in
           };
         };
 
-        # POWER (Framework 13 AMD tuning carried over from fwork; amd_pstate
-        # and the amdgpu PSR workaround come from nixos-hardware and are not
-        # repeated here)
+        # POWER (amd_pstate and the amdgpu PSR workaround come from
+        # nixos-hardware and are not repeated here)
         boot.kernelPackages = pkgs.linuxPackages_zen;
 
         boot.kernelParams = [

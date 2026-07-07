@@ -6,7 +6,7 @@
   # `self.nixosSystem` is nixpkgs' `lib.nixosSystem` resolved against the
   # extended lib fixpoint, so any custom lib helpers are also available inside
   # the evaluated modules.
-  systems.nixosSystem =
+  nixosSystem =
     hostName: module:
     {
       flake.nixosConfigurations.${hostName} = self.nixosSystem {

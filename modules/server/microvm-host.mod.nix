@@ -1,10 +1,9 @@
-# Agent-fleet microVM host (Phase 2, step 1 — host infrastructure only, no
-# guest yet). See docs/phase2-agent-vm.md. Provides:
+# Agent-fleet microVM host. See docs/agent-fleet.md. Provides:
 #   - the microvm.nix host runner (microvm@<name> units, virtiofsd, state dir);
 #   - a HOST-ONLY bridge `br-agents` (10.100.0.1/24) with no NAT, no routing,
 #     no DNS for guests — guests can reach nothing except the proxy below;
 #   - `squid` as the SOLE egress path, a CONNECT allowlist that also produces
-#     the egress audit log (plan §9).
+#     the egress audit log.
 #
 # Egress is structural, not a rule to get right: guests have no default route
 # and no DNS, so the only way out is CONNECT through squid on the bridge IP,
@@ -113,7 +112,7 @@
           enable = true;
           configText = ''
             http_port ${hostAddr}:3128
-            pid_filename /run/squid.pid
+            pid_filename /run/squid/squid.pid
 
             # Run as the squid user (owns /var/log/squid + /var/cache/squid);
             # without this squid drops to 'nobody' and can't write its logs.
@@ -133,13 +132,65 @@
             # Proxy, not cache.
             cache deny all
 
-            # THIS is the egress audit trail (plan §9): one line per request.
+            # THIS is the egress audit trail: one line per request.
             access_log stdio:/var/log/squid/access.log
             cache_log stdio:/var/log/squid/cache.log
             coredump_dir /var/cache/squid
           '';
         };
-        systemd.services.squid.serviceConfig.Slice = "agents.slice";
+        # HARDENING — squid is the ONE host process that parses bytes from the
+        # untrusted guests, i.e. the single crack in the otherwise-clean KVM
+        # boundary. Sandbox it so an exploited squid lands in an empty room:
+        # read-only filesystem (logs/cache/pidfile excepted), no home dirs, no
+        # new privileges, and only the capabilities/syscalls it needs to drop
+        # from root to the squid user at startup (@setuid/@chown).
+        systemd.services.squid.serviceConfig = {
+          Slice = "agents.slice";
+
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          # ProtectSystem=strict leaves /run read-only, so the pidfile moves
+          # into a RuntimeDirectory (the upstream module points PIDFile at
+          # /run/squid.pid — realign it).
+          RuntimeDirectory = "squid";
+          PIDFile = lib.mkForce "/run/squid/squid.pid";
+          ReadWritePaths = [
+            "/var/log/squid"
+            "/var/cache/squid"
+          ];
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectKernelLogs = true;
+          ProtectControlGroups = true;
+          ProtectClock = true;
+          ProtectHostname = true;
+          ProtectProc = "invisible";
+          RestrictAddressFamilies = [
+            "AF_INET"
+            "AF_INET6"
+            "AF_UNIX"
+            "AF_NETLINK"
+          ];
+          RestrictNamespaces = true;
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter = [
+            "@system-service"
+            "@setuid"
+            "@chown"
+          ];
+          CapabilityBoundingSet = [
+            "CAP_SETUID"
+            "CAP_SETGID"
+            "CAP_CHOWN"
+            "CAP_DAC_OVERRIDE"
+          ];
+        };
         })
       ];
     };
