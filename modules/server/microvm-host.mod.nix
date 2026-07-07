@@ -115,6 +115,10 @@
             http_port ${hostAddr}:3128
             pid_filename /run/squid.pid
 
+            # Run as the squid user (owns /var/log/squid + /var/cache/squid);
+            # without this squid drops to 'nobody' and can't write its logs.
+            cache_effective_user squid
+
             acl allowed_domains dstdomain ${concatStringsSep " " allowedDomains}
             acl SSL_ports port 443
             acl Safe_ports port 80 443
