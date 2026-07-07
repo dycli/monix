@@ -5,8 +5,10 @@ A single-repo, modular NixOS configuration built on the **Dendritic Pattern**
 that adding a host is a few lines.
 
 Hosts: **fw3** (Framework 13 AMD 7040 running a Hyprland desktop shelled by
-DankMaterialShell; formerly "fwork") and **vs0** (server running LiteLLM,
-Open WebUI, and Tailscale).
+DankMaterialShell; formerly "fwork") and **fw0** (Framework Desktop, Ryzen AI
+Max+ 395, 128GB — headless always-on AI server: LiteLLM, Open WebUI, Tailscale,
+and the user's persistent cockpit session; agent-fleet microVMs and local
+inference land in later phases of the agent-host plan).
 
 ## How it fits together
 
@@ -61,7 +63,7 @@ flag false. Service aspects (LiteLLM, Open WebUI, Tailscale) gate on their own
 ## Adding a host
 
 1. `mkdir hosts/<name>` and create `hosts/<name>/<name>.mod.nix` (copy fw3 or
-   vs0). Set `isDesktop`, `nixpkgs.hostPlatform`, `system.stateVersion`.
+   fw0). Set `isDesktop`, `nixpkgs.hostPlatform`, `system.stateVersion`.
 2. Set the hardware facts and disko layout in the host module (crib the
    kernel-module list from `nixos-generate-config --show-hardware-config` on
    the machine; point `disko.devices.disk.main.device` at the disk's
@@ -75,13 +77,13 @@ the rest.
 
 ## Secrets (agenix)
 
-agenix is used only for vs0's three service credentials (Tailscale, LiteLLM,
+agenix is used only for fw0's three service credentials (Tailscale, LiteLLM,
 Open WebUI); login passwords are set imperatively (see below), so no user or
 host needs a password secret to boot.
 
 > **Warning — this repo's secrets are placeholders.** `keys.nix` currently
 > holds the real admin key but **placeholder host keys**, and all three
-> `.age` files under `hosts/vs0/` are **unencrypted placeholder text**
+> `.age` files under `hosts/fw0/` are **unencrypted placeholder text**
 > (present only so test builds succeed). Before any real deploy: put the
 > real host SSH keys in `keys.nix`, then recreate every `.age` file with
 > `agenix -e`.
@@ -100,9 +102,9 @@ key (`/etc/ssh/ssh_host_ed25519_key`).
 4. Create the secrets (an entry must already exist in `secrets.nix`):
 
    ```sh
-   nix run github:ryantm/agenix -- -e hosts/vs0/tailscale.age
-   nix run github:ryantm/agenix -- -e hosts/vs0/litellm.env.age
-   nix run github:ryantm/agenix -- -e hosts/vs0/open-webui.env.age
+   nix run github:ryantm/agenix -- -e hosts/fw0/tailscale.age
+   nix run github:ryantm/agenix -- -e hosts/fw0/litellm.env.age
+   nix run github:ryantm/agenix -- -e hosts/fw0/open-webui.env.age
    ```
 
 `tailscale.age` holds a one-line reusable auth key (`tskey-auth-...`).
@@ -111,10 +113,10 @@ key (`/etc/ssh/ssh_host_ed25519_key`).
 > login password imperatively with `passwd`. Login never depends on agenix,
 > so a host can be built and activated with no secrets present at all.
 
-## The AI stack on vs0
+## The AI stack on fw0
 
 - **LiteLLM** runs on `127.0.0.1:4000` as an OpenAI-compatible gateway. Its
-  `model_list` (in `hosts/vs0/vs0.mod.nix`) is illustrative — edit it for your
+  `model_list` (in `hosts/fw0/fw0.mod.nix`) is illustrative — edit it for your
   providers. `os.environ/NAME` reads NAME from `litellm.env.age`, which must
   define `LITELLM_MASTER_KEY` and every referenced provider key, e.g.:
 
@@ -136,13 +138,13 @@ key (`/etc/ssh/ssh_host_ed25519_key`).
 
 Neither service opens the public firewall. They are reachable over **Tailscale**
 (the `tailscale0` interface is trusted) and via localhost. Reach Open WebUI at
-`http://<vs0-tailscale-ip>:8080`.
+`http://<fw0-tailscale-ip>:8080`.
 
 ## Building
 
 ```sh
 nix flake check                          # evaluate everything
-nixos-rebuild switch --flake .#fw3       # or .#vs0
+nixos-rebuild switch --flake .#fw3       # or .#fw0
 ```
 
 First install of a host, from any NixOS installer ISO (formats the disk

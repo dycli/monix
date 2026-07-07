@@ -128,7 +128,9 @@
       };
     };
 
-  # Authoring/build tools that only make sense on a workstation.
+  # Authoring/build tools for anywhere the user actually works: workstations
+  # and the cockpit host (the server carrying the primary Claude session,
+  # see cockpit.mod.nix).
   flake.homeModules.packages-dev-extras =
     {
       lib,
@@ -140,7 +142,7 @@
       inherit (lib.modules) mkIf;
     in
     {
-      config = mkIf osConfig.isDesktop {
+      config = mkIf (osConfig.isDesktop || osConfig.cockpit.enable) {
         home.packages = [
           pkgs.claude-code
           pkgs.codex
