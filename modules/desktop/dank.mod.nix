@@ -32,8 +32,23 @@
         # socket: it dispatches old-style strings ("workspace 2"), which the
         # socket rejects, so bar workspace clicking/scrolling silently fails.
         # The flake's master build speaks the new API (hl.dsp.focus{...}).
+        #
+        # The overrideAttrs preloads the spotlight launcher: upstream keeps it
+        # in a LazyLoader that only instantiates on the first SUPER+D, making
+        # that first open visibly slow (and nothing ever unloads it afterwards,
+        # so it's a pure once-per-session win). Quickshell's `loading: true`
+        # instantiates it asynchronously at shell startup without showing it.
+        # --replace-fail makes the build break loudly if upstream renames the
+        # loader (then re-check whether they've fixed the lazy-load lag).
         programs.dms-shell.package =
-          inputs.dank-material-shell.packages.${pkgs.stdenv.hostPlatform.system}.dms-shell;
+          (inputs.dank-material-shell.packages.${pkgs.stdenv.hostPlatform.system}.dms-shell.overrideAttrs
+            (old: {
+              postInstall = (old.postInstall or "") + ''
+                substituteInPlace $out/share/quickshell/dms/DMSShell.qml \
+                  --replace-fail "id: dankLauncherV2ModalLoader" "id: dankLauncherV2ModalLoader; loading: true"
+              '';
+            })
+          );
 
         # Wallpaper-synced app theming (Settings -> Theme & Colors -> "Apply
         # GTK/Qt Themes"). enableDynamicTheming provides matugen; adw-gtk3 is
