@@ -110,13 +110,17 @@ An optional front-matter block sets task options (unknown keys are ignored):
 
 ```markdown
 ---
-model: sonnet
+agent: codex
+model: gpt-5.5
 ---
 The prompt starts here…
 ```
 
-`model` is handed to `claude --model` in the guest — use it to run routine
-tasks on a cheaper model and keep the strong models for review.
+`agent` picks the executor — `claude` (default) or `codex`, both
+subscription-authenticated in every guest; new executors are one case
+branch in agent-vm.mod.nix. `model` is handed to the executor's `--model` —
+use it to run routine tasks on a cheaper model and keep the strong models
+for review, or to spread work across the two subscription pools.
 
 ### Guidance (mid-task escalation)
 

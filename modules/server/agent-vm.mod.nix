@@ -297,17 +297,28 @@
                 # The prompt may start with a front-matter block setting task
                 # options; unknown keys are ignored. Currently understood:
                 #   ---
-                #   model: sonnet        <- passed to `claude --model`
+                #   agent: claude        <- executor: claude (default) | codex
+                #   model: sonnet        <- passed to the executor's --model
                 #   ---
+                # New executors are one more case branch below; the contract
+                # is only: read prompt body, write report.md + agent.log +
+                # exit-code, run with everything auto-approved (the VM is the
+                # sandbox — that's the point of the fleet).
                 script = ''
                   . /run/agent-env
                   prompt=${guestTaskMount}/prompt.md
 
-                  model="$(awk '
-                    NR==1 && $0=="---" { h=1; next }
-                    h && $0=="---" { exit }
-                    h && /^model:/ { sub(/^model:[[:space:]]*/, ""); print; exit }
-                  ' "$prompt")"
+                  fm() {
+                    awk -v key="$1" '
+                      NR==1 && $0=="---" { h=1; next }
+                      h && $0=="---" { exit }
+                      h && substr($0, 1, length(key)+1) == key ":" {
+                        sub(/^[[:alnum:]_-]+:[[:space:]]*/, ""); print; exit
+                      }
+                    ' "$prompt"
+                  }
+                  agent="$(fm agent)"
+                  model="$(fm model)"
                   awk '
                     NR==1 && $0=="---" { h=1; next }
                     h && $0=="---" { h=0; next }
@@ -315,15 +326,36 @@
                     { print }
                   ' "$prompt" > /tmp/prompt-body.md
 
-                  # --dangerously-skip-permissions is the point of the fleet:
-                  # the agent runs unattended with every tool auto-approved,
-                  # and the VM + egress proxy are the actual containment.
+                  hint='If you are stuck, need a decision above your pay grade, or want a second opinion, run `ask-cockpit "<your question>"` in the shell: it consults a stronger supervising model and prints its guidance (allow a few minutes). At most 5 questions per task.'
+
                   rc=0
-                  claude -p "$(cat /tmp/prompt-body.md)" ''${model:+--model "$model"} \
-                    --dangerously-skip-permissions \
-                    --append-system-prompt 'If you are stuck, need a decision above your pay grade, or want a second opinion, run `ask-cockpit "<your question>"` in the shell: it consults a stronger supervising model and prints its guidance (allow a few minutes). At most 5 questions per task.' \
-                    > ${guestTaskMount}/report.md \
-                    2> ${guestTaskMount}/agent.log || rc=$?
+                  case "$agent" in
+                    "" | claude)
+                      claude -p "$(cat /tmp/prompt-body.md)" ''${model:+--model "$model"} \
+                        --dangerously-skip-permissions \
+                        --append-system-prompt "$hint" \
+                        > ${guestTaskMount}/report.md \
+                        2> ${guestTaskMount}/agent.log || rc=$?
+                      ;;
+                    codex)
+                      # No system-prompt flag; the hint rides atop the prompt.
+                      # stdout is the session transcript (-> agent.log); the
+                      # final message is the report.
+                      codex exec \
+                        --dangerously-bypass-approvals-and-sandbox \
+                        --skip-git-repo-check \
+                        ''${model:+--model "$model"} \
+                        --output-last-message ${guestTaskMount}/report.md \
+                        "$hint
+
+                      $(cat /tmp/prompt-body.md)" \
+                        > ${guestTaskMount}/agent.log 2>&1 < /dev/null || rc=$?
+                      ;;
+                    *)
+                      echo "unknown agent '$agent' (known: claude, codex)" | tee ${guestTaskMount}/report.md > ${guestTaskMount}/agent.log
+                      rc=64
+                      ;;
+                  esac
                   echo "$rc" > ${guestTaskMount}/exit-code
                 '';
               };
