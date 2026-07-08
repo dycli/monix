@@ -71,6 +71,10 @@
               install -d -m 0755 -o 1000 -g 100 "$work"
             }
 
+            log() {
+              echo "$(date '+%F %T') ${worker} $*" | tee -a ${tasksDir}/log
+            }
+
             # Recover tasks stranded by a previous drainer instance that died
             # mid-task (host switch, failure): requeue them.
             install -d "$running"
@@ -92,13 +96,13 @@
               if ! mv "$1" "$running/$id.md" 2>/dev/null; then
                 continue
               fi
-              echo "dispatching $id to ${worker}"
+              log "dispatch $id"
 
               stop_vm
               reset_work
               install -m 0444 "$running/$id.md" "$work/prompt.md"
               if ! systemctl start microvm@${worker}.service; then
-                echo "worker ${worker} failed to start; filing $id as failed"
+                log "failed-to-start $id"
                 stop_vm
                 out=${tasksDir}/failed/$id
                 install -d "$out"
@@ -141,7 +145,7 @@
                 fi
               done
               reset_work
-              echo "$id finished: $status -> $out"
+              log "$status $id"
             done
           '';
         };
@@ -167,6 +171,9 @@
           "d ${tasksDir}/running 0755 root root -" # per-worker subdirs, created by drainers
           "d ${tasksDir}/done 0755 root root -"
           "d ${tasksDir}/failed 0755 root root -"
+          # One line per dispatch/completion — the fleet ticker
+          # (`tail -f` it from the cockpit).
+          "f ${tasksDir}/log 0644 root root -"
         ];
 
         systemd.paths.agent-dispatcher = {

@@ -148,7 +148,9 @@ and the guest's `agent-task` unit runs
 `report.md`, `agent.log`, and `exit-code` back through the share. The
 drainer polls for the exit code, stops the VM, and files everything under
 `/var/lib/agents/tasks/done/<id>/` (nonzero exit or `agentFleet.taskTimeout`
-— default 90 min — go to `failed/` instead). Progress is in
+— default 90 min — go to `failed/` instead). One line per dispatch and
+completion lands in `/var/lib/agents/tasks/log` — `tail -f` it from the
+cockpit as the fleet ticker; fuller detail is in
 `journalctl -u 'agent-dispatch-*'`.
 
 The dispatcher owns worker lifecycle: a manually started VM is restarted out
