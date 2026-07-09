@@ -101,12 +101,10 @@
         };
 
         # --- Quality of life (low-touch, server-side, non-gameplay-altering) ---
-        # Ultimate Sleep — one-player / vote-to-sleep so a single player can skip
-        # the night without waiting on everyone. Requires Fabric API (below).
-        UltimateSleep = mod {
-          url = "https://cdn.modrinth.com/data/M1lrtuN1/versions/GkXPriTg/ultimate-sleep-1.2.0%2B26.1-fabric.jar";
-          sha512 = "9eaa91b8f8185dd771e15ec47436a4aa8d557acd20c6cc3cc208c09d0e5550d58386365ec46e09a7a217dacab38f8cf8a539846ad34a8aa05707d47c5d964927";
-        };
+        # (Ultimate Sleep — one-player-skips-the-night — was here and got
+        # removed by request: the user wants vanilla all-players-must-sleep,
+        # which is exactly what NO sleep mod does.)
+        #
         # ServerCore — server-only performance/QoL tuning (async chunk work,
         # dynamic view distance under load). No dependencies. No client needed.
         ServerCore = mod {
@@ -120,9 +118,11 @@
           sha512 = "e4d7be86bfdc3a4f23acf0a1203b1745aa32c260abef7b81061494b795050861bc9174cbd92a7270edf2f24832e04a20ef9403bbb947c54d885f741f7c9c8f60";
         };
 
-        # --- Required dependency ---
-        # Fabric API — required by UltimateSleep (P7dR8mSH). Server-side. Kept
-        # last to make clear it is a dependency, not a chosen feature.
+        # --- Library ---
+        # Fabric API (P7dR8mSH) — no current mod requires it (its dependent,
+        # Ultimate Sleep, was removed) but it's kept deliberately: most Fabric
+        # mods need it, so it being present means future mod additions just
+        # work. Server-side, inert on its own.
         FabricAPI = mod {
           url = "https://cdn.modrinth.com/data/P7dR8mSH/versions/lOQ4tyDD/fabric-api-0.154.2%2B26.1.2.jar";
           sha512 = "8e1b48a2bd10ddd6f1ea59a603a1f28255c2c2f9a2dda93fc196505dee0823eaded2da69d4f154ef654f9faa98e2340ed2b65557ec98637ffe888edc1072912e";
@@ -192,7 +192,9 @@
               # the vanilla default (10) so mob/crop/redstone ticking — the
               # gameplay-visible part — is untouched. ServerCore dynamically
               # walks view-distance back down if the tick rate ever suffers.
-              view-distance = 16;
+              # (Cost grows with the square of the distance — 20 is ~55% more
+              # loaded chunks than 16; fine here, think before going higher.)
+              view-distance = 20;
               motd = "fw0 // tailnet survival — stock clients welcome";
               # Bind to all interfaces: the firewall (not a bind address) is what
               # keeps this tailnet-only, and tailscale0 is a normal interface.
