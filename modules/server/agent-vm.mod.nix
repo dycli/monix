@@ -173,6 +173,13 @@
                     tag = "task";
                     source = workDir name;
                     mountPoint = guestTaskMount;
+                    # Warm pool delivers prompt.md into a RUNNING guest. With
+                    # default caching the guest keeps a stale negative dentry for
+                    # a never-existed file it stats without ever touching the dir,
+                    # so it never sees the host's write. cache=never makes the
+                    # guest always revalidate against the host. (Tiny control-
+                    # plane share, so no meaningful perf cost.)
+                    cache = "never";
                   }
                 ];
 
