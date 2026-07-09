@@ -63,6 +63,19 @@
         # dataset, not the root subvol.
         microvm.stateDir = "/var/lib/agents/microvms";
 
+        # Pre-own each worker's state dir as microvm:kvm. microvm.nix's
+        # install-microvm runs as root and chowns each dir itself, but when a
+        # BATCH of new workers installs at once and an install is interrupted
+        # before its chown, the dir is left root-owned — then the microvm-user
+        # `microvm-set-booted` step fails with EACCES and aborts the whole
+        # activation (this is what broke the jump 2->12). A tmpfiles `d` rule
+        # sets AND repairs the ownership deterministically, and it runs early in
+        # activation (before the microvm units), so a large pool activates
+        # cleanly and any previously root-owned dirs get fixed on the next switch.
+        systemd.tmpfiles.rules = map (
+          w: "d ${config.microvm.stateDir}/${w.name} 0755 microvm kvm -"
+        ) cfg.workers;
+
         # NETWORKING — full systemd-networkd (NOT mixed with scripted dhcpcd,
         # which NixOS warns can drop networking). networkd becomes authoritative
         # for all interfaces, so the onboard uplink is configured explicitly

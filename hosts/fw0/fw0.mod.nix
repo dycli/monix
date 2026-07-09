@@ -69,7 +69,7 @@ in
         agentFleet.workers = builtins.genList (i: {
           name = "worker-${toString i}";
           index = i + 1;
-        }) 12;
+        }) 10;
 
         # BOOTSTRAP LOGIN — no password is committed here (this repo is
         # public, and `max` is the wheel/sudo account). On a fresh install,
