@@ -321,30 +321,17 @@
                   . /run/agent-env
                   prompt=${guestTaskMount}/prompt.md
 
-                  # Warm pool: boot idle and wait for the host to deliver a task.
-                  # DIAGNOSTIC (temporary): prove this watcher is alive and log what
-                  # the guest's OWN view of the task dir sees while waiting. Written
-                  # to the share; guest->host writes ARE visible to the host, so we
-                  # can read diag.log on the host side. The periodic `ls` also tests
-                  # whether a readdir reveals the host-delivered prompt when a plain
-                  # stat (`[ -f ]`) does not. Remove once delivery is settled.
-                  {
-                    echo "agent-task started: $(date)"
-                    echo "initial ls of ${guestTaskMount}:"
-                    ls -la ${guestTaskMount}
-                  } > ${guestTaskMount}/diag.log 2>&1
-                  i=0
-                  while [ ! -f "$prompt" ]; do
-                    i=$((i + 1))
-                    if [ $((i % 5)) -eq 0 ]; then
-                      {
-                        echo "--- poll $i ($(date)): guest ls of ${guestTaskMount}:"
-                        ls -la ${guestTaskMount}
-                      } >> ${guestTaskMount}/diag.log 2>&1
-                    fi
+                  # Warm pool: wait for the host to deliver the task, then run it.
+                  # Poll by READING the directory (readdir via ls), NOT by statting
+                  # a single never-existed filename. A bare `[ -f prompt.md ]` on a
+                  # dir the guest never reads sits on a stale negative-dentry cache
+                  # and never sees the host's delivered file; a readdir forces the
+                  # guest to revalidate against the host. Confirmed empirically: an
+                  # instrumented build that ls'd the dir each poll delivered fine,
+                  # where the bare stat-loop hung — even with virtiofs cache=never.
+                  while ! ls -1 "${guestTaskMount}" 2>/dev/null | grep -Fqx prompt.md; do
                     sleep 1
                   done
-                  echo "SAW PROMPT at poll $i: $(date)" >> ${guestTaskMount}/diag.log 2>&1
 
                   fm() {
                     awk -v key="$1" '
