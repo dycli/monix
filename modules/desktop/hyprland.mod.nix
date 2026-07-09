@@ -256,6 +256,10 @@
                 touchpad = {
                   natural_scroll = false;
                   clickfinger_behavior = true;
+                  # No palm-rejection freeze: keep the trackpad live while
+                  # keys are held — WASD + trackpad gaming is unusable with
+                  # the default (trackpad dies whenever a key is down).
+                  disable_while_typing = false;
                 };
               };
 
