@@ -45,6 +45,12 @@ in
         # egress proxy + microvm.nix runner (see microvm-host.mod.nix).
         agentFleet.enable = true;
 
+        # Declarative Fabric Minecraft server (see minecraft.mod.nix). Fabric
+        # 26.1.2, server-side mods only, ~4G heap in services.slice. Tailnet-only
+        # (openFirewall = false) and egress-fenced so a compromised server can't
+        # pivot onto localhost, the LAN, or the fleet bridge.
+        minecraft.enable = true;
+
         # FLEET CREDENTIALS — subscription logins shared by all workers,
         # as agenix secrets; create/refresh with `agenix -e
         # hosts/fw0/<name>.age` from the repo root (the agenix CLI ships on

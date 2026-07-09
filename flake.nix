@@ -51,6 +51,18 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
+  # nix-minecraft: declarative Fabric/vanilla/etc. Minecraft servers as a
+  # NixOS service, plus prebuilt server packages pinned per game version
+  # (see modules/server/minecraft.mod.nix, gated on services.minecraft-servers
+  # via minecraft.enable). Does NOT follow our nixpkgs: the flake's server
+  # packages (fabricServers.*) and their loader/launcher wrapper are built and
+  # cached against its own pinned nixpkgs, and only its `minecraft-servers`
+  # NixOS module + overlay are consumed here — so leaving its nixpkgs pinned
+  # avoids a mass rebuild and keeps the binary cache hits.
+  inputs.nix-minecraft = {
+    url = "github:Infinidoge/nix-minecraft";
+  };
+
   outputs =
     inputs:
     inputs.flake-parts.lib.mkFlake
