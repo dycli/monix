@@ -171,6 +171,12 @@
               difficulty = "normal";
               online-mode = true;
               white-list = false;
+              # Generous sightlines: fw0 has huge headroom for 3-5 players, and
+              # the extra chunks are render-only. simulation-distance stays at
+              # the vanilla default (10) so mob/crop/redstone ticking — the
+              # gameplay-visible part — is untouched. ServerCore dynamically
+              # walks view-distance back down if the tick rate ever suffers.
+              view-distance = 16;
               motd = "fw0 // tailnet survival — stock clients welcome";
               # Bind to all interfaces: the firewall (not a bind address) is what
               # keeps this tailnet-only, and tailscale0 is a normal interface.
