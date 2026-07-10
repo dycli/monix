@@ -106,7 +106,7 @@
 
             # Collapse a front-matter value to one safe token so a task file
             # can't inject extra space-separated fields into a lifecycle line.
-            san() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._-' | cut -c1-40; }
+            san() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._/-' | cut -c1-64; }
 
             # Recover tasks stranded by a previous drainer instance that died
             # mid-task (host switch, failure): requeue them.
@@ -390,7 +390,7 @@
                   h && $0 ~ "^"key":" { sub("^"key":[ \t]*",""); print; exit }
                 ' "$2" 2>/dev/null
               }
-              san() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._-' | cut -c1-40; }
+              san() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._/-' | cut -c1-64; }
               for q in /var/lib/agents/work/*/task/question-*.md; do
                 if [ ! -e "$q" ]; then
                   continue

@@ -89,7 +89,10 @@
           # Collapse a front-matter value to a single safe token for the log,
           # so a task file cannot inject extra space-separated fields (e.g.
           # `agent: claude by=root status=DONE`) into a lifecycle line.
-          san() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._-' | cut -c1-40; }
+          # `/` is allowed (harmless in a space-delimited log line) so
+          # opencode's provider/model slugs are recorded verbatim; 64 chars
+          # covers the longer OpenRouter ids without truncation.
+          san() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._/-' | cut -c1-64; }
 
           cmd_submit() {
             local slug="''${1:-task}"
