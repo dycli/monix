@@ -14,7 +14,9 @@
 # `systemctl restart microvm@<name>` from pristine.
 #
 # CREDENTIALS: agents authenticate with subscription logins (Claude Code
-# OAuth token, Codex auth.json) plus one fine-grained GitHub PAT per worker
+# OAuth token, Codex auth.json), an OpenRouter API key for opencode (pay-
+# per-token; any model on the OpenRouter catalog), plus one fine-grained
+# GitHub PAT per worker
 # class, scoped to that class's single repo — the PAT's scope IS the
 # containment boundary on the forge side. cloud-hypervisor does not support
 # microvm.credentialFiles (qemu-only), so each worker gets a read-only
@@ -215,6 +217,7 @@
                 askCockpit
                 pkgs.claude-code
                 pkgs.codex
+                pkgs.opencode
                 pkgs.git
                 pkgs.gh
                 pkgs.ripgrep
@@ -249,6 +252,12 @@
                   umask 077
                   {
                     printf 'export CLAUDE_CODE_OAUTH_TOKEN=%q\n' "$(cat ${guestCredsMount}/claude-token)"
+                    # Present only once the host has the OpenRouter secret;
+                    # guarded so workers keep working without it (opencode
+                    # dispatch just fails auth until the key is provisioned).
+                    if [ -r ${guestCredsMount}/openrouter-key ]; then
+                      printf 'export OPENROUTER_API_KEY=%q\n' "$(cat ${guestCredsMount}/openrouter-key)"
+                    fi
                     ${optionalString (patFile != null) ''
                       printf 'export GH_TOKEN=%q\n' "$(cat ${guestCredsMount}/repo-pat)"
                     ''}
@@ -310,8 +319,10 @@
                 # The prompt may start with a front-matter block setting task
                 # options; unknown keys are ignored. Currently understood:
                 #   ---
-                #   agent: claude        <- required executor: claude | codex
-                #   model: sonnet        <- required executor --model value
+                #   agent: claude        <- required executor: claude | codex | opencode
+                #   model: sonnet        <- required executor --model value; for
+                #                           opencode a provider/model slug, e.g.
+                #                           openrouter/moonshotai/kimi-k2
                 #   ---
                 # New executors are one more case branch below; the contract
                 # is only: read prompt body, write report.md + agent.log +
@@ -392,8 +403,29 @@
                         $(cat /tmp/prompt-body.md)" \
                           > ${guestTaskMount}/agent.log 2>&1 < /dev/null || rc=$?
                         ;;
+                      opencode)
+                        # No system-prompt flag; the hint rides atop the prompt
+                        # (same as codex). --auto approves every permission (the
+                        # VM is the sandbox); stdout is the final response (->
+                        # report.md), --print-logs puts the session log on
+                        # stderr (-> agent.log). Model is a provider/model slug
+                        # — in this fleet that means openrouter/<vendor>/<model>,
+                        # authed by OPENROUTER_API_KEY from /run/agent-env.
+                        # effort maps to --variant (provider-specific reasoning
+                        # effort; only pass it for models that have variants).
+                        opencode run \
+                          --auto \
+                          --print-logs \
+                          --model "$model" \
+                          ''${effort:+--variant "$effort"} \
+                          "$hint
+
+                        $(cat /tmp/prompt-body.md)" \
+                          > ${guestTaskMount}/report.md \
+                          2> ${guestTaskMount}/agent.log < /dev/null || rc=$?
+                        ;;
                       *)
-                        echo "unknown agent '$agent' (known: claude, codex)" | tee ${guestTaskMount}/report.md > ${guestTaskMount}/agent.log
+                        echo "unknown agent '$agent' (known: claude, codex, opencode)" | tee ${guestTaskMount}/report.md > ${guestTaskMount}/agent.log
                         rc=64
                         ;;
                     esac
@@ -483,6 +515,11 @@
             type = types.str;
             description = "host path of a copy of Codex's auth.json (from a ChatGPT login)";
           };
+          openrouterKeyFile = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "host path of an OpenRouter API key (single line, from openrouter.ai/keys); null = opencode dispatch has no credential and fails auth";
+          };
         };
       };
 
@@ -537,6 +574,9 @@
                 install -d -m 0700 -o root -g root ${credsDir w.name}
                 install -m 0400 ${cfg.credentials.claudeTokenFile} ${credsDir w.name}/claude-token
                 install -m 0400 ${cfg.credentials.codexAuthFile} ${credsDir w.name}/codex-auth.json
+                ${optionalString (cfg.credentials.openrouterKeyFile != null) ''
+                  install -m 0400 ${cfg.credentials.openrouterKeyFile} ${credsDir w.name}/openrouter-key
+                ''}
                 ${optionalString (w.patFile != null) ''
                   install -m 0400 ${w.patFile} ${credsDir w.name}/repo-pat
                 ''}

@@ -56,12 +56,25 @@ in
         # hosts/fw0/<name>.age` from the repo root (the agenix CLI ships on
         # cockpit hosts). Workers hold no push credentials: results come
         # back over the task share, so tasks need no forge access.
-        secrets.agent-claude-token.file = ./agent-claude-token.age;
-        secrets.agent-codex-auth.file = ./agent-codex-auth.age;
+        secrets = {
+          agent-claude-token.file = ./agent-claude-token.age;
+          agent-codex-auth.file = ./agent-codex-auth.age;
+        }
+        // lib.optionalAttrs (builtins.pathExists ./agent-openrouter-key.age) {
+          agent-openrouter-key.file = ./agent-openrouter-key.age;
+        };
 
         agentFleet.credentials = {
           claudeTokenFile = config.secrets.agent-claude-token.path;
           codexAuthFile = config.secrets.agent-codex-auth.path;
+        }
+        # OpenRouter API key for `agent: opencode` (pay-per-token, any model
+        # on the catalog). Gated on the .age file existing (and being
+        # committed — flake source is the git tree) so the config builds
+        # before the key is provisioned; create it with
+        # `agenix -e hosts/fw0/agent-openrouter-key.age`, then `git add`.
+        // lib.optionalAttrs (builtins.pathExists ./agent-openrouter-key.age) {
+          openrouterKeyFile = config.secrets.agent-openrouter-key.path;
         };
 
         # Generic workers: no repo binding (set `repo`, and a push credential

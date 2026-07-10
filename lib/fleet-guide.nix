@@ -99,20 +99,29 @@
     choose all of these per task — nothing model-specific is hardcoded.
 
         ---
-        agent: claude | codex # required
-        model: <model-id>     # required; e.g. gpt-5.5 for codex
+        agent: claude | codex | opencode # required
+        model: <model-id>     # required; e.g. gpt-5.5 for codex. For opencode this is a
+                              # provider/model slug — in this fleet always
+                              # openrouter/<vendor>/<model>, e.g.
+                              # openrouter/moonshotai/kimi-k2,
+                              # openrouter/google/gemini-2.5-pro — which is how ANY model on
+                              # the OpenRouter catalog is dispatched.
         guidance: <model-id>  # optional; the advisor an escalating drone reaches via
                               # ask-cockpit (pick per task — best advisor shifts over time
                               # and by domain; e.g. opus, fable, gpt-5.5). `none` or omitted
                               # => no advisor; an escalation gets "use your own judgment".
         effort: <level>       # optional; only for models with a thinking level. claude:
-                              # low|medium|high|xhigh|max ; codex: minimal|low|medium|high.
+                              # low|medium|high|xhigh|max ; codex: minimal|low|medium|high;
+                              # opencode: passed as a model variant (e.g. high, max, minimal
+                              # — provider-specific, only for models that have variants).
                               # Omit for models without one.
         ---
 
     Use `codex` + `gpt-5.5` for independent reviews / second opinions (bills the ChatGPT pool,
-    not the Claude pool). Drones can't see this host's working tree — target a pushed
-    branch/public repo or embed the diff in the prompt.
+    not the Claude pool). Use `opencode` + an openrouter/ slug for anything outside the two
+    subscription vendors — NB unlike those pools it bills OpenRouter credit per token, so
+    match model price to task weight. Drones can't see this host's working tree — target a
+    pushed branch/public repo or embed the diff in the prompt.
 
     ## Handling results
 

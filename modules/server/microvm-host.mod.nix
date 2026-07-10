@@ -41,6 +41,8 @@
         ".anthropic.com" # Claude API + Claude Code auth/telemetry
         ".openai.com" # Codex: OpenAI API + auth
         ".chatgpt.com" # Codex: ChatGPT-subscription backend/auth
+        ".openrouter.ai" # opencode: OpenRouter API (any-model dispatch)
+        ".models.dev" # opencode: provider/model registry it fetches at startup
         ".github.com" # git over https, codeload
         ".githubusercontent.com" # raw/objects
         ".nixos.org" # nix binary cache, channels, releases

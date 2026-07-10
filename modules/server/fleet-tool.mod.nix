@@ -104,7 +104,7 @@
 
             local agent model guidance
             agent="$(san "$(fm agent "$stage")")"
-            [ -n "$agent" ] || die "agent not specified in front-matter (agent: claude|codex)"
+            [ -n "$agent" ] || die "agent not specified in front-matter (agent: claude|codex|opencode)"
             model="$(san "$(fm model "$stage")")"
             [ -n "$model" ] || die "model not specified in front-matter (model: <model-id>)"
             guidance="$(san "$(fm guidance "$stage")")" # optional; none/absent => no advisor
