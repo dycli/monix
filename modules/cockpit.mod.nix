@@ -59,11 +59,25 @@
     }:
     let
       inherit (lib.lists) singleton;
+      inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
-      inherit (lib.options) mkEnableOption;
+      inherit (lib.options) mkEnableOption mkOption;
+      inherit (lib) types;
     in
     {
       options.cockpit.enable = mkEnableOption "the persistent cockpit session role on this host";
+
+      options.cockpit.webEnvFile = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = ''
+          EnvironmentFile holding OPENCODE_SERVER_PASSWORD=<basic-auth pw>
+          for the opencode web UI; null = no web UI. The password is a
+          second layer on top of tailnet-only reachability (shared-in
+          tailnet nodes exist for the Minecraft server, and the ACL that
+          confines them is belt-and-braces, not the boundary).
+        '';
+      };
 
       config = mkIf config.cockpit.enable {
         # tmux is the session's persistence layer; the binary is already
@@ -75,6 +89,36 @@
         # from the repo root) — fleet credentials in particular originate
         # here (`claude setup-token`, Codex's auth.json).
         environment.systemPackages = singleton inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default;
+
+        # OPENCODE WEB — the cockpit from a phone browser: opencode's bundled
+        # server + web UI, running AS the primary user (this is the human's
+        # seat — it needs their auth.json, home, and full tooling, so it is
+        # deliberately NOT sandboxed or sliced like a tenant service). Binds
+        # everywhere; reachability is the fw0 firewall pattern (zero public
+        # ports, tailscale0 trusted, br-agents default-drops non-pinhole
+        # ports) + the basic-auth password from webEnvFile.
+        systemd.services.opencode-web = mkIf (config.cockpit.webEnvFile != null) {
+          description = "opencode web UI (tailnet-only cockpit seat)";
+          wantedBy = [ "multi-user.target" ];
+          wants = [ "network-online.target" ];
+          after = [ "network-online.target" ];
+          # Agents spawned from web sessions need the same tools a login
+          # shell would have: system-wide packages plus the user's own
+          # profile (where claude-code/codex/opencode themselves live).
+          path = [
+            "/run/current-system/sw"
+            "/etc/profiles/per-user/${config.primaryUser}"
+          ];
+          serviceConfig = {
+            User = config.primaryUser;
+            Group = "users";
+            EnvironmentFile = config.cockpit.webEnvFile;
+            WorkingDirectory = "/home/${config.primaryUser}/cockpit";
+            ExecStart = "${getExe pkgs.opencode} web --hostname 0.0.0.0 --port 4096 --print-logs";
+            Restart = "always";
+            RestartSec = 3;
+          };
+        };
       };
     };
 }

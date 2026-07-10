@@ -63,6 +63,14 @@ in
         # after the first switch of this aspect.
         inference.enable = true;
 
+        # opencode web UI (phone cockpit seat over the tailnet). Activates
+        # once the password secret exists:
+        #   agenix -e hosts/fw0/opencode-web-env.age
+        # containing one line: OPENCODE_SERVER_PASSWORD=<password>
+        cockpit.webEnvFile = lib.mkIf (builtins.pathExists ./opencode-web-env.age) (
+          config.secrets.opencode-web-env.path
+        );
+
         # FLEET CREDENTIALS — subscription logins shared by all workers,
         # as agenix secrets; create/refresh with `agenix -e
         # hosts/fw0/<name>.age` from the repo root (the agenix CLI ships on
@@ -74,6 +82,9 @@ in
         }
         // lib.optionalAttrs (builtins.pathExists ./agent-openrouter-key.age) {
           agent-openrouter-key.file = ./agent-openrouter-key.age;
+        }
+        // lib.optionalAttrs (builtins.pathExists ./opencode-web-env.age) {
+          opencode-web-env.file = ./opencode-web-env.age;
         };
 
         agentFleet.credentials = {
