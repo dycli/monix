@@ -13,12 +13,9 @@
 # survives a restart — a compromised or wedged worker is one
 # `systemctl restart microvm@<name>` from pristine.
 #
-# CREDENTIALS: agents authenticate with subscription logins (Claude Code
-# OAuth token, Codex auth.json), an OpenRouter API key for opencode (pay-
-# per-token; any model on the OpenRouter catalog), plus one fine-grained
-# GitHub PAT per worker
-# class, scoped to that class's single repo — the PAT's scope IS the
-# containment boundary on the forge side. cloud-hypervisor does not support
+# CREDENTIALS: each executor has a distinct non-root Unix user and private
+# credential home. A Claude task can access its Claude token but cannot read
+# Codex/OpenRouter credentials (and vice versa). cloud-hypervisor does not support
 # microvm.credentialFiles (qemu-only), so each worker gets a read-only
 # virtiofs share of a root-owned host directory holding exactly its own
 # credentials, assembled from the agenix-decrypted files by a host oneshot.
@@ -34,7 +31,7 @@
     let
       inherit (lib.attrsets) listToAttrs mapAttrsToList nameValuePair optionalAttrs;
       inherit (lib.lists) concatLists concatMap singleton;
-      inherit (lib.meta) getExe';
+      inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkForce mkIf;
       inherit (lib.options) mkOption;
       inherit (lib.strings) concatMapStringsSep fixedWidthString optionalString;
@@ -116,8 +113,6 @@
         {
           name,
           index,
-          repo,
-          patFile,
           vcpu,
           mem,
           ...
@@ -127,8 +122,8 @@
           mac = "02:00:00:00:00:${fixedWidthString 2 "0" (toString index)}";
         in
         {
-          # Manual lifecycle: the cockpit starts/stops microvm@<name> by
-          # hand; nothing autostarts at boot.
+          # The generated microvm unit does not autostart itself; its resident
+          # drainer owns lifecycle and maintains it as part of the warm pool.
           autostart = false;
 
           config =
@@ -164,6 +159,38 @@
                     sleep 5
                   done
                   echo "no guidance arrived within 15 minutes; proceed on your best judgment"
+                '';
+              };
+
+              claudeExecutor = pkgs.writeShellApplication {
+                name = "agent-claude-exec";
+                text = ''
+                  # shellcheck disable=SC1091
+                  . /run/agent-claude/env
+                  exec ${getExe pkgs.claude-code} "$@"
+                '';
+              };
+
+              codexExecutor = pkgs.writeShellApplication {
+                name = "agent-codex-exec";
+                text = ''
+                  exec ${getExe pkgs.codex} "$@"
+                '';
+              };
+
+              opencodeExecutor = pkgs.writeShellApplication {
+                name = "agent-opencode-exec";
+                text = ''
+                  # shellcheck disable=SC1091
+                  [ ! -r /run/agent-opencode/env ] || . /run/agent-opencode/env
+                  exec ${getExe pkgs.opencode} "$@"
+                '';
+              };
+
+              localExecutor = pkgs.writeShellApplication {
+                name = "agent-local-exec";
+                text = ''
+                  exec ${getExe pkgs.opencode} "$@"
                 '';
               };
             in
@@ -246,24 +273,25 @@
                 # opencode reads its provider catalog (incl. the host's local
                 # inference endpoint) from this read-only store path.
                 OPENCODE_CONFIG = "${opencodeConfig}";
-              }
-              # The one repo this worker class works on, when it is bound to
-              # one at all.
-              // optionalAttrs (repo != null) { AGENT_REPO = "https://github.com/${repo}.git"; };
+              };
 
               environment.systemPackages = [
                 askCockpit
-                pkgs.claude-code
-                pkgs.codex
-                pkgs.opencode
+                claudeExecutor
+                codexExecutor
+                opencodeExecutor
+                localExecutor
                 pkgs.git
-                pkgs.gh
                 pkgs.ripgrep
                 pkgs.fd
                 pkgs.jq
                 pkgs.curl
                 pkgs.gnumake
                 pkgs.gcc
+                pkgs.gnutar
+                pkgs.procps
+                pkgs.util-linux
+                pkgs.zstd
               ];
 
               nix.settings.experimental-features = [
@@ -273,10 +301,8 @@
               # Substituters stay at the default cache.nixos.org — the only
               # cache on the egress allowlist (.nixos.org).
 
-              # CREDENTIAL INSTALL — copies the host share into place for the
-              # agent user: an env file with the Claude OAuth token and the
-              # repo PAT (sourced by login shells; non-login invocations must
-              # `. /run/agent-env` themselves), and Codex's auth.json.
+              # CREDENTIAL INSTALL — one private credential home per executor.
+              # No model-controlled user can traverse another executor's dir.
               systemd.services.agent-credentials = {
                 description = "Install worker credentials from the host share";
                 wantedBy = [ "multi-user.target" ];
@@ -288,25 +314,25 @@
                 };
                 script = ''
                   umask 077
-                  {
-                    printf 'export CLAUDE_CODE_OAUTH_TOKEN=%q\n' "$(cat ${guestCredsMount}/claude-token)"
-                    # Present only once the host has the OpenRouter secret;
-                    # guarded so workers keep working without it (opencode
-                    # dispatch just fails auth until the key is provisioned).
-                    if [ -r ${guestCredsMount}/openrouter-key ]; then
-                      printf 'export OPENROUTER_API_KEY=%q\n' "$(cat ${guestCredsMount}/openrouter-key)"
-                    fi
-                    ${optionalString (patFile != null) ''
-                      printf 'export GH_TOKEN=%q\n' "$(cat ${guestCredsMount}/repo-pat)"
-                    ''}
-                  } > /run/agent-env
-                  chown agent:users /run/agent-env
-                  chmod 0400 /run/agent-env
-                  install -d -m 0700 -o agent -g users /home/agent/.codex
-                  install -m 0400 -o agent -g users ${guestCredsMount}/codex-auth.json /home/agent/.codex/auth.json
+                  install -d -m 0700 -o agent-claude -g users /run/agent-claude
+                  printf 'export CLAUDE_CODE_OAUTH_TOKEN=%q\n' \
+                    "$(cat ${guestCredsMount}/claude-token)" > /run/agent-claude/env
+                  chown agent-claude:users /run/agent-claude/env
+                  chmod 0400 /run/agent-claude/env
+
+                  install -d -m 0700 -o agent-codex -g users /home/agent-codex/.codex
+                  install -m 0400 -o agent-codex -g users \
+                    ${guestCredsMount}/codex-auth.json /home/agent-codex/.codex/auth.json
+
+                  if [ -r ${guestCredsMount}/openrouter-key ]; then
+                    install -d -m 0700 -o agent-opencode -g users /run/agent-opencode
+                    printf 'export OPENROUTER_API_KEY=%q\n' \
+                      "$(cat ${guestCredsMount}/openrouter-key)" > /run/agent-opencode/env
+                    chown agent-opencode:users /run/agent-opencode/env
+                    chmod 0400 /run/agent-opencode/env
+                  fi
                 '';
               };
-              environment.extraInit = ''[ -r /run/agent-env ] && . /run/agent-env'';
 
               # TASK RUNNER — if the dispatcher staged a prompt in the task
               # share before boot, run it headless as the agent user and
@@ -335,12 +361,12 @@
                 };
                 # The full system path, not a minimal tool list: the agent's
                 # shell inherits this unit's PATH, and it needs everything
-                # installed in the guest (git, gh, ask-cockpit, compilers...).
+                # installed in the guest (git, ask-cockpit, compilers...).
                 path = [ "/run/current-system/sw" ];
                 serviceConfig = {
                   Type = "exec";
-                  User = "agent";
-                  Group = "users";
+                  User = "root";
+                  Group = "root";
                   WorkingDirectory = "/workspace";
                   # Units don't read /etc/set-environment; restate the proxy.
                   # The Bash timeouts let a blocking ask-cockpit call outlive
@@ -354,6 +380,9 @@
                     "BASH_DEFAULT_TIMEOUT_MS=1200000"
                     "BASH_MAX_TIMEOUT_MS=1800000"
                   ];
+                  # Defense in depth alongside the host's aggregate exchange
+                  # budget: no single guest-created file may grow unbounded.
+                  LimitFSIZE = cfg.taskExchangeMaxBytes;
                 };
                 # The prompt may start with a front-matter block setting task
                 # options; unknown keys are ignored. Currently understood:
@@ -368,7 +397,6 @@
                 # exit-code, run with everything auto-approved (the VM is the
                 # sandbox — that's the point of the fleet).
                 script = ''
-                  . /run/agent-env
                   prompt=${guestTaskMount}/prompt.md
 
                   # Warm pool: wait for the host to deliver the task, then run it.
@@ -402,25 +430,92 @@
                     { print }
                   ' "$prompt" > /tmp/prompt-body.md
 
-                  hint="$(cat ${hintFile})"
+                  case "$agent" in
+                    claude)
+                      task_user=agent-claude
+                      task_home=/home/agent-claude
+                      executor=${getExe claudeExecutor}
+                      ;;
+                    codex)
+                      task_user=agent-codex
+                      task_home=/home/agent-codex
+                      executor=${getExe codexExecutor}
+                      ;;
+                    opencode)
+                      case "$model" in
+                        local/*)
+                          task_user=agent-local
+                          task_home=/home/agent-local
+                          executor=${getExe localExecutor}
+                          ;;
+                        openrouter/*)
+                          task_user=agent-opencode
+                          task_home=/home/agent-opencode
+                          executor=${getExe opencodeExecutor}
+                          ;;
+                        *)
+                          task_user=
+                          task_home=
+                          executor=
+                          ;;
+                      esac
+                      ;;
+                    *)
+                      task_user=
+                      task_home=
+                      executor=
+                      ;;
+                  esac
 
-                  # Heartbeat: touch a file every 15s while the task runs so the
-                  # host can tell "alive and working" — even through a long thinking
-                  # block or a silent build, which produce no agent.log output —
-                  # from "the VM/agent died". (claude streams its response to
-                  # report.md, not agent.log, so agent.log growth is NOT a reliable
-                  # liveness signal.) Killed once the executor returns.
+                  # Heartbeat covers context preparation as well as model work,
+                  # so a failed/slow capsule never looks like a dead VM.
                   ( while :; do touch ${guestTaskMount}/.heartbeat; sleep 15; done ) &
                   hbpid=$!
 
+                  # Context is an opaque cockpit-built archive to the host and
+                  # is extracted only here, as the selected unprivileged user.
+                  baseline=
+                  context_error=
+                  prepare_context() {
+                    # The volume mount can supersede tmpfiles-created metadata;
+                    # repair the shared workspace mode after mounts are live.
+                    install -d -m 0770 -o "$task_user" -g users /workspace || return
+                    runuser -u "$task_user" -- env HOME="$task_home" \
+                      tar --extract --zstd --strip-components=1 \
+                        --no-same-owner --no-same-permissions --no-overwrite-dir \
+                        --directory /workspace --file ${guestTaskMount}/context.tar.zst || return
+                    runuser -u "$task_user" -- env HOME="$task_home" git -C /workspace init --quiet || return
+                    runuser -u "$task_user" -- env HOME="$task_home" git -C /workspace \
+                      config user.name "$task_user" || return
+                    runuser -u "$task_user" -- env HOME="$task_home" git -C /workspace \
+                      config user.email "$task_user@agents.invalid" || return
+                    runuser -u "$task_user" -- env HOME="$task_home" git -C /workspace add -A || return
+                    runuser -u "$task_user" -- env HOME="$task_home" git -C /workspace \
+                      commit --quiet --allow-empty -m 'fleet context baseline' || return
+                    baseline="$(runuser -u "$task_user" -- env HOME="$task_home" \
+                      git -C /workspace rev-parse HEAD)" || return
+                  }
+                  if [ -n "$task_user" ] && [ -f ${guestTaskMount}/context.tar.zst ]; then
+                    prepare_context > /tmp/context-preparation.log 2>&1 || context_error=1
+                  fi
+
+                  hint="$(cat ${hintFile})"
+
                   rc=0
-                  if [ -z "$agent" ] || [ -z "$model" ]; then
+                  if [ -n "$context_error" ]; then
+                    {
+                      echo "task failed: context capsule could not be prepared"
+                      cat /tmp/context-preparation.log
+                    } | tee ${guestTaskMount}/agent.log > ${guestTaskMount}/report.md
+                    rc=65
+                  elif [ -z "$task_user" ] || [ -z "$model" ]; then
                     echo "task rejected: agent and model must both be specified" | tee ${guestTaskMount}/report.md > ${guestTaskMount}/agent.log
                     rc=64
                   else
                     case "$agent" in
                       claude)
-                        claude -p "$(cat /tmp/prompt-body.md)" --model "$model" \
+                        runuser -u "$task_user" -- env HOME="$task_home" "$executor" \
+                          -p "$(cat /tmp/prompt-body.md)" --model "$model" \
                           ''${effort:+--effort "$effort"} \
                           --dangerously-skip-permissions \
                           --append-system-prompt "$hint" \
@@ -431,7 +526,7 @@
                         # No system-prompt flag; the hint rides atop the prompt.
                         # stdout is the session transcript (-> agent.log); the
                         # final message is the report.
-                        codex exec \
+                        runuser -u "$task_user" -- env HOME="$task_home" "$executor" exec \
                           --dangerously-bypass-approvals-and-sandbox \
                           --skip-git-repo-check \
                           --model "$model" \
@@ -449,12 +544,12 @@
                         # report.md), --print-logs puts the session log on
                         # stderr (-> agent.log). Model is a provider/model slug:
                         # openrouter/<vendor>/<model> (authed by
-                        # OPENROUTER_API_KEY from /run/agent-env) or
+                        # OPENROUTER_API_KEY from its private executor env) or
                         # local/<name> (the host's llama-swap catalog, via
                         # $OPENCODE_CONFIG — free, ship-local tokens).
                         # effort maps to --variant (provider-specific reasoning
                         # effort; only pass it for models that have variants).
-                        opencode run \
+                        runuser -u "$task_user" -- env HOME="$task_home" "$executor" run \
                           --auto \
                           --print-logs \
                           --model "$model" \
@@ -471,31 +566,58 @@
                         ;;
                     esac
                   fi
+                  if [ -n "$task_user" ] && [ -n "$baseline" ] && [ -d /workspace/.git ]; then
+                    runuser -u "$task_user" -- env HOME="$task_home" bash -c '
+                      git -C /workspace add --intent-to-add --all || true
+                      if git -C /workspace diff --binary --no-ext-diff "$1" > "$2/.changes.patch.tmp"; then
+                        mv "$2/.changes.patch.tmp" "$2/changes.patch"
+                      else
+                        rm -f "$2/.changes.patch.tmp"
+                      fi
+                    ' bash "$baseline" ${guestTaskMount}
+                  fi
                   kill "$hbpid" 2>/dev/null || true
-                  echo "$rc" > ${guestTaskMount}/exit-code
+                  # The CLI may have left background children. End the selected
+                  # UID before root creates the completion marker, so no process
+                  # can race a symlink into that root write.
+                  pkill -KILL -u "$task_user" 2>/dev/null || true
+                  rm -f ${guestTaskMount}/exit-code
+                  printf '%s\n' "$rc" > ${guestTaskMount}/exit-code
                 '';
               };
 
-              # git pushes over HTTPS with the PAT; gh turns $GH_TOKEN into
-              # git credentials, so no token is ever written into gitconfig.
+              # Local git is used to capture a patch against the cockpit-built
+              # baseline. Workers have no forge credentials or GitHub route.
               programs.git = {
                 enable = true;
                 config = {
-                  credential."https://github.com".helper = "!gh auth git-credential";
                   user.name = name;
                   user.email = "${name}@agents.invalid";
                 };
               };
 
-              # The sole account. No wheel, no sudo; it owns /workspace and
-              # nothing else. No SSH into guests at all — tasks and results
-              # move over the task share, and the only interactive way in is
-              # the serial console below.
-              users.users.agent = {
-                isNormalUser = true;
-                description = "fleet worker";
+              # Executor identities share the disposable workspace but have
+              # private 0700 homes and no wheel/sudo access. Distinct UIDs also
+              # prevent ptrace and access to one another's process environments.
+              users.users = {
+                agent-claude = {
+                  isNormalUser = true;
+                  description = "Claude fleet executor";
+                };
+                agent-codex = {
+                  isNormalUser = true;
+                  description = "Codex fleet executor";
+                };
+                agent-opencode = {
+                  isNormalUser = true;
+                  description = "opencode fleet executor";
+                };
+                agent-local = {
+                  isNormalUser = true;
+                  description = "credentialless local-model fleet executor";
+                };
               };
-              systemd.tmpfiles.rules = singleton "d /workspace 0755 agent users -";
+              systemd.tmpfiles.rules = singleton "d /workspace 0770 root users -";
 
               # Root autologin on the serial console: reaching the console at
               # all requires host-root (the microvm@ unit's PTY), and guest
@@ -514,24 +636,13 @@
       # with credentials broader than its own class's.
       options.agentFleet = {
         workers = mkOption {
-          description = "agent-fleet worker roster; repo-specificity lives only here and in the injected PAT";
+            description = "agent-fleet worker roster";
           default = [ ];
           type = types.listOf (
             types.submodule {
               options = {
                 name = mkOption { type = types.str; };
                 index = mkOption { type = types.ints.between 1 99; };
-                repo = mkOption {
-                  type = types.nullOr types.str;
-                  default = null;
-                  example = "cdland/lfish";
-                  description = "GitHub owner/repo this worker class is bound to; null = a generic worker with no repo binding";
-                };
-                patFile = mkOption {
-                  type = types.nullOr types.str;
-                  default = null;
-                  description = "host path of the fine-grained PAT scoped to exactly this repo; null = no push credential (worker can still run agents and clone public repos)";
-                };
                 vcpu = mkOption {
                   type = types.int;
                   default = 8;
@@ -565,11 +676,22 @@
       };
 
       config = mkIf cfg.enable {
+        assertions = [
+          {
+            assertion = lib.lists.length cfg.workers == lib.lists.length (lib.lists.unique (map (w: w.name) cfg.workers));
+            message = "agentFleet worker names must be unique";
+          }
+          {
+            assertion = lib.lists.length cfg.workers == lib.lists.length (lib.lists.unique (map (w: w.index) cfg.workers));
+            message = "agentFleet worker indices must be unique";
+          }
+        ];
+
         microvm.vms = listToAttrs (map (w: nameValuePair w.name (mkAgentGuest w)) cfg.workers);
 
         # Task-share sources must exist before virtiofsd starts, VM-managed
         # or not. Writable by the guest agent (uid 1000, see workDir above).
-        systemd.tmpfiles.rules = map (w: "d ${workDir w.name} 0755 1000 100 -") cfg.workers;
+        systemd.tmpfiles.rules = map (w: "d ${workDir w.name} 0770 root users -") cfg.workers;
 
         systemd.services = listToAttrs (
           concatMap (w: [
@@ -617,9 +739,6 @@
                 install -m 0400 ${cfg.credentials.codexAuthFile} ${credsDir w.name}/codex-auth.json
                 ${optionalString (cfg.credentials.openrouterKeyFile != null) ''
                   install -m 0400 ${cfg.credentials.openrouterKeyFile} ${credsDir w.name}/openrouter-key
-                ''}
-                ${optionalString (w.patFile != null) ''
-                  install -m 0400 ${w.patFile} ${credsDir w.name}/repo-pat
                 ''}
               '';
             })

@@ -1,241 +1,227 @@
 # The agent fleet on fw0
 
-fw0 runs a fleet of worker microVMs in which coding agents (Claude Code,
-Codex) run fully-permissioned against exactly one repository each, contained
-by the host rather than by anything the guest promises. Two modules implement
-it, both gated on `agentFleet.enable`:
+fw0 is both the captain's cockpit and a host for disposable coding-agent
+microVMs. The cockpit chooses an executor, model, and directive; a worker runs
+that one task with full permissions inside a fresh VM and returns an untrusted
+report. Containment is implemented by the host, not by asking the model to
+behave.
 
-- `modules/server/microvm-host.mod.nix` — the host side: microvm.nix runner,
-  host-only bridge, squid egress proxy.
-- `modules/server/agent-vm.mod.nix` — the guest side: the `agentFleet.workers`
-  roster option and the `mkAgentGuest` factory that turns each entry into a
-  microVM plus its `agents.slice` unit override and credential plumbing. The
-  roster (and the `agentFleet.credentials` paths) are set per host, in
-  `hosts/fw0/fw0.mod.nix`.
-- `modules/server/agent-dispatch.mod.nix` — the task queue and dispatcher:
-  drop a prompt file in the queue, get a report back (see Dispatch below).
+The implementation is split by concern:
 
-## Containment model
+- `cockpit.mod.nix`: the full-power human seat (tmux/SSH and opencode web).
+- `fleet-tool.mod.nix`: the scoped cockpit CLI and unprivileged queue operator.
+- `agent-dispatch.mod.nix`: queue scheduling, worker lifecycle, guidance, and results.
+- `agent-vm.mod.nix`: disposable guest definition, executors, and credentials.
+- `microvm-host.mod.nix`: KVM runner, bridge, firewall, and squid egress proxy.
+- `inference.mod.nix`: optional ship-local models exposed to workers.
 
-Containment is structural, not rule-based:
+## Trust boundaries
 
-- **No route out.** Guests sit on the host-only bridge `br-agents`
-  (`10.100.0.1/24`) with a static address, **no default gateway, and no
-  DNS**. No uplink is enslaved to the bridge, and no IP forwarding is enabled
-  anywhere, so there is nothing to route to even if a guest reconfigures
-  itself.
-- **One reachable host port.** The firewall on `br-agents` admits only TCP
-  3128 (squid). The bridge is not a trusted interface; everything else —
-  including DNS and the host's sshd — hits the default drop.
-- **Squid is the sole egress path**, bound to the bridge IP, with a
-  `dstdomain` CONNECT allowlist (`allowedDomains` in microvm-host.mod.nix)
-  and a per-request access log at `/var/log/squid/access.log` — the egress
-  audit trail. Squid resolves DNS on the guests' behalf. Anything that isn't
-  HTTP(S) via the proxy (ssh-to-github, raw sockets) fails closed; widen the
-  allowlist by reviewed commit, never bypass the proxy.
-- **Containment by absence.** Workers are built from a minimal inline module
-  list, not `self.nixosModules`: no tailnet, no host secrets, no monorepo.
-  The host's `/nix/store` is shared read-only over virtiofs (so never put
-  secrets in the store).
-- **Squid is sandboxed.** It is the one host process that parses bytes from
-  the guests, so its unit runs under a strict systemd sandbox (read-only
-  filesystem, no new privileges, syscall/capability allowlist limited to the
-  root→`squid` privilege drop).
+The cockpit and workers have deliberately different authority:
 
-The guest root is tmpfs, and the two per-worker volume images (nix-store
-overlay + `/workspace` scratch) are deleted by `ExecStartPre` on every VM
-start and recreated blank — nothing an agent writes survives a restart, so a
-compromised or wedged worker is one `systemctl restart microvm@<name>` from
-pristine.
+- The cockpit is the captain's seat. It runs as the primary host user and can
+  read that user's home, credentials, and working trees. `max` is also a trusted
+  Nix user, so compromise of an authenticated cockpit session should be treated
+  as potential host compromise.
+- `ai.su.is` reaches opencode through Cloudflare Access, Cloudflare Tunnel,
+  loopback nginx, and loopback opencode. The Access policy is external state;
+  `opencode-web-access-check` probes `/` and `/session` every five minutes and
+  fails visibly if an unauthenticated request no longer redirects to Access.
+- Workers are untrusted disposable guests. Guest root is expected and is not a
+  boundary. KVM, networking, credentials, host file exchange, and resource
+  limits form the boundary.
+- Worker reports, logs, and guidance questions are always untrusted input to the
+  cockpit, even when the VM remained contained.
+
+## Guest containment
+
+Workers use cloud-hypervisor and a minimal inline NixOS configuration rather
+than the host module collection.
+
+- Guest root is tmpfs. The writable Nix overlay and `/workspace` images are
+  deleted before every boot and recreated blank.
+- Ten workers (`worker-0` through `worker-9`) form a warm pool. Each boots idle,
+  waits for one prompt, runs one task, is destroyed, and is replenished in the
+  background. A task never reuses a guest that ran an earlier task.
+- Guests have static addresses on `br-agents`, no gateway, and no DNS.
+- IPv4 and IPv6 forwarding are explicitly disabled on the host.
+- VM tap ports are isolated from one another at the bridge.
+- The host firewall admits only squid on TCP 3128 and, when enabled, local
+  inference on TCP 8091.
+- Squid is the sole internet path. It permits HTTPS destinations needed by the
+  configured executors and trusted Nix caches, and logs requests under
+  `/var/log/squid/`. GitHub and the general internet are unreachable.
+- Guests have no SSH server or authorized keys. The host-root-gated serial
+  console is the only interactive entry point.
+
+All VMs, drainers, and squid run in `agents.slice`, capped at 48 GiB real host
+memory. Guest RAM is demand-paged, so each VM's 8 GiB setting is a ceiling rather
+than an idle reservation.
 
 ## Credentials
 
-Agents authenticate with **subscription logins**, not API keys: one Claude
-Code OAuth token (`claude setup-token`) and one copy of Codex's `auth.json`
-(ChatGPT login) are shared fleet-wide. Workers are generic by default: no
-repo binding, no push credential — tasks return results over the task
-share, so the forge is not in the loop at all. A worker meant to work one
-specific repository gets `repo` plus optionally `patFile`, a
-**fine-grained GitHub PAT scoped to exactly that repository** (Contents
-read/write on that repo only; a forge ruleset protects `main` and permits
-`agent/**` pushes). The credential's scope is the forge-side containment
-boundary — repo-specificity lives only in the roster entry and the injected
-secret, never in the modules.
+The host decrypts fleet credentials with agenix and assembles a root-only
+directory for each worker. A read-only virtiofs share exposes it only to guest
+root. `agent-credentials` then installs each credential into a different
+non-root executor identity:
 
-These are agenix secrets under `hosts/fw0/`, decrypted by the host key at
-activation. cloud-hypervisor does not support `microvm.credentialFiles`
-(qemu-only), so injection works via a share: per worker, a host oneshot
-(`agent-creds-<name>`) assembles a root-owned `0700` directory
-`/run/agents/creds/<name>` containing exactly that worker's files,
-which is exported to the guest as a **read-only virtiofs share** (virtiofsd
-runs as root; the `microvm` user can never read it). In the guest,
-`agent-credentials.service` installs them for the `agent` user:
+- `agent-claude`: private Claude OAuth environment under `/run/agent-claude`.
+- `agent-codex`: private ChatGPT subscription login under `~/.codex/auth.json`.
+- `agent-opencode`: private OpenRouter environment when that optional key exists.
+- `agent-local`: credentialless OpenCode execution for `local/...` models.
 
-- `/run/agent-env` (`0400`) — exports `CLAUDE_CODE_OAUTH_TOKEN` (and
-  `GH_TOKEN`, when a PAT is configured); sourced by login shells. Non-login
-  invocations must `. /run/agent-env` themselves.
-- `~agent/.codex/auth.json` (`0400`) — Codex's login.
-- git pushes over HTTPS using gh as the credential helper (`GH_TOKEN` →
-  credentials at run time; no token on disk in gitconfig). `AGENT_REPO`
-  holds the repo URL on repo-bound workers.
+All four users have private `0700` homes, distinct UIDs, no wheel/sudo access,
+and full group access to the same disposable `/workspace`. The fixed root task
+launcher maps the validated executor name to exactly one user and runs every
+model-controlled tool under that UID. Cross-provider credential reads and
+same-UID process inspection are therefore structurally blocked.
 
-Never place secrets in the nix store: guests read the entire host store.
+The selected executor can still read its own credential because its subscription
+CLI requires it. Generic workers have no attacker-controlled network destination
+or forge credential to which they can send it. Their intended outputs are only
+the bounded task exchange and optional host-spooled guidance.
 
-## Networking layout
-
-The host uses systemd-networkd for **all** interfaces (mixing networkd with
-scripted DHCP is unsupported): the `en*` uplink keeps plain DHCP, `br-agents`
-is declared carrier-less, and `vm-*` taps are auto-enslaved to the bridge by
-match. `tailscale0` is left to tailscaled. Worker addresses are
-`10.100.0.10+index`; MACs are locally administered with the index as the
-last octet.
-
-## Resource fences
-
-Every worker's `microvm@<name>` unit and squid run in `agents.slice`
-(48G `MemoryMax`, declared in `hosts/fw0/fw0.mod.nix`). Guest memory is
-static (no ballooning), default 8 vCPU / 8 GiB. Guest state lives on the
-`@agents` btrfs subvolume (`/var/lib/agents/microvms`).
+Never place secrets in the Nix store: workers can read the host store through a
+read-only virtiofs mount.
 
 ## Dispatch
 
-A task is a markdown prompt, enqueued with the `fleet` tool. The cockpit never
-writes the queue directly: the queue is owned by an unprivileged operator user
-(`agentFleet.operatorUser`, default `fleet-operator`), and the cockpit reaches
-it only by running `fleet` as that operator through a sudo rule scoped to
-exactly that one binary (see fleet-tool.mod.nix). This sudo hop — not any
-Claude permission rule — is the security boundary: a compromised or
-prompt-injected cockpit can enqueue tasks and read reports, and nothing else.
+The cockpit does not write the queue directly. `fleet-operator` owns the queue,
+and the primary user may run exactly the immutable `fleet` binary as that user
+through a scoped `NOPASSWD` sudo rule.
 
 ```sh
 run() { sudo -n -u fleet-operator fleet "$@"; }
 
-id=$(run submit myslug < mytask.md)   # prompt on STDIN; prints the task id
-run watch  "$id"                      # block until done/failed
-run fetch  "$id"                      # print report.md (untrusted-output banner)
-run status                            # tail the audit log
-run note "$id" both models agreed     # annotate the audit trail (see below)
-# or the whole loop in one blocking call:
-run run myslug < mytask.md            # submit + watch + fetch -> the report
+id=$(fleet dispatch fix-lint task.md /path/to/repository)
+id=$(run submit fix-lint < task.md)
+run watch "$id"                 # background this in cockpit workflows
+run fetch "$id"                 # untrusted final report and guidance
+run logs "$id"                  # untrusted executor transcript
+run patch "$id"                 # bounded automatic git diff
+run status                      # recent lifecycle log
+run health                      # current queue, workers, units, memory, disk
+run note "$id" reviewed-output
 ```
 
-`submit` takes the prompt on stdin, never a path: the `< mytask.md` redirect is
-opened by the *caller's* shell with the caller's privileges, so the tool never
-opens a caller-supplied path and the root drainer never dereferences a
-caller-supplied symlink. As further defense in depth the drainer rejects any
-symlink or non-regular queue entry (quarantining it under `tasks/rejected/`)
-before it would otherwise `install` it as root.
-
-An optional front-matter block sets task options (unknown keys are ignored):
+`submit` reads standard input, limits prompts to 1 MiB, publishes atomically,
+and requires explicit `agent` and `model` fields:
 
 ```markdown
 ---
 agent: codex
 model: gpt-5.5
+guidance: none
+effort: high
 ---
-The prompt starts here…
+
+Review the target and report concrete findings with file and line references.
 ```
 
-`agent` picks the executor — `claude` (default) or `codex`, both
-subscription-authenticated in every guest; new executors are one case
-branch in agent-vm.mod.nix. `model` is handed to the executor's `--model` —
-use it to run routine tasks on a cheaper model and keep the strong models
-for review, or to spread work across the two subscription pools.
+For code tasks, prefer `fleet dispatch`. It runs as the cockpit user, snapshots
+the selected context directory while excluding `.git`, `.direnv`, `result`, and
+common local `.env` files, then internally uses the same scoped sudo boundary to
+publish a capsule containing `prompt.md` and `context.tar.zst`. The host never
+extracts repository context as root. The selected unprivileged guest user
+extracts it inside the disposable VM and creates a local baseline commit.
 
-### Guidance (mid-task escalation)
+Executors:
 
-A worker that gets stuck can consult a stronger model: the agent runs
-`ask-cockpit "<question>"` (it is told about this in its system prompt),
-which drops `question-N.md` into the task share and blocks. The worker's
-drainer notices the pending question on its poll and starts
-`agent-guidance`, which answers with `agentFleet.guidanceModel` (default
-`opus`) running headless as the cockpit user — same subscription login as
-the cockpit session — and writes `answer-N.md` back through the share;
-`ask-cockpit` prints it and the worker continues. Capped at 5 questions per task, 15 min wait each; the Q/A pairs
-are archived with the results. The question text comes from inside a guest
-and is untrusted, so the answering claude runs with all tools disallowed —
-it can only produce text.
+- `claude`: a Claude Code model id; subscription authenticated.
+- `codex`: an OpenAI Codex model id; ChatGPT subscription authenticated.
+- `opencode`: `openrouter/<vendor>/<model>` when metered OpenRouter execution is
+  intended, or `local/<name>` for a model declared by `inference.models`.
 
-A path unit fires when the queue becomes non-empty and starts one drainer
-per roster worker (`agent-dispatch-<worker>`). Each drainer claims tasks
-off the queue with an atomic rename — losers of the race just re-scan — so
-tasks run concurrently up to the number of workers. Per task, the drainer
-stages `prompt.md` into its worker's task share
-(`/var/lib/agents/work/<worker>/task`, mounted at `/run/task` in the
-guest), restarts the VM — the volume wipe makes every task run pristine —
-and the guest's `agent-task` unit runs
-`claude -p "$(cat /run/task/prompt.md)"` as the agent user, writing
-`report.md`, `agent.log`, and `exit-code` back through the share. The
-drainer polls for the exit code, stops the VM, and files everything under
-`/var/lib/agents/tasks/done/<id>/` (nonzero exit or `agentFleet.taskTimeout`
-— default 90 min — go to `failed/` instead). The task lifecycle is recorded
-as a narrative audit trail in `/var/lib/agents/tasks/log` — `tail -f` it from
-the cockpit as the fleet ticker:
+The cockpit must never silently substitute a provider. If the requested
+executor cannot authenticate, fail and report that limitation.
 
-```
-2026-07-08 13:20:00 cockpit SUBMIT   fix-lint-20260708-132000-4210842 agent=codex model=gpt-5.5 by=max
-2026-07-08 13:20:04 worker-0 DISPATCH fix-lint-20260708-132000-4210842 agent=codex model=gpt-5.5
-2026-07-08 13:24:31 worker-0 ESCALATE fix-lint-20260708-132000-4210842 question 1 -> opus
-2026-07-08 13:26:10 cockpit NOTE     fix-lint-20260708-132000-4210842 both models agreed on the fix (by max)
-2026-07-08 13:28:12 worker-0 DONE     fix-lint-20260708-132000-4210842 ran 8m8s, 1 escalation(s), report 24043 bytes
-```
+`guidance` is optional. The current advisor implementation invokes Claude Code
+with all tools disallowed, so this value must be a Claude model id. `none` or an
+absent value means no advisor unless a fleet-wide Claude default is configured.
+Cross-provider guidance needs a future executor-qualified advisor interface.
 
-(The tool gives each task a unique id at submit, and the drainer files results
-under that id verbatim, so one id threads the whole lifecycle.)
+## Scheduling and lifecycle
 
-i.e. who dispatched what (and as which agent/model), when it started on which
-worker, each ask-cockpit escalation as it happens (and to which model), and how
-long it ran / how many escalations / whether a report came back. The SUBMIT
-line is written by the `fleet` tool (the log is group-owned by the operator so
-it can append); the rest by the root drainer. Fuller detail is in
-`journalctl -u 'agent-dispatch-*'`.
+One resident root drainer exists per worker. It maintains one fresh warm VM,
+atomically claims a queued task, verifies the VM is alive, and delivers the
+prompt and optional context archive into the already-running task share. The guest notices the prompt by
+re-reading the virtiofs directory, runs exactly one executor, and writes an
+exit code and outputs.
 
-The cockpit can interleave its own free-text annotations with `fleet note [id]
-<text>` — tagged `NOTE` and attributed, so they read as commentary
-(`cockpit NOTE fix-lint-… both models agreed on the retry-with-backoff fix
-(by max)`) and are never mistaken for a machine-emitted lifecycle fact.
-Newlines are flattened so a note is always exactly one line and cannot forge
-extra entries.
+The guest touches a heartbeat about every 15 seconds. The host stops a task if:
 
-The dispatcher owns worker lifecycle: a manually started VM is restarted out
-from under you when a task arrives. Results land on the host disk only —
-tasks need no forge access and no push credentials.
+- no heartbeat arrives for 120 seconds;
+- the task reaches the six-hour absolute cap; or
+- the task exchange exceeds 768 MiB.
 
-## Operating a worker
+Context capsules are capped at 512 MiB compressed, and the guest service has a
+768 MiB per-file limit. Archived reports are capped
+at 10 MiB, executor logs at 50 MiB, and each guidance question/answer at 64 KiB
+and 1 MiB respectively. After the task, the launcher captures tracked, untracked,
+committed, and working-tree changes against its in-memory baseline as a binary
+`changes.patch`, archived with a 50 MiB cap.
 
-Lifecycle is manual, from the cockpit session on fw0:
+After completion or failure, the drainer stops the VM before archiving output.
+The next loop deletes the VM's writable images and creates a fresh warm guest.
+
+## Host file exchange
+
+The guest-writable task share is a hostile filesystem boundary. The root
+dispatcher never directly copies an untrusted path with `cp`, `install`, or a
+shell `-f` check. `agent-safe-transfer` opens the source with `O_NOFOLLOW`,
+validates the open descriptor as a bounded regular file, and creates a new
+destination with `O_EXCL` and `O_NOFOLLOW`.
+
+Guidance uses a separate host-owned spool under
+`/var/lib/agents/tasks/guidance`. The root drainer safely transfers a question
+and the original queued prompt into that spool. The advisor never reads or
+writes the live guest share. The drainer safely transfers the answer back.
+
+Completed prompts, reports, logs, patches, and answers are mode `0640` under directories
+mode `0750`, readable only by root and `agent-fleet-readers` (`max` and
+`fleet-operator`).
+
+## Audit trail
+
+`/var/lib/agents/tasks/log` records SUBMIT, DISPATCH, ESCALATE, NOTE, DONE,
+FAILED, STALLED, CAP, OVERSIZE, and rejection events. Front-matter values are
+sanitised to one token so prompts cannot forge log fields.
+
+The log is an operational narrative, not tamper-evident evidence:
+`fleet-operator` can append and rewrite it. Move writes behind a root-owned
+append helper or external journal if evidentiary integrity becomes a goal.
+
+## Verification
+
+Routine host checks:
 
 ```sh
-systemctl start microvm@worker-0    # boot (seconds)
-microvm -s worker-0                 # serial console (root autologin —
-                                    # reaching the PTY already requires host root)
-systemctl stop microvm@worker-0
+sudo -n -u fleet-operator fleet health
+systemctl --failed
+systemctl list-units 'microvm@worker-*.service'
+systemctl status opencode-web-access-check.timer
+sysctl net.ipv4.ip_forward net.ipv6.conf.all.forwarding
 ```
 
-Guests run no sshd and hold no authorized keys — the task share is the only
-data channel, and the serial console (host-root-gated) the only interactive
-one.
-
-Adding a worker is one `agentFleet.workers` entry in the host module; the
-VM definition, its queue drainer, slice override, and credential directory
-are all generated from it.
-
-## Verifying containment
-
-From inside a guest, all of these must fail:
+From a logged-out external client, both of these must redirect to the account's
+`cloudflareaccess.com` login domain, never return the OpenCode application:
 
 ```sh
-curl -m5 https://example.com        # proxy 403: not on the allowlist
-getent hosts google.com             # no DNS
-curl -m5 http://10.100.0.1:22       # no host ports besides 3128
+curl -I https://ai.su.is/
+curl -I https://ai.su.is/session
 ```
 
-And these must succeed, each leaving a line in squid's access log:
+Containment tests from a disposable worker should confirm that arbitrary DNS,
+direct internet access, host SSH, and other guests are unreachable while the
+configured model API and Nix cache paths work through squid.
 
-```sh
-curl -sI https://api.anthropic.com
-git ls-remote https://github.com/NixOS/nixpkgs
-```
+## Remaining design work
 
-On the host, `systemd-cgls /agents.slice` shows the running VMs and squid
-under the slice.
+- Decide whether the web cockpit remains the full-power `max` seat or moves to
+  a dedicated non-wheel, non-Nix-trusted account.
+- Add executor-qualified, text-only cross-provider guidance.
+- Add cancellation, retry, running-task inspection, and per-task timeout controls.
+- Move Access application/policy state into Terraform if dashboard drift becomes
+  operationally unacceptable.
+- Add NixOS integration tests for bridge, firewall, credential, exchange, and
+  worker lifecycle invariants.

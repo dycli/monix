@@ -77,17 +77,10 @@ the rest.
 
 ## Secrets (agenix)
 
-agenix is used only for fw0's three service credentials (Tailscale, LiteLLM,
-Open WebUI); login passwords are set imperatively (see below), so no user or
-host needs a password secret to boot.
-
-> **Warning — this repo's secret files are placeholders.** All three `.age`
-> files under `hosts/fw0/` are **unencrypted placeholder text** (present only
-> so test builds succeed), which is why the AI stack in `fw0.mod.nix` is
-> commented out. `keys.nix` holds the real admin and fw0 host keys, but
-> fw3's host key is still a placeholder. Before targeting a secret at a
-> host: put its real host SSH key in `keys.nix`, then create the `.age`
-> files with `agenix -e`.
+agenix manages fw0's fleet subscription credentials, optional provider keys,
+and Cloudflare Tunnel token. Login passwords remain imperative. The disabled
+LiteLLM/Open WebUI examples still have placeholder secret files and must not be
+enabled until those specific files are replaced with real age ciphertext.
 
 `keys.nix` is the single source of truth for SSH public keys (host keys + admin
 keys). `secrets.nix` maps each secret file to the keys it is encrypted to and is
@@ -100,12 +93,12 @@ key (`/etc/ssh/ssh_host_ed25519_key`).
 2. Copy its public key into `keys.nix`:
    `cat /etc/ssh/ssh_host_ed25519_key.pub`.
 3. Put your personal public key in `keys.nix` under `admin`.
-4. Create the secrets (an entry must already exist in `secrets.nix`):
+4. Create the needed secrets (an entry must already exist in `secrets.nix`):
 
    ```sh
-   nix run github:ryantm/agenix -- -e hosts/fw0/tailscale.age
-   nix run github:ryantm/agenix -- -e hosts/fw0/litellm.env.age
-   nix run github:ryantm/agenix -- -e hosts/fw0/open-webui.env.age
+    agenix -e hosts/fw0/agent-claude-token.age
+    agenix -e hosts/fw0/agent-codex-auth.age
+    agenix -e hosts/fw0/opencode-web-cloudflare-tunnel-token.age
    ```
 
 `tailscale.age` holds a one-line reusable auth key (`tskey-auth-...`).
@@ -116,10 +109,14 @@ key (`/etc/ssh/ssh_host_ed25519_key`).
 
 ## The agent fleet on fw0
 
-fw0 hosts worker microVMs in which coding agents run fully-permissioned,
-contained by a host-only bridge and a default-deny squid egress proxy
-(guests have no route and no DNS; the proxy's domain allowlist is the only
-way out). See [docs/agent-fleet.md](docs/agent-fleet.md).
+fw0 hosts a ten-worker warm pool of disposable microVMs in which Claude Code,
+Codex, or opencode runs one fully-permissioned task. Workers are contained by
+KVM, a host-only isolated bridge, no gateway/DNS, a default-deny squid egress
+proxy, executor-specific Unix credentials, bounded host-file exchange, and
+fleet-wide resource limits. They have no forge access: the cockpit supplies a
+source capsule and receives a report plus patch. The primary cockpit is
+available through tmux/SSH and at `ai.su.is` through Cloudflare Access. See
+[docs/agent-fleet.md](docs/agent-fleet.md).
 
 ## The AI stack on fw0
 

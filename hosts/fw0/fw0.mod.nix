@@ -37,8 +37,8 @@ in
 
         primaryUser = "max";
 
-        # The primary interactive Claude session lives here (tmux over
-        # tailnet SSH); any machine is just a terminal into it.
+        # The primary interactive agent cockpit lives here; frontends include
+        # tmux over tailnet SSH and opencode web through Cloudflare Access.
         cockpit.enable = true;
 
         # Agent-fleet microVM host. Brings up the host-only bridge +
@@ -63,19 +63,22 @@ in
         # after the first switch of this aspect.
         inference.enable = true;
 
-        # opencode web UI (phone cockpit seat over the tailnet). Activates
-        # once the password secret exists:
-        #   agenix -e hosts/fw0/opencode-web-env.age
-        # containing one line: OPENCODE_SERVER_PASSWORD=<password>
-        cockpit.webEnvFile = lib.mkIf (builtins.pathExists ./opencode-web-env.age) (
-          config.secrets.opencode-web-env.path
-        );
+        # opencode web UI cockpit seat, exposed through Cloudflare Tunnel.
+        # Authentication belongs at the Cloudflare Access layer; do not set
+        # cockpit.webEnvFile here unless deliberately re-enabling opencode's
+        # app-local Basic auth.
+        cockpit.webEnable = true;
+        # Public opencode web cockpit over Cloudflare Tunnel. The token comes
+        # from Zero Trust's "Install and run a connector" command for tunnel
+        # 8ad1eab3-29bc-4d27-8ab8-163b4097e9e0. In Cloudflare, configure the
+        # public hostname ai.su.is to route to http://127.0.0.1:4096.
+        cockpit.webTunnelTokenFile = config.secrets.opencode-web-cloudflare-tunnel-token.path;
 
-        # FLEET CREDENTIALS — subscription logins shared by all workers,
-        # as agenix secrets; create/refresh with `agenix -e
+        # FLEET CREDENTIALS — subscription logins available in every VM but
+        # isolated into executor-specific Unix users; create/refresh with `agenix -e
         # hosts/fw0/<name>.age` from the repo root (the agenix CLI ships on
-        # cockpit hosts). Workers hold no push credentials: results come
-        # back over the task share, so tasks need no forge access.
+        # cockpit hosts). Workers have no forge route or credentials: source
+        # context goes in as a capsule and results come back over the task share.
         secrets = {
           agent-claude-token.file = ./agent-claude-token.age;
           agent-codex-auth.file = ./agent-codex-auth.age;
@@ -85,7 +88,18 @@ in
         }
         // lib.optionalAttrs (builtins.pathExists ./opencode-web-env.age) {
           opencode-web-env.file = ./opencode-web-env.age;
+        }
+        // {
+          opencode-web-cloudflare-tunnel-token = {
+            file = ./opencode-web-cloudflare-tunnel-token.age;
+          };
         };
+
+        # agenix in this input has no restartUnits option; make the encrypted
+        # source an explicit unit trigger so token rotation restarts cloudflared.
+        systemd.services.opencode-web-tunnel.restartTriggers = [
+          ./opencode-web-cloudflare-tunnel-token.age
+        ];
 
         agentFleet.credentials = {
           claudeTokenFile = config.secrets.agent-claude-token.path;
@@ -100,9 +114,8 @@ in
           openrouterKeyFile = config.secrets.agent-openrouter-key.path;
         };
 
-        # Generic workers: no repo binding (set `repo`, and a push credential
-        # via `patFile`, on a worker that should work a specific repository).
-        # Warm pool: every worker boots idle and waits for a task (see
+        # Generic sealed workers: every worker boots idle and waits for a
+        # cockpit-supplied task capsule (see
         # agent-vm.mod.nix), so keep MORE than typical demand — an incoming task
         # grabs one that's already up instead of waiting on a ~50s boot. Idle
         # guests are cheap (cloud-hypervisor demand-pages RAM; an idle guest

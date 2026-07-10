@@ -12,15 +12,10 @@
 #   /var/lib/agents/tasks/failed/<id>/      <- same, for nonzero exit or timeout
 #   /var/lib/agents/tasks/rejected/         <- quarantined non-regular queue entries
 #
-# Scheduling: a path unit fires when the queue becomes non-empty and starts
-# one drainer per roster worker. Each drainer claims tasks off the queue
-# with an atomic rename (losers just re-scan), so tasks run concurrently up
-# to the number of workers, and a drainer exits when the queue is empty.
-# Per task: stage the prompt into the worker's task share, restart the VM
-# (the volume wipe makes it pristine), poll for the guest's exit-code file,
-# stop the VM, file the results. The dispatcher owns worker lifecycle — a
-# manually started VM will be restarted out from under you when a task
-# arrives.
+# Scheduling: one resident drainer per roster worker maintains a fresh warm VM,
+# atomically claims queued tasks, and delivers each prompt into an already-live
+# guest. After one task it stops the VM, safely archives bounded output, wipes
+# the writable volumes, and boots a fresh idle replacement.
 {
   flake.nixosModules.agent-dispatch =
     {
@@ -32,12 +27,75 @@
     let
       inherit (lib.attrsets) listToAttrs nameValuePair;
       inherit (lib.modules) mkIf;
-      inherit (lib.options) mkOption;      inherit (lib) types;
+      inherit (lib.options) mkOption;
+      inherit (lib) types;
 
       cfg = config.agentFleet;
       op = cfg.operatorUser;
+      readers = "agent-fleet-readers";
 
       tasksDir = "/var/lib/agents/tasks";
+
+      # Copy one bounded plain file without ever following a symlink. This is
+      # the trust-boundary primitive for guest -> host transfers: opening with
+      # O_NOFOLLOW and validating the already-open fd avoids both symlink and
+      # check/use races. Destinations must not exist and are created atomically.
+      safeTransfer = pkgs.writeTextFile {
+        name = "agent-safe-transfer";
+        executable = true;
+        text = ''
+          #!${pkgs.python3}/bin/python3
+          import os
+          import stat
+          import sys
+
+          if len(sys.argv) != 5:
+              raise SystemExit("usage: agent-safe-transfer SOURCE DEST MAX_BYTES MODE")
+
+          source, destination, max_bytes, mode = sys.argv[1:]
+          max_bytes = int(max_bytes)
+          mode = int(mode, 8)
+          source_fd = os.open(source, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+          destination_fd = None
+          try:
+              metadata = os.fstat(source_fd)
+              if not stat.S_ISREG(metadata.st_mode):
+                  raise RuntimeError("source is not a regular file")
+              if metadata.st_size > max_bytes:
+                  raise RuntimeError(f"source exceeds {max_bytes} bytes")
+              destination_fd = os.open(
+                  destination,
+                  os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
+                  mode,
+              )
+              remaining = max_bytes + 1
+              while remaining:
+                  chunk = os.read(source_fd, min(1024 * 1024, remaining))
+                  if not chunk:
+                      break
+                  view = memoryview(chunk)
+                  while view:
+                      written = os.write(destination_fd, view)
+                      view = view[written:]
+                  remaining -= len(chunk)
+              if remaining == 0 and os.read(source_fd, 1):
+                  raise RuntimeError(f"source exceeds {max_bytes} bytes")
+              os.fsync(destination_fd)
+          except Exception:
+              if destination_fd is not None:
+                  os.close(destination_fd)
+                  destination_fd = None
+                  try:
+                      os.unlink(destination)
+                  except FileNotFoundError:
+                      pass
+              raise
+          finally:
+              os.close(source_fd)
+              if destination_fd is not None:
+                  os.close(destination_fd)
+        '';
+      };
 
       drainerFor =
         worker:
@@ -55,6 +113,7 @@
           # startLimitIntervalSec=0 so a crash loop can never make systemd give
           # up on the dispatcher — it must always keep trying to come back.
           wantedBy = [ "multi-user.target" ];
+          after = [ "agent-results-permissions.service" ];
           startLimitIntervalSec = 0;
           path = [
             pkgs.coreutils
@@ -70,6 +129,7 @@
             queue=${tasksDir}/queue
             running=${tasksDir}/running/${worker}
             rejected=${tasksDir}/rejected
+            guidance_root=${tasksDir}/guidance/${worker}
             work=${work}
 
             # ORDER MATTERS in the VM cycle: the share directory may only be
@@ -83,7 +143,7 @@
 
             reset_work() {
               rm -rf "$work"
-              install -d -m 0755 -o 1000 -g 100 "$work"
+              install -d -m 0770 -o root -g users "$work"
             }
 
             log() {
@@ -111,9 +171,16 @@
             # Recover tasks stranded by a previous drainer instance that died
             # mid-task (host switch, failure): requeue them.
             install -d "$running"
+            install -d -m 0750 -o root -g users "$guidance_root"
             for stale in "$running"/*.md; do
               if [ -e "$stale" ]; then
                 echo "requeueing stranded $(basename "$stale")"
+                stale_id="$(basename "$stale" .md)"
+                if [ -f "$running/$stale_id.context.tar.zst" ] && [ ! -L "$running/$stale_id.context.tar.zst" ]; then
+                  mv "$running/$stale_id.context.tar.zst" "$queue/$stale_id.context.tar.zst"
+                else
+                  rm -f "$running/$stale_id.context.tar.zst"
+                fi
                 mv "$stale" "$queue/"
               fi
             done
@@ -151,7 +218,8 @@
                 # resolves by exact match). Only disambiguate a name that would
                 # actually collide — e.g. a hand-dropped file reusing an id from
                 # an earlier run.
-                id="$(basename "$1" .md)"
+                source_id="$(basename "$1" .md)"
+                id="$source_id"
                 if [ -e "${tasksDir}/done/$id" ] || [ -e "${tasksDir}/failed/$id" ] || [ -e "$running/$id.md" ]; then
                   id="$id-$(date +%Y%m%d-%H%M%S)-$RANDOM"
                 fi
@@ -177,25 +245,49 @@
                   id=""
                   continue
                 fi
+
+                context_source="$queue/$source_id.context.tar.zst"
+                context_running="$running/$id.context.tar.zst"
+                if [ -e "$context_source" ] || [ -L "$context_source" ]; then
+                  if ! mv "$context_source" "$context_running" 2>/dev/null \
+                    || [ -L "$context_running" ] || [ ! -f "$context_running" ]; then
+                    install -d "$rejected"
+                    mv "$running/$id.md" "$rejected/$id.md" 2>/dev/null || rm -f "$running/$id.md"
+                    rm -f "$context_running" "$context_source"
+                    log "rejected $id (unsafe context archive)"
+                    id=""
+                    continue
+                  fi
+                else
+                  context_running=""
+                fi
                 break
               done
               start="$(date +%s)"
               seen_q=" "
+              guidance_task="$guidance_root/$id"
 
               # The warm VM could have died while we waited. Delivering into a
               # dead VM would hang the task until the full taskTimeout, so if it
               # is gone, requeue the task and cycle a fresh warm boot instead.
               if ! systemctl is-active --quiet microvm@${worker}.service; then
                 log "warm VM died before dispatch, requeueing $id"
+                if [ -n "$context_running" ]; then
+                  mv -f "$context_running" "$queue/$id.context.tar.zst" 2>/dev/null || true
+                fi
                 mv -f "$running/$id.md" "$queue/$id.md" 2>/dev/null || true
                 continue
               fi
+              install -d -m 0770 -o root -g users "$guidance_task"
 
               # Deliver the task into the ALREADY-RUNNING VM's share. Write to a
               # temp name and atomically rename so the guest's wait loop never
               # observes a half-written prompt.md.
               install -m 0444 "$running/$id.md" "$work/.prompt.md.tmp"
               mv -f "$work/.prompt.md.tmp" "$work/prompt.md"
+              if [ -n "$context_running" ]; then
+                ${safeTransfer} "$context_running" "$work/context.tar.zst" ${toString cfg.taskContextMaxBytes} 0444
+              fi
               # Read the metadata from the installed, root-owned 0444 copy —
               # the exact bytes the worker will run — not the claimed file,
               # so the logged agent/model can't drift from what's dispatched.
@@ -217,8 +309,13 @@
               status=timeout
               while :; do
                 now=$(date +%s)
-                if [ -f "$work/exit-code" ]; then
-                  if [ "$(cat "$work/exit-code")" = 0 ]; then
+                if [ -e "$work/exit-code" ] || [ -L "$work/exit-code" ]; then
+                  if ! ${safeTransfer} "$work/exit-code" "$guidance_task/exit-code" 64 0640; then
+                    log "rejected $id exit-code (unsafe or oversized file)"
+                    status=failed
+                    break
+                  fi
+                  if [ "$(cat "$guidance_task/exit-code")" = 0 ]; then
                     status=done
                   else
                     status=failed
@@ -243,23 +340,46 @@
                   log "CAP $id (hit absolute ${toString cfg.taskTimeout}s cap)"
                   break
                 fi
+
+                exchange_size=$(du -sb -- "$work" 2>/dev/null | cut -f1)
+                exchange_size="''${exchange_size:-0}"
+                if [ "$exchange_size" -gt ${toString cfg.taskExchangeMaxBytes} ]; then
+                  log "OVERSIZE $id (task exchange exceeded ${toString cfg.taskExchangeMaxBytes} bytes)"
+                  break
+                fi
+
                 # An ask-cockpit question is pending: kick the answerer.
-                # (This poll is the trigger — inotify path units can't watch
-                # this deep. Re-kicking while it runs is a no-op.)
+                # Never let the host advisor touch the live guest-writable
+                # share. Copy bounded regular files into a host-owned spool
+                # with O_NOFOLLOW, then let the advisor operate only there.
                 set -- "$work"/question-*.md
                 if [ -e "$1" ]; then
-                  systemctl start --no-block agent-guidance.service
                   # Log each distinct escalation once, as the agent raises it.
                   for qf in "$work"/question-*.md; do
-                    [ -e "$qf" ] || continue
+                    [ -e "$qf" ] || [ -L "$qf" ] || continue
                     qn="$(basename "$qf" .md)"
                     qn="''${qn#question-}"
-                    # ask-cockpit numbers questions; ignore anything else (a
-                    # compromised guest could plant question-*.md with glob
-                    # metacharacters that would corrupt the seen-set match).
                     case "$qn" in
-                      "" | *[!0-9]*) continue ;;
+                      1 | 2 | 3 | 4 | 5) ;;
+                      *) continue ;;
                     esac
+                    spool_q="$guidance_task/question-$qn.md"
+                    if [ ! -e "$spool_q" ] && [ ! -e "$guidance_task/answer-$qn.md" ]; then
+                      if ${safeTransfer} "$qf" "$spool_q" 65536 0640; then
+                        chown root:users "$spool_q"
+                        if [ ! -e "$guidance_task/prompt.md" ]; then
+                          ${safeTransfer} "$running/$id.md" "$guidance_task/prompt.md" 1048576 0640
+                          chown root:users "$guidance_task/prompt.md"
+                        fi
+                        printf '%s\n' "$guidance" > "$guidance_task/guidance-model.tmp"
+                        chown root:users "$guidance_task/guidance-model.tmp"
+                        chmod 0640 "$guidance_task/guidance-model.tmp"
+                        mv "$guidance_task/guidance-model.tmp" "$guidance_task/guidance-model"
+                        systemctl start --no-block agent-guidance.service
+                      else
+                        log "rejected $id question $qn (unsafe or oversized file)"
+                      fi
+                    fi
                     case "$seen_q" in
                       *" $qn "*) : ;;
                       *)
@@ -267,10 +387,28 @@
                         case "$esc_adv" in "" | none | NONE) esc_adv=none ;; esac
                         log "ESCALATE $id question $qn -> $esc_adv"
                         seen_q="$seen_q$qn "
-                        ;;
+                      ;;
                     esac
                   done
                 fi
+
+                # Deliver completed host-spooled answers without following a
+                # destination planted by the live guest. O_EXCL makes a
+                # pre-existing file or symlink fail closed.
+                for af in "$guidance_task"/answer-*.md; do
+                  [ -e "$af" ] || continue
+                  an="$(basename "$af" .md)"
+                  an="''${an#answer-}"
+                  case "$an" in
+                    1 | 2 | 3 | 4 | 5) ;;
+                    *) continue ;;
+                  esac
+                  answer_dest="$work/answer-$an.md"
+                  if [ ! -e "$answer_dest" ] && [ ! -L "$answer_dest" ]; then
+                    ${safeTransfer} "$af" "$answer_dest" 1048576 0644 \
+                      || log "could not deliver $id answer $an safely"
+                  fi
+                done
                 sleep 10
               done
               stop_vm
@@ -280,13 +418,36 @@
               else
                 out=${tasksDir}/failed/$id
               fi
-              install -d "$out"
+              install -d -m 0750 -o root -g ${readers} "$out"
               mv "$running/$id.md" "$out/prompt.md"
-              for f in "$work"/report.md "$work"/agent.log "$work"/exit-code "$work"/answer-*.md; do
-                if [ -f "$f" ]; then
-                  install -m 0644 "$f" "$out/$(basename "$f")"
+              chown root:${readers} "$out/prompt.md"
+              chmod 0640 "$out/prompt.md"
+
+              archive_file() {
+                src="$1"
+                dst="$2"
+                limit="$3"
+                [ -e "$src" ] || [ -L "$src" ] || return 0
+                if ! ${safeTransfer} "$src" "$dst" "$limit" 0640; then
+                  log "rejected $id output $(basename "$src") (unsafe or oversized file)"
+                else
+                  chown root:${readers} "$dst"
                 fi
+              }
+              archive_file "$work/report.md" "$out/report.md" 10485760
+              archive_file "$work/agent.log" "$out/agent.log" 52428800
+              archive_file "$work/exit-code" "$out/exit-code" 64
+              archive_file "$work/changes.patch" "$out/changes.patch" 52428800
+              for f in "$work"/answer-*.md; do
+                [ -e "$f" ] || [ -L "$f" ] || continue
+                answer_name="$(basename "$f")"
+                case "$answer_name" in
+                  answer-[1-5].md) archive_file "$f" "$out/$answer_name" 1048576 ;;
+                  *) log "rejected $id output $answer_name (invalid answer name)" ;;
+                esac
               done
+              [ -n "$context_running" ] && rm -f "$context_running"
+              rm -rf "$guidance_task"
               reset_work
 
               # Narrative completion line: how long it ran, how many times it
@@ -323,6 +484,18 @@
         description = "absolute max seconds a task may run before the worker is stopped and the task filed as failed, regardless of progress";
       };
 
+      options.agentFleet.taskExchangeMaxBytes = mkOption {
+        type = types.int;
+        default = 805306368; # 768 MiB: context capsule plus bounded task output
+        description = "maximum total bytes in one live worker task exchange before the task is stopped";
+      };
+
+      options.agentFleet.taskContextMaxBytes = mkOption {
+        type = types.int;
+        default = 536870912; # 512 MiB compressed workspace snapshot
+        description = "maximum compressed context capsule bytes accepted for one task";
+      };
+
       options.agentFleet.guidanceModel = mkOption {
         type = types.str;
         default = ""; # empty => no fleet-wide default advisor
@@ -345,9 +518,9 @@
           # has full access regardless of group.
           "d ${tasksDir}/queue 0770 root ${op} -"
           "d ${tasksDir}/running 0755 root root -" # per-worker subdirs, created by drainers
-          "d ${tasksDir}/done 0755 root root -"
-          "d ${tasksDir}/failed 0755 root root -"
-          "d ${tasksDir}/rejected 0755 root root -" # quarantined non-regular queue entries
+          "d ${tasksDir}/done 0750 root ${readers} -"
+          "d ${tasksDir}/failed 0750 root ${readers} -"
+          "d ${tasksDir}/rejected 0750 root ${readers} -" # quarantined non-regular queue entries
           # The audit trail — one line per lifecycle event (SUBMIT / DISPATCH
           # / ESCALATE / DONE / FAILED / NOTE). Group-owned by the operator so
           # the `fleet` tool can append SUBMIT/NOTE lines; the root drainer
@@ -361,14 +534,33 @@
         ];
 
         systemd.services = {
-          # GUIDANCE — answers workers' ask-cockpit questions with a stronger
-          # model, using the cockpit user's own claude login (which is why it
-          # runs as primaryUser, whose uid 1000 also matches the guest agent
-          # through virtiofs, so the answer file is writable). Question text
-          # comes from inside a guest, i.e. is UNTRUSTED input: the answering
-          # claude gets no tools at all — it can only read the passed prompt
-          # and produce text. Always answers and removes the question, even
-          # on failure, so the path unit cannot retrigger in a loop.
+          # Repair historical archive permissions as well as the parent dirs.
+          # find does not follow symlinks by default; unsafe legacy entries are
+          # therefore never dereferenced during this migration.
+          agent-results-permissions = {
+            description = "Restrict agent result archives to fleet readers";
+            wantedBy = [ "multi-user.target" ];
+            before = map (w: "agent-dispatch-${w.name}.service") cfg.workers;
+            path = [
+              pkgs.coreutils
+              pkgs.findutils
+            ];
+            serviceConfig.Type = "oneshot";
+            script = ''
+              for dir in ${tasksDir}/done ${tasksDir}/failed ${tasksDir}/rejected; do
+                [ -d "$dir" ] || continue
+                chown root:${readers} "$dir"
+                chmod 0750 "$dir"
+                find "$dir" -mindepth 1 -type d -exec chown root:${readers} {} + -exec chmod 0750 {} +
+                find "$dir" -type f -exec chown root:${readers} {} + -exec chmod 0640 {} +
+              done
+            '';
+          };
+
+          # GUIDANCE — answers workers' ask-cockpit questions with Claude and
+          # no tools. The root drainer first transfers untrusted guest files
+          # into the host-owned guidance spool with O_NOFOLLOW and size caps;
+          # this service never reads or writes the live guest share.
           agent-guidance = {
             description = "Answer workers' ask-cockpit questions";
             path = [
@@ -383,15 +575,8 @@
               Slice = "agents.slice";
             };
             script = ''
-              fm() {
-                awk -v key="$1" '
-                  NR==1 && $0=="---" { h=1; next }
-                  h && $0=="---" { exit }
-                  h && $0 ~ "^"key":" { sub("^"key":[ \t]*",""); print; exit }
-                ' "$2" 2>/dev/null
-              }
               san() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._/-' | cut -c1-64; }
-              for q in /var/lib/agents/work/*/task/question-*.md; do
+              for q in ${tasksDir}/guidance/*/*/question-*.md; do
                 if [ ! -e "$q" ]; then
                   continue
                 fi
@@ -401,12 +586,9 @@
                 answer="$dir/answer-$n.md"
                 echo "answering $q"
 
-                # Advisor is chosen per-task by the cockpit (front-matter `guidance:`),
-                # read from THIS task's prompt. `none`/absent => no advisor: fall
-                # through to the optional fleet-wide default, and if that's empty too,
-                # answer immediately so the agent doesn't wait out the ask-cockpit
-                # timeout.
-                g="$(san "$(fm guidance "$dir/prompt.md")")"
+                # The drainer parsed and sanitised the task's advisor choice
+                # from the exact prompt delivered to the guest.
+                g="$(san "$(cat "$dir/guidance-model" 2>/dev/null)")"
                 case "$g" in
                   none | NONE) gmodel="" ;;             # explicit none: no advisor
                   "") gmodel="${cfg.guidanceModel}" ;;  # absent: fleet-wide default (may be empty)

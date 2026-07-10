@@ -35,7 +35,7 @@
       # minimal; every entry is a potential exfiltration channel. Widen only by
       # reviewed commit. A leading-dot dstdomain matches the domain AND all
       # subdomains, so the dotted forms below already cover api.anthropic.com,
-      # codeload/objects.github*.com, cache/channels.nixos.org, etc. — don't
+      # cache/channels.nixos.org, etc. — don't
       # also list the specific hosts (squid rejects the redundancy).
       allowedDomains = [
         ".anthropic.com" # Claude API + Claude Code auth/telemetry
@@ -43,9 +43,7 @@
         ".chatgpt.com" # Codex: ChatGPT-subscription backend/auth
         ".openrouter.ai" # opencode: OpenRouter API (any-model dispatch)
         ".models.dev" # opencode: provider/model registry it fetches at startup
-        ".github.com" # git over https, codeload
-        ".githubusercontent.com" # raw/objects
-        ".nixos.org" # nix binary cache, channels, releases
+        "cache.nixos.org" # exact trusted binary cache; not user-content *.nixos.org
       ];
     in
     {
@@ -84,6 +82,18 @@
         # (DHCP, unchanged behaviour); the host-only bridge and VM taps are the
         # new managed links.
         networking.useNetworkd = true;
+
+        boot.kernel.sysctl = {
+          "net.ipv4.ip_forward" = 0;
+          "net.ipv6.conf.all.forwarding" = 0;
+        };
+
+        assertions = [
+          {
+            assertion = !(lib.lists.elem bridge config.networking.firewall.trustedInterfaces);
+            message = "br-agents must never be a trusted firewall interface";
+          }
+        ];
 
         # Onboard uplink (enp*) stays on DHCP. tailscale0 is left to tailscaled
         # (no match here); lo is networkd's own default.
@@ -146,11 +156,11 @@
 
             acl allowed_domains dstdomain ${concatStringsSep " " allowedDomains}
             acl SSL_ports port 443
-            acl Safe_ports port 80 443
             acl CONNECT method CONNECT
 
-            # Order matters: deny unsafe first, then allow only the allowlist.
-            http_access deny !Safe_ports
+            # HTTPS CONNECT only. Plain HTTP would expose payloads and is not
+            # needed by any sealed-worker provider or binary-cache endpoint.
+            http_access deny !CONNECT
             http_access deny CONNECT !SSL_ports
             http_access allow allowed_domains
             http_access deny all

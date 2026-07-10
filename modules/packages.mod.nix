@@ -127,8 +127,7 @@
     };
 
   # Authoring/build tools for anywhere the user actually works: workstations
-  # and the cockpit host (the server carrying the primary Claude session,
-  # see cockpit.mod.nix).
+  # and the model-agnostic cockpit host (see cockpit.mod.nix).
   flake.homeModules.packages-dev-extras =
     {
       lib,
