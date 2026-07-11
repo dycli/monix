@@ -150,6 +150,9 @@ in
         systemd.services.actual-tunnel.restartTriggers = [
           ./actual-cloudflare-tunnel-token.age
         ];
+        systemd.services.matrix-tunnel.restartTriggers = [
+          ./matrix-cloudflare-tunnel-token.age
+        ];
 
         agentFleet.credentials = {
           claudeTokenFile = config.secrets.agent-claude-token.path;
