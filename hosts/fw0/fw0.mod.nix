@@ -53,15 +53,26 @@ in
 
         # Local inference: llama.cpp (Vulkan) behind llama-swap on :8091,
         # tailnet-only, models load on demand and unload after idle
-        # (inference.mod.nix). The catalog starts EMPTY — to serve a model,
-        # download a GGUF into /var/lib/models and declare it, e.g.:
-        #   inference.models."qwen3-30b-a3b" = {
-        #     file = "Qwen3-30B-A3B-Q4_K_M.gguf";
-        #     flags = [ "-c" "32768" ];
-        #   };
-        # NB models ~60G+ also need the GTT kernel params, i.e. one reboot
-        # after the first switch of this aspect.
+        # (inference.mod.nix). The first catalog model is a 35B-total/3B-active
+        # Qwen MoE: a fast general coding and agent model that leaves ample
+        # memory for context and host services within the 96 GiB GTT fence.
         inference.enable = true;
+        inference.models."qwen3.6-35b-a3b" = {
+          file = "Qwen3.6-35B-A3B-UD-Q5_K_XL.gguf";
+          flags = [ "-c" "65536" "--flash-attn" "on" "--jinja" ];
+          aliases = [ "qwen3.6" ];
+        };
+        # The large local reasoning model: 117B-total/5.1B-active MoE in its
+        # native MXFP4 (~63G on disk, ~68G resident at full 128K context —
+        # inside the 96G GTT fence, but only after the GTT kernel params have
+        # taken effect on a reboot). Split GGUF: llama-server takes the first
+        # part and finds the rest. --jinja applies the embedded Harmony chat
+        # template, which gpt-oss requires.
+        inference.models."gpt-oss-120b" = {
+          file = "gpt-oss-120b-mxfp4-00001-of-00003.gguf";
+          flags = [ "-c" "131072" "--flash-attn" "on" "--jinja" ];
+          aliases = [ "gpt-oss" ];
+        };
 
         # opencode web UI cockpit seat, exposed through Cloudflare Tunnel.
         # Authentication belongs at the Cloudflare Access layer; do not set
