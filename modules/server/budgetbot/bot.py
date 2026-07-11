@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import sqlite3
+import subprocess
 import time
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -70,7 +71,8 @@ def db_connect():
             note TEXT DEFAULT '',
             entered_by TEXT NOT NULL,
             event_id TEXT UNIQUE,
-            created_ts INTEGER NOT NULL
+            created_ts INTEGER NOT NULL,
+            deleted INTEGER NOT NULL DEFAULT 0  -- soft delete: recoverable
         );
         CREATE TABLE IF NOT EXISTS categories(name TEXT PRIMARY KEY);
         CREATE TABLE IF NOT EXISTS processed(event_id TEXT PRIMARY KEY, ts INTEGER);
@@ -98,7 +100,33 @@ def categories(db):
 
 
 def recent_tx(db, n=15):
-    return db.execute("SELECT * FROM tx ORDER BY id DESC LIMIT ?", (n,)).fetchall()
+    return db.execute("SELECT * FROM tx WHERE deleted=0 ORDER BY id DESC LIMIT ?",
+                      (n,)).fetchall()
+
+
+def git_snapshot(db, reason):
+    """Commit a full SQL dump of the ledger to a git repo next to the DB.
+
+    Every mutation lands as one commit, so any past state is one
+    `git show`/`git checkout` away even if a bug (or a mis-parsed message)
+    mangles the live database. Failures are logged, never fatal — history
+    is a safety net, not a dependency.
+    """
+    try:
+        hist = os.path.join(os.path.dirname(DB_PATH), "history")
+        os.makedirs(hist, exist_ok=True)
+        if not os.path.isdir(os.path.join(hist, ".git")):
+            subprocess.run(["git", "init", "-q"], cwd=hist, check=True)
+        with open(os.path.join(hist, "ledger.sql"), "w") as f:
+            for line in db.iterdump():
+                f.write(line + "\n")
+        subprocess.run(["git", "add", "ledger.sql"], cwd=hist, check=True)
+        subprocess.run(
+            ["git", "-c", "user.name=budgetbot", "-c", "user.email=budgetbot@localhost",
+             "commit", "-q", "-m", reason, "--allow-empty-message"],
+            cwd=hist, check=False)  # nothing-to-commit is fine
+    except Exception:
+        log.exception("git snapshot failed")
 
 
 def fmt_amount(cents):
@@ -115,7 +143,7 @@ INTENT_SCHEMA = {
     "type": "object",
     "properties": {
         "intent": {"type": "string",
-                   "enum": ["add", "edit", "delete", "query", "chart",
+                   "enum": ["add", "edit", "delete", "restore", "query", "chart",
                             "add_category", "help", "other"]},
         "payee": {"type": "string"},
         "amount": {"type": "number"},
@@ -144,11 +172,15 @@ INTENT_SCHEMA = {
 def llm_parse(db, sender_name, text):
     today = datetime.now(TZ).date()
     recent = "\n".join(fmt_tx(r) for r in recent_tx(db)) or "(none)"
+    deleted = "\n".join(fmt_tx(r) for r in db.execute(
+        "SELECT * FROM tx WHERE deleted=1 ORDER BY id DESC LIMIT 5"))
     system = f"""You classify one message from a family budget chat into a JSON action.
 Today is {today.isoformat()} ({today.strftime('%A')}). Message author: {sender_name}.
 Known categories: {", ".join(categories(db))}.
 Recent transactions (id date payee amount category):
 {recent}
+Recently deleted (restorable):
+{deleted or "(none)"}
 
 Rules:
 - A purchase mention ("costco 84.12", "40 on gas yesterday") => intent add.
@@ -156,6 +188,7 @@ Rules:
   payee short and capitalized; pick the closest existing category ("other" if none fits).
 - Correcting/changing an existing entry => intent edit, with tx_id from the list
   above and only the new_* fields being changed. Deleting one => intent delete + tx_id.
+  Undeleting/bringing one back ("restore #12") => intent restore + tx_id.
 - Questions about spending => intent query (pick query_kind; month as yyyy-mm,
   default current month; category_total also needs category).
 - Asking for a chart/graph => intent chart (month_bar = this month's categories,
@@ -205,7 +238,7 @@ def do_add(db, act, sender, event_id):
     db.commit()
     r = db.execute("SELECT * FROM tx WHERE event_id=?", (event_id,)).fetchone()
     month_total = db.execute(
-        "SELECT COALESCE(SUM(amount_cents),0) t FROM tx WHERE date LIKE ?",
+        "SELECT COALESCE(SUM(amount_cents),0) t FROM tx WHERE date LIKE ? AND deleted=0",
         (day[:7] + "%",)).fetchone()["t"]
     return (f"✓ {fmt_amount(cents)} {payee} → {cat}"
             f"{'' if day == datetime.now(TZ).date().isoformat() else ' on ' + day}"
@@ -235,17 +268,28 @@ def do_edit(db, act):
 
 
 def do_delete(db, act):
-    r = db.execute("SELECT * FROM tx WHERE id=?", (act.get("tx_id"),)).fetchone()
+    r = db.execute("SELECT * FROM tx WHERE id=? AND deleted=0",
+                   (act.get("tx_id"),)).fetchone()
     if not r:
         return "Couldn't tell which entry to delete — use its #id."
-    db.execute("DELETE FROM tx WHERE id=?", (r["id"],))
+    db.execute("UPDATE tx SET deleted=1 WHERE id=?", (r["id"],))
     db.commit()
-    return f"🗑 removed {fmt_tx(r)}"
+    return f"🗑 removed {fmt_tx(r)} (say 'restore #{r['id']}' to undo)"
+
+
+def do_restore(db, act):
+    r = db.execute("SELECT * FROM tx WHERE id=? AND deleted=1",
+                   (act.get("tx_id"),)).fetchone()
+    if not r:
+        return "Nothing deleted under that #id."
+    db.execute("UPDATE tx SET deleted=0 WHERE id=?", (r["id"],))
+    db.commit()
+    return "↩️ restored " + fmt_tx(r)
 
 
 def month_rows(db, month):
     return db.execute(
-        "SELECT category, SUM(amount_cents) c FROM tx WHERE date LIKE ? "
+        "SELECT category, SUM(amount_cents) c FROM tx WHERE date LIKE ? AND deleted=0 "
         "GROUP BY category ORDER BY c DESC", (month + "%",)).fetchall()
 
 
@@ -259,11 +303,11 @@ def do_query(db, act):
         cat = act.get("category") or "other"
         row = db.execute(
             "SELECT COALESCE(SUM(amount_cents),0) c, COUNT(*) n FROM tx "
-            "WHERE date LIKE ? AND category=?", (month + "%", cat)).fetchone()
+            "WHERE date LIKE ? AND category=? AND deleted=0", (month + "%", cat)).fetchone()
         return f"{month} {cat}: {fmt_amount(row['c'])} across {row['n']} entries"
     if kind == "compare_months":
         rows = db.execute(
-            "SELECT substr(date,1,7) m, SUM(amount_cents) c FROM tx "
+            "SELECT substr(date,1,7) m, SUM(amount_cents) c FROM tx WHERE deleted=0 "
             "GROUP BY m ORDER BY m DESC LIMIT 6").fetchall()
         return "Monthly totals:\n" + "\n".join(f"{r['m']}: {fmt_amount(r['c'])}" for r in rows)
     rows = month_rows(db, month)
@@ -284,7 +328,7 @@ def make_chart(db, act):
     if act.get("chart_kind") == "trend":
         rows = db.execute(
             "SELECT substr(date,1,7) m, SUM(amount_cents)/100.0 t FROM tx "
-            "GROUP BY m ORDER BY m").fetchall()
+            "WHERE deleted=0 GROUP BY m ORDER BY m").fetchall()
         ax.plot([r["m"] for r in rows], [r["t"] for r in rows], marker="o")
         ax.set_title("Monthly spending")
         title = "trend.png"
@@ -307,7 +351,7 @@ def make_chart(db, act):
 HELP = """I file whatever you type into the ledger. Examples:
 • costco 84.12 — logs a purchase (I guess the category)
 • gas 40 yesterday / lunch 15 last tuesday
-• change #12 to 84 / #12 was household / delete #12
+• change #12 to 84 / #12 was household / delete #12 / restore #12
 • how much on groceries this month? / recent / monthly totals
 • chart / trend — pictures
 • add category kids"""
@@ -364,12 +408,15 @@ class Bot:
         log.info("%s: %r -> %s", sender, text, act.get("intent"))
         try:
             intent = act.get("intent")
+            mutated = intent in ("add", "edit", "delete", "restore", "add_category")
             if intent == "add" and act.get("amount"):
                 await self.send(do_add(self.db, act, sender, event.event_id))
             elif intent == "edit":
                 await self.send(do_edit(self.db, act))
             elif intent == "delete":
                 await self.send(do_delete(self.db, act))
+            elif intent == "restore":
+                await self.send(do_restore(self.db, act))
             elif intent == "query":
                 await self.send(do_query(self.db, act))
             elif intent == "chart":
@@ -386,6 +433,9 @@ class Bot:
                 await self.send(HELP)
             elif intent == "other" and act.get("reply"):
                 await self.send(act["reply"][:400])
+            if mutated:
+                await asyncio.to_thread(git_snapshot, self.db,
+                                        f"{intent} by {sender}: {text[:60]}")
         except Exception:
             log.exception("action failed")
             await self.send("(something broke doing that — it's logged)")

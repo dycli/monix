@@ -80,6 +80,9 @@
         systemd.services.budgetbot = {
           description = "family budget chat bot";
           wantedBy = [ "multi-user.target" ];
+          # The ledger's safety net: every mutation commits a SQL dump to a
+          # git repo in the state dir (see git_snapshot in bot.py).
+          path = [ pkgs.git ];
           wants = [ "tuwunel.service" ];
           after = [
             "tuwunel.service"
