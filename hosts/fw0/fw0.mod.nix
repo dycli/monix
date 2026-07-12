@@ -111,6 +111,11 @@ in
         # cockpit.webEnvFile here unless deliberately re-enabling opencode's
         # app-local Basic auth.
         cockpit.webEnable = true;
+        # The system service does not inherit a login shell's config lookup.
+        # Point it at the cockpit's local-model provider configuration.
+        systemd.services.opencode-web.serviceConfig.Environment = [
+          "OPENCODE_CONFIG=/home/max/.config/opencode/opencode.jsonc"
+        ];
         # Public opencode web cockpit over Cloudflare Tunnel. The token comes
         # from Zero Trust's "Install and run a connector" command for tunnel
         # 8ad1eab3-29bc-4d27-8ab8-163b4097e9e0. In Cloudflare, configure the
