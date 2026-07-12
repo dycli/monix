@@ -7,23 +7,15 @@ wallpaper mirror, Comic Code via agenix, assets/ layout) are merged, deployed
 to fw3, and documented in the modules that carry them — this file tracks only
 what is still OPEN.
 
-## Open: declarative user password (gate before enabling)
+## DONE 2026-07-12: declarative user password
 
-`users.mutableUsers = false` + `hashedPasswordFile` wiring sits **commented**
-in `hosts/fw3/fw3.mod.nix`; the agenix rule (`hosts/fw3/dylan-password.age`)
-is already in `secrets.nix`. With `mutableUsers = false` and no declared
-password the account is locked out (wheel sudo needs a password; SSH keys
-don't help). Enable only after:
+fw3 runs `users.mutableUsers = false` with dylan's hash from
+`hosts/fw3/dylan-password.age`; switch verified with a fresh `sudo -v`.
+Password changes are now `mkpasswd -m yescrypt` →
+`agenix -e hosts/fw3/dylan-password.age` → switch (`passwd` no longer
+sticks; see the comment in `hosts/fw3/fw3.mod.nix`).
 
-```
-mkpasswd -m yescrypt                          # copy the hash
-cd ~/ark/monix && agenix -e hosts/fw3/dylan-password.age   # paste hash, save
-# then uncomment the block in hosts/fw3/fw3.mod.nix (add `config` to its args),
-# build, switch, and verify `sudo -v` from a second session before logging out.
-```
-
-fw0 note: when hosts eventually all go immutable, fw0 needs the same
-treatment for its user first.
+Still open for fw0: same treatment for its user before it can go immutable.
 
 ## Open: one-time checks on fw3
 
