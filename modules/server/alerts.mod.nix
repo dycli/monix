@@ -51,14 +51,17 @@
               '{type:"m.login.password",identifier:{type:"m.id.user",user:$u},password:$p}')" \
             | jq -r .access_token)
 
-          curl -sf -X POST -H "Authorization: Bearer $tok" \
-            "$hs/_matrix/client/v3/join/$room" -d '{}' > /dev/null || true
-
-          # Idempotent self-rename: registration appended tuwunel's default
-          # display-name suffix; keep the bot's name plain.
-          curl -sf -X PUT -H "Authorization: Bearer $tok" \
-            "$hs/_matrix/client/v3/profile/$(jq -rn --arg u "$MATRIX_USER" '$u|@uri')/displayname" \
-            -d '{"displayname":"alertbot"}' > /dev/null || true
+          # One-time setup, stamped: accept the room invite and strip the
+          # display-name suffix tuwunel appended at registration.
+          stamp=/var/lib/alerts/initialized
+          if [ ! -e "$stamp" ]; then
+            curl -sf -X POST -H "Authorization: Bearer $tok" \
+              "$hs/_matrix/client/v3/join/$room" -d '{}' > /dev/null
+            curl -sf -X PUT -H "Authorization: Bearer $tok" \
+              "$hs/_matrix/client/v3/profile/$(jq -rn --arg u "$MATRIX_USER" '$u|@uri')/displayname" \
+              -d '{"displayname":"alertbot"}' > /dev/null || true
+            touch "$stamp"
+          fi
 
           curl -sf -X PUT -H "Authorization: Bearer $tok" \
             "$hs/_matrix/client/v3/rooms/$room/send/m.room.message/$(date +%s%N)" \
@@ -121,6 +124,7 @@
           serviceConfig = {
             Type = "oneshot";
             EnvironmentFile = cfg.credentialsEnvFile;
+            StateDirectory = "alerts";
           };
           scriptArgs = "%i";
           path = [ pkgs.systemd ];
@@ -138,6 +142,7 @@
           serviceConfig = {
             Type = "oneshot";
             EnvironmentFile = cfg.credentialsEnvFile;
+            StateDirectory = "alerts";
           };
           path = [
             pkgs.systemd
