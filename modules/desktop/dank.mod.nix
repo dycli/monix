@@ -73,6 +73,15 @@
           enable = true;
           compositor.name = "hyprland";
 
+          # Mirror the user's DMS state into the greeter: greetd's preStart
+          # copies settings.json / session.json / dms-colors.json (and the
+          # wallpaper files they reference) from this home into the greeter
+          # cache at every greetd start. The greeter wallpaper/theme is
+          # therefore not configured anywhere — it follows whatever the
+          # session last used (picked from the declarative folder, see
+          # wallpapers.mod.nix), applied on next boot.
+          configHome = "/home/${config.primaryUser}";
+
           # dms-greeter's built-in default Hyprland config disables the logo
           # but not the splash text/quote, so it still flashes before the
           # greeter UI renders. Passing customConfig REPLACES that default
