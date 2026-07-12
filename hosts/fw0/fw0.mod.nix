@@ -60,6 +60,9 @@ in
         # eval error, not silently-disabled alerting.
         alerts.enable = true;
         alerts.credentialsEnvFile = config.secrets.matrix-alertbot-env.path;
+        # Plain-language line atop failure alerts, from the ship-local model
+        # (free, loopback; degrades to the raw alert if inference is down).
+        alerts.summary.enable = true;
 
         # Declarative Fabric Minecraft server (see minecraft.mod.nix). Fabric
         # 26.1.2, server-side mods only, ~4G heap in services.slice. Tailnet-only

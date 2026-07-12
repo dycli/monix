@@ -73,6 +73,34 @@
         '';
       };
 
+      # alert-summarize: stdin (the raw alert) -> one plain-language line on
+      # stdout, via the ship-local model. Empty output on any failure — the
+      # caller sends the raw alert regardless, so a cold model or downed
+      # llama-swap can degrade the summary but never delay-drop an alert
+      # beyond the curl timeout (sized for llama-swap's on-demand load).
+      alertSummarize = pkgs.writeShellApplication {
+        name = "alert-summarize";
+        runtimeInputs = [
+          pkgs.curl
+          pkgs.jq
+          pkgs.gnused
+        ];
+        text = ''
+          # enable_thinking:false — the Qwen template otherwise spends the
+          # whole token budget on reasoning_content and returns an empty
+          # content field; generous max_tokens as a second guard (local
+          # tokens are free).
+          payload=$(jq -n --arg m ${lib.escapeShellArg cfg.summary.model} --arg c "$(cat)" \
+            '{model:$m, max_tokens:2000, chat_template_kwargs:{enable_thinking:false}, messages:[
+              {role:"system", content:"You summarize systemd unit failures for a home-server alert channel. Reply with 1-2 short plain sentences: what failed and the likely cause based on the log. No preamble, no markdown."},
+              {role:"user", content:$c}]}')
+          curl -sf --max-time 150 -H 'Content-Type: application/json' \
+            ${lib.escapeShellArg cfg.summary.url}/v1/chat/completions -d "$payload" \
+            | jq -r '.choices[0].message.content // empty' \
+            | sed -e '/<think>/,/<\/think>/d' -e '/^[[:space:]]*$/d' || true
+        '';
+      };
+
       # The zz- drop-in sorts after 99- within the alert unit's own drop-in
       # set and clears OnFailure there, so a broken alert path can't
       # recurse; the script guard below is the second line of defense.
@@ -115,6 +143,20 @@
           default = 85;
           description = "Sweep alerts when a real filesystem exceeds this use%.";
         };
+
+        summary.enable = mkEnableOption "a local-LLM plain-language line atop failure alerts";
+
+        summary.url = mkOption {
+          type = types.str;
+          default = "http://127.0.0.1:8091";
+          description = "OpenAI-compatible endpoint (default: the local llama-swap).";
+        };
+
+        summary.model = mkOption {
+          type = types.str;
+          default = "qwen3.6-35b-a3b";
+          description = "Model to summarize with.";
+        };
       };
 
       config = mkIf cfg.enable {
@@ -134,6 +176,12 @@
             case "$unit" in alert-*) exit 0 ;; esac
             tail=$(journalctl -u "$unit" -n 12 --no-pager -o cat || true)
             msg=$(printf '🔴 %s: %s failed\n%s' ${hostname} "$unit" "$tail")
+            ${lib.optionalString cfg.summary.enable ''
+              summary=$(printf '%s' "$msg" | ${getExe alertSummarize} || true)
+              if [ -n "$summary" ]; then
+                msg=$(printf '🔴 %s: %s failed\n💡 %s\n———\n%s' ${hostname} "$unit" "$summary" "$tail")
+              fi
+            ''}
             ${getExe alertSend} "$msg"
           '';
         };
