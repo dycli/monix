@@ -37,6 +37,18 @@ in
 
         primaryUser = "max";
 
+        # Declarative login password, same shape as fw3 (see the comment in
+        # fw3.mod.nix): /etc/shadow regenerates from config once the hash
+        # secret exists — until then users stay mutable, because
+        # mutableUsers = false with no declared password locks the account.
+        # TO ENABLE: mkpasswd -m yescrypt, then
+        # `agenix -e hosts/fw0/secrets/max-password.age` (rule already in
+        # secrets.nix), git add, switch with a root shell kept open.
+        users.mutableUsers = !builtins.pathExists ./secrets/max-password.age;
+        users.users.${config.primaryUser}.hashedPasswordFile =
+          lib.mkIf (builtins.pathExists ./secrets/max-password.age)
+            config.secrets.max-password.path;
+
         # The primary interactive agent cockpit lives here; frontends include
         # tmux over tailnet SSH and opencode web through Cloudflare Access.
         cockpit.enable = true;
@@ -94,7 +106,7 @@ in
         # Gated on the .age existing so the config builds before the
         # captain has created the tunnel and provided its token.
         matrix.tunnelTokenFile =
-          if builtins.pathExists ./matrix-cloudflare-tunnel-token.age then
+          if builtins.pathExists ./secrets/matrix-cloudflare-tunnel-token.age then
             config.secrets.matrix-cloudflare-tunnel-token.path
           else
             null;
@@ -124,49 +136,53 @@ in
 
         # FLEET CREDENTIALS — subscription logins available in every VM but
         # isolated into executor-specific Unix users; create/refresh with `agenix -e
-        # hosts/fw0/<name>.age` from the repo root (the agenix CLI ships on
+        # hosts/fw0/secrets/<name>.age` from the repo root (the agenix CLI ships on
         # cockpit hosts). Workers have no forge route or credentials: source
         # context goes in as a capsule and results come back over the task share.
         secrets = {
-          agent-claude-token.file = ./agent-claude-token.age;
-          agent-codex-auth.file = ./agent-codex-auth.age;
+          agent-claude-token.file = ./secrets/agent-claude-token.age;
+          agent-codex-auth.file = ./secrets/agent-codex-auth.age;
         }
-        // lib.optionalAttrs (builtins.pathExists ./agent-openrouter-key.age) {
-          agent-openrouter-key.file = ./agent-openrouter-key.age;
+        // lib.optionalAttrs (builtins.pathExists ./secrets/agent-openrouter-key.age) {
+          agent-openrouter-key.file = ./secrets/agent-openrouter-key.age;
         }
-        // lib.optionalAttrs (builtins.pathExists ./opencode-web-env.age) {
-          opencode-web-env.file = ./opencode-web-env.age;
+        // lib.optionalAttrs (builtins.pathExists ./secrets/opencode-web-env.age) {
+          opencode-web-env.file = ./secrets/opencode-web-env.age;
         }
         // {
           opencode-web-cloudflare-tunnel-token = {
-            file = ./opencode-web-cloudflare-tunnel-token.age;
+            file = ./secrets/opencode-web-cloudflare-tunnel-token.age;
           };
           actual-cloudflare-tunnel-token = {
-            file = ./actual-cloudflare-tunnel-token.age;
+            file = ./secrets/actual-cloudflare-tunnel-token.age;
           };
           matrix-registration-env = {
-            file = ./matrix-registration.env.age;
+            file = ./secrets/matrix-registration.env.age;
           };
           matrix-budgetbot-env = {
-            file = ./matrix-budgetbot.env.age;
+            file = ./secrets/matrix-budgetbot.env.age;
           };
         }
-        // lib.optionalAttrs (builtins.pathExists ./matrix-cloudflare-tunnel-token.age) {
+        // lib.optionalAttrs (builtins.pathExists ./secrets/matrix-cloudflare-tunnel-token.age) {
           matrix-cloudflare-tunnel-token = {
-            file = ./matrix-cloudflare-tunnel-token.age;
+            file = ./secrets/matrix-cloudflare-tunnel-token.age;
           };
+        }
+        // lib.optionalAttrs (builtins.pathExists ./secrets/max-password.age) {
+          # Login password hash (see the declarative-password comment above).
+          max-password.file = ./secrets/max-password.age;
         };
 
         # agenix in this input has no restartUnits option; make the encrypted
         # source an explicit unit trigger so token rotation restarts cloudflared.
         systemd.services.opencode-web-tunnel.restartTriggers = [
-          ./opencode-web-cloudflare-tunnel-token.age
+          ./secrets/opencode-web-cloudflare-tunnel-token.age
         ];
         systemd.services.actual-tunnel.restartTriggers = [
-          ./actual-cloudflare-tunnel-token.age
+          ./secrets/actual-cloudflare-tunnel-token.age
         ];
         systemd.services.matrix-tunnel.restartTriggers = [
-          ./matrix-cloudflare-tunnel-token.age
+          ./secrets/matrix-cloudflare-tunnel-token.age
         ];
 
         agentFleet.credentials = {
@@ -177,8 +193,8 @@ in
         # on the catalog). Gated on the .age file existing (and being
         # committed — flake source is the git tree) so the config builds
         # before the key is provisioned; create it with
-        # `agenix -e hosts/fw0/agent-openrouter-key.age`, then `git add`.
-        // lib.optionalAttrs (builtins.pathExists ./agent-openrouter-key.age) {
+        # `agenix -e hosts/fw0/secrets/agent-openrouter-key.age`, then `git add`.
+        // lib.optionalAttrs (builtins.pathExists ./secrets/agent-openrouter-key.age) {
           openrouterKeyFile = config.secrets.agent-openrouter-key.path;
         };
 
@@ -316,12 +332,12 @@ in
         #
         # TO RE-ENABLE (when you actually want the local LiteLLM/Open WebUI
         # AI gateway, or key-based tailscale re-auth): create the real
-        # secrets — `agenix -e hosts/fw0/litellm.env.age` etc. (the host key
+        # secrets — `agenix -e hosts/fw0/secrets/litellm.env.age` etc. (the host key
         # in keys.nix is real now) — then uncomment the matching block(s).
         #
-        # secrets.tailscale.file = ./tailscale.age;
-        # secrets.litellm.file = ./litellm.env.age;
-        # secrets."open-webui".file = ./open-webui.env.age;
+        # secrets.tailscale.file = ./secrets/tailscale.age;
+        # secrets.litellm.file = ./secrets/litellm.env.age;
+        # secrets."open-webui".file = ./secrets/open-webui.env.age;
         #
         # services.tailscale.authKeyFile = config.secrets.tailscale.path;
         #
