@@ -30,10 +30,8 @@ treatment for its user first.
 - Confirm the agenix host key added to `keys.nix` (taken TOFU over the
   tailnet) matches `cat /etc/ssh/ssh_host_ed25519_key.pub` on fw3. Comic Code
   decrypting successfully is already strong evidence it's right.
-- Delete the flatpak husk: `rm -r ~/.local/share/flatpak` (empty db dir;
-  flatpak was never installed, `/var/lib/flatpak` does not exist).
-- Delete the manually-installed Comic Code copy once `fc-list | grep -i
-  comic` shows only `/var/lib/fonts/comic-code` paths, then `fc-cache -f`.
+- DONE 2026-07-12: flatpak husk deleted; manual Comic Code copy replaced by
+  the managed `/var/lib/fonts/comic-code`.
 
 ## Open: on-host census (read-only; paste results back for triage)
 
