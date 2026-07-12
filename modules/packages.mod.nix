@@ -127,6 +127,11 @@
         home.packages = [
           pkgs.brave
           pkgs.kdePackages.dolphin
+          # Dolphin's Extract/Compress context menu + the archive GUI. Icons:
+          # nothing else installs an icon theme, and breeze-dark tracks the
+          # dark KColorScheme (see kde.mod.nix for both wirings).
+          pkgs.kdePackages.ark
+          pkgs.kdePackages.breeze-icons
           pkgs.keepassxc
           pkgs.libreoffice
           pkgs.obsidian
