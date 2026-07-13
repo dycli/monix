@@ -87,6 +87,7 @@ def home_db():
             id INTEGER PRIMARY KEY,
             title TEXT NOT NULL,
             due TEXT NOT NULL DEFAULT '',   -- ISO yyyy-mm-dd, '' = undated
+            assignee TEXT NOT NULL DEFAULT '',  -- '' = whole household
             created_by TEXT NOT NULL,
             created_ts INTEGER NOT NULL,
             done_ts INTEGER,                -- NULL = open
@@ -105,6 +106,9 @@ def home_db():
         CREATE TABLE IF NOT EXISTS processed(event_id TEXT PRIMARY KEY, ts INTEGER);
         CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
     """)
+    # Migration for databases created before assignees existed (2026-07-13).
+    if "assignee" not in [r[1] for r in db.execute("PRAGMA table_info(task)")]:
+        db.execute("ALTER TABLE task ADD COLUMN assignee TEXT NOT NULL DEFAULT ''")
     db.commit()
     return db
 
@@ -233,8 +237,17 @@ def fmt_due(due):
     return f" (by {nice})"
 
 
+# localparts of the invited family accounts — the names the parser may
+# assign tasks to.
+FAMILY = [u.split(":")[0].lstrip("@") for u in INVITE_USERS]
+
+
+def fmt_who(r):
+    return f" — {r['assignee']}" if r["assignee"] else ""
+
+
 def fmt_task(r):
-    return f"#{r['id']} {r['title']}{fmt_due(r['due'])}"
+    return f"#{r['id']} {r['title']}{fmt_who(r)}{fmt_due(r['due'])}"
 
 
 def calendar_events(day_from, day_to):
@@ -285,9 +298,11 @@ HOME_ACTION = {
                             "list_clear", "post_now", "help", "other"]},
         "title": {"type": "string"},
         "due": {"type": "string"},
+        "assignee": {"type": "string"},
         "task_id": {"type": "integer"},
         "new_title": {"type": "string"},
         "new_due": {"type": "string"},
+        "new_assignee": {"type": "string"},
         "scope": {"type": "string",
                   "enum": ["today", "week", "all", "overdue", "done", ""]},
         "list_name": {"type": "string"},
@@ -299,8 +314,9 @@ HOME_ACTION = {
     # Every field required: with a grammar-constrained lazy model, optional
     # fields simply never get emitted (budgetbot live finding). Unused
     # fields carry "" / 0 / [].
-    "required": ["intent", "title", "due", "task_id", "new_title", "new_due",
-                 "scope", "list_name", "items", "item_id", "kind", "reply"],
+    "required": ["intent", "title", "due", "assignee", "task_id", "new_title",
+                 "new_due", "new_assignee", "scope", "list_name", "items",
+                 "item_id", "kind", "reply"],
 }
 
 # One message can carry several actions ("by EOD we need X, and by friday
@@ -337,23 +353,30 @@ Open list items (id [list] name):
 Rules:
 - Something the family needs to do ("we need to X by Friday", "X by today/EOD",
   "Thursday we need to X", "remind us to X") => intent task_add. title short,
-  imperative, no dates in it; due as ISO yyyy-mm-dd (resolve today/tomorrow/EOD
-  = today/weekday names = the NEXT such day, today if it is that day; "" if no
-  date was given).
+  imperative, no dates or names in it; due as ISO yyyy-mm-dd (resolve
+  today/tomorrow/EOD = today/weekday names = the NEXT such day, today if it is
+  that day; "" if no date was given). assignee: if the task is for one
+  specific person ("I need dylan to X", "gab should X", "remind me to X" =
+  the author) use their name from [{", ".join(FAMILY)}], else "" (whole
+  household).
 - Marking one finished ("done 3", "did the plumber thing") => task_done with
   task_id from the open list above.
 - Moving a date ("push #3 to friday", "snooze the car thing to next week")
-  => task_snooze with task_id + new_due. Rewording/changing => task_edit with
-  task_id and only the changed new_title/new_due.
+  => task_snooze with task_id + new_due. Rewording/changing/reassigning
+  ("give #3 to gab") => task_edit with task_id and only the changed
+  new_title/new_due/new_assignee.
 - Removing a task => task_delete + task_id; bringing one back => task_restore.
 - Adding to a list ("add milk and eggs to shopping", "put batteries on the
   hardware list") => item_add with list_name (short, lowercase; default
   "shopping" for groceries-like things) and items = each thing separately.
 - Checking a list item off ("got the milk") => item_done with item_id from the
   list above. Removing one by mistake-entry => item_remove + item_id.
+- Starting a fresh list with nothing on it yet ("make a grocery list")
+  => item_add with that list_name and items [].
 - Showing things: "what's on for today/this week", "show tasks" => tasks_show
-  with scope (today|week|all|overdue|done). "show shopping list" / "what
-  lists do we have" => list_show with list_name ("" = all lists).
+  with scope (today|week|all|overdue|done); if they ask about ONE person's
+  tasks ("what's on dylan's plate") also set assignee. "show shopping list" /
+  "what lists do we have" => list_show with list_name ("" = all lists).
 - Emptying a list ("clear the shopping list") => list_clear + list_name.
 - Asking for the morning/evening/week summary right now => post_now with kind.
 - Asking what you can do => help.
@@ -377,13 +400,19 @@ def valid_date(s):
         return ""
 
 
+def valid_assignee(s):
+    s = (s or "").strip().lower()
+    return s if s in FAMILY else ""
+
+
 def do_task_add(db, act, sender):
     title = (act.get("title") or "").strip()[:120]
     if not title:
         return "I couldn't make out what the task is — try 'we need to X by friday'."
     due = valid_date(act.get("due", ""))
-    db.execute("INSERT INTO task(title,due,created_by,created_ts) VALUES(?,?,?,?)",
-               (title, due, sender, int(time.time())))
+    who = valid_assignee(act.get("assignee"))
+    db.execute("INSERT INTO task(title,due,assignee,created_by,created_ts) VALUES(?,?,?,?,?)",
+               (title, due, who, sender, int(time.time())))
     db.commit()
     r = db.execute("SELECT * FROM task ORDER BY id DESC LIMIT 1").fetchone()
     return f"✓ added {fmt_task(r)}"
@@ -413,6 +442,8 @@ def do_task_edit(db, act):
         changes.append("title=?"); params.append(act["new_title"].strip()[:120])
     if act.get("new_due"):
         changes.append("due=?"); params.append(valid_date(act["new_due"]))
+    if act.get("new_assignee"):
+        changes.append("assignee=?"); params.append(valid_assignee(act["new_assignee"]))
     if not changes:
         return "Nothing to change that I understood."
     db.execute(f"UPDATE task SET {','.join(changes)} WHERE id=?", (*params, r["id"]))
@@ -460,6 +491,9 @@ def do_tasks_show(db, act):
         return "Recently done:\n" + ("\n".join(
             f"✔ #{r['id']} {r['title']} ({r['done_by']})" for r in rows) or "(nothing yet)")
     rows = open_tasks(db)
+    who = valid_assignee(act.get("assignee"))
+    if who:
+        rows = [r for r in rows if r["assignee"] == who]
     if scope == "today":
         rows = [r for r in rows if r["due"] and r["due"] <= now.isoformat()]
         head = "Today (and overdue):"
@@ -477,9 +511,11 @@ def do_tasks_show(db, act):
 
 def do_item_add(db, act, sender):
     names = [n.strip()[:80] for n in act.get("items", []) if n.strip()]
-    if not names:
-        return "Add what? ('add milk and eggs to shopping')"
     ln = (act.get("list_name") or "shopping").strip().lower()[:30]
+    if not names:
+        # "make a grocery list": lists exist once something is on them, so
+        # just teach the phrasing.
+        return f"👍 '{ln}' it is — put things on it like 'add milk to {ln}'."
     now_ts = int(time.time())
     for n in names:
         db.execute("INSERT INTO item(list_name,name,added_by,added_ts) VALUES(?,?,?,?)",
@@ -548,7 +584,7 @@ def week_section(db, start):
         return "📅 Week ahead: clear so far."
     by_day = {}
     for r in tasks:
-        by_day.setdefault(r["due"], []).append(f"• #{r['id']} {r['title']}")
+        by_day.setdefault(r["due"], []).append(f"• #{r['id']} {r['title']}{fmt_who(r)}")
     for ev in events:
         by_day.setdefault(ev["start"][:10], []).append("◦ " + fmt_event(ev))
     lines = ["📅 Week ahead:"]
@@ -565,10 +601,10 @@ def morning_post(db):
     due_today = [r for r in open_tasks(db) if r["due"] == now.isoformat()]
     if overdue:
         lines.append("Overdue:")
-        lines += [f"  • #{r['id']} {r['title']}{fmt_due(r['due'])}" for r in overdue]
+        lines += [f"  • #{r['id']} {r['title']}{fmt_who(r)}{fmt_due(r['due'])}" for r in overdue]
     if due_today:
         lines.append("Today:")
-        lines += [f"  • #{r['id']} {r['title']}" for r in due_today]
+        lines += [f"  • #{r['id']} {r['title']}{fmt_who(r)}" for r in due_today]
     events, note = calendar_events(now, now)
     if events:
         lines.append("Calendar:")
@@ -601,13 +637,13 @@ def evening_post(db):
     missed = [r for r in open_tasks(db) if r["due"] and r["due"] <= now.isoformat()]
     if missed:
         lines.append("Didn't get done (carrying over):")
-        lines += [f"  • #{r['id']} {r['title']}{fmt_due(r['due'])}" for r in missed]
+        lines += [f"  • #{r['id']} {r['title']}{fmt_who(r)}{fmt_due(r['due'])}" for r in missed]
     tomorrow = now + timedelta(days=1)
     due_tmrw = [r for r in open_tasks(db) if r["due"] == tomorrow.isoformat()]
     events, _ = calendar_events(tomorrow, tomorrow)
     if due_tmrw or events:
         lines.append("Tomorrow:")
-        lines += [f"  • #{r['id']} {r['title']}" for r in due_tmrw]
+        lines += [f"  • #{r['id']} {r['title']}{fmt_who(r)}" for r in due_tmrw]
         lines += ["  ◦ " + fmt_event(ev) for ev in events]
     if len(lines) == 1:
         lines.append("Quiet day — nothing logged, nothing due.")
@@ -619,6 +655,7 @@ def evening_post(db):
 
 HOME_HELP = """I keep the family's tasks, lists, and day plans. Examples:
 • we need to renew the car registration by friday
+• I need dylan to call the plumber by thursday / what's on gab's plate?
 • thursday we need to take the cat to the vet / done 3 / push #3 to monday
 • add milk and eggs to shopping / got the milk / show shopping list
 • what's on today? / this week? / show tasks
