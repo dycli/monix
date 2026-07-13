@@ -382,7 +382,14 @@
                   # guest to revalidate against the host. Confirmed empirically: an
                   # instrumented build that ls'd the dir each poll delivered fine,
                   # where the bare stat-loop hung — even with virtiofs cache=never.
+                  # Touch .ready every iteration: it doubles as the IDLE
+                  # heartbeat. A long-warm guest that wedges or dies stops
+                  # refreshing it, and the drainer (which requires a FRESH
+                  # .ready before claiming) recycles this VM instead of
+                  # delivering a task into a zombie — long-idle VMs were
+                  # observed to rot after ~10h with the unit still active.
                   while ! ls -1 "${guestTaskMount}" 2>/dev/null | grep -Fqx prompt.md; do
+                    touch ${guestTaskMount}/.ready
                     sleep 1
                   done
 

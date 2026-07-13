@@ -159,8 +159,17 @@
               install -d -m 0770 -o root -g users "$work"
             }
 
+            # A warm guest is ready only if its .ready marker is FRESH: the
+            # guest re-touches it every ~1s while waiting for a task, so a
+            # stale mtime means the guest's task runner wedged or died even
+            # though the VM unit still reports active (observed after ~10h
+            # idle). Claiming into such a zombie costs a stallTimeout and
+            # fails the task; recycling first costs nothing.
             warm_ready() {
-              [ -f "$work/.ready" ] && [ ! -L "$work/.ready" ]
+              local m
+              [ ! -L "$work/.ready" ] || return 1
+              m=$(stat -c %Y "$work/.ready" 2>/dev/null) || return 1
+              [ $(( $(date +%s) - m )) -le 60 ]
             }
 
             reset_creds() {
@@ -251,6 +260,7 @@
                 sleep 5
                 continue
               fi
+              vm_started=$(date +%s)
 
               # A running VMM is not necessarily ready to receive a task: its
               # guest may still be booting or its agent-task unit may not yet
@@ -289,6 +299,17 @@
                   sleep 2
                   if ! systemctl is-active --quiet microvm@${worker}.service; then
                     log "warm VM died while idle, recycling"
+                    continue 2
+                  fi
+                  if ! warm_ready; then
+                    log "warm VM stopped refreshing readiness while idle, recycling"
+                    continue 2
+                  fi
+                  # Preventive recycle: long-warm guests have been observed to
+                  # rot (~10h idle, unit still active, task runner unresponsive).
+                  # Refreshing the pool while idle is free — no task is waiting.
+                  if [ $(( $(date +%s) - vm_started )) -ge ${toString cfg.warmMaxAge} ]; then
+                    log "recycling warm VM after ${toString cfg.warmMaxAge}s idle (preventive)"
                     continue 2
                   fi
                   continue
@@ -351,8 +372,8 @@
               # The warm VM could have died while we waited. Delivering into a
               # dead VM would hang the task until the full taskTimeout, so if it
               # is gone, requeue the task and cycle a fresh warm boot instead.
-              if ! systemctl is-active --quiet microvm@${worker}.service; then
-                log "warm VM died before dispatch, requeueing $id"
+              if ! systemctl is-active --quiet microvm@${worker}.service || ! warm_ready; then
+                log "warm VM died or went stale before dispatch, requeueing $id"
                 if [ -n "$context_running" ]; then
                   mv -f "$context_running" "$queue/$id.context.tar.zst" 2>/dev/null || true
                 fi
@@ -427,7 +448,17 @@
                   last_progress=$now
                 fi
                 if [ $(( now - last_progress )) -ge ${toString cfg.stallTimeout} ]; then
-                  log "STALLED $id (no heartbeat for ${toString cfg.stallTimeout}s)"
+                  # No heartbeat EVER means the guest never picked the task up
+                  # (heartbeats start immediately after pickup) — a pool/VM
+                  # fault, not a task fault. Requeue once so the task retries
+                  # on the fresh VM this recycle produces; the marker bounds a
+                  # systemic failure to one retry instead of an endless loop.
+                  if [ "$last_hb" = 0 ] && [ ! -e "${tasksDir}/.requeued/$id" ]; then
+                    status=requeue
+                    log "STALLED $id before pickup (no heartbeat ever), requeueing once"
+                  else
+                    log "STALLED $id (no heartbeat for ${toString cfg.stallTimeout}s)"
+                  fi
                   break
                 fi
                 if [ "$now" -ge "$hard_deadline" ]; then
@@ -616,6 +647,18 @@
               stop_vm
               reset_creds
 
+              if [ "$status" = requeue ]; then
+                install -d "${tasksDir}/.requeued"
+                touch "${tasksDir}/.requeued/$id"
+                if [ -n "$context_running" ]; then
+                  mv -f "$context_running" "$queue/$id.context.tar.zst" 2>/dev/null || true
+                fi
+                mv -f "$running/$id.md" "$queue/$id.md" 2>/dev/null || true
+                rm -rf "$live" "$guidance_task"
+                reset_work
+                continue
+              fi
+
               if [ "$status" = done ]; then
                 out=${tasksDir}/done/$id
               else
@@ -662,6 +705,7 @@
               done
               rm -rf "$live"
               rm -f "$steer_spool/$id".message-*.md "$answer_spool/$id".answer-*.md
+              rm -f "${tasksDir}/.requeued/$id"
               [ -n "$context_running" ] && rm -f "$context_running"
               rm -rf "$guidance_task"
               reset_work
@@ -697,6 +741,13 @@
         default = 120; # 2 min — the guest heartbeats every ~15s while alive, so a
         # 2-min gap means the VM/agent is genuinely dead, not merely quiet.
         description = "seconds with no guest heartbeat before a task is treated as stalled/dead and killed";
+      };
+
+      options.agentFleet.warmMaxAge = mkOption {
+        type = types.int;
+        default = 7200; # 2h — long-warm guests rot (observed ~10h idle: unit
+        # active, task runner unresponsive); refreshing an idle VM is free.
+        description = "seconds an idle warm VM may live before it is preventively destroyed and rebooted";
       };
 
       options.agentFleet.taskTimeout = mkOption {
