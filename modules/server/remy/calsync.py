@@ -26,7 +26,7 @@ import sqlite3
 import sys
 import tempfile
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import caldav
@@ -108,7 +108,11 @@ def push_outbox(cal_cfg):
             ev.add("uid", f"remy-{r['id']}-{r['created_ts']}@remy.local")
             ev.add("summary", r["summary"])
             if len(r["start"]) > 10:
-                start = datetime.strptime(r["start"], "%Y-%m-%d %H:%M").replace(tzinfo=TZ)
+                # UTC on the wire: a bare TZID with no VTIMEZONE component
+                # is legal-ish and servers store it, but client UIs can
+                # silently not render it. Every client renders Z-times.
+                start = (datetime.strptime(r["start"], "%Y-%m-%d %H:%M")
+                         .replace(tzinfo=TZ).astimezone(timezone.utc))
                 ev.add("dtstart", start)
                 ev.add("dtend", start + timedelta(hours=1))
             else:
