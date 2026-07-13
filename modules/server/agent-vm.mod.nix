@@ -836,6 +836,10 @@
                 # and a drop-in can only clear it explicitly.
                 ExecStop = mkForce [ "" ];
                 KillSignal = "SIGKILL";
+                # systemd only treats the polite signals (TERM/HUP/INT/PIPE)
+                # as clean deaths; dying by our own KillSignal must be
+                # declared expected or the unit still records result=signal.
+                SuccessExitStatus = "SIGKILL";
                 TimeoutStopSec = mkForce 3; # vestigial backstop
                 # EPHEMERALITY — delete the volume images before every start;
                 # the runner's autoCreate recreates them blank (truncate +
