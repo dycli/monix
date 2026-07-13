@@ -43,18 +43,34 @@
       to add or update a tool, change the flake and have the captain rebuild. nixpkgs
       lags upstream for fast-moving tools — check what it carries before promising a
       version.
-    - Long-term memory is exposed at `~/cockpit/memory/` — plain markdown any model can
-      read. `MEMORY.md` is the index. The compatibility target currently lives under
-      Claude's state directory, but cockpit workflows use the neutral path. Memory holds
-      session-learned, non-derivable facts only; the monix repo and its docs are canonical.
+    - Long-term memory lives at `~/cockpit/memory/` — plain markdown any model can read
+      and write. `MEMORY.md` is the index (one terse line per memory); `HANDOFF.md` is
+      the current shift state. Memory holds session-learned, non-derivable facts only;
+      the monix repo and its docs are canonical, and engineering history belongs in git,
+      not memory. Resolved memories are deleted or moved to `memory/archive/` (kept
+      greppable, never loaded).
     - Deeper fleet docs: `~/ark/monix/docs/agent-fleet.md`.
+
+    ## Session start and shift change
+
+    At the START of any session (whatever the model or seat), read
+    `~/cockpit/memory/HANDOFF.md` and `~/cockpit/memory/MEMORY.md`, then open the
+    memories relevant to whatever you're about to touch. Don't wait to be told.
+
+    At SHIFT CHANGE — the captain says "shift change", a work session is wrapping up,
+    or context is about to be cleared — REWRITE `~/cockpit/memory/HANDOFF.md` in full
+    (replace, never append): what just happened, what's in flight (with ids/commits),
+    the next concrete actions, and any warnings for the next shift. Keep it under ~40
+    lines; anything durable graduates to a proper memory file instead. Update
+    `MEMORY.md`'s index line whenever a memory changes.
 
     ## Pre-flight — "launch the ship"
 
     When the captain says **launch the ship** (or asks for a pre-flight), orient before
     anything else:
 
-    1. Read `~/cockpit/memory/MEMORY.md` and open every memory relevant to active work.
+    1. Read `~/cockpit/memory/HANDOFF.md` and `~/cockpit/memory/MEMORY.md`, and open
+       every memory relevant to active work.
     2. Run `sudo -n -u fleet-operator fleet health` and then `fleet status` (each as a
        standalone command) for current health plus recent activity.
     3. Report in a few lines: ship status, drone-fleet health, the open backlog and
@@ -106,6 +122,24 @@
       explicitly what could not be verified.
     - Preserve unrelated worktree changes. Commit plain messages only; push only when the
       captain explicitly says to push.
+
+    ## Economics
+
+    Both subscription pools (Claude, ChatGPT) are capped; cost is opportunity cost —
+    which pool a task drains and how scarce that pool is. The strongest frontier model's
+    time is the scarcest capacity: spend it on judgment-dense work (planning, debugging,
+    root-cause analysis, final review) and push everything else down.
+
+    Capability is a floor, not a dial: pick the cheapest model that clears the task's bar
+    WITH MARGIN, and never trade capability for cost — a failed cheap attempt costs the
+    redo plus review plus latency. When unsure, go up a tier; if a model fails a task,
+    escalate rather than retrying at the same tier. Delegate freely where output is cheap
+    to verify (builds, tests, reviewable diffs); keep work where verification costs as
+    much as doing it. Rough routing: small/fast models for mechanical fully-specified
+    work; mid-tier for routine implementation from a clear spec; GPT-5.6 Sol via codex
+    for substantial standalone coding and independent second opinions (ChatGPT pool);
+    local/ models for bulk low-stakes volume; the top Claude tier for work that needs
+    session context and real judgment. `ship-costs` shows month-to-date burn per pool.
 
     ## Dispatching
 

@@ -30,11 +30,43 @@
           text = "@AGENTS.md\n";
         };
 
-        # Vendor-neutral path for durable cockpit memory. Preserve the
-        # existing storage location so historical memory remains available.
-        home.file."cockpit/memory".source = config.lib.file.mkOutOfStoreSymlink (
-          "/home/${osConfig.primaryUser}/.claude/projects/-home-max-cockpit/memory"
-        );
+        # Durable cockpit memory lives at the vendor-neutral path for real:
+        # ~/cockpit/memory is the actual directory (mutable state, not managed
+        # here). Claude's per-project auto-memory location is a symlink INTO
+        # it, so the Claude harness reads/writes the same files every other
+        # frontend sees — no vendor owns the storage.
+        home.file.".claude/projects/-home-max-cockpit/memory" = {
+          force = true;
+          source = config.lib.file.mkOutOfStoreSymlink (
+            "/home/${osConfig.primaryUser}/cockpit/memory"
+          );
+        };
+
+        # Claude Code project permissions, declarative so the allowlist can
+        # never drift from what AGENTS.md promises ("fleet commands are
+        # pre-authorized"). The whole scoped-sudo fleet hop is allowed as one
+        # prefix: the immutable fleet tool itself is the boundary, so listing
+        # subcommands here would only re-create drift when the tool grows one.
+        # Everything else is read-only or build-sandboxed.
+        home.file."cockpit/.claude/settings.json" = {
+          force = true;
+          text = builtins.toJSON {
+            permissions.allow = [
+              "Bash(sudo -n -u fleet-operator fleet *)"
+              "Bash(fleet dispatch *)"
+              "Bash(ship-status)"
+              "Bash(ship-costs*)"
+              "Bash(nix build *)"
+              "Bash(nix eval *)"
+              "Bash(nix flake *)"
+              "Bash(nix run nixpkgs#shellcheck *)"
+              "Read(//home/max/ark/monix/**)"
+              "WebFetch(domain:github.com)"
+              "WebSearch"
+              "SendUserFile"
+            ];
+          };
+        };
 
         # /launch — Claude-specific shortcut for the vendor-neutral spoken
         # "launch the ship" pre-flight in AGENTS.md.
@@ -47,13 +79,31 @@
 
             Run the pre-flight ("launch the ship") from AGENTS.md:
 
-            1. Read `~/cockpit/memory/MEMORY.md` and open every
-               memory relevant to active or open work.
+            1. Read `~/cockpit/memory/HANDOFF.md` (current shift state) and
+               `~/cockpit/memory/MEMORY.md`, and open every memory relevant
+               to active or open work.
             2. Run `sudo -n -u fleet-operator fleet health` and then `fleet status`
                (each standalone, never chained).
             3. Report in a few lines: ship status, drone-fleet health, the open backlog
                and loose ends, and anything time-sensitive. Then hold for a heading from
                the captain — don't start work unprompted.
+          '';
+        };
+
+        # /handoff — Claude-specific shortcut for the vendor-neutral spoken
+        # "shift change" in AGENTS.md.
+        home.file."cockpit/.claude/commands/handoff.md" = {
+          force = true;
+          text = ''
+            ---
+            description: Shift change — rewrite the memory handoff for the next session
+            ---
+
+            Run the shift change from AGENTS.md: REWRITE `~/cockpit/memory/HANDOFF.md`
+            in full (replace, never append) — what just happened, what's in flight
+            (ids/commits), next concrete actions, warnings for the next shift. Under
+            ~40 lines; durable facts graduate to memory files (update their MEMORY.md
+            index lines). Then confirm the handoff is written in one line.
           '';
         };
       };
