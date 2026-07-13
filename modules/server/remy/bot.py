@@ -103,6 +103,16 @@ def home_db():
             done_ts INTEGER,                -- NULL = still needed
             deleted INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS reminder(
+            id INTEGER PRIMARY KEY,
+            text TEXT NOT NULL,
+            at TEXT NOT NULL,               -- local 'yyyy-mm-dd HH:MM'
+            assignee TEXT NOT NULL DEFAULT '',  -- '' = whole household
+            created_by TEXT NOT NULL,
+            created_ts INTEGER NOT NULL,
+            fired_ts INTEGER,               -- NULL = pending
+            deleted INTEGER NOT NULL DEFAULT 0
+        );
         CREATE TABLE IF NOT EXISTS processed(event_id TEXT PRIMARY KEY, ts INTEGER);
         CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
     """)
@@ -294,10 +304,13 @@ HOME_ACTION = {
         "intent": {"type": "string",
                    "enum": ["task_add", "task_done", "task_edit", "task_snooze",
                             "task_delete", "task_restore", "tasks_show",
+                            "remind_add", "remind_cancel", "remind_show",
                             "item_add", "item_done", "item_remove", "list_show",
                             "list_clear", "post_now", "help", "other"]},
         "title": {"type": "string"},
         "due": {"type": "string"},
+        "at": {"type": "string"},
+        "rem_id": {"type": "integer"},
         "assignee": {"type": "string"},
         "task_id": {"type": "integer"},
         "new_title": {"type": "string"},
@@ -314,9 +327,9 @@ HOME_ACTION = {
     # Every field required: with a grammar-constrained lazy model, optional
     # fields simply never get emitted (budgetbot live finding). Unused
     # fields carry "" / 0 / [].
-    "required": ["intent", "title", "due", "assignee", "task_id", "new_title",
-                 "new_due", "new_assignee", "scope", "list_name", "items",
-                 "item_id", "kind", "reply"],
+    "required": ["intent", "title", "due", "at", "rem_id", "assignee",
+                 "task_id", "new_title", "new_due", "new_assignee", "scope",
+                 "list_name", "items", "item_id", "kind", "reply"],
 }
 
 # One message can carry several actions ("by EOD we need X, and by friday
@@ -337,6 +350,7 @@ def home_parse(db, sender_name, text):
         "SELECT * FROM task WHERE deleted=1 ORDER BY id DESC LIMIT 5"))
     items = "\n".join(f"#{r['id']} [{r['list_name']}] {r['name']}"
                       for r in open_items(db)) or "(none)"
+    reminders = "\n".join(fmt_reminder(r) for r in pending_reminders(db)) or "(none)"
     system = f"""You classify one message from a family household-organizer chat into a JSON list of actions.
 A message may contain SEVERAL actions ("by today we need X, and by friday Y"
 = two task_adds; "add milk, and remind us to call the vet thursday" =
@@ -349,6 +363,8 @@ Recently deleted tasks (restorable):
 {deleted or "(none)"}
 Open list items (id [list] name):
 {items}
+Pending reminders (id time text):
+{reminders}
 
 Rules:
 - Something the family needs to do ("we need to X by Friday", "X by today/EOD",
@@ -366,6 +382,15 @@ Rules:
   ("give #3 to gab") => task_edit with task_id and only the changed
   new_title/new_due/new_assignee.
 - Removing a task => task_delete + task_id; bringing one back => task_restore.
+- Wanting a PING at a specific moment ("remind me at 5 to leave", "remind us
+  thursday at 9am to put the bins out", "tomorrow morning remind me to X")
+  => remind_add with title (the thing, short) and at as 'yyyy-mm-dd HH:MM'
+  24h local (resolve like due dates; morning=09:00, noon=12:00,
+  afternoon=15:00, evening/tonight=19:00; bare "at 5" after noon means
+  17:00). assignee as for tasks ("remind me" = the author, "remind us" = "").
+  A DAY deadline with no clock time ("by friday") stays a task_add, NOT a
+  reminder. Cancelling one => remind_cancel with rem_id from the pending
+  list above; "what reminders are set" => remind_show.
 - Adding to a list ("add milk and eggs to shopping", "put batteries on the
   hardware list") => item_add with list_name (short, lowercase; default
   "shopping" for groceries-like things) and items = each thing separately.
@@ -403,6 +428,62 @@ def valid_date(s):
 def valid_assignee(s):
     s = (s or "").strip().lower()
     return s if s in FAMILY else ""
+
+
+# ---------------------------------------------------------------- reminders
+
+def pending_reminders(db):
+    return db.execute(
+        "SELECT * FROM reminder WHERE deleted=0 AND fired_ts IS NULL "
+        "ORDER BY at").fetchall()
+
+
+def fmt_reminder(r):
+    d = date.fromisoformat(r["at"][:10])
+    day = ("today" if d == today() else "tomorrow" if d == today() + timedelta(days=1)
+           else d.strftime("%a %b %-d"))
+    who = f" — {r['assignee']}" if r["assignee"] else ""
+    return f"#{r['id']} {day} {r['at'][11:]} {r['text']}{who}"
+
+
+def valid_at(s):
+    """Normalize a 'yyyy-mm-dd HH:MM' (or ISO T) local timestamp, else ''."""
+    try:
+        return datetime.strptime((s or "").strip().replace("T", " ")[:16],
+                                 "%Y-%m-%d %H:%M").strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return ""
+
+
+def do_remind_add(db, act, sender):
+    text = (act.get("title") or "").strip()[:120]
+    at = valid_at(act.get("at"))
+    if not text or not at:
+        return "Remind who to do what, when? ('remind me thursday at 9 to call the vet')"
+    if at < datetime.now(TZ).strftime("%Y-%m-%d %H:%M"):
+        return f"{at} is already in the past — when should I actually ping?"
+    who = valid_assignee(act.get("assignee"))
+    db.execute("INSERT INTO reminder(text,at,assignee,created_by,created_ts)"
+               " VALUES(?,?,?,?,?)", (text, at, who, sender, int(time.time())))
+    db.commit()
+    r = db.execute("SELECT * FROM reminder ORDER BY id DESC LIMIT 1").fetchone()
+    return f"⏰ will do — {fmt_reminder(r)}"
+
+
+def do_remind_cancel(db, act):
+    r = db.execute("SELECT * FROM reminder WHERE id=? AND deleted=0 AND fired_ts IS NULL",
+                   (act.get("rem_id"),)).fetchone()
+    if not r:
+        return "Couldn't tell which reminder — use its #id ('cancel reminder 2')."
+    db.execute("UPDATE reminder SET deleted=1 WHERE id=?", (r["id"],))
+    db.commit()
+    return f"🗑 cancelled {fmt_reminder(r)}"
+
+
+def do_remind_show(db):
+    rows = pending_reminders(db)
+    return "Reminders set:\n" + ("\n".join("⏰ " + fmt_reminder(r) for r in rows)
+                                 or "(none)")
 
 
 def do_task_add(db, act, sender):
@@ -605,6 +686,10 @@ def morning_post(db):
     if due_today:
         lines.append("Today:")
         lines += [f"  • #{r['id']} {r['title']}{fmt_who(r)}" for r in due_today]
+    rems = [r for r in pending_reminders(db) if r["at"][:10] == now.isoformat()]
+    if rems:
+        lines.append("Reminders today:")
+        lines += [f"  ⏰ {r['at'][11:]} {r['text']}{fmt_who(r)}" for r in rems]
     events, note = calendar_events(now, now)
     if events:
         lines.append("Calendar:")
@@ -656,6 +741,7 @@ def evening_post(db):
 HOME_HELP = """I keep the family's tasks, lists, and day plans. Examples:
 • we need to renew the car registration by friday
 • I need dylan to call the plumber by thursday / what's on gab's plate?
+• remind me thursday at 9 to defrost the chicken / what reminders are set?
 • thursday we need to take the cat to the vet / done 3 / push #3 to monday
 • add milk and eggs to shopping / got the milk / show shopping list
 • what's on today? / this week? / show tasks
@@ -889,11 +975,18 @@ class Bot:
         self.client = AsyncClient(HS_URL, USER_ID)
         self.home_room = None
 
-    async def send(self, room_id, text, notify=False):
+    async def send(self, room_id, text, notify=False, mention=None):
         # Scheduled posts are m.text (they should ping phones); command
         # replies are m.notice (quieter, and other bots ignore notices).
-        await self.client.room_send(room_id, "m.room.message", {
-            "msgtype": "m.text" if notify else "m.notice", "body": text})
+        # mention: a FAMILY localpart for a personal ping, or "room" for
+        # everyone — MSC4142 m.mentions is what makes phones buzz.
+        content = {"msgtype": "m.text" if notify else "m.notice", "body": text}
+        if mention == "room":
+            content["m.mentions"] = {"room": True}
+        elif mention:
+            domain = self.client.user_id.split(":", 1)[1]
+            content["m.mentions"] = {"user_ids": [f"@{mention}:{domain}"]}
+        await self.client.room_send(room_id, "m.room.message", content)
 
     async def send_image(self, room_id, name, buf):
         data = buf.getvalue()
@@ -952,7 +1045,8 @@ class Bot:
         log.info("home %s: %r -> %s", sender, text,
                  [a.get("intent") for a in acts])
         MUTATORS = ("task_add", "task_done", "task_edit", "task_snooze",
-                    "task_delete", "task_restore", "item_add",
+                    "task_delete", "task_restore", "remind_add",
+                    "remind_cancel", "item_add",
                     "item_done", "item_remove", "list_clear")
         replies, mutated = [], []
         for act in acts[:8]:  # runaway-parse backstop
@@ -965,6 +1059,9 @@ class Bot:
                 "task_delete": lambda a=act: do_task_delete(self.hdb, a),
                 "task_restore": lambda a=act: do_task_restore(self.hdb, a),
                 "tasks_show": lambda a=act: do_tasks_show(self.hdb, a),
+                "remind_add": lambda a=act: do_remind_add(self.hdb, a, sender),
+                "remind_cancel": lambda a=act: do_remind_cancel(self.hdb, a),
+                "remind_show": lambda: do_remind_show(self.hdb),
                 "item_add": lambda a=act: do_item_add(self.hdb, a, sender),
                 "item_done": lambda a=act: do_item_done(self.hdb, a),
                 "item_remove": lambda a=act: do_item_remove(self.hdb, a),
@@ -1051,6 +1148,23 @@ class Bot:
                         await self.send(self.home_room, make(self.hdb), notify=True)
                     except Exception:
                         log.exception("%s post failed", key)
+            # Reminders due now (or missed while down — fired late, once,
+            # flagged with the time they were meant for).
+            due_now = f"{day} {hhmm}"
+            for r in pending_reminders(self.hdb):
+                if r["at"] > due_now:
+                    break  # sorted by at
+                late = r["at"] < (now - timedelta(minutes=2)).strftime("%Y-%m-%d %H:%M")
+                msg = (f"⏰ {'@' + r['assignee'] + ': ' if r['assignee'] else ''}{r['text']}"
+                       f"{' (meant for ' + r['at'] + ')' if late else ''}")
+                try:
+                    await self.send(self.home_room, msg, notify=True,
+                                    mention=r["assignee"] or "room")
+                    self.hdb.execute("UPDATE reminder SET fired_ts=? WHERE id=?",
+                                     (int(time.time()), r["id"]))
+                    self.hdb.commit()
+                except Exception:
+                    log.exception("reminder %s failed", r["id"])
             # Budget: Sunday check-in / stale-entry nag (budgetbot behavior,
             # including its meta key — the last stamp carries over).
             if now.hour == BUDGET_REMIND_HOUR and BUDGET_ROOM_ID \
