@@ -301,6 +301,10 @@ def calendar_events(day_from, day_to):
         if day_from <= d <= day_to:
             out.append(ev)
     out.sort(key=lambda e: e["start"])
+    # The source tag ("— dylan") only earns its ink when several named
+    # calendars are in play; a single shared calendar tags nothing.
+    if len({e.get("calendar") for e in out}) <= 1:
+        out = [{**e, "calendar": ""} for e in out]
     note = ""
     fetched = data.get("fetched_at", 0)
     if fetched and time.time() - fetched > 24 * 3600:
