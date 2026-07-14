@@ -27,6 +27,7 @@ Design constraints (inherited from budgetbot):
 """
 
 import asyncio
+import html
 import io
 import json
 import logging
@@ -1096,13 +1097,21 @@ class Bot:
         # Scheduled posts are m.text (they should ping phones); command
         # replies are m.notice (quieter, and other bots ignore notices).
         # mention: a FAMILY localpart for a personal ping, or "room" for
-        # everyone — MSC4142 m.mentions is what makes phones buzz.
+        # everyone. A real mention is two things: m.mentions (the push
+        # signal) AND a matrix.to pill in formatted_body (what clients
+        # render/highlight) — plain "@name" text does neither.
         content = {"msgtype": "m.text" if notify else "m.notice", "body": text}
         if mention == "room":
             content["m.mentions"] = {"room": True}
         elif mention:
             domain = self.client.user_id.split(":", 1)[1]
-            content["m.mentions"] = {"user_ids": [f"@{mention}:{domain}"]}
+            user_id = f"@{mention}:{domain}"
+            content["m.mentions"] = {"user_ids": [user_id]}
+            escaped = html.escape(text).replace("\n", "<br/>")
+            pill = f'<a href="https://matrix.to/#/{user_id}">@{mention}</a>'
+            content["format"] = "org.matrix.custom.html"
+            content["formatted_body"] = escaped.replace(
+                html.escape(f"@{mention}"), pill, 1)
         await self.client.room_send(room_id, "m.room.message", content)
 
     async def send_image(self, room_id, name, buf):
