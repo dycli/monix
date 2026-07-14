@@ -95,12 +95,18 @@
           CLAUDE_CODE_OAUTH_TOKEN=$(cat "$CREDENTIALS_DIRECTORY/claude-token")
           export CLAUDE_CODE_OAUTH_TOKEN
           slot=morning; [ "$(date +%H)" -ge 12 ] && slot=evening
+          # Prompt over stdin: --allowedTools is variadic and would eat a
+          # positional prompt argument (bit us live: "Input must be
+          # provided either through stdin or as a prompt argument").
           text=$(claude -p \
             --model ${lib.escapeShellArg cfg.model} \
-            --allowedTools "WebSearch" "WebFetch" \
-            "$(cat ${./newsbot/prompt.md})
+            --allowedTools "WebSearch,WebFetch" \
+            <<EOF
+          $(cat ${./newsbot/prompt.md})
 
-          This is the $slot digest. Right now it is $(date '+%A %B %-d %Y, %H:%M %Z').")
+          This is the $slot digest. Right now it is $(date '+%A %B %-d %Y, %H:%M %Z').
+          EOF
+          )
           [ -n "$text" ] || { echo "empty digest from claude" >&2; exit 1; }
           header="📰 $(date '+%A %b %-d') — $slot digest"
 
