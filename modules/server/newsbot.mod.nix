@@ -97,7 +97,7 @@
           slot=morning; [ "$(date +%H)" -ge 12 ] && slot=evening
           text=$(claude -p \
             --model ${lib.escapeShellArg cfg.model} \
-            --allowedTools "WebSearch" \
+            --allowedTools "WebSearch" "WebFetch" \
             "$(cat ${./newsbot/prompt.md})
 
           This is the $slot digest. Right now it is $(date '+%A %B %-d %Y, %H:%M %Z').")
