@@ -1,6 +1,6 @@
 """remy — the family's household chat bot.
 
-One bot, two rooms, room-scoped skills:
+One bot, three rooms, room-scoped skills:
 
   - "Household" (created by the bot on first start, family invited):
     tasks with due dates and named lists in plain language ("we need to
@@ -10,6 +10,12 @@ One bot, two rooms, room-scoped skills:
     the Monday–Sunday week starting next day), folding in the family
     calendar (calendar.json, written by the separate remy-calendar-sync
     unit — this process never leaves loopback).
+
+  - "Scratchpad" (created on first start with scratch users configured,
+    captain only): the household skill set against its OWN database
+    (scratch.db) — notes, reminders, tasks, quick lists — with NO calendar:
+    nothing mirrors to CalDAV, no calendar sections in views, and no
+    scheduled posts (reminders still fire; summaries on demand).
 
   - "Budget" (the pre-existing room; remy absorbed budgetbot 2026-07-13):
     the complete budgetbot skill set against the same ledger at
@@ -38,6 +44,7 @@ import sqlite3
 import subprocess
 import time
 from datetime import date, datetime, timedelta
+from functools import partial
 from zoneinfo import ZoneInfo
 
 import requests
@@ -52,6 +59,9 @@ PASSWORD = os.environ["MATRIX_PASSWORD"]
 INVITE_USERS = [u for u in os.environ.get("BOT_INVITE_USERS", "").split(",") if u]
 ROOM_NAME = os.environ.get("BOT_ROOM_NAME", "Household")
 BUDGET_ROOM_ID = os.environ.get("BOT_BUDGET_ROOM_ID", "")
+SCRATCH_ROOM_NAME = os.environ.get("BOT_SCRATCH_ROOM_NAME", "Scratchpad")
+SCRATCH_USERS = [u for u in os.environ.get("BOT_SCRATCH_USERS", "").split(",") if u]
+SCRATCH_DB_PATH = os.environ.get("BOT_SCRATCH_DB", "/var/lib/remy/scratch.db")
 LLM_URL = os.environ.get("LLM_URL", "http://127.0.0.1:8091/v1/chat/completions")
 LLM_MODEL = os.environ.get("LLM_MODEL", "qwen3.6-35b-a3b")
 DB_PATH = os.environ.get("BOT_DB", "/var/lib/remy/home.db")
@@ -73,17 +83,27 @@ START_MS = int(time.time() * 1000)
 
 # ---------------------------------------------------------------- databases
 
+class Conn(sqlite3.Connection):
+    # .cal: whether this database's events/tasks/reminders mirror onto the
+    # family calendar. True for the household; the scratchpad deliberately
+    # has no calendar link, so everything downstream of queue_cal no-ops.
+    cal = True
+
+
 def connect(path):
     # check_same_thread=False: llm parsing reads via asyncio.to_thread while
     # the event loop owns writes; CPython's sqlite3 is built in serialized
     # threading mode, so sharing one connection across threads is safe.
-    db = sqlite3.connect(path, check_same_thread=False)
+    db = sqlite3.connect(path, check_same_thread=False, factory=Conn)
     db.row_factory = sqlite3.Row
     return db
 
 
-def home_db():
-    db = connect(DB_PATH)
+def home_db(path=DB_PATH, cal=True):
+    # The scratchpad reuses this whole organizer schema against its own
+    # file, just with the calendar unwired.
+    db = connect(path)
+    db.cal = cal
     db.executescript("""
         CREATE TABLE IF NOT EXISTS task(
             id INTEGER PRIMARY KEY,
@@ -193,8 +213,10 @@ def git_snapshot(db, db_path, reason):
         if not os.path.isdir(os.path.join(hist, ".git")):
             subprocess.run(["git", "init", "-q"], cwd=hist, check=True)
         # budgetbot's history file was ledger.sql; keep appending to it so
-        # the ledger's history stays one unbroken series.
-        name = "ledger.sql" if db_path == BUDGET_DB_PATH else "home.sql"
+        # the ledger's history stays one unbroken series. home.db and
+        # scratch.db share /var/lib/remy/history under their own names.
+        name = ("ledger.sql" if db_path == BUDGET_DB_PATH
+                else os.path.basename(db_path).replace(".db", ".sql"))
         with open(os.path.join(hist, name), "w") as f:
             for line in db.iterdump():
                 f.write(line + "\n")
@@ -379,7 +401,18 @@ def home_parse(db, sender_name, text):
     items = "\n".join(f"#{r['id']} [{r['list_name']}] {r['name']}"
                       for r in open_items(db)) or "(none)"
     reminders = "\n".join(fmt_reminder(r) for r in pending_reminders(db)) or "(none)"
-    system = f"""You classify one message from a family household-organizer chat into a JSON list of actions.
+    chat_desc = ("family household-organizer chat" if db.cal else
+                 "personal scratchpad chat (one person and the bot: quick "
+                 "notes, reminders, tasks, lists)")
+    cal_rule = """- An APPOINTMENT/EVENT to go on the family calendar ("put the dentist on
+  the calendar tuesday at 3", "add gab's recital to the calendar friday",
+  "we have dinner with the smiths saturday 7pm") => cal_add with title and
+  at ('yyyy-mm-dd HH:MM', or just 'yyyy-mm-dd' for an all-day event).
+  Calendar = something happening; task = something to do; reminder = a ping.""" if db.cal else """- NO calendar is linked here: an appointment/event ("dentist tuesday at 3")
+  => task_add with its due date, never cal_add. Jotting something down to
+  keep ("note: the wifi password is X", "jot down that gate code", any
+  keep-this with no date and no time) => item_add with list_name "notes"."""
+    system = f"""You classify one message from a {chat_desc} into a JSON list of actions.
 A message may contain SEVERAL actions ("by today we need X, and by friday Y"
 = two task_adds; "add milk, and remind us to call the vet thursday" =
 item_add + task_add) — emit one action object per thing, in message order.
@@ -424,11 +457,7 @@ Rules:
   A DAY deadline with no clock time ("by friday") stays a task_add, NOT a
   reminder. Cancelling one => remind_cancel with rem_id from the pending
   list above; "what reminders are set" => remind_show.
-- An APPOINTMENT/EVENT to go on the family calendar ("put the dentist on
-  the calendar tuesday at 3", "add gab's recital to the calendar friday",
-  "we have dinner with the smiths saturday 7pm") => cal_add with title and
-  at ('yyyy-mm-dd HH:MM', or just 'yyyy-mm-dd' for an all-day event).
-  Calendar = something happening; task = something to do; reminder = a ping.
+{cal_rule}
 - Adding to a list ("add milk and eggs to shopping", "put batteries on the
   hardware list") => item_add with list_name (short, lowercase; default
   "shopping" for groceries-like things) and items = each thing separately.
@@ -525,7 +554,10 @@ def queue_cal(db, op, uid, summary="", start="", sender=""):
     (a systemd path unit watches the flag file); it hits Migadu within
     seconds. Tasks and reminders mirror onto the calendar through here
     with deterministic uids, so moving/finishing them updates the event.
+    A calendar-less database (the scratchpad) mirrors nothing.
     """
+    if not db.cal:
+        return
     db.execute("INSERT INTO cal_outbox(op,uid,summary,start,created_by,created_ts)"
                " VALUES(?,?,?,?,?,?)", (op, uid, summary, start, sender, int(time.time())))
     db.commit()
@@ -780,7 +812,7 @@ def week_section(db, start, title="📅 Week ahead:"):
     end = start + timedelta(days=6 - start.weekday())
     tasks = [r for r in open_tasks(db)
              if r["due"] and start.isoformat() <= r["due"] <= end.isoformat()]
-    events, _ = calendar_events(start, end)
+    events, _ = calendar_events(start, end) if db.cal else ([], "")
     if not tasks and not events:
         return f"{title} clear so far."
     by_day = {}
@@ -811,7 +843,7 @@ def morning_post(db):
     if rems:
         lines.append("Reminders today:")
         lines += [f"  ⏰ {r['at'][11:]} {r['text']}{fmt_who(r)}" for r in rems]
-    events, note = calendar_events(now, now)
+    events, note = calendar_events(now, now) if db.cal else ([], "")
     if events:
         lines.append("Calendar:")
         lines += ["  ◦ " + fmt_event(ev) for ev in events]
@@ -847,7 +879,7 @@ def evening_post(db):
         lines += [f"  • #{r['id']} {r['title']}{fmt_who(r)}{fmt_due(r['due'])}" for r in missed]
     tomorrow = now + timedelta(days=1)
     due_tmrw = [r for r in open_tasks(db) if r["due"] == tomorrow.isoformat()]
-    events, _ = calendar_events(tomorrow, tomorrow)
+    events, _ = calendar_events(tomorrow, tomorrow) if db.cal else ([], "")
     if due_tmrw or events:
         lines.append("Tomorrow:")
         lines += [f"  • #{r['id']} {r['title']}{fmt_who(r)}" for r in due_tmrw]
@@ -871,6 +903,15 @@ HOME_HELP = """I keep the family's tasks, lists, and day plans. Examples:
 • morning/evening summary — ask any time; I post them at 7:00 and 19:00
 I also show the family calendar in those posts (synced from Migadu).
 (Money things live in the Budget room — I answer there too.)"""
+
+SCRATCH_HELP = """Your scratchpad — notes, reminders, tasks, quick lists. Examples:
+• note: the gate code is 4482 / show notes
+• remind me at 5 to leave / remind me thursday at 9 to call back / what reminders are set?
+• renew the passport by friday / done 3 / push #3 to monday
+• add batteries to hardware / show hardware list
+• what's on today? / this week? / show tasks
+No calendar here and no scheduled posts — ask when you want a summary.
+(The family calendar lives in the Household room.)"""
 
 
 # ================================================================ budget
@@ -1094,9 +1135,11 @@ BUDGET_HELP = """I file whatever you type into the ledger. Examples:
 class Bot:
     def __init__(self):
         self.hdb = home_db()
+        self.sdb = home_db(SCRATCH_DB_PATH, cal=False) if SCRATCH_USERS else None
         self.bdb = budget_db()
         self.client = AsyncClient(HS_URL, USER_ID)
         self.home_room = None
+        self.scratch_room = None
 
     async def send(self, room_id, text, notify=False, mention=None):
         # Scheduled posts are m.text (they should ping phones); command
@@ -1137,7 +1180,9 @@ class Bot:
         if event.sender == self.client.user_id:
             return
         if room.room_id == self.home_room:
-            handler = self.handle_home
+            handler = partial(self.handle_home, self.hdb)
+        elif self.scratch_room and room.room_id == self.scratch_room:
+            handler = partial(self.handle_home, self.sdb)
         elif room.room_id == BUDGET_ROOM_ID:
             handler = self.handle_budget
         else:
@@ -1166,15 +1211,15 @@ class Bot:
             log.exception("action failed")
             await self.send(room.room_id, "(something broke doing that — it's logged)")
 
-    async def handle_home(self, room_id, sender, event, text):
+    async def handle_home(self, db, room_id, sender, event, text):
         try:
-            acts = await asyncio.to_thread(home_parse, self.hdb, sender, text)
+            acts = await asyncio.to_thread(home_parse, db, sender, text)
         except Exception:
             log.exception("parse failed")
             await self.send(room_id, "(I choked parsing that — try again?)")
             return
-        log.info("home %s: %r -> %s", sender, text,
-                 [a.get("intent") for a in acts])
+        log.info("%s %s: %r -> %s", "home" if db is self.hdb else "scratch",
+                 sender, text, [a.get("intent") for a in acts])
         MUTATORS = ("task_add", "task_done", "task_edit", "task_snooze",
                     "task_delete", "task_restore", "cal_add", "remind_add",
                     "remind_cancel", "item_add",
@@ -1183,32 +1228,34 @@ class Bot:
         for act in acts[:8]:  # runaway-parse backstop
             intent = act.get("intent")
             handlers = {
-                "task_add": lambda a=act: do_task_add(self.hdb, a, sender),
-                "task_done": lambda a=act: do_task_done(self.hdb, a, sender),
-                "task_edit": lambda a=act: do_task_edit(self.hdb, a),
-                "task_snooze": lambda a=act: do_task_snooze(self.hdb, a),
-                "task_delete": lambda a=act: do_task_delete(self.hdb, a),
-                "task_restore": lambda a=act: do_task_restore(self.hdb, a),
-                "tasks_show": lambda a=act: do_tasks_show(self.hdb, a),
-                "cal_add": lambda a=act: do_cal_add(self.hdb, a, sender),
-                "remind_add": lambda a=act: do_remind_add(self.hdb, a, sender),
-                "remind_cancel": lambda a=act: do_remind_cancel(self.hdb, a),
-                "remind_show": lambda: do_remind_show(self.hdb),
-                "item_add": lambda a=act: do_item_add(self.hdb, a, sender),
-                "item_done": lambda a=act: do_item_done(self.hdb, a),
-                "item_remove": lambda a=act: do_item_remove(self.hdb, a),
-                "list_show": lambda a=act: do_list_show(self.hdb, a),
-                "list_clear": lambda a=act: do_list_clear(self.hdb, a),
+                "task_add": lambda a=act: do_task_add(db, a, sender),
+                "task_done": lambda a=act: do_task_done(db, a, sender),
+                "task_edit": lambda a=act: do_task_edit(db, a),
+                "task_snooze": lambda a=act: do_task_snooze(db, a),
+                "task_delete": lambda a=act: do_task_delete(db, a),
+                "task_restore": lambda a=act: do_task_restore(db, a),
+                "tasks_show": lambda a=act: do_tasks_show(db, a),
+                "cal_add": lambda a=act: (
+                    do_cal_add(db, a, sender) if db.cal else
+                    "(no calendar here — calendar things live in the Household room)"),
+                "remind_add": lambda a=act: do_remind_add(db, a, sender),
+                "remind_cancel": lambda a=act: do_remind_cancel(db, a),
+                "remind_show": lambda: do_remind_show(db),
+                "item_add": lambda a=act: do_item_add(db, a, sender),
+                "item_done": lambda a=act: do_item_done(db, a),
+                "item_remove": lambda a=act: do_item_remove(db, a),
+                "list_show": lambda a=act: do_list_show(db, a),
+                "list_clear": lambda a=act: do_list_clear(db, a),
             }
             if intent in handlers:
                 replies.append(handlers[intent]())
             elif intent == "post_now":
                 kind = act.get("kind") or "morning"
-                make = {"week": lambda db: week_section(db, today()),
+                make = {"week": lambda d: week_section(d, today()),
                         "evening": evening_post}.get(kind, morning_post)
-                replies.append(make(self.hdb))
+                replies.append(make(db))
             elif intent == "help":
-                replies.append(HOME_HELP)
+                replies.append(HOME_HELP if db.cal else SCRATCH_HELP)
             elif intent == "other" and act.get("reply"):
                 replies.append(act["reply"][:400])
             if intent in MUTATORS:
@@ -1216,7 +1263,8 @@ class Bot:
         if replies:
             await self.send(room_id, "\n".join(replies))
         if mutated:
-            await asyncio.to_thread(git_snapshot, self.hdb, DB_PATH,
+            db_path = DB_PATH if db is self.hdb else SCRATCH_DB_PATH
+            await asyncio.to_thread(git_snapshot, db, db_path,
                                     f"{'+'.join(mutated)} by {sender}: {text[:60]}")
 
     async def handle_budget(self, room_id, sender, event, text):
@@ -1281,22 +1329,27 @@ class Bot:
                     except Exception:
                         log.exception("%s post failed", key)
             # Reminders due now (or missed while down — fired late, once,
-            # flagged with the time they were meant for).
+            # flagged with the time they were meant for). Household and
+            # scratchpad each ping their own room.
             due_now = f"{day} {hhmm}"
-            for r in pending_reminders(self.hdb):
-                if r["at"] > due_now:
-                    break  # sorted by at
-                late = r["at"] < (now - timedelta(minutes=2)).strftime("%Y-%m-%d %H:%M")
-                msg = (f"⏰ {'@' + r['assignee'] + ': ' if r['assignee'] else ''}{r['text']}"
-                       f"{' (meant for ' + r['at'] + ')' if late else ''}")
-                try:
-                    await self.send(self.home_room, msg, notify=True,
-                                    mention=r["assignee"] or "room")
-                    self.hdb.execute("UPDATE reminder SET fired_ts=? WHERE id=?",
-                                     (int(time.time()), r["id"]))
-                    self.hdb.commit()
-                except Exception:
-                    log.exception("reminder %s failed", r["id"])
+            rooms = [(self.hdb, self.home_room)]
+            if self.sdb and self.scratch_room:
+                rooms.append((self.sdb, self.scratch_room))
+            for db, room in rooms:
+                for r in pending_reminders(db):
+                    if r["at"] > due_now:
+                        break  # sorted by at
+                    late = r["at"] < (now - timedelta(minutes=2)).strftime("%Y-%m-%d %H:%M")
+                    msg = (f"⏰ {'@' + r['assignee'] + ': ' if r['assignee'] else ''}{r['text']}"
+                           f"{' (meant for ' + r['at'] + ')' if late else ''}")
+                    try:
+                        await self.send(room, msg, notify=True,
+                                        mention=r["assignee"] or "room")
+                        db.execute("UPDATE reminder SET fired_ts=? WHERE id=?",
+                                   (int(time.time()), r["id"]))
+                        db.commit()
+                    except Exception:
+                        log.exception("reminder %s failed", r["id"])
             # Budget: Sunday check-in / stale-entry nag (budgetbot behavior,
             # including its meta key — the last stamp carries over).
             if now.hour == BUDGET_REMIND_HOUR and BUDGET_ROOM_ID \
@@ -1344,6 +1397,22 @@ class Bot:
             self.home_room = resp.room_id
             meta_set(self.hdb, "room_id", self.home_room)
             log.info("created room %s (%s)", ROOM_NAME, self.home_room)
+        # The scratchpad: captain-only notes/reminders room, created the
+        # same way (its id lives in the household meta table).
+        self.scratch_room = meta_get(self.hdb, "scratch_room_id")
+        if SCRATCH_USERS and not self.scratch_room:
+            resp = await self.client.room_create(
+                name=SCRATCH_ROOM_NAME,
+                topic="Notes, reminders, and quick stuff — just us.",
+                invite=SCRATCH_USERS,
+                power_level_override={
+                    "users": {self.client.user_id: 100, SCRATCH_USERS[0]: 100}},
+            )
+            if not getattr(resp, "room_id", None):
+                raise SystemExit(f"scratchpad room create failed: {resp}")
+            self.scratch_room = resp.room_id
+            meta_set(self.hdb, "scratch_room_id", self.scratch_room)
+            log.info("created room %s (%s)", SCRATCH_ROOM_NAME, self.scratch_room)
         if BUDGET_ROOM_ID:
             # Idempotent; succeeds once the adopt oneshot has invited us,
             # no-ops on every later start, fails harmlessly before then.
@@ -1370,8 +1439,9 @@ class Bot:
         await self.ensure_rooms()
         self.client.add_event_callback(self.on_message, RoomMessageText)
         self.client.add_event_callback(self.on_invite, InviteMemberEvent)
-        log.info("remy up as %s (home %s, budget %s)",
-                 USER_ID, self.home_room, BUDGET_ROOM_ID or "-")
+        log.info("remy up as %s (home %s, scratch %s, budget %s)",
+                 USER_ID, self.home_room, self.scratch_room or "-",
+                 BUDGET_ROOM_ID or "-")
         asyncio.get_event_loop().create_task(self.scheduler())
         await self.client.sync_forever(timeout=30000, full_state=True)
 

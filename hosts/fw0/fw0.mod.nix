@@ -154,6 +154,9 @@ in
           "@dylan:chat.su.is"
           "@gab:chat.su.is"
         ];
+        # The captain's private scratchpad room — notes, reminders, quick
+        # lists; its own scratch.db, no calendar link, no scheduled posts.
+        remy.scratchpad.users = [ "@dylan:chat.su.is" ];
         # Migadu CalDAV section in the daily posts — bootstrap-gated: create
         # the JSON secret (see the option's description) as
         # hosts/fw0/secrets/remy-caldav.json.age, git add, switch.

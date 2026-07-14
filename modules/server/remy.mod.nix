@@ -1,10 +1,14 @@
 # remy aspect — the family's household chat bot (see remy/bot.py). One
-# Python service, two Matrix rooms, room-scoped skills:
+# Python service, three Matrix rooms, room-scoped skills:
 #
 #   - "Household" (created by the bot on first start, family invited):
 #     tasks with due dates and named lists in plain language, a morning
 #     plan (07:00) and evening report (19:00) with week-ahead sections,
 #     folding in the family's Migadu calendar.
+#   - "Scratchpad" (created on first start when scratchpad.users is set;
+#     captain only): the same organizer skills against a separate
+#     scratch.db — notes/reminders/quick lists — with no calendar link
+#     and no scheduled posts.
 #   - "Budget" (pre-existing): the complete budgetbot skill set against
 #     the same ledger at /var/lib/budgetbot/budget.db — remy ABSORBED
 #     budgetbot 2026-07-13 (its module is gone; the ledger, its git
@@ -232,6 +236,24 @@
           description = "Name of the room the bot creates on first start.";
         };
 
+        scratchpad.users = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          example = [ "@captain:chat.example.com" ];
+          description = ''
+            Users invited to the bot's personal scratchpad room (notes,
+            reminders, quick lists; own database, no calendar link, no
+            scheduled posts). The first entry gets admin power in the
+            room. Empty list = no scratchpad room.
+          '';
+        };
+
+        scratchpad.roomName = mkOption {
+          type = types.str;
+          default = "Scratchpad";
+          description = "Name of the scratchpad room the bot creates.";
+        };
+
         model = mkOption {
           type = types.str;
           default = "qwen3.6-35b-a3b";
@@ -351,6 +373,9 @@
             BOT_INVITE_USERS = lib.concatStringsSep "," cfg.inviteUsers;
             BOT_ROOM_NAME = cfg.roomName;
             BOT_BUDGET_ROOM_ID = cfg.budgetRoomId;
+            BOT_SCRATCH_ROOM_NAME = cfg.scratchpad.roomName;
+            BOT_SCRATCH_USERS = lib.concatStringsSep "," cfg.scratchpad.users;
+            BOT_SCRATCH_DB = "/var/lib/remy/scratch.db";
             LLM_URL = "http://127.0.0.1:${toString config.inference.port}/v1/chat/completions";
             LLM_MODEL = cfg.model;
             BOT_DB = "/var/lib/remy/home.db";
