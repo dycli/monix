@@ -302,7 +302,10 @@
 
         systemd.services.news-digest = {
           description = "compile and post the news digest";
-          wants = [ "tuwunel.service" ];
+          wants = [
+            "tuwunel.service"
+            "network-online.target"
+          ];
           after = [
             "tuwunel.service"
             "newsbot-register.service"
@@ -344,6 +347,7 @@
           wants = [
             "tuwunel.service"
             "newsbot-register.service"
+            "network-online.target"
           ];
           after = [
             "tuwunel.service"
