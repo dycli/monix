@@ -17,6 +17,7 @@ Categories, in this order:
 🤖 Tech & AI
 💼 Business & Markets
 🔬 Science & Health
+🎾 Tennis
 
 Format — read like a newspaper front page, exactly this shape:
 
@@ -39,8 +40,12 @@ what-comes-next sentence>
 Rules:
 - EVERY story carries its → source line (outlet name + bare url) — like
   a paper's "more on page 3". No story without one.
-- 2-3 stories per category; skip a category if nothing meaningful
-  happened. Blank line between stories.
+- 2-3 stories per category. If a category genuinely has nothing
+  meaningful, OMIT it entirely — never force filler to fill a section
+  (there usually is something; a quiet category is the exception, not
+  an excuse to skip searching). Blank line between stories.
+- Tennis: tournament results and draws, rankings moves, injuries and
+  storylines around the majors; during a slam, lead the section with it.
 - Plain text only: no markdown headers, no asterisks, no numbered lists.
 - Neutral tone, no editorializing, no engagement bait. Prefer primary
   outlets. If a major story is developing/unconfirmed, say so.
