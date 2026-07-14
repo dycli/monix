@@ -88,10 +88,20 @@
               "Bash(systemctl --user status*)"
               "Bash(systemctl --user list-units*)"
               "Read(//home/max/ark/monix/**)"
-              # Memory reads must never prompt during pre-flight; cover both
-              # the real directory and the auto-memory symlink into it.
+              # The flake is the cockpit's workspace and git is the undo:
+              # editing repo files must not prompt (commit/push authority is
+              # governed separately — push always asks).
+              "Edit(//home/max/ark/monix/**)"
+              "Write(//home/max/ark/monix/**)"
+              # Memory must never prompt — reads during pre-flight, writes
+              # during shift and at dock (HANDOFF rewrite, memory hygiene).
+              # Cover both the real directory and the auto-memory symlink.
               "Read(//home/max/cockpit/memory/**)"
+              "Edit(//home/max/cockpit/memory/**)"
+              "Write(//home/max/cockpit/memory/**)"
               "Read(//home/max/.claude/projects/-home-max-cockpit/memory/**)"
+              "Edit(//home/max/.claude/projects/-home-max-cockpit/memory/**)"
+              "Write(//home/max/.claude/projects/-home-max-cockpit/memory/**)"
               "WebFetch(domain:github.com)"
               "WebSearch"
               "SendUserFile"
