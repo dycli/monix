@@ -769,7 +769,9 @@ def do_list_clear(db, act):
 
 
 def week_section(db, start):
-    """Tasks due and calendar events for the 7 days from `start`, by day."""
+    """The 7 days from `start`: calendar events by day, then the week's
+    tasks as their own list (captain's preference over inlining them
+    into their due days)."""
     end = start + timedelta(days=6)
     tasks = [r for r in open_tasks(db)
              if r["due"] and start.isoformat() <= r["due"] <= end.isoformat()]
@@ -777,14 +779,15 @@ def week_section(db, start):
     if not tasks and not events:
         return "📅 Week ahead: clear so far."
     by_day = {}
-    for r in tasks:
-        by_day.setdefault(r["due"], []).append(f"• #{r['id']} {r['title']}{fmt_who(r)}")
     for ev in events:
         by_day.setdefault(ev["start"][:10], []).append("◦ " + fmt_event(ev))
     lines = ["📅 Week ahead:"]
     for d in sorted(by_day):
         lines.append(date.fromisoformat(d).strftime("%A %b %-d") + ":")
         lines += ["  " + s for s in by_day[d]]
+    if tasks:
+        lines.append("Tasks due:")
+        lines += ["  • " + fmt_task(r) for r in tasks]
     return "\n".join(lines)
 
 
