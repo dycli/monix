@@ -55,6 +55,7 @@
               "Bash(sudo -n -u fleet-operator fleet *)"
               "Bash(fleet dispatch *)"
               "Bash(ship-status)"
+              "Bash(ship-costs*)"
               "Bash(nix build *)"
               "Bash(nix eval *)"
               "Bash(nix flake *)"
