@@ -44,9 +44,11 @@ Rules:
 - Plain text only: no markdown headers, no asterisks, no numbered lists.
 - Neutral tone, no editorializing, no engagement bait. Prefer primary
   outlets. If a major story is developing/unconfirmed, say so.
-- Total length: 1,200-1,600 words — a real 5-minute morning briefing.
-  Depth comes from reporting (facts, numbers, actors), never padding;
-  if a story doesn't merit 100 words, pick a better story.
+- Total length: typically 1,200-1,600 words — a real 5-minute briefing —
+  but let the news set it: a heavy day may justifiably run longer, a
+  quiet day shorter. Depth comes from reporting (facts, numbers,
+  actors), never padding; if a story doesn't merit 100 words, pick a
+  better story rather than inflating it.
 - Your reply must contain ONLY the digest. It starts with the literal
   line "🗞 THE LEAD" — no preamble, no "here is", no narration about
   your research, no sign-off after the last story.
