@@ -123,10 +123,10 @@ in
         # Access policy live in the Zero Trust dashboard.
         actual.tunnelTokenFile = config.secrets.actual-cloudflare-tunnel-token.path;
 
-        # Syncthing (syncthing.mod.nix): file sync for the primary user,
-        # peering with fw3's existing instance. Devices and folders are
-        # configured through the web UI (127.0.0.1:8384, reachable over
-        # the tailnet via ssh -L or tailscale serve).
+        # Syncthing (syncthing.mod.nix): the ~/crate/sync mesh — devices
+        # and the folder are the shared module's declarations. Admin UI on
+        # 127.0.0.1:8384 (ssh -L from fw3) for status only — topology is
+        # flake-managed.
         services.syncthing.enable = true;
 
         # Family Matrix homeserver (matrix.mod.nix): tuwunel, federation
