@@ -10,7 +10,7 @@
       inherit (lib.lists) optionals;
     in
     {
-      # Users are declared here; passwords are set imperatively (`passwd`).
+      # Hosts provide password policy and credentials for their primary user.
       users.users.${config.primaryUser} = {
         isNormalUser = true;
         description = config.primaryUser;

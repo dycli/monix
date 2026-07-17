@@ -1,5 +1,5 @@
 {
-  flake.commonModules.boot =
+  flake.nixosModules.boot =
     { lib, ... }:
     let
       inherit (lib.modules) mkDefault;

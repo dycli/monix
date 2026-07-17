@@ -9,8 +9,7 @@ There is no central module list. A file's directory is organisational only.
 Each `*.mod.nix` is a flake-parts module. It typically registers one or more
 *aspects* into a collection:
 
-- `flake.commonModules.<name>` — imported by every host (base/cross-cutting).
-- `flake.nixosModules.<name>`  — NixOS aspects (provided collection).
+- `flake.nixosModules.<name>`  — NixOS aspects imported by every host.
 - `flake.homeModules.<name>`   — Home Manager aspects, applied to the primary user.
 
 A single concern file may register several aspects at once — e.g. `hyprland.mod.nix`
@@ -18,8 +17,9 @@ defines both `nixosModules.hyprland` (compositor) and `homeModules.hyprland`
 (session). Group files by concern, not by aspect target; there is no `home/`
 directory.
 
-Hosts in `hosts/<name>/<name>.mod.nix` compose these via
-`attrValues self.commonModules ++ attrValues self.nixosModules`.
+Hosts in `hosts/<name>/<name>.mod.nix` define their
+`flake.nixosConfigurations.<name>` directly and import
+`attrValues self.nixosModules`.
 
 `self` and `inputs` are flake-parts top-level module arguments. Inner aspect
 modules close over them lexically; they are not passed through NixOS specialArgs.

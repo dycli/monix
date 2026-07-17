@@ -74,16 +74,10 @@
     inputs.flake-parts.lib.mkFlake
       {
         inherit inputs;
-        specialArgs.lib = import ./lib inputs.nixpkgs.lib;
       }
       (
         { lib, ... }:
         {
-          systems = [
-            "x86_64-linux"
-            "aarch64-linux"
-          ];
-
           # The Dendritic Pattern: every `*.mod.nix` file in the tree is a
           # flake-parts module and is imported automatically. There is no
           # central list of modules to maintain.

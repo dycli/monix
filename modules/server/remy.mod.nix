@@ -36,7 +36,7 @@
 #
 # DATA. /var/lib/remy/home.db (organizer) + /var/lib/budgetbot/budget.db
 # (ledger, path unchanged from budgetbot). Both on the list for the
-# pending off-host backup design (with tuwunel/actual).
+# pending off-host backup design (with tuwunel).
 {
   flake.nixosModules.remy =
     {

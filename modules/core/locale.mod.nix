@@ -1,5 +1,5 @@
 {
-  flake.commonModules.locale =
+  flake.nixosModules.locale =
     { lib, ... }:
     let
       inherit (lib.modules) mkDefault;

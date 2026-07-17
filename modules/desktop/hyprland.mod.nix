@@ -191,10 +191,9 @@
           package = null;
           portalPackage = null;
 
-          # UWSM owns the systemd session (see the NixOS-level
-          # `programs.hyprland.withUWSM` / `programs.uwsm.waylandCompositors.hyprland`
-          # in the nixosModules.hyprland aspect above): the "Hyprland (UWSM)"
-          # session entry runs `uwsm start -F -- Hyprland`, which launches the
+          # UWSM owns the systemd session through the custom display-manager
+          # entry in the nixosModules.hyprland aspect above. It runs
+          # `uwsm start -F -D Hyprland -- start-hyprland`, which launches the
           # compositor inside `wayland-wm@Hyprland.service` and brings up
           # `graphical-session-pre.target` / `graphical-session.target` /
           # `xdg-desktop-autostart.target` itself. This module's own hook

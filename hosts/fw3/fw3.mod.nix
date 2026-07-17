@@ -1,29 +1,23 @@
+{ self, inputs, lib, ... }:
 {
-  self,
-  inputs,
-  lib,
-  ...
-}:
-let
-  inherit (lib.lists) singleton;
-in
-{
-  imports = singleton (
-    lib.monix.nixosSystem "fw3" (
-      { config, lib, pkgs, ... }:
-      let
-        inherit (lib.attrsets) attrValues;
-        inherit (lib.lists) singleton;
-        inherit (lib.modules) mkForce;
-      in
+  flake.nixosConfigurations.fw3 = lib.nixosSystem {
+    modules = [
+      (
+        { config, lib, pkgs, ... }:
+        let
+          inherit (lib.attrsets) attrValues;
+          inherit (lib.lists) singleton;
+          inherit (lib.modules) mkForce;
+        in
       {
         imports =
-          attrValues self.commonModules
-          ++ attrValues self.nixosModules
+          attrValues self.nixosModules
           ++ singleton inputs.nixos-hardware.nixosModules.framework-13-7040-amd;
 
         # HOST CLASS
+        networking.hostName = "fw3";
         isDesktop = true;
+        primaryUser = "dylan";
 
         nixpkgs.hostPlatform = "x86_64-linux";
 
@@ -154,6 +148,7 @@ in
 
         system.stateVersion = "26.05";
       }
-    )
-  );
+      )
+    ];
+  };
 }

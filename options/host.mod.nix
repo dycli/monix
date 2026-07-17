@@ -1,5 +1,5 @@
 {
-  flake.commonModules.host =
+  flake.nixosModules.host =
     { lib, ... }:
     let
       inherit (lib.options) mkOption;
@@ -18,7 +18,6 @@
 
       options.primaryUser = mkOption {
         type = str;
-        default = "dylan";
         description = "Login name of the primary, human, admin user of the host.";
       };
     };

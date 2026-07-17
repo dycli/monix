@@ -7,18 +7,16 @@ that adding a host is a few lines.
 Hosts: **fw3** (Framework 13 AMD 7040 running a Hyprland desktop shelled by
 DankMaterialShell) and **fw0** (Framework Desktop, Ryzen AI Max+ 395, 128GB —
 headless always-on AI server: the agent-fleet microVM host, the user's
-persistent cockpit session, Tailscale, and a LiteLLM/Open WebUI gateway that
-is declared but disabled until real secrets exist).
+persistent cockpit session, Tailscale, and local inference).
 
 ## How it fits together
 
 `flake.nix` imports every `*.mod.nix` file in the tree (via
 `listFilesRecursive`), so modules are never listed centrally. Each module
-registers *aspects* into one of three collections:
+registers *aspects* into one of two collections:
 
-- `commonModules` — imported by every host (base system, options, secrets).
-- `nixosModules` — the menu of NixOS aspects (ssh, hyprland, tailscale, the AI
-  services, ...). All are imported into every host but most are inert until
+- `nixosModules` — NixOS aspects (base system, ssh, hyprland, tailscale, the
+  AI services, ...). All are imported into every host but most are inert until
   enabled.
 - `homeModules` — Home Manager aspects applied to the primary user.
 
@@ -37,27 +35,26 @@ The folders under `modules/` are namespacing only (discovery is by the
 `server/` what their names say. `packages.mod.nix` sits at the root because
 its bundles span categories.
 
-`lib/` extends nixpkgs' lib under its own namespace. `lib.monix.nixosSystem
-"<name>" <module>` defines `nixosConfigurations.<name>`.
-
-A host (`hosts/<name>/<name>.mod.nix`) just imports the collections, sets its
-class and hardware, and enables the services it wants:
+A host (`hosts/<name>/<name>.mod.nix`) defines its NixOS configuration
+directly, imports the aspect collection, and composes explicit local modules
+for machine hardware and service selection:
 
 ```nix
-imports =
-  attrValues self.commonModules
-  ++ attrValues self.nixosModules;
+flake.nixosConfigurations.<name> = lib.nixosSystem {
+  modules = [{
+    imports = attrValues self.nixosModules;
 
-isDesktop = true;            # or false for a server
-nixpkgs.hostPlatform = "x86_64-linux";
-disko.devices.disk.main = { ... };   # declarative disk layout (see disko.mod.nix)
-system.stateVersion = "26.05";
+    networking.hostName = "<name>";
+    primaryUser = "<user>";
+    isDesktop = true;         # or false for a server
+    system.stateVersion = "26.05";
+  }];
+};
 ```
 
-There is no `hardware-configuration.nix`: the host module carries the few
-per-machine hardware facts (initrd kernel modules, microcode) directly, and
-the disk layout is declared with disko, which both generates the mount config
-and can format a blank disk to match.
+There is no generated `hardware-configuration.nix`: local host modules carry
+the few per-machine hardware facts and the disko layout, which both generates
+the mount config and can format a blank disk to match.
 
 ### Desktop vs server
 
@@ -70,7 +67,8 @@ flag false. Service aspects (LiteLLM, Open WebUI, Tailscale) gate on their own
 ## Adding a host
 
 1. `mkdir hosts/<name>` and create `hosts/<name>/<name>.mod.nix` (copy fw3 or
-   fw0). Set `isDesktop`, `nixpkgs.hostPlatform`, `system.stateVersion`.
+   fw0). Set `primaryUser`, `isDesktop`, `nixpkgs.hostPlatform`, and
+   `system.stateVersion`.
 2. Set the hardware facts and disko layout in the host module (crib the
    kernel-module list from `nixos-generate-config --show-hardware-config` on
    the machine; point `disko.devices.disk.main.device` at the disk's
@@ -84,10 +82,10 @@ the rest.
 
 ## Secrets (agenix)
 
-agenix manages fw0's fleet subscription credentials, optional provider keys,
-and Cloudflare Tunnel token. Login passwords remain imperative. The disabled
-LiteLLM/Open WebUI examples still have placeholder secret files and must not be
-enabled until those specific files are replaced with real age ciphertext.
+agenix manages login password hashes, fw0's fleet subscription credentials,
+optional provider keys, and Cloudflare Tunnel tokens. Disabled LiteLLM/Open
+WebUI secret files remain placeholders and must be replaced with real age
+ciphertext before those services are enabled.
 
 `keys.nix` is the single source of truth for SSH public keys (host keys + admin
 keys). `secrets.nix` maps each secret file to the keys it is encrypted to and is
@@ -110,9 +108,9 @@ key (`/etc/ssh/ssh_host_ed25519_key`).
 
 `tailscale.age` holds a one-line reusable auth key (`tskey-auth-...`).
 
-> Users are mutable (the NixOS default) — after install, set each account's
-> login password imperatively with `passwd`. Login never depends on agenix,
-> so a host can be built and activated with no secrets present at all.
+> Both hosts use immutable users with encrypted password hashes. Provision the
+> host's password secret before activation; changing a password means replacing
+> that hash and switching the host configuration.
 
 ## The agent fleet on fw0
 

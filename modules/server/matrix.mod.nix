@@ -2,7 +2,7 @@
 # rail: rooms are the UI, the budget bot is just another account). tuwunel
 # (the Matrix-Foundation-backed conduwuit successor): a single Rust binary
 # on RocksDB, right-sized for a three-account family server. Inert until a
-# host sets `matrix.enable` (same pattern as actual.mod.nix).
+# host sets `matrix.enable`.
 #
 # DELIBERATELY NOT A PUBLIC MATRIX NODE:
 #   - allow_federation = false. This server speaks to no other homeserver;
@@ -17,8 +17,8 @@
 #     hardware, and skipping E2EE removes device-verification friction and
 #     keeps bot integration simple.
 #
-# ACCESS MODEL. Like actual.mod.nix: no public inbound port; tailnet
-# reaches the listener directly (trusted-interface pattern) and the public
+# ACCESS MODEL. No public inbound port; tailnet reaches the listener
+# directly (trusted-interface pattern) and the public
 # hostname rides a dedicated Cloudflare Tunnel. NB: NO Cloudflare Access
 # application on this hostname — Matrix clients speak the client-server
 # API and cannot traverse an Access SSO wall; authentication is Matrix's
@@ -30,13 +30,12 @@
 # anti-pivot fence. Egress must include the PUBLIC internet — federation
 # is off, but phone notifications require the homeserver to call each
 # client's push gateway (Element's sygnal at matrix.org); block that and
-# mobile push silently dies. So this is the minecraft.mod.nix fence shape
-# (public allowed; loopback pinholes, LAN, and fleet bridge denied), not
-# the total-deny Actual shape.
+# mobile push silently dies. So this uses the minecraft.mod.nix fence shape:
+# public allowed; loopback pinholes, LAN, and fleet bridge denied.
 #
 # DATA. /var/lib/tuwunel (RocksDB), service-private. Chat history for the
-# family — include it in the off-host backup design alongside
-# /var/lib/actual and the Minecraft world.
+# family — include it in the off-host backup design alongside the Minecraft
+# world.
 {
   flake.nixosModules.matrix =
     {
@@ -92,8 +91,8 @@
           default = null;
           description = ''
             Cloudflare Tunnel connector token for the chat hostname; null =
-            tailnet-only. Its own tunnel (independent of the cockpit's and
-            Actual's) so chat exposure is separately revocable. Hostname ->
+            tailnet-only. Its own tunnel, independent of the cockpit's, so
+            chat exposure is separately revocable. Hostname ->
             http://127.0.0.1:<port> mapping is dashboard-side; do NOT put a
             Cloudflare Access app on this hostname (see header).
           '';
@@ -140,9 +139,8 @@
           # but the LAN and the fleet bridge do not. Unlike minecraft,
           # LOOPBACK IS ALLOWED: cloudflared delivers every public client
           # over 127.0.0.1, and systemd's IP filter can't distinguish that
-          # inbound hop from outbound loopback use — the same trade
-          # actual.mod.nix makes. systemd checks Allow before Deny;
-          # unmatched = allowed (public).
+          # inbound hop from outbound loopback use. systemd checks Allow
+          # before Deny; unmatched = allowed (public).
           IPAddressAllow = [
             "127.0.0.0/8" # the cloudflared hop (and resolved's DNS stub)
             "::1"
@@ -158,8 +156,8 @@
           ];
         };
 
-        # Public web ingress: dedicated cloudflared connector (cf.
-        # actual.mod.nix). Dials out to Cloudflare's edge; no inbound port.
+        # Public web ingress: a dedicated cloudflared connector that dials out
+        # to Cloudflare's edge; no inbound port.
         systemd.services.matrix-tunnel = mkIf (cfg.tunnelTokenFile != null) {
           description = "Cloudflare Tunnel for the Matrix homeserver";
           wantedBy = [ "multi-user.target" ];
