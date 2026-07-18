@@ -26,26 +26,27 @@
     }:
     let
       inherit (lib.attrsets) listToAttrs nameValuePair;
+      inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
-      inherit (lib.strings) fileContents optionalString replaceStrings;
+      inherit (lib.strings) hasSuffix;
       inherit (lib) types;
 
       cfg = config.agentFleet;
       op = cfg.operatorUser;
-      readers = "agent-fleet-readers";
-      tasksDir = "/var/lib/agents/tasks";
+      topology = import ../../lib/fleet-topology.nix;
+      inherit (topology) tasksDir;
+      readers = topology.readersGroup;
+      agentDispatcher = pkgs.rustPlatform.buildRustPackage {
+        pname = "agent-dispatcher";
+        version = "0.1.0";
+        src = lib.sources.cleanSourceWith {
+          src = ./agent-dispatch;
+          filter = path: type: type != "directory" || !hasSuffix "/target" (toString path);
+        };
 
-      # Copy one bounded plain file without ever following a symlink. This is
-      # the trust-boundary primitive for guest -> host transfers: opening with
-      # O_NOFOLLOW and validating the already-open fd avoids both symlink and
-      # check/use races. Destinations must not exist and are created atomically.
-      safeTransfer = pkgs.writeTextFile {
-        name = "agent-safe-transfer";
-        executable = true;
-        text = replaceStrings [ "@PYTHON@" ] [ "${pkgs.python3}" ] (
-          fileContents ./agent-dispatch/safe-transfer.py.in
-        );
+        cargoLock.lockFile = ./agent-dispatch/Cargo.lock;
+        meta.mainProgram = "agent-dispatcher";
       };
 
       drainerFor =
@@ -53,9 +54,6 @@
         let
           work = "/var/lib/agents/work/${worker}/task";
           creds = "/run/agents/creds/${worker}";
-          openrouterCredential = optionalString (cfg.credentials.openrouterKeyFile != null) ''
-            source=${cfg.credentials.openrouterKeyFile}; destination=openrouter-key
-          '';
         in
         {
           description = "Drain the agent task queue on worker ${worker}";
@@ -64,53 +62,35 @@
           startLimitIntervalSec = 0;
           path = [
             pkgs.coreutils
-            pkgs.findutils
-            pkgs.gawk
             pkgs.jq
             pkgs.systemd
           ];
           serviceConfig = {
             Slice = "agents.slice";
+            ExecStart = getExe agentDispatcher;
             Restart = "always";
             RestartSec = 2;
           };
-          script =
-            replaceStrings
-              [
-                "@TASKS_DIR@"
-                "@WORKER@"
-                "@WORK_DIR@"
-                "@CREDS_DIR@"
-                "@CLAUDE_TOKEN_FILE@"
-                "@CODEX_AUTH_FILE@"
-                "@OPENROUTER_CREDENTIAL@"
-                "@SAFE_TRANSFER@"
-                "@READERS@"
-                "@STALL_TIMEOUT@"
-                "@WARM_MAX_AGE@"
-                "@TASK_TIMEOUT@"
-                "@TASK_EXCHANGE_MAX_BYTES@"
-                "@TASK_CONTEXT_MAX_BYTES@"
-                "@GUIDANCE_MODEL@"
-              ]
-              [
-                tasksDir
-                worker
-                work
-                creds
-                cfg.credentials.claudeTokenFile
-                cfg.credentials.codexAuthFile
-                openrouterCredential
-                "${safeTransfer}"
-                readers
-                (toString cfg.stallTimeout)
-                (toString cfg.warmMaxAge)
-                (toString cfg.taskTimeout)
-                (toString cfg.taskExchangeMaxBytes)
-                (toString cfg.taskContextMaxBytes)
-                cfg.guidanceModel
-              ]
-              (fileContents ./agent-dispatch/dispatcher.sh.in);
+          environment = {
+            FLEET_TASKS_DIR = tasksDir;
+            FLEET_WORKER = worker;
+            FLEET_WORK_DIR = work;
+            FLEET_CREDS_DIR = creds;
+            FLEET_CLAUDE_TOKEN_FILE = cfg.credentials.claudeTokenFile;
+            FLEET_CODEX_AUTH_FILE = cfg.credentials.codexAuthFile;
+            FLEET_OPENROUTER_KEY_FILE =
+              if cfg.credentials.openrouterKeyFile == null then
+                ""
+              else
+                toString cfg.credentials.openrouterKeyFile;
+            FLEET_READERS = readers;
+            FLEET_STALL_TIMEOUT = toString cfg.stallTimeout;
+            FLEET_WARM_MAX_AGE = toString cfg.warmMaxAge;
+            FLEET_TASK_TIMEOUT = toString cfg.taskTimeout;
+            FLEET_TASK_EXCHANGE_MAX_BYTES = toString cfg.taskExchangeMaxBytes;
+            FLEET_TASK_CONTEXT_MAX_BYTES = toString cfg.taskContextMaxBytes;
+            FLEET_GUIDANCE_MODEL = cfg.guidanceModel;
+          };
         };
     in
     {
@@ -170,6 +150,7 @@
           "d ${tasksDir}/live 0750 root ${readers} -"
           "d ${tasksDir}/steer 0770 root ${op} -"
           "d ${tasksDir}/answers 0770 root ${op} -"
+          "d ${tasksDir}/cancel 0770 root ${op} -"
           "f ${tasksDir}/log 0664 root ${op} -"
         ];
 
@@ -211,59 +192,73 @@
             };
             script = ''
               san() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._/-' | cut -c1-64; }
-              for q in ${tasksDir}/guidance/*/*/question-*.md; do
-                if [ ! -e "$q" ]; then
-                  continue
-                fi
-                dir="$(dirname "$q")"
-                n="$(basename "$q" .md)"
-                n="''${n#question-}"
-                answer="$dir/answer-$n.md"
-                echo "answering $q"
-
-                g="$(san "$(cat "$dir/guidance-model" 2>/dev/null)")"
-                case "$g" in
-                  none | NONE) gmodel="" ;;
-                  "") gmodel="${cfg.guidanceModel}" ;;
-                  *) gmodel="$g" ;;
-                esac
-                case "$gmodel" in
-                  cockpit) continue ;;
-                  "" | none | NONE)
-                    printf '%s\n' "No advisor is configured for this task — proceed on your own best judgment." > "$answer.tmp"
-                    mv "$answer.tmp" "$answer"
-                    rm -f "$q"
+              while :; do
+                did_work=
+                for q in ${tasksDir}/guidance/*/*/question-*.md; do
+                  if [ ! -e "$q" ]; then
                     continue
-                    ;;
-                esac
+                  fi
+                  dir="$(dirname "$q")"
+                  n="$(basename "$q" .md)"
+                  n="''${n#question-}"
+                  answer="$dir/answer-$n.md"
 
-                guidance="$(
-                  timeout 300 claude -p \
-                    "You supervise a fleet of sandboxed coding/research agents. One of them is working on the task below and has asked you a question. Give concise, decisive guidance it can act on immediately.
+                  g="$(san "$(cat "$dir/guidance-model" 2>/dev/null)")"
+                  case "$g" in
+                    none | NONE) gmodel="" ;;
+                    "") gmodel="${cfg.guidanceModel}" ;;
+                    *) gmodel="$g" ;;
+                  esac
+                  case "$gmodel" in
+                    cockpit) continue ;;
+                    "" | none | NONE)
+                      did_work=1
+                      printf '%s\n' "No advisor is configured for this task — proceed on your own best judgment." > "$answer.tmp"
+                      mv "$answer.tmp" "$answer"
+                      rm -f "$q"
+                      continue
+                      ;;
+                  esac
+
+                  did_work=1
+                  echo "answering $q"
+                  guidance="$(
+                    timeout 300 claude -p \
+                      "You supervise a fleet of sandboxed coding/research agents. One of them is working on the task below and has asked you a question. Give concise, decisive guidance it can act on immediately.
 
               == THE AGENT'S TASK ==
               $(cat "$dir/prompt.md" 2>/dev/null || echo "(prompt unavailable)")
 
               == THE AGENT'S QUESTION ==
               $(cat "$q")" \
-                    --model "$gmodel" \
-                    --disallowedTools Bash Edit Write Read Grep Glob Task WebFetch WebSearch NotebookEdit
-                )" || guidance="(the supervising model could not be reached; proceed on your best judgment)"
+                      --model "$gmodel" \
+                      --disallowedTools Bash Edit Write Read Grep Glob Task WebFetch WebSearch NotebookEdit
+                  )" || guidance="(the supervising model could not be reached; proceed on your best judgment)"
 
-                {
-                  echo "## Question"
-                  cat "$q"
-                  echo
-                  echo "## Guidance"
-                  printf '%s\n' "$guidance"
-                } > "$answer.tmp"
-                mv "$answer.tmp" "$answer"
-                rm -f "$q"
+                  {
+                    echo "## Question"
+                    cat "$q"
+                    echo
+                    echo "## Guidance"
+                    printf '%s\n' "$guidance"
+                  } > "$answer.tmp"
+                  mv "$answer.tmp" "$answer"
+                  rm -f "$q"
+                done
+                [ -n "$did_work" ] || break
               done
             '';
           };
         }
         // listToAttrs (map (w: nameValuePair "agent-dispatch-${w.name}" (drainerFor w.name)) cfg.workers);
+        systemd.paths.agent-guidance = {
+          description = "Watch for fleet guidance questions";
+          wantedBy = [ "multi-user.target" ];
+          pathConfig = {
+            PathExistsGlob = "${tasksDir}/guidance/*/*/question-*.md";
+            Unit = "agent-guidance.service";
+          };
+        };
       };
     };
 }

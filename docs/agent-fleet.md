@@ -40,7 +40,7 @@ than the host module collection.
 
 - Guest root is tmpfs. The writable Nix overlay and `/workspace` images are
   deleted before every boot and recreated blank.
-- Ten workers (`worker-0` through `worker-9`) form a warm pool. Each boots idle,
+- Eight bird-named workers form a warm pool. Each boots idle,
   waits for one prompt, runs one task, is destroyed, and is replenished in the
   background. A task never reuses a guest that ran an earlier task.
 - Guests have static addresses on `br-agents`, no gateway, and no DNS.
@@ -61,7 +61,7 @@ than an idle reservation.
 ## Credentials
 
 The host decrypts fleet credentials with agenix, but idle workers receive none.
-After atomically claiming a task, the root drainer parses the executor from its
+After atomically claiming a task, the root Rust drainer parses the executor from its
 root-owned prompt, clears that worker's root-only credential directory, and
 stages exactly one credential. It stages context next and publishes `prompt.md`
 last, so the waiting guest cannot begin with a partial task environment. A
@@ -116,10 +116,16 @@ run logs "$id"                  # untrusted executor transcript
 run peek "$id"                  # live view of a RUNNING task (untrusted mirrors)
 run steer "$id" "message"       # queue a mid-task steering message
 run answer "$id" 1 "answer"     # answer a pending guidance:cockpit question
+run cancel "$id"                # cancel a queued/running task
 run patch "$id"                 # bounded automatic git diff
 run status                      # recent lifecycle log
 run health                      # current queue, workers, units, memory, disk
 run note "$id" reviewed-output
+fleet loop create fix-cancel loop.json /path/to/repository
+run loop list
+run loop status <loop-id>
+run loop pause|resume|cancel <loop-id>
+run loop export <loop-id>        # verified candidate patch; no automatic apply
 ```
 
 `submit` reads standard input, limits prompts to 1 MiB, publishes atomically,
@@ -162,6 +168,11 @@ publishes the question to the task's live view, `fleet health` flags it as
 guest waits up to 30 minutes before proceeding on its own judgment).
 Cross-provider guidance needs a future executor-qualified advisor interface.
 
+`timeout` is an optional positive per-task front-matter value capped by the
+fleet-wide six-hour maximum. The loop controller also uses a validated
+deterministic `task-key` so crash recovery resolves to the same queued, running,
+or archived task rather than duplicating an iteration.
+
 ## Live interaction with a running task
 
 Interactivity crosses the same trust boundary as everything else — bounded
@@ -190,9 +201,100 @@ archived with the task result and the live directory is removed. The host never
 parses or acts on any of this content — it only displays it to the cockpit and
 delivers cockpit-authored files to the guest.
 
+## Durable outer loops
+
+Outer loops add orchestration above the existing one-task/one-VM runtime; they
+do not replace it. `fleet loop create` snapshots the repository as the cockpit
+user, seals a JSON policy, then hands the capsule across the existing scoped
+operator boundary. The Rust `fleet-loop-controller` runs as `fleet-operator`
+without provider credentials, network access, the cockpit home, or a real
+repository. It persists state under `/var/lib/agents/loops/<id>/` and submits
+ordinary implementation tasks through the same queue.
+
+Context snapshots exclude Git metadata, result links, `.direnv`, and common
+`.env` files, but they are not a general secret scanner. Dispatch only a
+secret-clean directory; credentials, private keys, cloud profiles, and other
+sensitive files under arbitrary names would otherwise enter the guest context.
+
+Each implementation task receives the original sealed context plus the ordered
+accepted patch ledger. The fixed guest launcher materializes both inside a fresh
+VM, creates a baseline, invokes the explicitly selected provider, and returns
+only that iteration's bounded patch. The host stores patch bytes opaquely; it
+does not apply or execute them.
+
+A fresh `agent: verify`, `model: fixed` task receives no provider credential.
+The guest's immutable Rust verifier applies the candidate, or treats an empty
+candidate as an already-complete base, then locks the task exchange before
+running candidate-controlled checks. It checks protected paths, runs
+cockpit-authored argv arrays with individual timeouts, and emits a bounded
+`verification.json`. Admission checks gate whether the candidate enters the
+ledger; empty candidates do not create ledger entries. Completion checks gate
+the terminal `VERIFIED_CANDIDATE` state. The controller validates the result
+schema, candidate digest, and exact sealed check IDs before acting. Reports and
+model-written progress remain advisory input.
+
+Loop specs must explicitly provide `objective`, `implementationRoutes`, all
+seven budgets, non-empty admission and completion check lists, and
+`protectedPaths`. Routes name `agent`, `model`, and optional `effort`/`guidance`;
+the controller has no provider defaults. Iteration, wall-clock, task, token,
+infrastructure-retry, no-progress, and ledger-byte ceilings prevent indefinite
+execution. Missing usage pauses rather than silently bypassing a token budget.
+The guest supervisor locks the task exchange and terminates executor processes
+before producing the archived usage record. The host also requires root ownership
+for task completion, usage, and verifier artifacts, so model-written files cannot
+replace their provenance. The counters still come from provider CLI state under
+the executor's writable home, so `maxTokens` is accounting rather than a
+provider-enforced security boundary; iteration, wall-clock, task-time, and
+ledger-byte limits remain the hard ceilings.
+
+Every repository file that a verification command executes or trusts must be
+listed in `protectedPaths`, including test runners, build definitions, package
+scripts, and configuration loaded by those commands. Otherwise a candidate can
+change the check itself and make a fixed argv report a meaningless success.
+
+```json
+{
+  "objective": "Implement the requested behavior without unrelated changes.",
+  "implementationRoutes": [
+    { "agent": "codex", "model": "gpt-5.6-sol", "effort": "high" }
+  ],
+  "budgets": {
+    "maxIterations": 4,
+    "maxWallSeconds": 21600,
+    "maxTaskSeconds": 3600,
+    "maxTokens": 3000000,
+    "maxInfrastructureRetries": 1,
+    "maxNoProgress": 2,
+    "maxLedgerBytes": 104857600
+  },
+  "checks": {
+    "admission": [
+      { "id": "build", "argv": ["nix", "build", ".#target"], "cwd": ".", "timeoutSeconds": 1800 }
+    ],
+    "completion": [
+      { "id": "feature", "argv": ["./tests/feature.sh"], "cwd": ".", "timeoutSeconds": 600 }
+    ]
+  },
+  "protectedPaths": ["tests/feature.sh"]
+}
+```
+
+Author substantial loops checks-first: use several granular completion checks
+so the no-progress counter has a meaningful signal, then write the objective to
+match. A one-shot planner drone can propose the objective, checks, and protected
+paths, but the cockpit reviews and seals them. Watch the first iteration with
+`guidance: cockpit`; remove guidance after the harness proves itself. Later
+iterations receive bounded prior progress/report tails as explicitly untrusted
+orientation context. Re-test representative loops when a major model changes,
+removing scaffolding that no longer improves measured output.
+
+Loop success never mutates the source repository. `fleet loop export` emits the
+cumulative verified patch for cockpit review and application. Commit remains a
+cockpit action; push and NixOS activation remain explicit captain actions.
+
 ## Scheduling and lifecycle
 
-One resident root drainer exists per worker. It maintains one fresh warm VM,
+One resident root Rust drainer exists per worker. It maintains one fresh warm VM,
 atomically claims a queued task, verifies the VM is alive, and delivers the
 prompt and optional context archive into the already-running task share. The guest notices the prompt by
 re-reading the virtiofs directory, runs exactly one executor, and writes an
@@ -211,16 +313,17 @@ and 1 MiB respectively. After the task, the launcher captures tracked, untracked
 committed, and working-tree changes against its in-memory baseline as a binary
 `changes.patch`, archived with a 50 MiB cap.
 
-After completion or failure, the drainer stops the VM before archiving output.
+After completion or failure, the drainer stops the VM, builds a hidden bounded
+result archive, and atomically publishes it only when complete.
 The next loop deletes the VM's writable images and creates a fresh warm guest.
 
 ## Host file exchange
 
 The guest-writable task share is a hostile filesystem boundary. The root
 dispatcher never directly copies an untrusted path with `cp`, `install`, or a
-shell `-f` check. `agent-safe-transfer` opens the source with `O_NOFOLLOW`,
-validates the open descriptor as a bounded regular file, and creates a new
-destination with `O_EXCL` and `O_NOFOLLOW`.
+shell `-f` check. Its Rust bounded-copy primitive opens the source with
+`O_NOFOLLOW`, validates the open descriptor as a bounded regular file, and
+creates a new destination with `O_EXCL` and `O_NOFOLLOW`.
 
 Guidance uses a separate host-owned spool under
 `/var/lib/agents/tasks/guidance`. The root drainer safely transfers a question
@@ -237,7 +340,7 @@ enforced. Normal boots do not recursively rescan historical results.
 ## Audit trail
 
 `/var/lib/agents/tasks/log` records SUBMIT, DISPATCH, ESCALATE, STEER/STEERED,
-ANSWER/ANSWERED, NOTE, DONE, FAILED, STALLED, CAP, OVERSIZE, and rejection
+ANSWER/ANSWERED, CANCEL/CANCELLED, NOTE, DONE, FAILED, STALLED, CAP, OVERSIZE, and rejection
 events. Front-matter values are
 sanitised to one token so prompts cannot forge log fields.
 
@@ -274,7 +377,7 @@ configured model API and Nix cache paths work through squid.
 - Decide whether the web cockpit remains the full-power `max` seat or moves to
   a dedicated non-wheel, non-Nix-trusted account.
 - Add executor-qualified, text-only cross-provider guidance.
-- Add cancellation, retry, running-task inspection, and per-task timeout controls.
+- Add generic manual retry and richer running-task inspection controls.
 - Move Access application/policy state into Terraform if dashboard drift becomes
   operationally unacceptable.
 - Add NixOS integration tests for bridge, firewall, credential, exchange, and

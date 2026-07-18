@@ -36,9 +36,10 @@
       inherit (lib) types;
 
       cfg = config.agentFleet;
-      tasksDir = "/var/lib/agents/tasks";
+      topology = import ../../lib/fleet-topology.nix;
+      inherit (topology) tasksDir;
       op = cfg.operatorUser;
-      readers = "agent-fleet-readers";
+      readers = topology.readersGroup;
 
       # Stable profile path (NOT the store path): sudo matches the command as
       # invoked, and this symlink is what the cockpit calls. It survives
@@ -71,6 +72,7 @@
             [
               "@TASKS_DIR@"
               "@TASK_CONTEXT_MAX_BYTES@"
+              "@TASK_TIMEOUT@"
               "@OPERATOR@"
               "@FLEET_PATH@"
               "@WORKER_HEALTH@"
@@ -79,6 +81,7 @@
             [
               tasksDir
               (toString cfg.taskContextMaxBytes)
+              (toString cfg.taskTimeout)
               op
               fleetPath
               workerHealth

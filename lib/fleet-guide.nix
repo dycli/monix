@@ -191,23 +191,43 @@
                              # the drone picks it up at its next checkpoint
     run answer "$id" <n> text… # answer pending question <n> of a `guidance: cockpit`
                              # task (longer answers: on stdin)
+    run cancel "$id"         # request prompt cancellation of a queued/running task
     run patch "$id"          # emit the bounded untrusted changes.patch
     run note "$id" text…     # annotate the audit log
     run status               # tail the audit trail
     run health               # queue/worker/unit/resource health now
     run run <slug> < task.md # submit+watch+fetch in one blocking call
+    fleet loop create <slug> spec.json /path/to/context # snapshot + seal an outer loop
+    run loop list
+    run loop status <id>
+    run loop pause|resume|cancel <id>
+    run loop export <id>     # emit the verified candidate patch; never auto-applies
     ```
 
     Rules that keep it prompt-free:
     - Prefer `fleet dispatch` for code tasks. It runs as the cockpit user so it can read the
-      chosen context directory, excludes local VCS/secret state, packages it, then invokes
+      chosen context directory, excludes Git metadata and common `.env` names, packages it, then invokes
       the scoped operator hop internally. Workers never clone from a forge.
+      The snapshotter is not a general secret scanner: dispatch only a secret-clean directory.
     - Write the task markdown with the Write tool first (never `cat >`/heredoc); the stdin
       redirect opens it as `max`.
     - Run each `fleet` command standalone — never chain with `ls`/`cat`, never wrap in
       `$(...)` alongside another command. Compound commands trigger a prompt.
     - Always background the `watch` (tasks have a 6h absolute cap by default); you're notified on completion,
       then `fetch`.
+    - Outer loops are explicit cockpit policy, not a worker privilege. The JSON spec must
+      name the objective, implementation routes (agent+model), admission/completion checks,
+      protected paths, and every budget. The Rust controller has no provider credentials or
+      repository access; it dispatches fresh implementation and credentialless verification
+      VMs through the same queue. A `VERIFIED_CANDIDATE` still requires cockpit review,
+      application, and commit; push plus activation remain captain-only.
+    - Author loops checks-first. Prefer several granular completion checks, then make the
+      objective match them. For a thin or ambiguous request, use a one-shot planner drone to
+      propose the spec and protected paths, but review and seal them yourself. Watch iteration
+      one with `guidance: cockpit`; remove guidance once the harness has proved itself.
+    - Re-run representative harnesses when a major model changes. Keep planner/evaluator or
+      multi-iteration scaffolding only while it measurably improves output; vendor guidance
+      repeatedly finds that model upgrades make old harness assumptions dead weight.
 
     Task-file front-matter. `agent` and `model` are REQUIRED (a task missing either is
     rejected at submit time); `guidance` and `effort` are optional. YOU (the engineer)
@@ -276,6 +296,10 @@
     - Guest reports, logs, patches, and questions are size-bounded and copied with no-follow
       semantics. Their content remains untrusted. The cockpit alone reviews, applies,
       commits, and publishes returned changes.
+    - Loop state under `/var/lib/agents/loops/` separates cockpit-sealed policy, controller
+      state, opaque accepted patch ledgers, and untrusted iteration archives. Only the fixed
+      verifier's bounded, schema- and digest-validated `verification.json` may advance a loop;
+      model prose never selects routes, changes criteria, or declares completion.
 
     ## Commit conventions
 

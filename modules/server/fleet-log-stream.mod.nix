@@ -28,7 +28,8 @@
       inherit (lib) types;
 
       cfg = config.fleetLogStream;
-      fleetLog = "/var/lib/agents/tasks/log";
+      topology = import ../../lib/fleet-topology.nix;
+      fleetLog = "${topology.tasksDir}/log";
     in
     {
       options.fleetLogStream = {
@@ -115,7 +116,10 @@
               mcurl -X PUT -H "Authorization: Bearer $tok" \
                 "$hs/_matrix/client/v3/rooms/$room/send/m.room.message/$(date +%s%N)-$$" \
                 -d "$(jq -n --arg b "$1" '{msgtype:"m.text",body:$b}')" > /dev/null \
-                || echo "send failed, batch dropped" >&2
+                || {
+                  echo "send failed, batch dropped; restarting to refresh login" >&2
+                  return 1
+                }
             }
 
             # Stream: first line of a batch blocks indefinitely; once one
@@ -128,7 +132,7 @@
                 batch="$batch
             $more"
               done
-              send "$batch"
+              send "$batch" || exit 1
               batch=""
             done < <(tail -F -n 0 ${fleetLog} 2>/dev/null)
           '';

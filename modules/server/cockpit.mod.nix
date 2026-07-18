@@ -30,6 +30,7 @@
       claudeBashPermissions = [
         "sudo -n -u fleet-operator fleet *"
         "fleet dispatch *"
+        "fleet loop create *"
         "ship-status"
         "nix build *"
         "nix eval *"
@@ -178,9 +179,7 @@
         # frontend sees — no vendor owns the storage.
         home.file.".claude/projects/-home-max-cockpit/memory" = {
           force = true;
-          source = config.lib.file.mkOutOfStoreSymlink (
-            "/home/${osConfig.primaryUser}/cockpit/memory"
-          );
+          source = config.lib.file.mkOutOfStoreSymlink ("/home/${osConfig.primaryUser}/cockpit/memory");
         };
 
         # Claude Code project permissions, declarative so the allowlist can

@@ -99,7 +99,7 @@ flowchart TD
     WARM(["Warm pool: idle VM,<br/>guest refreshes .ready<br/>every second"]) -->|"idle > 2h<br/>(preventive)"| RECYCLE
     WARM -->|"VM died or .ready<br/>went stale while idle"| RECYCLE[Destroy + reboot<br/>fresh warm VM] --> WARM
 
-    Q[(Queue)] --> CLAIM["Drainer atomically claims task<br/>(one resident root drainer per worker)"]
+    Q[(Queue)] --> CLAIM["Rust drainer atomically claims task<br/>(one resident root drainer per worker)"]
     WARM --> CLAIM
     CLAIM --> ALIVE{"VM alive and .ready<br/>FRESH (≤60s)?"}
     ALIVE -->|no| REQ1[Requeue task] --> Q
@@ -168,11 +168,20 @@ flowchart TD
 
 Two invariants hold everywhere in this diagram: the host **displays**
 guest-written content and **delivers** cockpit-written files, but never
-takes instructions from guest prose — the only guest bytes the host acts
-on are the two narrow machine fields it defined itself (`exit-code` for
-done/failed routing, `usage.json` for the cost ledger), both bounded and
-format-checked. And everything that crosses the boundary is a bounded
+takes instructions from guest prose. The host acts only on narrow machine
+fields it defined itself: `exit-code` for task routing, root-produced
+`usage.json` for the cost ledger, and for outer-loop verifier tasks a schema/digest/check-ID-validated
+`verification.json`. All are bounded and format-checked. Everything crossing the boundary is a bounded
 regular file moved with no-follow semantics.
+
+Outer loops compose this same task lifecycle. A cockpit-sealed base capsule and
+explicit policy enter a Rust controller running as `fleet-operator`; each
+iteration dispatches a normal authenticated implementation VM followed by a
+fresh credentialless verifier VM. Accepted patches remain an opaque ordered
+ledger on the host and are materialized only in guests. Passing every sealed
+completion check yields `VERIFIED_CANDIDATE`; this also covers an already-complete
+base with an empty candidate. The result still requires cockpit
+review/application and captain-controlled push or activation.
 
 ## 5. Results: from archive to the captain
 
@@ -212,6 +221,7 @@ Every **state-changing** hop leaves a line in `/var/lib/agents/tasks/log`
 
 ```
 SUBMIT → DISPATCH → [STEER → STEERED]*
+                  → [CANCEL → CANCELLED]?
                   → [ESCALATE (→ ANSWER → ANSWERED, cockpit guidance only)]*
                   → DONE | TIMEOUT (after a STALLED / CAP / OVERSIZE line)
 ```

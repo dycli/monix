@@ -28,8 +28,8 @@
       inherit (lib.strings) concatStringsSep;
 
       cfg = config.agentFleet;
-      bridge = "br-agents";
-      hostAddr = "10.100.0.1";
+      topology = import ../../lib/fleet-topology.nix;
+      inherit (topology) bridge hostAddr;
 
       # The egress allowlist — the ONLY destinations a guest can reach. Keep it
       # minimal; every entry is a potential exfiltration channel. Widen only by

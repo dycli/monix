@@ -38,20 +38,27 @@
       ...
     }:
     let
-      inherit (lib.attrsets) listToAttrs mapAttrsToList nameValuePair optionalAttrs;
+      inherit (lib.attrsets)
+        listToAttrs
+        mapAttrsToList
+        nameValuePair
+        optionalAttrs
+        ;
       inherit (lib.lists) concatLists concatMap singleton;
       inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkForce mkIf;
       inherit (lib.options) mkOption;
-      inherit (lib.strings) concatMapStringsSep fixedWidthString optionalString;
+      inherit (lib.strings) concatMapStringsSep fixedWidthString hasSuffix optionalString;
       inherit (lib) types;
 
       guide = import ../../lib/fleet-guide.nix;
       hintFile = pkgs.writeText "worker-hint.md" (guide.system + guide.worker);
 
       cfg = config.agentFleet;
+      fleetLoopEngine = import ../../lib/fleet-loop-package.nix { inherit pkgs; };
 
-      hostAddr = "10.100.0.1";
+      topology = import ../../lib/fleet-topology.nix;
+      inherit (topology) hostAddr;
       proxyUrl = "http://${hostAddr}:3128";
       # Direct (non-proxied) guest destinations: local inference bypasses
       # squid — it's plain HTTP to a bridge IP, which the CONNECT allowlist
@@ -205,6 +212,32 @@
                   exec ${getExe pkgs.opencode} "$@"
                 '';
               };
+
+              verifyRunner = getExe fleetLoopEngine;
+
+              # The guest task supervisor (modules/server/agent-vm/): the
+              # Rust replacement for the previous embedded Bash script. All
+              # orchestration, validation, lifecycle, and publication logic
+              # lives in the crate; its tests (metadata/credential matrices,
+              # loop compatibility, usage normalization fixtures, publication
+              # ordering) run in the package's checkPhase.
+              guestSupervisor = pkgs.rustPlatform.buildRustPackage {
+                pname = "fleet-guest-supervisor";
+                version = "0.1.0";
+                src = lib.sources.cleanSourceWith {
+                  src = ./agent-vm;
+                  filter = path: type: type != "directory" || !hasSuffix "/target" (toString path);
+                };
+
+                cargoLock.lockFile = ./agent-vm/Cargo.lock;
+                # The usage-normalization fixture tests drive the same fixed
+                # external tools the supervisor invokes at runtime.
+                nativeCheckInputs = [
+                  pkgs.jq
+                  pkgs.sqlite
+                ];
+                meta.mainProgram = "fleet-guest-supervisor";
+              };
             in
             {
               microvm = {
@@ -241,9 +274,9 @@
                 ];
 
                 shares = [
-                   # Empty while idle; the host drainer atomically stages only
-                   # the credential selected by the claimed task before it
-                   # publishes prompt.md.
+                  # Empty while idle; the host drainer atomically stages only
+                  # the credential selected by the claimed task before it
+                  # publishes prompt.md.
                   {
                     proto = "virtiofs";
                     tag = "creds";
@@ -354,9 +387,10 @@
               # Substituters stay at the default cache.nixos.org — the only
               # cache on the egress allowlist (.nixos.org).
 
-              # TASK RUNNER — if the dispatcher staged a prompt in the task
-              # share before boot, run it headless as the agent user and
-              # write the results back. One task per VM lifetime: the volumes
+              # TASK RUNNER — the fleet-guest-supervisor executable (Rust,
+              # modules/server/agent-vm/) waits for a delivered prompt, runs
+              # it headless as the selected agent user, and writes the
+              # results back. One task per VM lifetime: the volumes
               # are wiped on start, so boot state is always pristine and this
               # unit's ConditionPathExists decides whether this is a task run
               # or an idle/debugging boot.
@@ -371,21 +405,37 @@
                 description = "Run the dispatched task";
                 wantedBy = [ "multi-user.target" ];
                 unitConfig = {
-                  # No ConditionPathExists on prompt.md: the guest boots idle and
-                  # the wait loop in the script blocks until the host delivers a
-                  # task, so gating the unit on the file existing would skip it
-                  # entirely on a warm (empty-share) boot.
-                  RequiresMountsFor = [ guestTaskMount guestCredsMount ];
+                  # No ConditionPathExists on prompt.md: the guest boots idle
+                  # and the supervisor's wait loop blocks until the host
+                  # delivers a task, so gating the unit on the file existing
+                  # would skip it entirely on a warm (empty-share) boot.
+                  RequiresMountsFor = [
+                    guestTaskMount
+                    guestCredsMount
+                  ];
                 };
                 # The full system path, not a minimal tool list: the agent's
                 # shell inherits this unit's PATH, and it needs everything
-                # installed in the guest (git, ask-cockpit, compilers...).
+                # installed in the guest (git, ask-cockpit, compilers...);
+                # the supervisor also resolves its fixed helper tools
+                # (runuser, tar, git, jq, sqlite3, cp, chown, pkill) from it.
                 path = [ "/run/current-system/sw" ];
                 serviceConfig = {
                   Type = "exec";
                   User = "root";
                   Group = "root";
                   WorkingDirectory = "/workspace";
+                  # The prompt may start with a front-matter block setting task
+                  # options, but the guest never reparses executor fields from
+                  # it: the host stages canonical task-meta (agent, model,
+                  # effort, kind) in the read-only credential share. The
+                  # supervisor's contract is: validate metadata + exactly the
+                  # selected credential, prepare context as the selected
+                  # unprivileged user, run the executor with everything
+                  # auto-approved (the VM is the sandbox — that's the point of
+                  # the fleet), then publish report.md + agent.log +
+                  # changes.patch + .trusted/usage.json and exit-code LAST.
+                  ExecStart = getExe guestSupervisor;
                   # Units don't read /etc/set-environment; restate the proxy.
                   # The Bash timeouts let a blocking ask-cockpit call outlive
                   # Claude Code's 2-minute default tool timeout (guidance
@@ -397,352 +447,19 @@
                     "OPENCODE_CONFIG=${opencodeConfig}"
                     "BASH_DEFAULT_TIMEOUT_MS=1200000"
                     "BASH_MAX_TIMEOUT_MS=1800000"
+                    "FLEET_GUEST_TASK_DIR=${guestTaskMount}"
+                    "FLEET_GUEST_CREDS_DIR=${guestCredsMount}"
+                    "FLEET_GUEST_HINT_FILE=${hintFile}"
+                    "FLEET_GUEST_EXEC_CLAUDE=${getExe claudeExecutor}"
+                    "FLEET_GUEST_EXEC_CODEX=${getExe codexExecutor}"
+                    "FLEET_GUEST_EXEC_OPENCODE=${getExe opencodeExecutor}"
+                    "FLEET_GUEST_EXEC_LOCAL=${getExe localExecutor}"
+                    "FLEET_GUEST_EXEC_VERIFY=${verifyRunner}"
                   ];
                   # Defense in depth alongside the host's aggregate exchange
                   # budget: no single guest-created file may grow unbounded.
                   LimitFSIZE = cfg.taskExchangeMaxBytes;
                 };
-                # The prompt may start with a front-matter block setting task
-                # options; unknown keys are ignored. Currently understood:
-                #   ---
-                #   agent: claude        <- required executor: claude | codex | opencode
-                #   model: sonnet        <- required executor --model value; for
-                #                           opencode a provider/model slug, e.g.
-                #                           openrouter/moonshotai/kimi-k2
-                #   ---
-                # New executors are one more case branch below; the contract
-                # is only: read prompt body, write report.md + agent.log +
-                # exit-code, run with everything auto-approved (the VM is the
-                # sandbox — that's the point of the fleet).
-                script = ''
-                  prompt=${guestTaskMount}/prompt.md
-
-                  # Tell the host drainer that this guest has mounted its task
-                  # share and reached the delivery wait loop. systemd reporting
-                  # the MicroVM active only proves the VMM is running.
-                  touch ${guestTaskMount}/.ready
-
-                  # Warm pool: wait for the host to deliver the task, then run it.
-                  # Poll by READING the directory (readdir via ls), NOT by statting
-                  # a single never-existed filename. A bare `[ -f prompt.md ]` on a
-                  # dir the guest never reads sits on a stale negative-dentry cache
-                  # and never sees the host's delivered file; a readdir forces the
-                  # guest to revalidate against the host. Confirmed empirically: an
-                  # instrumented build that ls'd the dir each poll delivered fine,
-                  # where the bare stat-loop hung — even with virtiofs cache=never.
-                  # Touch .ready every iteration: it doubles as the IDLE
-                  # heartbeat. A long-warm guest that wedges or dies stops
-                  # refreshing it, and the drainer (which requires a FRESH
-                  # .ready before claiming) recycles this VM instead of
-                  # delivering a task into a zombie — long-idle VMs were
-                  # observed to rot after ~10h with the unit still active.
-                  while ! ls -1 "${guestTaskMount}" 2>/dev/null | grep -Fqx prompt.md; do
-                    touch ${guestTaskMount}/.ready
-                    sleep 1
-                  done
-
-                  credential_error=
-                  if [ -L ${guestCredsMount}/task-meta ] || [ ! -f ${guestCredsMount}/task-meta ]; then
-                    credential_error=1
-                    agent=; model=; effort=
-                  else
-                    # Host-generated canonical metadata lives in the read-only
-                    # credential share; the guest never reparses executor fields.
-                    # shellcheck disable=SC1091
-                    . ${guestCredsMount}/task-meta
-                  fi
-                  awk '
-                    NR==1 && $0=="---" { h=1; next }
-                    h && $0=="---" { h=0; next }
-                    h { next }
-                    { print }
-                  ' "$prompt" > /tmp/prompt-body.md
-
-                  case "$agent" in
-                    claude)
-                      task_user=agent-claude
-                      task_home=/home/agent-claude
-                      executor=${getExe claudeExecutor}
-                      ;;
-                    codex)
-                      task_user=agent-codex
-                      task_home=/home/agent-codex
-                      executor=${getExe codexExecutor}
-                      ;;
-                    opencode)
-                      case "$model" in
-                        local/*)
-                          task_user=agent-local
-                          task_home=/home/agent-local
-                          executor=${getExe localExecutor}
-                          ;;
-                        openrouter/*)
-                          task_user=agent-opencode
-                          task_home=/home/agent-opencode
-                          executor=${getExe opencodeExecutor}
-                          ;;
-                        *)
-                          task_user=
-                          task_home=
-                          executor=
-                          ;;
-                      esac
-                      ;;
-                    *)
-                      task_user=
-                      task_home=
-                      executor=
-                      ;;
-                  esac
-
-                  # The host publishes prompt.md only after staging the selected
-                  # credential. Reject any missing, extra, linked, or wrong file
-                  # before copying it into an executor-private location.
-                  credential_count=0
-                  credential_name=
-                  for credential in ${guestCredsMount}/*; do
-                    [ -e "$credential" ] || [ -L "$credential" ] || continue
-                    if [ "$(basename "$credential")" = task-meta ]; then
-                      continue
-                    fi
-                    credential_count=$((credential_count + 1))
-                    credential_name="$(basename "$credential")"
-                    if [ -L "$credential" ] || [ ! -f "$credential" ]; then
-                      credential_error=1
-                    fi
-                  done
-                  case "$agent:$model" in
-                    claude:*) expected_credential=claude-token ;;
-                    codex:*) expected_credential=codex-auth.json ;;
-                    opencode:openrouter/*) expected_credential=openrouter-key ;;
-                    opencode:local/*) expected_credential= ;;
-                    *) expected_credential=invalid ;;
-                  esac
-                  if [ -n "$expected_credential" ]; then
-                    if [ "$credential_count" -ne 1 ] || [ "$credential_name" != "$expected_credential" ]; then
-                      credential_error=1
-                    fi
-                  elif [ "$credential_count" -ne 0 ]; then
-                    credential_error=1
-                  fi
-                  if [ -z "$credential_error" ]; then
-                    umask 077
-                    case "$expected_credential" in
-                      claude-token)
-                        install -d -m 0700 -o agent-claude -g users /run/agent-claude
-                        printf 'export CLAUDE_CODE_OAUTH_TOKEN=%q\n' \
-                          "$(cat ${guestCredsMount}/claude-token)" > /run/agent-claude/env
-                        chown agent-claude:users /run/agent-claude/env
-                        chmod 0400 /run/agent-claude/env
-                        ;;
-                      codex-auth.json)
-                        install -d -m 0700 -o agent-codex -g users /home/agent-codex/.codex
-                        install -m 0400 -o agent-codex -g users \
-                          ${guestCredsMount}/codex-auth.json /home/agent-codex/.codex/auth.json
-                        ;;
-                      openrouter-key)
-                        install -d -m 0700 -o agent-opencode -g users /run/agent-opencode
-                        printf 'export OPENROUTER_API_KEY=%q\n' \
-                          "$(cat ${guestCredsMount}/openrouter-key)" > /run/agent-opencode/env
-                        chown agent-opencode:users /run/agent-opencode/env
-                        chmod 0400 /run/agent-opencode/env
-                        ;;
-                    esac
-                  fi
-
-                  # Heartbeat covers context preparation as well as model work,
-                  # so a failed/slow capsule never looks like a dead VM.
-                  ( while :; do touch ${guestTaskMount}/.heartbeat; sleep 15; done ) &
-                  hbpid=$!
-
-                  # Context is an opaque cockpit-built archive to the host and
-                  # is extracted only here, as the selected unprivileged user.
-                  baseline=
-                  context_error=
-                  prepare_context() {
-                    # The volume mount can supersede tmpfiles-created metadata;
-                    # repair the shared workspace mode after mounts are live.
-                    install -d -m 0770 -o "$task_user" -g users /workspace || return
-                    runuser -u "$task_user" -- env HOME="$task_home" \
-                      tar --extract --zstd --strip-components=1 \
-                        --no-same-owner --no-same-permissions --no-overwrite-dir \
-                        --directory /workspace --file ${guestTaskMount}/context.tar.zst || return
-                    runuser -u "$task_user" -- env HOME="$task_home" git -C /workspace init --quiet || return
-                    runuser -u "$task_user" -- env HOME="$task_home" git -C /workspace \
-                      config user.name "$task_user" || return
-                    runuser -u "$task_user" -- env HOME="$task_home" git -C /workspace \
-                      config user.email "$task_user@agents.invalid" || return
-                    runuser -u "$task_user" -- env HOME="$task_home" git -C /workspace add -A || return
-                    runuser -u "$task_user" -- env HOME="$task_home" git -C /workspace \
-                      commit --quiet --allow-empty -m 'fleet context baseline' || return
-                    baseline="$(runuser -u "$task_user" -- env HOME="$task_home" \
-                      git -C /workspace rev-parse HEAD)" || return
-                  }
-                  if [ -z "$credential_error" ] && [ -n "$task_user" ] && [ -f ${guestTaskMount}/context.tar.zst ]; then
-                    prepare_context > /tmp/context-preparation.log 2>&1 || context_error=1
-                  fi
-
-                  hint="$(cat ${hintFile})"
-
-                  rc=0
-                  if [ -n "$credential_error" ]; then
-                    echo "task rejected: credential set does not match selected executor" | tee ${guestTaskMount}/report.md > ${guestTaskMount}/agent.log
-                    rc=66
-                  elif [ -n "$context_error" ]; then
-                    {
-                      echo "task failed: context capsule could not be prepared"
-                      cat /tmp/context-preparation.log
-                    } | tee ${guestTaskMount}/agent.log > ${guestTaskMount}/report.md
-                    rc=65
-                  elif [ -z "$task_user" ] || [ -z "$model" ]; then
-                    echo "task rejected: agent and model must both be specified" | tee ${guestTaskMount}/report.md > ${guestTaskMount}/agent.log
-                    rc=64
-                  else
-                    case "$agent" in
-                      claude)
-                        runuser -u "$task_user" -- env HOME="$task_home" "$executor" \
-                          -p "$(cat /tmp/prompt-body.md)" --model "$model" \
-                          ''${effort:+--effort "$effort"} \
-                          --dangerously-skip-permissions \
-                          --append-system-prompt "$hint" \
-                          > ${guestTaskMount}/report.md \
-                          2> ${guestTaskMount}/agent.log || rc=$?
-                        ;;
-                      codex)
-                        # No system-prompt flag; the hint rides atop the prompt.
-                        # stdout is the session transcript (-> agent.log); the
-                        # final message is the report.
-                        runuser -u "$task_user" -- env HOME="$task_home" "$executor" exec \
-                          --dangerously-bypass-approvals-and-sandbox \
-                          --skip-git-repo-check \
-                          --model "$model" \
-                          ''${effort:+-c model_reasoning_effort="$effort"} \
-                          --output-last-message ${guestTaskMount}/report.md \
-                          "$hint
-
-                        $(cat /tmp/prompt-body.md)" \
-                          > ${guestTaskMount}/agent.log 2>&1 < /dev/null || rc=$?
-                        ;;
-                      opencode)
-                        # No system-prompt flag; the hint rides atop the prompt
-                        # (same as codex). --auto approves every permission (the
-                        # VM is the sandbox); stdout is the final response (->
-                        # report.md), --print-logs puts the session log on
-                        # stderr (-> agent.log). Model is a provider/model slug:
-                        # openrouter/<vendor>/<model> (authed by
-                        # OPENROUTER_API_KEY from its private executor env) or
-                        # local/<name> (the host's llama-swap catalog, via
-                        # $OPENCODE_CONFIG — free, ship-local tokens).
-                        # effort maps to --variant (provider-specific reasoning
-                        # effort; only pass it for models that have variants).
-                        runuser -u "$task_user" -- env HOME="$task_home" "$executor" run \
-                          --auto \
-                          --print-logs \
-                          --model "$model" \
-                          ''${effort:+--variant "$effort"} \
-                          "$hint
-
-                        $(cat /tmp/prompt-body.md)" \
-                          > ${guestTaskMount}/report.md \
-                          2> ${guestTaskMount}/agent.log < /dev/null || rc=$?
-                        ;;
-                      *)
-                        echo "unknown agent '$agent' (known: claude, codex, opencode)" | tee ${guestTaskMount}/report.md > ${guestTaskMount}/agent.log
-                        rc=64
-                        ;;
-                    esac
-                  fi
-                  # Distill the executor's own usage records (Claude/codex:
-                  # JSONL transcripts; opencode: SQLite) into one normalized
-                  # usage.json on the task share, before exit-code signals
-                  # completion. Strictly best-effort: a missing or unparsable
-                  # store must never fail the task. Field names: input/output
-                  # are totals (output includes reasoning); cache_read and
-                  # cache_creation follow Anthropic's split, and codex's
-                  # cached_input maps to cache_read.
-                  if [ -n "$task_user" ]; then
-                    usage=""
-                    case "$agent" in
-                      claude)
-                        usage=$(find "$task_home/.claude/projects" -name '*.jsonl' -print0 2>/dev/null \
-                          | xargs -0r cat \
-                          | jq -cs '
-                              [ .[] | select(.type=="assistant" and .message.usage != null)
-                                | {id: ((.requestId//"") + "/" + (.message.id//"")), u: .message.usage, m: .message.model} ]
-                              | unique_by(.id)
-                              | select(length > 0)
-                              | { executor: "claude",
-                                  model: ((map(.m) | map(select(. != null)) | last) // "unknown"),
-                                  input_tokens: (map(.u.input_tokens//0) | add),
-                                  output_tokens: (map(.u.output_tokens//0) | add),
-                                  cache_read_tokens: (map(.u.cache_read_input_tokens//0) | add),
-                                  cache_creation_tokens: (map(.u.cache_creation_input_tokens//0) | add) }' \
-                          2>/dev/null) || usage=""
-                        ;;
-                      codex)
-                        # total_token_usage is cumulative per session file:
-                        # take each file's final value, then sum the files.
-                        usage=$(
-                          find "$task_home/.codex/sessions" -name '*.jsonl' -print0 2>/dev/null \
-                          | while IFS= read -r -d "" f; do
-                              jq -cs '
-                                { m: ([ .[] | select(.type=="turn_context") | .payload.model ] | last),
-                                  t: ([ .[] | select(.type=="event_msg" and .payload.type=="token_count"
-                                              and .payload.info.total_token_usage != null)
-                                        | .payload.info.total_token_usage ] | last) }
-                                | select(.t != null)' "$f" 2>/dev/null || true
-                            done \
-                          | jq -cs '
-                              select(length > 0)
-                              # OpenAI input_tokens INCLUDES cached; normalize
-                              # to the Anthropic convention (input = uncached)
-                              | { executor: "codex",
-                                  model: ((map(.m) | map(select(. != null)) | last) // "unknown"),
-                                  input_tokens: ((map(.t.input_tokens//0) | add) - (map(.t.cached_input_tokens//0) | add)),
-                                  output_tokens: (map(.t.output_tokens//0) | add),
-                                  cache_read_tokens: (map(.t.cached_input_tokens//0) | add),
-                                  cache_creation_tokens: 0 }' 2>/dev/null) || usage=""
-                        ;;
-                      opencode)
-                        db=$(find "$task_home/.local/share/opencode" -maxdepth 1 -name '*.db' 2>/dev/null | head -n1)
-                        if [ -n "$db" ]; then
-                          usage=$(sqlite3 -readonly -json "$db" 'select data from message' 2>/dev/null \
-                            | jq -c '
-                                [ .[] | .data | fromjson | select(.role=="assistant" and .tokens != null) ]
-                                | select(length > 0)
-                                | { executor: "opencode",
-                                    model: (((map(.providerID) | map(select(. != null)) | last) // "?") + "/"
-                                            + ((map(.modelID) | map(select(. != null)) | last) // "unknown")),
-                                    input_tokens: (map(.tokens.input//0) | add),
-                                    output_tokens: ((map(.tokens.output//0) | add) + (map(.tokens.reasoning//0) | add)),
-                                    cache_read_tokens: (map(.tokens.cache.read//0) | add),
-                                    cache_creation_tokens: (map(.tokens.cache.write//0) | add) }' \
-                            2>/dev/null) || usage=""
-                        fi
-                        ;;
-                    esac
-                    if [ -n "$usage" ]; then
-                      printf '%s\n' "$usage" > ${guestTaskMount}/usage.json
-                    fi
-                  fi
-                  if [ -n "$task_user" ] && [ -n "$baseline" ] && [ -d /workspace/.git ]; then
-                    runuser -u "$task_user" -- env HOME="$task_home" bash -c '
-                      git -C /workspace add --intent-to-add --all || true
-                      if git -C /workspace diff --binary --no-ext-diff "$1" > "$2/.changes.patch.tmp"; then
-                        mv "$2/.changes.patch.tmp" "$2/changes.patch"
-                      else
-                        rm -f "$2/.changes.patch.tmp"
-                      fi
-                    ' bash "$baseline" ${guestTaskMount}
-                  fi
-                  kill "$hbpid" 2>/dev/null || true
-                  # The CLI may have left background children. End the selected
-                  # UID before root creates the completion marker, so no process
-                  # can race a symlink into that root write.
-                  pkill -KILL -u "$task_user" 2>/dev/null || true
-                  rm -f ${guestTaskMount}/exit-code
-                  printf '%s\n' "$rc" > ${guestTaskMount}/exit-code
-                '';
               };
 
               # Local git is used to capture a patch against the cockpit-built
@@ -781,6 +498,11 @@
                   homeMode = "0700";
                   description = "credentialless local-model fleet executor";
                 };
+                agent-verify = {
+                  isNormalUser = true;
+                  homeMode = "0700";
+                  description = "credentialless deterministic fleet verifier";
+                };
               };
               systemd.tmpfiles.rules = singleton "d /workspace 0770 root users -";
 
@@ -799,7 +521,7 @@
       # and its slice fence) is generated from this one list.
       options.agentFleet = {
         workers = mkOption {
-            description = "agent-fleet worker roster";
+          description = "agent-fleet worker roster";
           default = [ ];
           type = types.listOf (
             types.submodule {
@@ -841,11 +563,13 @@
       config = mkIf cfg.enable {
         assertions = [
           {
-            assertion = lib.lists.length cfg.workers == lib.lists.length (lib.lists.unique (map (w: w.name) cfg.workers));
+            assertion =
+              lib.lists.length cfg.workers == lib.lists.length (lib.lists.unique (map (w: w.name) cfg.workers));
             message = "agentFleet worker names must be unique";
           }
           {
-            assertion = lib.lists.length cfg.workers == lib.lists.length (lib.lists.unique (map (w: w.index) cfg.workers));
+            assertion =
+              lib.lists.length cfg.workers == lib.lists.length (lib.lists.unique (map (w: w.index) cfg.workers));
             message = "agentFleet worker indices must be unique";
           }
         ];
@@ -861,7 +585,8 @@
         ]) cfg.workers;
 
         systemd.services = listToAttrs (
-          map (w:
+          map (
+            w:
             # microvm.nix has no slice option; standard unit override so every
             # worker counts against the fleet's 48G/agents.slice fence.
             (nameValuePair "microvm@${w.name}" {

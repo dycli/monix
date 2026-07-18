@@ -155,12 +155,18 @@
     {
       config = mkIf (osConfig.isDesktop || osConfig.cockpit.enable) {
         home.packages = [
+          pkgs.cargo
           pkgs.claude-code
+          pkgs.clippy
           pkgs.codex
+          pkgs.gcc
           pkgs.opencode
           pkgs.hugo
           # The codex Claude Code plugin's hooks invoke `node` directly.
           pkgs.nodejs
+          pkgs.rust-analyzer
+          pkgs.rustc
+          pkgs.rustfmt
         ];
       };
     };
