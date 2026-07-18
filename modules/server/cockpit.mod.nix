@@ -172,6 +172,49 @@
           };
         };
 
+        # OpenCode shortcuts for the vendor-neutral ship procedures in AGENTS.md.
+        home.file.".config/opencode/commands/launch.md" = {
+          force = true;
+          text = ''
+            ---
+            description: Pre-flight — orient in the cockpit and report ship status
+            ---
+
+            Run the pre-flight ("launch the ship") from AGENTS.md:
+
+            1. Read `~/cockpit/memory/HANDOFF.md` (current shift state) and
+               `~/cockpit/memory/MEMORY.md`, and open every memory relevant
+               to active or open work.
+            2. Run `sudo -n -u fleet-operator fleet health` and then `fleet status`
+               (each standalone, never chained).
+            3. Report in a few lines: ship status, drone-fleet health, the open backlog
+               and loose ends, and anything time-sensitive. Then hold for a heading from
+               the captain — don't start work unprompted.
+          '';
+        };
+        home.file.".config/opencode/commands/dock.md" = {
+          force = true;
+          text = ''
+            ---
+            description: Dock the ship — graceful end-of-shift wrap-up
+            ---
+
+            Run the docking procedure ("dock the ship") from AGENTS.md:
+
+            1. Sweep loose ends: `sudo -n -u fleet-operator fleet health`
+               (running tasks, pending questions), background jobs, and
+               `git status` + unpushed commits in `~/ark/monix` and any other
+               repo touched this shift.
+            2. Memory hygiene: durable facts → memory files (update MEMORY.md
+               index lines); archive/delete resolved memories.
+            3. REWRITE `~/cockpit/memory/HANDOFF.md` in full (shift change).
+            4. Report the docking checklist and hold for the captain's final
+               word: repo state (uncommitted/unpushed — pushing needs his
+               explicit say), work still running, commits awaiting a switch,
+               anything that shouldn't wait for next shift.
+          '';
+        };
+
         # Durable cockpit memory lives at the vendor-neutral path for real:
         # ~/cockpit/memory is the actual directory (mutable state, not managed
         # here). Claude's per-project auto-memory location is a symlink INTO
