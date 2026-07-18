@@ -24,11 +24,13 @@ in
   "assets/fonts/comic-code.age".publicKeys = [ fw3 ] ++ admin;
 
   "hosts/fw0/secrets/max-password.age".publicKeys = [ fw0 ] ++ admin;
+  # Retained bootstrap key; fw0 is already enrolled and does not consume it at runtime.
   "hosts/fw0/secrets/tailscale.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/agent-claude-token.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/agent-codex-auth.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/agent-openrouter-key.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/openrouter-management-key.age".publicKeys = [ fw0 ] ++ admin;
+  # Reserved app-local password; current web cockpit uses Cloudflare Access only.
   "hosts/fw0/secrets/opencode-web-env.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/opencode-web-cloudflare-tunnel-token.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/matrix-registration.env.age".publicKeys = [ fw0 ] ++ admin;
@@ -38,6 +40,7 @@ in
   "hosts/fw0/secrets/matrix-newsbot.env.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/remy-caldav.json.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/matrix-alertbot.env.age".publicKeys = [ fw0 ] ++ admin;
+  # Reserved for the currently disabled LiteLLM/Open WebUI modules.
   "hosts/fw0/secrets/litellm.env.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/open-webui.env.age".publicKeys = [ fw0 ] ++ admin;
 }

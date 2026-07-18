@@ -116,10 +116,18 @@ def push_outbox(cal_cfg):
             try:
                 uid = str(ev.icalendar_component.get("uid", ""))
                 if uid.startswith("remy-"):
+                    row = db.execute(
+                        "SELECT id,op FROM cal_outbox WHERE uid=? ORDER BY id DESC LIMIT 1",
+                        (uid,),
+                    ).fetchone()
+                    if row is None:
+                        log.warning("leaving unknown remy event in %s: %s", c.url, uid)
+                        continue
                     ev.delete()
-                    db.execute("UPDATE cal_outbox SET pushed_ts=NULL WHERE id=?",
-                               (int(uid.split("-")[1]),))
-                    db.commit()
+                    if row["op"] == "create":
+                        db.execute("UPDATE cal_outbox SET pushed_ts=NULL WHERE id=?",
+                                   (row["id"],))
+                        db.commit()
                     log.info("moved stray remy event out of %s", c.url)
             except Exception:
                 log.exception("stray cleanup failed in %s", c.url)

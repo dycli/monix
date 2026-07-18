@@ -116,6 +116,8 @@ class Bot:
         if self.db.execute("SELECT 1 FROM processed WHERE event_id=?",
                            (event.event_id,)).fetchone():
             return
+        # Deliberate at-most-once delivery: retrying after a crash risks posting
+        # duplicate answers, while a dropped news answer has no durable side effect.
         self.db.execute("INSERT INTO processed(event_id,ts) VALUES(?,?)",
                         (event.event_id, int(time.time())))
         self.db.commit()

@@ -71,7 +71,10 @@
     };
   };
 
-  # Coarse resource fences prevent any tenant from starving another.
+  # Per-tenant runaway fences, intentionally overcommitted: these are ceilings,
+  # not reservations, and normal peaks do not coincide. Aggregate pressure can
+  # still invoke the kernel OOM policy; lower these if concurrent model/fleet
+  # workloads begin approaching physical memory.
   systemd.slices.agents.sliceConfig.MemoryMax = "48G";
   systemd.slices.inference.sliceConfig.MemoryMax = "96G";
   systemd.slices.services.sliceConfig.MemoryMax = "16G";

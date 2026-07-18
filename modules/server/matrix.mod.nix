@@ -51,6 +51,7 @@
       inherit (lib) types;
 
       cfg = config.matrix;
+      networkFences = import ../../lib/network-fences.nix;
     in
     {
       options.matrix = {
@@ -146,14 +147,7 @@
             "::1"
             "100.64.0.0/10" # tailnet clients (CGNAT range)
           ];
-          IPAddressDeny = [
-            "10.0.0.0/8" # RFC1918 — incl. the agent-fleet bridge
-            "172.16.0.0/12" # RFC1918
-            "192.168.0.0/16" # RFC1918 — home LAN
-            "169.254.0.0/16" # link-local
-            "fc00::/7" # IPv6 ULA
-            "fe80::/10" # IPv6 link-local
-          ];
+          IPAddressDeny = networkFences.privateRanges;
         };
 
         # Public web ingress: a dedicated cloudflared connector that dials out

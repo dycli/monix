@@ -954,6 +954,7 @@ BUDGET_SCHEMA = {
         "new_amount": {"type": "number"},
         "new_category": {"type": "string"},
         "new_payee": {"type": "string"},
+        "new_date": {"type": "string"},
         "query_kind": {"type": "string",
                        "enum": ["month_summary", "category_total", "recent", "compare_months"]},
         "month": {"type": "string"},
@@ -961,7 +962,7 @@ BUDGET_SCHEMA = {
         "reply": {"type": "string"},
     },
     "required": ["intent", "payee", "amount", "category", "date", "note",
-                 "tx_id", "new_amount", "new_category", "new_payee",
+                  "tx_id", "new_amount", "new_category", "new_payee", "new_date",
                  "query_kind", "month", "chart_kind", "reply"],
 }
 
@@ -1036,8 +1037,8 @@ def do_budget_edit(db, act):
             changes.append("category=?"); params.append(cat)
     if act.get("new_payee"):
         changes.append("payee=?"); params.append(act["new_payee"].strip()[:80])
-    if act.get("date"):
-        changes.append("date=?"); params.append(act["date"])
+    if act.get("new_date"):
+        changes.append("date=?"); params.append(act["new_date"])
     if not changes:
         return "Nothing to change that I understood."
     db.execute(f"UPDATE tx SET {','.join(changes)} WHERE id=?", (*params, r["id"]))
@@ -1192,7 +1193,9 @@ class Bot:
             handler = self.handle_budget
         else:
             return
-        # One processed-table (the household db) covers both rooms.
+        # One processed-table (the household db) covers both rooms. Mark before
+        # handling for deliberate at-most-once semantics: replaying after a
+        # crash could duplicate household or budget mutations.
         if self.hdb.execute("SELECT 1 FROM processed WHERE event_id=?",
                             (event.event_id,)).fetchone():
             return

@@ -62,7 +62,7 @@ The single switch is `isDesktop` (default `false` ⇒ server). Desktop aspects
 (Hyprland, audio, fonts, NetworkManager, the user's graphical session) gate on
 it with `mkIf config.isDesktop`, so a server simply omits them by leaving the
 flag false. Service aspects (LiteLLM, Open WebUI, Tailscale) gate on their own
-`enable` option, which the host turns on.
+`enable` options, which each host may turn on.
 
 ## Adding a host
 
@@ -87,6 +87,10 @@ optional provider keys, and Cloudflare Tunnel tokens. Disabled LiteLLM/Open
 WebUI secret files remain placeholders and must be replaced with real age
 ciphertext before those services are enabled.
 
+`opencode-web-env.age` is retained for an optional app-local password layer.
+The current deployment deliberately uses Cloudflare Access as its sole web gate;
+set `cockpit.webEnvFile` before relying on that encrypted environment file.
+
 `keys.nix` is the single source of truth for SSH public keys (host keys + admin
 keys). `secrets.nix` maps each secret file to the keys it is encrypted to and is
 read by the `agenix` CLI. Secrets are decrypted on the host using its SSH host
@@ -101,12 +105,13 @@ key (`/etc/ssh/ssh_host_ed25519_key`).
 4. Create the needed secrets (an entry must already exist in `secrets.nix`):
 
    ```sh
-    agenix -e hosts/fw0/agent-claude-token.age
-    agenix -e hosts/fw0/agent-codex-auth.age
-    agenix -e hosts/fw0/opencode-web-cloudflare-tunnel-token.age
+    agenix -e hosts/fw0/secrets/agent-claude-token.age
+    agenix -e hosts/fw0/secrets/agent-codex-auth.age
+    agenix -e hosts/fw0/secrets/opencode-web-cloudflare-tunnel-token.age
    ```
 
-`tailscale.age` holds a one-line reusable auth key (`tskey-auth-...`).
+`hosts/fw0/secrets/tailscale.age` retains the original one-line enrollment key.
+The enrolled fw0 node does not consume it during normal activation.
 
 > Both hosts use immutable users with encrypted password hashes. Provision the
 > host's password secret before activation; changing a password means replacing
@@ -164,35 +169,15 @@ failure paths, every mid-task interaction (live peek, steering, escalation
 with three advisor backends), and the results flow — is in
 [fleet-flow.md](fleet-flow.md).
 
-## The AI stack on fw0
+## Optional AI services
 
-Declared in `hosts/fw0/fw0.mod.nix` but currently commented out (the `.age`
-secret files are placeholders — see the warning above). When enabled:
-
-- **LiteLLM** runs on `127.0.0.1:4000` as an OpenAI-compatible gateway. Its
-  `model_list` (in `hosts/fw0/fw0.mod.nix`) is illustrative — edit it for your
-  providers. `os.environ/NAME` reads NAME from `litellm.env.age`, which must
-  define `LITELLM_MASTER_KEY` and every referenced provider key, e.g.:
-
-  ```sh
-  LITELLM_MASTER_KEY=sk-...generate-a-strong-key...
-  OPENAI_API_KEY=sk-...your-openai-key...
-  ANTHROPIC_API_KEY=sk-ant-...your-anthropic-key...
-  ```
-
-- **Open WebUI** runs on `0.0.0.0:8080` and uses LiteLLM as its backend
-  (`OPENAI_API_BASE_URL=http://127.0.0.1:4000/v1`). `open-webui.env.age` must
-  set `OPENAI_API_KEY` to the **same value** as LiteLLM's `LITELLM_MASTER_KEY`
-  (this is how Open WebUI authenticates to LiteLLM), plus a `WEBUI_SECRET_KEY`:
-
-  ```sh
-  OPENAI_API_KEY=sk-...same-as-LITELLM_MASTER_KEY...
-  WEBUI_SECRET_KEY=...generate-a-strong-key...
-  ```
-
-Neither service opens the public firewall. They are reachable over **Tailscale**
-(the `tailscale0` interface is trusted) and via localhost. Reach Open WebUI at
-`http://<fw0-tailscale-ip>:8080`.
+The repository contains reusable LiteLLM and Open WebUI modules, but fw0 does
+not currently enable either service. Their encrypted environment files are
+retained for a possible future deployment. A host enabling them must supply the
+LiteLLM model list and both services' environment files; the modules only set
+safe binding, firewall, telemetry, and backend defaults. The active AI services
+on fw0 are the local inference endpoint, the agent fleet, and the OpenCode web
+cockpit described above.
 
 ## Building
 

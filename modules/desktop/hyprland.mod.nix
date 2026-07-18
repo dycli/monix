@@ -452,13 +452,7 @@
                   "App launcher"
                   { }
                 )
-                (mkBind "SUPER + E" ''hl.dsp.exec_cmd("thunderbird")'' "Open email" { })
-                (mkBind "SUPER + M" ''hl.dsp.exec_cmd("spotify")'' "Open music" { })
                 (mkBind "SUPER + N" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e nvim")'' "Open editor" { })
-                (mkBind "SUPER + SHIFT + N" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e newsboat")''
-                  "Open RSS reader"
-                  { }
-                )
                 (mkBind "SUPER + R" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e lf")''
                   "Open file manager"
                   { }

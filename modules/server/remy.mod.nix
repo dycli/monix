@@ -52,6 +52,7 @@
       inherit (lib) types;
 
       cfg = config.remy;
+      networkFences = import ../../lib/network-fences.nix;
 
       python = pkgs.python3.withPackages (ps: [
         ps.matrix-nio
@@ -415,16 +416,7 @@
               "127.0.0.0/8"
               "::1"
             ];
-            IPAddressDeny = [
-              "link-local"
-              "multicast"
-              "10.0.0.0/8"
-              "172.16.0.0/12"
-              "192.168.0.0/16"
-              "100.64.0.0/10"
-              "fc00::/7"
-              "fe80::/10"
-            ];
+            IPAddressDeny = networkFences.internetOnlyDeny;
           };
         };
 

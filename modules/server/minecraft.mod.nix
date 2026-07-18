@@ -41,6 +41,7 @@
       inherit (lib.options) mkEnableOption;
 
       cfg = config.minecraft;
+      networkFences = import ../../lib/network-fences.nix;
 
       # PINNED MINECRAFT VERSION. 26.1.2 — the latest STABLE Minecraft release
       # for which the full required performance mod set (Lithium, FerriteCore,
@@ -271,13 +272,7 @@
           IPAddressDeny = [
             "127.0.0.0/8" # loopback / other localhost services
             "::1"
-            "10.0.0.0/8" # RFC1918 — incl. the agent-fleet bridge 10.100.0.0/24
-            "172.16.0.0/12" # RFC1918
-            "192.168.0.0/16" # RFC1918 — home LAN
-            "169.254.0.0/16" # link-local
-            "fc00::/7" # IPv6 ULA
-            "fe80::/10" # IPv6 link-local
-          ];
+          ] ++ networkFences.privateRanges;
         };
       };
     };
