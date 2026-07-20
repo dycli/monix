@@ -532,7 +532,7 @@ so "2" in shopping is a different item than "2" in chores):
 Existing list names: {list_names}
 Recently removed items (restorable), shown as [list] name:
 {deleted or "(none)"}
-Pending reminders (id time text):
+Pending reminders (time text):
 {reminders}
 
 Rules:
@@ -577,8 +577,10 @@ Rules:
   the thing (short) and at as 'yyyy-mm-dd HH:MM' 24h local (resolve like due
   dates; morning=09:00, noon=12:00, afternoon=15:00, evening/tonight=19:00; bare
   "at 5" after noon = 17:00). assignee like items. A DAY deadline with no clock
-  time ("by friday") is an item_add to "to-dos", NOT a reminder. Cancel =>
-  remind_cancel with rem_id; "what reminders are set" => remind_show.
+  time ("by friday") is an item_add to "to-dos", NOT a reminder. Cancelling
+  ("cancel the csa reminder", "never mind that reminder") => remind_cancel with
+  text = words from the reminder to match (leave "" only if there is exactly
+  one pending). "what reminders are set" => remind_show.
 {cal_rule}
 - DAY/SCHEDULE view: "what's the day/week look like", "what's on today/this
   week", "what's happening", anything explicitly about THE CALENDAR/SCHEDULE
@@ -633,7 +635,7 @@ def fmt_reminder(r):
     day = ("today" if d == today() else "tomorrow" if d == today() + timedelta(days=1)
            else d.strftime("%a %b %-d"))
     who = f" — {r['assignee']}" if r["assignee"] else ""
-    return f"#{r['id']} {day} {r['at'][11:]} {r['text']}{who}"
+    return f"{day} {r['at'][11:]} {r['text']}{who}"
 
 
 def valid_at(s):
@@ -732,10 +734,17 @@ def do_cal_add(db, act, sender):
 
 
 def do_remind_cancel(db, act):
-    r = db.execute("SELECT * FROM reminder WHERE id=? AND deleted=0 AND fired_ts IS NULL",
-                   (act.get("rem_id"),)).fetchone()
-    if not r:
-        return "Couldn't tell which reminder — use its #id ('cancel reminder 2')."
+    # Match by words from the reminder (no visible ids). If they didn't say
+    # which and there's more than one pending, ask.
+    rows = pending_reminders(db)
+    txt = (act.get("text") or "").strip().lower()
+    if txt:
+        rows = [r for r in rows if txt in r["text"].lower()]
+    if not rows:
+        return "No matching reminder to cancel."
+    if len(rows) > 1 and not txt:
+        return "Which reminder? Name part of it ('cancel the vet reminder')."
+    r = rows[0]
     db.execute("UPDATE reminder SET deleted=1 WHERE id=?", (r["id"],))
     db.commit()
     queue_cal(db, "delete", rem_uid(r["id"]))
