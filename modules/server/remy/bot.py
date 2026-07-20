@@ -981,16 +981,18 @@ def do_todos_show(db, act):
         # "what do I have" means mine PLUS the household's unassigned ones —
         # the whole point is what I could go do, not only what carries my name.
         rows = [r for r in rows if r["assignee"] in (who, "")]
+    # Undated to-dos are standing tasks — they belong in every view except the
+    # strictly date-bounded "overdue" one. Only dated items get windowed.
     if scope == "today":
-        rows = [r for r in rows if r["due"] and r["due"] <= now.isoformat()]
-        head = "To-dos today (and overdue):"
+        rows = [r for r in rows if not r["due"] or r["due"] <= now.isoformat()]
+        head = "To-dos" + (f" — {who}" if who else "") + ":"
     elif scope == "overdue":
         rows = [r for r in rows if r["due"] and r["due"] < now.isoformat()]
         head = "Overdue:"
     elif scope == "week":
         end = (now + timedelta(days=6 - now.weekday())).isoformat()
-        rows = [r for r in rows if r["due"] and r["due"] <= end]
-        head = "This week's to-dos:"
+        rows = [r for r in rows if not r["due"] or r["due"] <= end]
+        head = "To-dos" + (f" — {who}" if who else "") + ":"
     else:
         head = "To-dos" + (f" — {who}" if who else "") + ":"
     out = head + "\n" + ("\n".join(fmt_item(r) for r in rows) or "(nothing!)")
