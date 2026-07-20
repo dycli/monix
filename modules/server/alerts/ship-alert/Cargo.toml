@@ -1,0 +1,13 @@
+[package]
+name = "ship-alert"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde_json = "1"
+
+[profile.release]
+lto = "thin"
+strip = true
