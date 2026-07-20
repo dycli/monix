@@ -526,6 +526,13 @@ to-dos, packing…; items may carry a due date and a person), the CALENDAR (time
 appointments), and REMINDERS (pings at a moment). "to-dos" is the catch-all list
 for things to do; "chores" is its own list.
 
+GUIDING PRINCIPLE — breadth by default: the vaguer the request, the BROADER the
+answer. A non-specific ask ("what's going on", "what do I have", "the agenda",
+"tasks") should return the widest view — todos_show at scope "all", which shows
+the whole to-do list plus the calendar and reminders. NARROW only when the
+message itself is specific: a named list, a named person, a specific day/week,
+or "what got done". When unsure how wide to go, go wider — show more, not less.
+
 Open lists (each item shown as its per-list number — numbers restart per list,
 so "2" in shopping is a different item than "2" in chores):
 {listing}
