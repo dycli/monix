@@ -580,13 +580,15 @@ Rules:
   time ("by friday") is an item_add to "to-dos", NOT a reminder. Cancel =>
   remind_cancel with rem_id; "what reminders are set" => remind_show.
 {cal_rule}
-- BROAD questions get the BROAD view: "what do we have to do today", "what's the
-  day/week look like", "what's on today/this week", anything about THE CALENDAR
-  => post_now (kind morning for today, week for the week). When torn between a
-  summary and a narrow list, choose the summary.
-- To-do questions: "what do I still have to do", "what's on my plate", "show my
-  to-dos", "what got done" => todos_show with scope (today|week|all|overdue|done)
-  and assignee when one person is named ("what do I have" = the author).
+- DAY/SCHEDULE view: "what's the day/week look like", "what's on today/this
+  week", "what's happening", anything explicitly about THE CALENDAR/SCHEDULE
+  => post_now (kind morning for today, week for the week).
+- TO-DO/TASKS view: "show my to-dos", "show me tasks", "the to-do list", "what
+  do I still have to do", "what's on my plate", "what got done" => todos_show
+  with scope (today|week|all|overdue|done) and assignee when one person is named
+  ("what do I have" = the author). This view already folds in the week's
+  calendar, so DON'T also emit post_now for it — todos_show is the answer to
+  any "tasks/to-dos" ask, even when it sounds like it could mean the calendar.
 - Asking what you can do => help.
 - UNSURE? If you genuinely cannot tell which list an item belongs to, or which
   item/list a command targets, DO NOT guess and DO NOT invent — use intent ask
@@ -884,7 +886,14 @@ def do_list_show(db, act):
                 lines.append(f"  [{r['section']}]")
             last_sec = r["section"]
         lines.append(f"  {fmt_item(r)}")
-    return "\n".join(lines)
+    out = "\n".join(lines)
+    # The to-dos list doubles as "my plate" — fold in the week's calendar so
+    # asking for it is never mistaken for (or missing) the schedule.
+    if ln == "to-dos" and db.cal:
+        peek = cal_peek(db)
+        if peek:
+            out += "\n\n" + peek
+    return out
 
 
 def do_lists_show(db):
@@ -948,7 +957,12 @@ def do_todos_show(db, act):
         head = "This week's to-dos:"
     else:
         head = "To-dos" + (f" — {who}" if who else "") + ":"
-    return head + "\n" + ("\n".join(fmt_item(r) for r in rows) or "(nothing!)")
+    out = head + "\n" + ("\n".join(fmt_item(r) for r in rows) or "(nothing!)")
+    if db.cal and scope in ("", "all", "today", "week"):
+        peek = cal_peek(db)
+        if peek:
+            out += "\n\n" + peek
+    return out
 
 
 def do_log_add(db, act, sender):
@@ -983,6 +997,25 @@ def week_section(db, start, title="📅 Week ahead:"):
     if todos:
         lines.append("To-dos due:")
         lines += [f"  • {r['name']}{fmt_who(r)}{fmt_due(r['due'])}" for r in todos]
+    return "\n".join(lines)
+
+
+def cal_peek(db):
+    """Today through this week's Sunday, calendar events only — folded into the
+    to-do view so "show me my tasks" always carries the schedule too. '' when
+    there's nothing (or no calendar)."""
+    now = today()
+    end = now + timedelta(days=6 - now.weekday())
+    events, _ = calendar_events(now, end)
+    if not events:
+        return ""
+    by_day = {}
+    for ev in events:
+        by_day.setdefault(ev["start"][:10], []).append("  ◦ " + fmt_event(ev))
+    lines = ["📅 Calendar this week:"]
+    for d in sorted(by_day):
+        lines.append(date.fromisoformat(d).strftime("%A %b %-d") + ":")
+        lines += by_day[d]
     return "\n".join(lines)
 
 
