@@ -111,6 +111,13 @@
                   };
                 }
                 {
+                  opencode = {
+                    href = "https://ai.su.is";
+                    description = "web cockpit seat (Cloudflare Access)";
+                    icon = "mdi-console";
+                  };
+                }
+                {
                   Matrix = {
                     href = "https://chat.su.is";
                     description = "family chat (tuwunel)";
