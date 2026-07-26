@@ -59,6 +59,14 @@
             pkgs.home-assistant-custom-components.frigate
           );
 
+          # The Advanced Camera Card (né frigate-hass-card): live WebRTC,
+          # PTZ, and clip/event browsing as a dashboard card — the piece
+          # that makes HA a first-class camera surface instead of
+          # stills-with-a-tap-through.
+          customLovelaceModules = lib.lists.optional config.shipCameras.enable (
+            pkgs.home-assistant-custom-lovelace-modules.advanced-camera-card
+          );
+
           config = {
             # default_config = the standard integration bundle (automations,
             # mobile app API, history, mDNS discovery, ...).
