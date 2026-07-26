@@ -1,7 +1,9 @@
 # Media stack aspect — Jellyfin plus the Usenet automation chain (Sonarr,
 # Radarr, Bazarr, Prowlarr, SABnzbd), reachable over the tailnet and nowhere
-# else. Inert until a host sets `media.enable`; imported on every host, so
-# gated explicitly (same pattern as minecraft.mod.nix).
+# else, plus Calibre-Web (ebook library + OPDS feed) which may additionally
+# be opened to the home LAN — see LAN EXCEPTION below. Inert until a host
+# sets `media.enable`; imported on every host, so gated explicitly (same
+# pattern as minecraft.mod.nix).
 #
 # PHILOSOPHY / THREAT MODEL. Six long-running network services that parse
 # untrusted remote content (NNTP articles, indexer API responses, media
@@ -34,6 +36,7 @@
     {
       config,
       lib,
+      pkgs,
       ...
     }:
     let
@@ -67,6 +70,20 @@
         ];
         IPAddressDeny = networkFences.privateRanges;
       };
+
+      # LAN EXCEPTION (calibre-web only). The e-reader that consumes the OPDS
+      # feed is an ESP32 (crosspoint firmware) — it cannot join the tailnet,
+      # so when media.calibreWebLan is set, its LAN subnet is added to the
+      # allow list and the port is opened on that interface. systemd IP
+      # filters are direction-blind, so this necessarily also lets a
+      # compromised calibre-web reach the LAN — an accepted, documented trade
+      # for reader access. The fleet bridge (10.100.0.0/24) and every other
+      # private range stay denied.
+      calibreWebFence = egressFence // {
+        IPAddressAllow =
+          egressFence.IPAddressAllow
+          ++ lib.lists.optional (cfg.calibreWebLan != null) cfg.calibreWebLan.subnet;
+      };
     in
     {
       options.media = {
@@ -80,6 +97,31 @@
             merged over the declarative SABnzbd settings at unit start.
             Carries misc.api_key / misc.nzb_key and the Usenet provider
             credentials (servers.newshosting.username/password).
+          '';
+        };
+
+        calibreWebLan = mkOption {
+          type = types.nullOr (
+            types.submodule {
+              options = {
+                interface = mkOption {
+                  type = types.str;
+                  description = "LAN interface to open the calibre-web port on.";
+                  example = "enp191s0";
+                };
+                subnet = mkOption {
+                  type = types.str;
+                  description = "LAN subnet allowed through calibre-web's IP fence.";
+                  example = "192.168.1.0/24";
+                };
+              };
+            }
+          );
+          default = null;
+          description = ''
+            Open calibre-web (web UI + OPDS feed, :8083) to the home LAN so
+            non-tailnet devices (the e-reader) can pull books. Null keeps it
+            tailnet-only like the rest of the stack.
           '';
         };
       };
@@ -104,6 +146,7 @@
           "d ${mediaRoot}/library 2775 root media -"
           "d ${mediaRoot}/library/movies 2775 root media -"
           "d ${mediaRoot}/library/tv 2775 root media -"
+          "d ${mediaRoot}/books 2775 calibre-web media -"
         ];
 
         # --- The librarians: decide WHAT to fetch, manage the library ---
@@ -173,6 +216,47 @@
           };
         };
 
+        # --- Ebooks: Calibre-format library, web upload UI, OPDS feed ---
+        # The e-reader adds http://<fw0-lan-ip>:8083/opds (HTTP Basic auth)
+        # and pulls books itself; books get in via the web UI's upload.
+        # Library lives in the media tree; no conversion service — books are
+        # kept as EPUB (the only format the reader takes).
+        services.calibre-web = {
+          enable = true;
+          # Two build fixes for the current pin (drop once nixpkgs heals):
+          # tests disabled because nativeCheckInputs pull in scholarly →
+          # free-proxy → pip-chill and pip-chill is unbuildable (imports
+          # pkg_resources, removed in setuptools 82) — none of that chain is
+          # in the runtime closure; and two more overly-tight upstream
+          # version pins relaxed (nixpkgs already relaxes eleven others).
+          package = pkgs.calibre-web.overridePythonAttrs (old: {
+            doCheck = false;
+            pythonRelaxDeps = old.pythonRelaxDeps ++ [
+              "chardet"
+              "certifi"
+            ];
+          });
+          group = "media";
+          openFirewall = false;
+          listen = {
+            # Bind everywhere; reachability is the firewall's job (same
+            # pattern as SABnzbd above): tailnet via trustedInterfaces, plus
+            # the LAN interface iff calibreWebLan is set.
+            ip = "0.0.0.0";
+            port = 8083;
+          };
+          options = {
+            calibreLibrary = "${mediaRoot}/books";
+            enableBookUploading = true;
+          };
+        };
+
+        networking.firewall = mkIf (cfg.calibreWebLan != null) {
+          interfaces.${cfg.calibreWebLan.interface}.allowedTCPPorts = [
+            config.services.calibre-web.listen.port
+          ];
+        };
+
         # --- Playback ---
         services.jellyfin = {
           enable = true;
@@ -197,6 +281,8 @@
         systemd.services.prowlarr.serviceConfig = egressFence;
         systemd.services.sabnzbd.serviceConfig = egressFence;
         systemd.services.jellyfin.serviceConfig = egressFence;
+        # calibre-web gets the widened fence — see LAN EXCEPTION above.
+        systemd.services.calibre-web.serviceConfig = calibreWebFence;
       };
     };
 }

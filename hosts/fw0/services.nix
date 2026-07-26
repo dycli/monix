@@ -57,6 +57,12 @@
       config.secrets.sabnzbd-secrets.path
     else
       null;
+  # Calibre-web's OPDS feed is pulled by the Xteink X3 e-reader (ESP32,
+  # can't join the tailnet), so its port is additionally opened on the LAN.
+  media.calibreWebLan = {
+    interface = "enp191s0";
+    subnet = "192.168.1.0/24";
+  };
 
   # Local inference: llama.cpp (Vulkan) behind llama-swap on :8091,
   # tailnet-only, with models loaded on demand.
