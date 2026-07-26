@@ -24,6 +24,13 @@
     in
     {
       config = mkIf config.services.immich.enable {
+        # The upstream module only auto-creates its default /var/lib
+        # location; a custom mediaLocation is on us (verified live: EACCES
+        # crash-loop on first start). 0750 — the tree is immich's alone.
+        systemd.tmpfiles.rules = [
+          "d ${config.services.immich.mediaLocation} 0750 immich immich -"
+        ];
+
         services.immich = {
           host = mkDefault "0.0.0.0";
           port = mkDefault 2283;
