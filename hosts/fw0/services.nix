@@ -74,7 +74,10 @@
   # plugged in; Tapo C225s can join later). Bootstrap-gated on the camera
   # credentials secret; frigate.su.is via the ship proxy.
   shipCameras.enable = builtins.pathExists ./secrets/frigate.env.age;
-  shipCameras.reolink.cam1 = "192.168.1.201";
+  shipCameras.reolink = {
+    cam1 = "192.168.1.201";
+    cam2 = "192.168.1.202";
+  };
   shipCameras.lanSubnets = [ "192.168.1.0/24" ];
   shipCameras.envFile =
     if builtins.pathExists ./secrets/frigate.env.age then
