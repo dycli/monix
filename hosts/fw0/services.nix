@@ -78,6 +78,10 @@
     cam1 = "192.168.1.201";
     cam2 = "192.168.1.55";
   };
+  shipCameras.tapo = {
+    tapo1 = "192.168.1.218";
+    tapo2 = "192.168.1.220";
+  };
   shipCameras.lanSubnets = [ "192.168.1.0/24" ];
   shipCameras.envFile =
     if builtins.pathExists ./secrets/frigate.env.age then
