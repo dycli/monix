@@ -77,6 +77,22 @@
             hideVersion = true;
           };
 
+          # Header info widgets — read directly from the host, no services.
+          widgets = [
+            {
+              resources = {
+                cpu = true;
+                memory = true;
+                cputemp = true;
+                uptime = true;
+                disk = [
+                  "/"
+                  "/srv/media"
+                ];
+              };
+            }
+          ];
+
           services = [
             {
               Media = [
@@ -144,7 +160,37 @@
                     icon = "mdi-console";
                   };
                 }
-              ];
+              ]
+              # UPS tile, fed by the upsc-json shim below through homepage's
+              # customapi widget (homepage has no native NUT widget — its UPS
+              # widget wants PeaNUT, a whole extra web app, for three fields).
+              ++ lib.lists.optional config.alerts.ups.enable {
+                UPS = {
+                  description = "EcoFlow via NUT";
+                  icon = "mdi-battery-charging";
+                  widget = {
+                    type = "customapi";
+                    url = "http://127.0.0.1:3494";
+                    mappings = [
+                      {
+                        field = "battery_charge";
+                        label = "battery";
+                        suffix = "%";
+                      }
+                      {
+                        field = "battery_runtime_hours";
+                        label = "runtime";
+                        suffix = "h";
+                      }
+                      {
+                        field = "ups_status";
+                        label = "status";
+                        format = "text";
+                      }
+                    ];
+                  };
+                };
+              };
             }
           ];
         };
@@ -169,6 +215,44 @@
             "::1"
           ];
           IPAddressDeny = networkFences.privateRanges;
+        };
+
+        # upsc → JSON shim for the UPS tile: socket-activated one-shot on
+        # loopback :3494 that answers any HTTP request with the three fields
+        # the widget shows. Dots in NUT names become underscores (customapi
+        # mappings treat dots as nesting); runtime is rounded to hours.
+        systemd.sockets.upsc-json = mkIf config.alerts.ups.enable {
+          wantedBy = [ "sockets.target" ];
+          socketConfig = {
+            ListenStream = "127.0.0.1:3494";
+            Accept = true;
+          };
+        };
+        systemd.services."upsc-json@" = mkIf config.alerts.ups.enable {
+          description = "upsc as JSON for the homepage UPS widget";
+          serviceConfig = {
+            DynamicUser = true;
+            StandardInput = "socket";
+            StandardOutput = "socket";
+            IPAddressAllow = [
+              "127.0.0.0/8"
+              "::1"
+            ];
+            IPAddressDeny = "any";
+          };
+          script = ''
+            while IFS= read -r line; do
+              line=''${line%$'\r'}
+              [ -z "$line" ] && break
+            done
+            body=$(${pkgs.nut}/bin/upsc house 2>/dev/null | ${pkgs.gawk}/bin/awk -F': ' '
+              $1 == "battery.charge"  { printf "\"battery_charge\":%s,", $2 }
+              $1 == "battery.runtime" { printf "\"battery_runtime_hours\":%.1f,", $2 / 3600 }
+              $1 == "ups.status"      { printf "\"ups_status\":\"%s\",", $2 }
+            ')
+            body="{''${body%,}}"
+            printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' "''${#body}" "$body"
+          '';
         };
 
         # Public ingress: Cloudflare Tunnel to homepage.domain, same shape as
