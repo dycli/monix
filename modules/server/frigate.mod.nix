@@ -15,10 +15,10 @@
 # — an NVR needs zero internet, so unlike the media stack nothing falls
 # through to the public net.
 #
-# CAMERA CREDENTIALS come from envFile (agenix):
-#   FRIGATE_RTSP_PASSWORD=...   (the `frigate` user on the Reolinks)
-#   FRIGATE_TAPO_PASSWORD=...   (Tapo app "camera account", when added)
-# go2rtc expands ${VARS}; Frigate expands {FRIGATE_*}.
+# CAMERA CREDENTIALS come from envFile (agenix): FRIGATE_RTSP_PASSWORD=...
+# — one `frigate` account with the same password on every camera (Reolink
+# users and Tapo "camera accounts" alike; captain's choice, fine for
+# LAN-fenced cams). go2rtc expands ${VARS}; Frigate expands {FRIGATE_*}.
 {
   flake.nixosModules.frigate =
     {
@@ -120,8 +120,8 @@
                 ];
               }) cfg.reolink
               // concatMapAttrs (name: ip: {
-                ${name} = [ "rtsp://frigate:\${FRIGATE_TAPO_PASSWORD}@${ip}:554/stream1" ];
-                "${name}_sub" = [ "rtsp://frigate:\${FRIGATE_TAPO_PASSWORD}@${ip}:554/stream2" ];
+                ${name} = [ "rtsp://frigate:\${FRIGATE_RTSP_PASSWORD}@${ip}:554/stream1" ];
+                "${name}_sub" = [ "rtsp://frigate:\${FRIGATE_RTSP_PASSWORD}@${ip}:554/stream2" ];
               }) cfg.tapo;
           };
         };
