@@ -72,8 +72,8 @@
   # Tailnet-only pretty names (ship-proxy.mod.nix): <service>.su.is vhosts
   # on nginx with a wildcard DNS-01 cert. Bootstrap-gated on the Cloudflare
   # DNS token; A records (grey-cloud → 100.102.113.74) are dashboard state.
-  # dashboardHost stays unset until the captain names it.
   shipProxy.enable = builtins.pathExists ./secrets/cloudflare-dns-token.env.age;
+  shipProxy.dashboardHost = "in.su.is";
   shipProxy.acmeTokenFile =
     if builtins.pathExists ./secrets/cloudflare-dns-token.env.age then
       config.secrets.cloudflare-dns-token.path
