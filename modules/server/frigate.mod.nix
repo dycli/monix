@@ -119,7 +119,13 @@
         services.go2rtc = {
           enable = true;
           settings = {
-            api.listen = "127.0.0.1:1984";
+            # origin "*": HA's dashboard reaches these websockets through
+            # its own proxy, so the browser Origin (ha.<domain>) never
+            # matches go2rtc's host and is rejected without this.
+            api = {
+              listen = "127.0.0.1:1984";
+              origin = "*";
+            };
             rtsp.listen = "127.0.0.1:8554";
             # WebRTC negotiates directly between browser and go2rtc (it
             # can't ride the nginx proxy) — bind wide, reachability is the
