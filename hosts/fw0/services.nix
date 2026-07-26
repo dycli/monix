@@ -22,6 +22,12 @@
   fleetLogStream.credentialsEnvFile = config.secrets.matrix-alertbot-env.path;
   fleetLogStream.inviteUsers = [ "@dylan:chat.su.is" ];
 
+  # The engineer's append-only memory CLI (memo.mod.nix). The store itself
+  # is mutable state under ~/cockpit/memory, created once by hand — the
+  # module only ships the tool and bakes the default store path in.
+  memo.enable = true;
+  memo.memoryDir = "/home/${config.primaryUser}/cockpit/memory/log";
+
   # Usage/cost ledger CLI (ship-costs.mod.nix). The OpenRouter section is
   # bootstrap-gated until its read-only management key is provisioned.
   shipCosts.enable = true;

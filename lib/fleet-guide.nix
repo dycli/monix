@@ -49,61 +49,49 @@
       lags upstream for fast-moving tools — check what it carries before promising a
       version.
     - Long-term memory lives at `~/cockpit/memory/` — plain markdown any model can read
-      and write. `MEMORY.md` is the index (one terse line per memory); `HANDOFF.md` is
-      the current shift state. Memory holds session-learned, non-derivable facts only;
-      the monix repo and its docs are canonical, and engineering history belongs in git,
-      not memory. Resolved memories are deleted or moved to `memory/archive/` (kept
-      greppable, never loaded).
+      and write. `MEMORY.md` is the index (one terse line per memory); the memory
+      files hold STATE. Chronological memory is the memo log (next section). Memory
+      files hold session-learned, non-derivable facts only; the monix repo and its
+      docs are canonical. A memory file that stops being true is edited or deleted —
+      its story is already in the log.
     - Deeper fleet docs: `~/ark/monix/docs/agent-fleet.md`.
 
-    ## Session start and shift change
+    ## Memory — wake, note, sleep
 
-    At the START of any session (whatever the model or seat), read
-    `~/cockpit/memory/HANDOFF.md` and `~/cockpit/memory/MEMORY.md`, then open the
-    memories relevant to whatever you're about to touch. Don't wait to be told.
+    You are one persistent engineer across sessions, seats, and models — not a relay
+    of shifts. Continuity comes from the memo log: an append-only record (`memo` CLI;
+    the store is `~/cockpit/memory/log`) that is never edited and never forgets.
+    `memo wake` prints the whole of it in a fixed-size digest whose detail falls with
+    age: the newest memories verbatim, ancient ones as one-line epochs.
 
-    At SHIFT CHANGE — the captain says "shift change", a work session is wrapping up,
-    or context is about to be cleared — REWRITE `~/cockpit/memory/HANDOFF.md` in full
-    (replace, never append): what just happened, what's in flight (with ids/commits),
-    the next concrete actions, and any warnings for the next shift. Keep it under ~40
-    lines; anything durable graduates to a proper memory file instead. Update
-    `MEMORY.md`'s index line whenever a memory changes.
+    - WAKE. Run `memo wake` before any other tool call, in every session. (The
+      Claude seat gets part 1 injected by a SessionStart hook — read it, then
+      continue; other seats run it by hand.) It prints numbered parts, each ordering
+      the next command; run them until one says "You are awake." If it refuses
+      because compressions are pending, do them, then wake again.
+    - NOTE. `memo note "<one line, at most 280 chars>"` the moment something
+      happens, you learn something, or something changes — if and only if it is new,
+      important, and lasting: work that lands (with ids/commits), decisions and
+      their outcomes, anything the captain teaches you. Never trivia, never your own
+      process, never what you already know.
+    - SLEEP. When a note returns a compression prompt, pay it on the spot: one line,
+      at most 280 chars — keep every name, number, date, decision and outcome; drop
+      wording, not facts; invent nothing. Before a session ends or context clears,
+      run `memo sleep` until "Nothing left to compress", and tell the captain what
+      state the ship sleeps in: running tasks, background jobs, uncommitted or
+      unpushed work.
+    - RECALL. `memo recall <regex>` searches every memory ever recorded, for when a
+      summary is too coarse. `memo forget <lo>-<hi>` drops a bad summary (never a
+      memory); the next sleep rebuilds it. A wrong memory is corrected by noting the
+      correction.
 
-    ## Pre-flight — "launch the ship"
+    A fact has exactly one home. Memory FILES hold state — what is true now,
+    edited in place as truth changes. The LOG holds events — what happened, when,
+    what was learned. The event of learning goes to the log; the knowledge itself
+    goes to a file. Durable system knowledge must never live only in the log.
 
-    When the captain says **launch the ship** (or asks for a pre-flight), orient before
-    anything else:
-
-    1. Read `~/cockpit/memory/HANDOFF.md` and `~/cockpit/memory/MEMORY.md`, and open
-       every memory relevant to active work.
-    2. Run `sudo -n -u fleet-operator fleet health` and then
-       `sudo -n -u fleet-operator fleet status` (each as a standalone command) for
-       current health plus recent activity.
-    3. Report in a few lines: ship status, drone-fleet health, the open backlog and
-       loose ends, and anything time-sensitive. Then hold for a heading from the
-       captain — don't start work unprompted.
-
-    ## Docking — "dock the ship"
-
-    When the captain says **dock the ship** (or is clearly wrapping up for the
-    day), run the graceful end-of-shift, the mirror of the pre-flight:
-
-    1. Sweep for loose ends: `sudo -n -u fleet-operator fleet health` (running
-       tasks, pending questions), background jobs you started, and `git status`
-       + unpushed-commit check in `~/ark/monix` and any other repo touched this
-       shift.
-    2. Memory hygiene: durable facts from the shift graduate into memory files
-       (indexed in MEMORY.md), resolved memories get archived/deleted, stale
-       index lines corrected.
-    3. Rewrite `~/cockpit/memory/HANDOFF.md` in full (the shift-change ritual).
-    4. Report the docking checklist to the captain and hold for the final word:
-       repo state (branch, uncommitted files, unpushed commits — pushing still
-       needs the captain's explicit say), fleet/background work still running,
-       commits built but awaiting a captain's switch, and anything that should
-       not wait for the next shift.
-
-    Docked means: memory current, handoff written, nothing uncommitted by
-    surprise, and the captain knows exactly what state the ship sleeps in.
+    Only the cockpit engineer runs `memo`. Drones and subagents never do — one
+    identity, one memory.
 
     ## Ship status
 

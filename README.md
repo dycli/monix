@@ -16,18 +16,20 @@ hull with a lot going on below decks.
 **The Captain** — the only human in the crew. He is never aboard; he commands from his
 outposts, and everything that matters is his to decide: where the ship flies, what is
 good enough, what is permitted to leave the hull, and whether a new version of the
-ship is ever raised at all. He opens a shift with three words — *launch the ship* —
-and gets a report: last night's handoff read, the fleet counted, every system green or
-not. Then the ship holds, waiting for a heading. He closes the shift with *dock the
-ship*, and the watch stands down.
+ship is ever raised at all. He hails the bridge and the Pilot answers already awake —
+memory restored, the fleet counted, every system green or not. Then the ship holds,
+waiting for a heading. When the Captain signs off, the Pilot settles its memory and
+sleeps.
 
 **The Pilot** — the ship's resident mind, keeping the bridge watch without sleeping.
 Reach the Pilot from any outpost in the Constellation, or from beyond it through one
 guarded door — and no other. The Pilot plans beside the Captain, runs every system,
 hands the drones their orders, reads everything they carry home and believes none of
-it until it has been checked. When the watch ends, everything the watch learned is
-written down, so the next mind to sit the chair begins already knowing. The ship never
-forgets what a Pilot knew.
+it until it has been checked. The Pilot does not change with a watch: one mind sleeps
+and wakes. What matters is written the moment it happens into a log that only ever
+grows, and on waking the Pilot remembers its whole life — yesterday vivid, the old
+years in outline, any single day recallable word for word. The ship never forgets
+what the Pilot knew.
 
 **Remy** — steward and quartermaster. He keeps the household running: the family's
 tasks and lists and reminders, the morning plan posted at 07:00 and the evening report
@@ -69,8 +71,7 @@ and no memories. The fleet has flown more than a hundred and fifty missions.
 ## The decks
 
 - **The bridge** — the standing watch, and the seat the ship is flown from. Plans are
-  drawn here, drones dispatched, reports read, and the shift handoff written for
-  whoever sits the chair next.
+  drawn here, drones dispatched, reports read, and the log written as it happens.
 - **The engine bay** (`~/ark`) — the ship's own source.
 - **The cargo hold** (`~/hold`) — where projects ride while they prove they deserve a
   berth in the engine bay. Many don't.

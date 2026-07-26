@@ -51,6 +51,10 @@
         "sudo -n -u fleet-operator fleet *"
         "fleet dispatch *"
         "ship-status"
+        # The engineer's own memory (memo.mod.nix): wake/note/sleep/recall
+        # must never prompt, or noting-in-the-moment dies of friction.
+        "memo"
+        "memo *"
         "nix build *"
         "nix eval *"
         "nix flake *"
@@ -227,49 +231,6 @@
           };
         };
 
-        # OpenCode shortcuts for the vendor-neutral ship procedures in AGENTS.md.
-        home.file.".config/opencode/commands/launch.md" = {
-          force = true;
-          text = ''
-            ---
-            description: Pre-flight — orient in the cockpit and report ship status
-            ---
-
-            Run the pre-flight ("launch the ship") from AGENTS.md:
-
-            1. Read `~/cockpit/memory/HANDOFF.md` (current shift state) and
-               `~/cockpit/memory/MEMORY.md`, and open every memory relevant
-               to active or open work.
-            2. Run `sudo -n -u fleet-operator fleet health` and then `fleet status`
-               (each standalone, never chained).
-            3. Report in a few lines: ship status, drone-fleet health, the open backlog
-               and loose ends, and anything time-sensitive. Then hold for a heading from
-               the captain — don't start work unprompted.
-          '';
-        };
-        home.file.".config/opencode/commands/dock.md" = {
-          force = true;
-          text = ''
-            ---
-            description: Dock the ship — graceful end-of-shift wrap-up
-            ---
-
-            Run the docking procedure ("dock the ship") from AGENTS.md:
-
-            1. Sweep loose ends: `sudo -n -u fleet-operator fleet health`
-               (running tasks, pending questions), background jobs, and
-               `git status` + unpushed commits in `~/ark/monix` and any other
-               repo touched this shift.
-            2. Memory hygiene: durable facts → memory files (update MEMORY.md
-               index lines); archive/delete resolved memories.
-            3. REWRITE `~/cockpit/memory/HANDOFF.md` in full (shift change).
-            4. Report the docking checklist and hold for the captain's final
-               word: repo state (uncommitted/unpushed — pushing needs his
-               explicit say), work still running, commits awaiting a switch,
-               anything that shouldn't wait for next shift.
-          '';
-        };
-
         # Durable cockpit memory lives at the vendor-neutral path for real:
         # ~/cockpit/memory is the actual directory (mutable state, not managed
         # here). Claude's per-project auto-memory location is a symlink INTO
@@ -301,71 +262,23 @@
                 holdDir
               ];
             };
+            # Waking is the condition of being on, not a ritual: every session
+            # starts with part 1 of the memory digest already in context. The
+            # agent continues the remaining parts itself (`Run: memo wake 2 T`
+            # ... "You are awake."). `|| true` because a refusal (pending
+            # compressions) exits 1 but its stdout is the instruction the
+            # agent needs to see.
+            hooks.SessionStart = [
+              {
+                hooks = [
+                  {
+                    type = "command";
+                    command = "memo wake 2>&1 || true";
+                  }
+                ];
+              }
+            ];
           };
-        };
-
-        # /launch — Claude-specific shortcut for the vendor-neutral spoken
-        # "launch the ship" pre-flight in AGENTS.md.
-        home.file."cockpit/.claude/commands/launch.md" = {
-          force = true;
-          text = ''
-            ---
-            description: Pre-flight — orient in the cockpit and report ship status
-            ---
-
-            Run the pre-flight ("launch the ship") from AGENTS.md:
-
-            1. Read `~/cockpit/memory/HANDOFF.md` (current shift state) and
-               `~/cockpit/memory/MEMORY.md`, and open every memory relevant
-               to active or open work.
-            2. Run `sudo -n -u fleet-operator fleet health` and then `fleet status`
-               (each standalone, never chained).
-            3. Report in a few lines: ship status, drone-fleet health, the open backlog
-               and loose ends, and anything time-sensitive. Then hold for a heading from
-               the captain — don't start work unprompted.
-          '';
-        };
-
-        # /dock — Claude-specific shortcut for the vendor-neutral spoken
-        # "dock the ship" end-of-shift in AGENTS.md.
-        home.file."cockpit/.claude/commands/dock.md" = {
-          force = true;
-          text = ''
-            ---
-            description: Dock the ship — graceful end-of-shift wrap-up
-            ---
-
-            Run the docking procedure ("dock the ship") from AGENTS.md:
-
-            1. Sweep loose ends: `sudo -n -u fleet-operator fleet health`
-               (running tasks, pending questions), background jobs, and
-               `git status` + unpushed commits in `~/ark/monix` and any other
-               repo touched this shift.
-            2. Memory hygiene: durable facts → memory files (update MEMORY.md
-               index lines); archive/delete resolved memories.
-            3. REWRITE `~/cockpit/memory/HANDOFF.md` in full (shift change).
-            4. Report the docking checklist and hold for the captain's final
-               word: repo state (uncommitted/unpushed — pushing needs his
-               explicit say), work still running, commits awaiting a switch,
-               anything that shouldn't wait for next shift.
-          '';
-        };
-
-        # /handoff — Claude-specific shortcut for the vendor-neutral spoken
-        # "shift change" in AGENTS.md.
-        home.file."cockpit/.claude/commands/handoff.md" = {
-          force = true;
-          text = ''
-            ---
-            description: Shift change — rewrite the memory handoff for the next session
-            ---
-
-            Run the shift change from AGENTS.md: REWRITE `~/cockpit/memory/HANDOFF.md`
-            in full (replace, never append) — what just happened, what's in flight
-            (ids/commits), next concrete actions, warnings for the next shift. Under
-            ~40 lines; durable facts graduate to memory files (update their MEMORY.md
-            index lines). Then confirm the handoff is written in one line.
-          '';
         };
       };
     };
