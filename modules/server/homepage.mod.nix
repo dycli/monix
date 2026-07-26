@@ -101,28 +101,28 @@
                 {
                   Bazarr = {
                     href = "${host}:6767";
-                    description = "subtitles";
+                    description = "Subtitles";
                     icon = "bazarr.png";
                   };
                 }
                 {
                   Prowlarr = {
                     href = "${host}:9696";
-                    description = "indexers";
+                    description = "Indexers";
                     icon = "prowlarr.png";
                   };
                 }
                 {
                   Radarr = {
                     href = "${host}:7878";
-                    description = "movies";
+                    description = "Movies";
                     icon = "radarr.png";
                   };
                 }
                 {
                   SABnzbd = {
                     href = "${host}:8080";
-                    description = "downloads";
+                    description = "Downloads";
                     icon = "sabnzbd.png";
                   };
                 }
@@ -140,7 +140,7 @@
                 {
                   Calibre-Web = {
                     href = "${host}:8083";
-                    description = "ebooks — upload here, e-reader pulls via OPDS";
+                    description = "Ebooks — upload here, e-reader pulls via OPDS";
                     icon = "calibre-web.png";
                   };
                 }
@@ -148,7 +148,7 @@
               ++ lib.lists.optional config.services.immich.enable {
                 Immich = {
                   href = "${host}:2283";
-                  description = "family photos";
+                  description = "Family photos";
                   icon = "immich.png";
                 };
               }
@@ -156,7 +156,7 @@
                 {
                   Jellyfin = {
                     href = "${host}:8096";
-                    description = "movies & TV";
+                    description = "Movies & TV";
                     icon = "jellyfin.png";
                   };
                 }
