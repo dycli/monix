@@ -109,7 +109,10 @@
           settings = {
             api.listen = "127.0.0.1:1984";
             rtsp.listen = "127.0.0.1:8554";
-            webrtc.listen = "127.0.0.1:8555";
+            # WebRTC negotiates directly between browser and go2rtc (it
+            # can't ride the nginx proxy) — bind wide, reachability is the
+            # firewall's job (tailscale0 trusted, nothing else open).
+            webrtc.listen = ":8555";
             streams =
               concatMapAttrs (name: ip: {
                 ${name} = [
@@ -127,6 +130,9 @@
         };
         systemd.services.go2rtc.serviceConfig = lanFence // {
           EnvironmentFile = cfg.envFile;
+          # …plus the tailnet: browsers negotiate WebRTC with go2rtc
+          # directly (:8555), unlike everything else which rides nginx.
+          IPAddressAllow = lanFence.IPAddressAllow ++ [ "100.64.0.0/10" ];
         };
 
         # --- Frigate ---
