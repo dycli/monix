@@ -45,6 +45,9 @@ in
   # SABnzbd confidential settings (INI: api_key/nzb_key + Usenet provider
   # credentials), merged over the declarative config at unit start.
   "hosts/fw0/secrets/sabnzbd-secrets.ini.age".publicKeys = [ fw0 ] ++ admin;
+  # Cloudflare API token (Zone→DNS→Edit on su.is) for the ship-proxy
+  # wildcard cert's DNS-01 (CLOUDFLARE_DNS_API_TOKEN=...).
+  "hosts/fw0/secrets/cloudflare-dns-token.env.age".publicKeys = [ fw0 ] ++ admin;
   # Reserved for the currently disabled LiteLLM/Open WebUI modules.
   "hosts/fw0/secrets/litellm.env.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/open-webui.env.age".publicKeys = [ fw0 ] ++ admin;
