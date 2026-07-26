@@ -77,21 +77,6 @@
             hideVersion = true;
           };
 
-          # Header info widgets — read directly from the host, no services.
-          widgets = [
-            {
-              resources = {
-                cpu = true;
-                memory = true;
-                cputemp = true;
-                uptime = true;
-                # Only real mountpoints work here; /srv/media is a directory
-                # on / until the RAID array lands — add it back when it
-                # becomes its own filesystem.
-                disk = [ "/" ];
-              };
-            }
-          ];
 
           services = [
             {
@@ -161,16 +146,55 @@
                   };
                 }
               ]
-              # UPS tile, fed by the upsc-json shim below through homepage's
-              # customapi widget (homepage has no native NUT widget — its UPS
-              # widget wants PeaNUT, a whole extra web app, for three fields).
+              # System + UPS tiles, fed by the ship-stats shim below through
+              # homepage's customapi widget. The header info widgets can't
+              # sit inside a group and there's no custom header widget, so
+              # system stats live here as a tile instead (captain's
+              # preference: everything in one Ship column). Homepage shows at
+              # most 4 fields per tile.
+              ++ [
+                {
+                  System = {
+                    description = "fw0";
+                    icon = "mdi-chip";
+                    widget = {
+                      type = "customapi";
+                      url = "http://127.0.0.1:3494/system";
+                      mappings = [
+                        {
+                          field = "cpu_percent";
+                          label = "cpu";
+                          suffix = "%";
+                        }
+                        {
+                          field = "mem_free_gib";
+                          label = "mem free";
+                          suffix = " GiB";
+                        }
+                        {
+                          field = "disk_free_tb";
+                          label = "disk free";
+                          suffix = " TB";
+                        }
+                        {
+                          field = "cpu_temp";
+                          label = "temp";
+                          suffix = "°C";
+                        }
+                      ];
+                    };
+                  };
+                }
+              ]
+              # (No native NUT widget in homepage — its UPS widget wants
+              # PeaNUT, a whole extra web app, for three fields.)
               ++ lib.lists.optional config.alerts.ups.enable {
                 UPS = {
                   description = "EcoFlow via NUT";
                   icon = "mdi-battery-charging";
                   widget = {
                     type = "customapi";
-                    url = "http://127.0.0.1:3494";
+                    url = "http://127.0.0.1:3494/ups";
                     mappings = [
                       {
                         field = "battery_charge";
@@ -217,19 +241,20 @@
           IPAddressDeny = networkFences.privateRanges;
         };
 
-        # upsc → JSON shim for the UPS tile: socket-activated one-shot on
-        # loopback :3494 that answers any HTTP request with the three fields
-        # the widget shows. Dots in NUT names become underscores (customapi
-        # mappings treat dots as nesting); runtime is rounded to hours.
-        systemd.sockets.upsc-json = mkIf config.alerts.ups.enable {
+        # Stats → JSON shim for the System and UPS tiles: socket-activated
+        # one-shot on loopback :3494. GET /system reads /proc + hwmon + df;
+        # GET /ups reads upsc. Dots in NUT names become underscores
+        # (customapi mappings treat dots as nesting); runtime is rounded to
+        # hours. CPU% samples /proc/stat over half a second per request.
+        systemd.sockets.ship-stats = {
           wantedBy = [ "sockets.target" ];
           socketConfig = {
             ListenStream = "127.0.0.1:3494";
             Accept = true;
           };
         };
-        systemd.services."upsc-json@" = mkIf config.alerts.ups.enable {
-          description = "upsc as JSON for the homepage UPS widget";
+        systemd.services."ship-stats@" = {
+          description = "host stats as JSON for the homepage tiles";
           serviceConfig = {
             DynamicUser = true;
             StandardInput = "socket";
@@ -240,16 +265,48 @@
             ];
             IPAddressDeny = "any";
           };
+          path = [
+            pkgs.gawk
+            pkgs.coreutils
+          ];
           script = ''
+            read -r _ reqpath _ || true
             while IFS= read -r line; do
               line=''${line%$'\r'}
               [ -z "$line" ] && break
             done
-            body=$(${pkgs.nut}/bin/upsc house 2>/dev/null | ${pkgs.gawk}/bin/awk -F': ' '
-              $1 == "battery.charge"  { printf "\"battery_charge\":%s,", $2 }
-              $1 == "battery.runtime" { printf "\"battery_runtime_hours\":%.1f,", $2 / 3600 }
-              $1 == "ups.status"      { printf "\"ups_status\":\"%s\",", $2 }
-            ')
+
+            case "$reqpath" in
+              /ups)
+                body=$(${pkgs.nut}/bin/upsc house 2>/dev/null | awk -F': ' '
+                  $1 == "battery.charge"  { printf "\"battery_charge\":%s,", $2 }
+                  $1 == "battery.runtime" { printf "\"battery_runtime_hours\":%.1f,", $2 / 3600 }
+                  $1 == "ups.status"      { printf "\"ups_status\":\"%s\",", $2 }
+                ')
+                ;;
+              /system)
+                read -r _ u1 n1 s1 i1 w1 q1 sq1 st1 _ < /proc/stat
+                sleep 0.5
+                read -r _ u2 n2 s2 i2 w2 q2 sq2 st2 _ < /proc/stat
+                busy=$(((u2 + n2 + s2 + q2 + sq2 + st2) - (u1 + n1 + s1 + q1 + sq1 + st1)))
+                total=$((busy + (i2 + w2) - (i1 + w1)))
+                cpu=$(awk -v b="$busy" -v t="$total" 'BEGIN { printf "%.0f", t ? 100 * b / t : 0 }')
+
+                mem=$(awk '/MemAvailable/ { printf "%.1f", $2 / 1048576 }' /proc/meminfo)
+                disk=$(df -B1 --output=avail / | tail -1 | awk '{ printf "%.2f", $1 / 1e12 }')
+                temp=""
+                for h in /sys/class/hwmon/hwmon*; do
+                  if [ "$(cat "$h/name" 2>/dev/null)" = "k10temp" ]; then
+                    temp=$(awk '{ printf "%.1f", $1 / 1000 }' "$h/temp1_input")
+                  fi
+                done
+                body="\"cpu_percent\":$cpu,\"mem_free_gib\":$mem,\"disk_free_tb\":$disk,\"cpu_temp\":\"$temp\","
+                ;;
+              *)
+                body=""
+                ;;
+            esac
+
             body="{''${body%,}}"
             printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' "''${#body}" "$body"
           '';
