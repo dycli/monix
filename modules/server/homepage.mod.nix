@@ -77,6 +77,21 @@
             hideVersion = true;
           };
 
+          # Header info widgets — read directly from the host, no services.
+          widgets = [
+            {
+              resources = {
+                cpu = true;
+                memory = true;
+                cputemp = true;
+                # Only real mountpoints work here; /srv/media is a directory
+                # on / until the RAID array lands — add it back when it
+                # becomes its own filesystem.
+                disk = [ "/" ];
+              };
+            }
+          ];
+
 
           services = [
             {
@@ -136,59 +151,13 @@
                 }
               ];
             }
+            # Status column (rightmost — group order here is display order):
+            # just the UPS, fed by the ship-stats shim below through
+            # homepage's customapi widget. (No native NUT widget in homepage
+            # — its UPS widget wants PeaNUT, a whole extra web app, for
+            # three fields.)
             {
-              Ship = [
-                {
-                  opencode = {
-                    href = "https://ai.su.is";
-                    description = "web cockpit seat (Cloudflare Access)";
-                    icon = "mdi-console";
-                  };
-                }
-              ]
-              # System + UPS tiles, fed by the ship-stats shim below through
-              # homepage's customapi widget. The header info widgets can't
-              # sit inside a group and there's no custom header widget, so
-              # system stats live here as a tile instead (captain's
-              # preference: everything in one Ship column). Homepage shows at
-              # most 4 fields per tile.
-              ++ [
-                {
-                  System = {
-                    description = "fw0";
-                    icon = "mdi-chip";
-                    widget = {
-                      type = "customapi";
-                      url = "http://127.0.0.1:3494/system";
-                      mappings = [
-                        {
-                          field = "cpu_percent";
-                          label = "cpu";
-                          suffix = "%";
-                        }
-                        {
-                          field = "mem_free_gib";
-                          label = "mem free";
-                          suffix = " GiB";
-                        }
-                        {
-                          field = "disk_free_tb";
-                          label = "disk free";
-                          suffix = " TB";
-                        }
-                        {
-                          field = "cpu_temp";
-                          label = "temp";
-                          suffix = "°C";
-                        }
-                      ];
-                    };
-                  };
-                }
-              ]
-              # (No native NUT widget in homepage — its UPS widget wants
-              # PeaNUT, a whole extra web app, for three fields.)
-              ++ lib.lists.optional config.alerts.ups.enable {
+              Status = lib.lists.optional config.alerts.ups.enable {
                 UPS = {
                   description = "EcoFlow via NUT";
                   icon = "mdi-battery-charging";
@@ -241,19 +210,18 @@
           IPAddressDeny = networkFences.privateRanges;
         };
 
-        # Stats → JSON shim for the System and UPS tiles: socket-activated
-        # one-shot on loopback :3494. GET /system reads /proc + hwmon + df;
-        # GET /ups reads upsc. Dots in NUT names become underscores
-        # (customapi mappings treat dots as nesting); runtime is rounded to
-        # hours. CPU% samples /proc/stat over half a second per request.
-        systemd.sockets.ship-stats = {
+        # Stats → JSON shim for the UPS tile: socket-activated one-shot on
+        # loopback :3494. GET /ups answers with upsc output as JSON. Dots in
+        # NUT names become underscores (customapi mappings treat dots as
+        # nesting); runtime is rounded to hours.
+        systemd.sockets.ship-stats = mkIf config.alerts.ups.enable {
           wantedBy = [ "sockets.target" ];
           socketConfig = {
             ListenStream = "127.0.0.1:3494";
             Accept = true;
           };
         };
-        systemd.services."ship-stats@" = {
+        systemd.services."ship-stats@" = mkIf config.alerts.ups.enable {
           description = "host stats as JSON for the homepage tiles";
           serviceConfig = {
             DynamicUser = true;
@@ -283,24 +251,6 @@
                   $1 == "battery.runtime" { printf "\"battery_runtime_hours\":%.1f,", $2 / 3600 }
                   $1 == "ups.status"      { printf "\"ups_status\":\"%s\",", $2 }
                 ')
-                ;;
-              /system)
-                read -r _ u1 n1 s1 i1 w1 q1 sq1 st1 _ < /proc/stat
-                sleep 0.5
-                read -r _ u2 n2 s2 i2 w2 q2 sq2 st2 _ < /proc/stat
-                busy=$(((u2 + n2 + s2 + q2 + sq2 + st2) - (u1 + n1 + s1 + q1 + sq1 + st1)))
-                total=$((busy + (i2 + w2) - (i1 + w1)))
-                cpu=$(awk -v b="$busy" -v t="$total" 'BEGIN { printf "%.0f", t ? 100 * b / t : 0 }')
-
-                mem=$(awk '/MemAvailable/ { printf "%.1f", $2 / 1048576 }' /proc/meminfo)
-                disk=$(df -B1 --output=avail / | tail -1 | awk '{ printf "%.2f", $1 / 1e12 }')
-                temp=""
-                for h in /sys/class/hwmon/hwmon*; do
-                  if [ "$(cat "$h/name" 2>/dev/null)" = "k10temp" ]; then
-                    temp=$(awk '{ printf "%.1f", $1 / 1000 }' "$h/temp1_input")
-                  fi
-                done
-                body="\"cpu_percent\":$cpu,\"mem_free_gib\":$mem,\"disk_free_tb\":$disk,\"cpu_temp\":\"$temp\","
                 ;;
               *)
                 body=""
