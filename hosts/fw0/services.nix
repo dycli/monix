@@ -64,6 +64,10 @@
     subnet = "192.168.1.0/24";
   };
 
+  # The ship's front door (homepage.mod.nix): dashboard of links to every
+  # web UI at plain http://fw0, so no ports to memorize. Tailnet-only.
+  services.homepage-dashboard.enable = true;
+
   # Local inference: llama.cpp (Vulkan) behind llama-swap on :8091,
   # tailnet-only, with models loaded on demand.
   inference.enable = true;
