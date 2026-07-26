@@ -2,10 +2,9 @@
 # with a tile per web UI so nobody memorizes ports: browse to http://fw0 and
 # click. Inert until a host sets `services.homepage-dashboard.enable`.
 #
-# Same reachability posture as everything else: binds everywhere, zero open
-# firewall ports, reached over the trusted tailscale0 interface. Port 80 so
-# the address is just the hostname; the unit gets CAP_NET_BIND_SERVICE for
-# that (it runs as DynamicUser, so no root involved).
+# Serves on loopback :8082 behind the ship proxy (ship-proxy.mod.nix),
+# whose default catch-all vhost keeps plain http://fw0 working. Zero open
+# firewall ports; the trusted tailscale0 interface is the only way in.
 #
 # Tiles are static links (YAML from Nix, no web-UI state). Live-status
 # widgets need per-service API keys — deliberately left for a later pass
@@ -19,7 +18,7 @@
       ...
     }:
     let
-      inherit (lib.modules) mkForce mkIf;
+      inherit (lib.modules) mkIf;
 
       networkFences = import ../../lib/network-fences.nix;
 
@@ -61,8 +60,10 @@
         ];
 
         services.homepage-dashboard = {
-          listenPort = 80;
-          openFirewall = false; # tailnet-only
+          # Loopback behind the ship proxy (nginx owns :80/:443 and serves
+          # http://fw0 as its default catch-all; see ship-proxy.mod.nix).
+          listenPort = 8082;
+          openFirewall = false;
 
           # Host-header allowlist (homepage refuses others). Reachability is
           # already tailnet-only; this just names the ways we browse to it.
@@ -208,15 +209,8 @@
         };
 
         systemd.services.homepage-dashboard.serviceConfig = {
-          # Port 80 as an unprivileged DynamicUser. The upstream unit ships
-          # an empty CapabilityBoundingSet; replace rather than merge (a
-          # merged list would still contain the clearing empty entry).
-          # PrivateUsers must go: inside its user namespace the ambient
-          # capability doesn't reach the host's privileged ports (verified
-          # live — listen EACCES on :80 with the caps in place).
-          AmbientCapabilities = mkForce [ "CAP_NET_BIND_SERVICE" ];
-          CapabilityBoundingSet = mkForce [ "CAP_NET_BIND_SERVICE" ];
-          PrivateUsers = mkForce false;
+          # Loopback bind — reachability is nginx's job now.
+          Environment = [ "HOSTNAME=127.0.0.1" ];
 
           # Same anti-pivot fence as the media stack: tailnet + loopback in,
           # public internet out (icon CDN), every private range denied.

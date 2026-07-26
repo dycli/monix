@@ -114,6 +114,19 @@
             }
             // optionalAttrs (cfg.dashboardHost != null && config.services.homepage-dashboard.enable) {
               ${cfg.dashboardHost} = proxy config.services.homepage-dashboard.listenPort { };
+            }
+            # Default catch-all on :80 keeps plain http://fw0 (and the
+            # tailnet IP / MagicDNS name) landing on the dashboard, which
+            # itself now lives on loopback :8082.
+            // optionalAttrs config.services.homepage-dashboard.enable {
+              homepage-catchall = {
+                serverName = "fw0";
+                default = true;
+                locations."/" = {
+                  proxyPass = "http://127.0.0.1:${toString config.services.homepage-dashboard.listenPort}";
+                  proxyWebsockets = true;
+                };
+              };
             };
         };
       };
