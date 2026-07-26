@@ -85,10 +85,10 @@
                 memory = true;
                 cputemp = true;
                 uptime = true;
-                disk = [
-                  "/"
-                  "/srv/media"
-                ];
+                # Only real mountpoints work here; /srv/media is a directory
+                # on / until the RAID array lands — add it back when it
+                # becomes its own filesystem.
+                disk = [ "/" ];
               };
             }
           ];
