@@ -211,6 +211,9 @@
         };
         systemd.services.frigate.serviceConfig = lanFence // {
           EnvironmentFile = cfg.envFile;
+          # Frigate assumes this cache subdir exists (container tmpfs
+          # provides it); without it review previews fail to render.
+          CacheDirectory = [ "frigate/preview_frames" ];
         };
 
         # Wildcard cert + TLS on the vhost the upstream module created.
