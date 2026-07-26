@@ -64,6 +64,7 @@
             [
               "fw0"
               "fw0.tailec4748.ts.net"
+              "100.102.113.74" # raw tailnet IP, for browsers without MagicDNS
               "localhost"
               "127.0.0.1"
             ]
