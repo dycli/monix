@@ -43,10 +43,10 @@
             "met"
             "radio_browser"
             "backup"
-            # The captain's thermostat (cloud; Google Device Access setup
-            # happens in the UI when he gets to it).
-            "nest"
-            # ESPHome ready for future local-first sensors/devices.
+            # ESPHome ready for future local-first sensors/devices. (Nest
+            # deliberately absent: captain declined Google's Device Access
+            # paperwork for the current thermostat — local-first Z-Wave/
+            # Zigbee planned at replacement time instead.)
             "esphome"
           ]
           # Frigate events arrive over MQTT when the NVR is up.
