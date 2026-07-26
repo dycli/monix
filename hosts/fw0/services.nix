@@ -64,6 +64,12 @@
     subnet = "192.168.1.0/24";
   };
 
+  # Smart-home backend (home-assistant.mod.nix): tailnet-only at :8123 /
+  # ha.su.is. Nest + ESPHome components preloaded; device wiring is UI
+  # state, captain-paced (thermostat first, cameras/Frigate later).
+  services.home-assistant.enable = true;
+  homeAssistant.lanSubnets = [ "192.168.1.0/24" ];
+
   # Family photo library (immich.mod.nix): tailnet-only at :2283, photos
   # under /srv/photos. Accounts, phone backup, and any remote access are
   # captain-paced web-UI/app state.

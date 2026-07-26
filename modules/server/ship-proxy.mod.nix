@@ -102,6 +102,9 @@
             // optionalAttrs config.services.jellyfin.enable {
               "jellyfin.${cfg.domain}" = proxy 8096 { };
             }
+            // optionalAttrs config.services.home-assistant.enable {
+              "ha.${cfg.domain}" = proxy config.services.home-assistant.port { };
+            }
             // optionalAttrs config.services.immich.enable {
               "immich.${cfg.domain}" = proxy 2283 {
                 # Phone backup ships originals; immich checks size itself.

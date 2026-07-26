@@ -145,6 +145,19 @@
                 }
               ];
             }
+          ]
+          ++ lib.lists.optional config.services.home-assistant.enable {
+            Home = [
+              {
+                "Home Assistant" = {
+                  href = url "ha" config.services.home-assistant.port;
+                  description = "Smart home";
+                  icon = "home-assistant.png";
+                };
+              }
+            ];
+          }
+          ++ [
             {
               Media = [
                 {
