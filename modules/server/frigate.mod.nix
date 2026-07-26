@@ -135,6 +135,11 @@
           hostname = "frigate.${config.shipProxy.domain}";
           vaapiDriver = "radeonsi";
 
+          # The build-time validator can't expand {FRIGATE_*} env
+          # references (the onvif password) — secrets only exist at
+          # runtime. Config errors surface in the unit log instead.
+          checkConfig = false;
+
           settings = {
             mqtt = {
               enabled = true;
