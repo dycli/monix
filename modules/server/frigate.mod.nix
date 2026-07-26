@@ -173,12 +173,24 @@
                 width = 640;
                 height = 480;
               }) cfg.reolink
-              # C225 sub-stream is 640x360.
-              // mapAttrs (frigateCamera {
-                enabled = true;
-                width = 640;
-                height = 360;
-              }) cfg.tapo;
+              # C225 sub-stream is 640x360; pan/tilt via ONVIF (port 2020),
+              # same frigate account.
+              // mapAttrs (
+                name: ip:
+                frigateCamera {
+                  enabled = true;
+                  width = 640;
+                  height = 360;
+                } name ip
+                // {
+                  onvif = {
+                    host = ip;
+                    port = 2020;
+                    user = "frigate";
+                    password = "{FRIGATE_RTSP_PASSWORD}";
+                  };
+                }
+              ) cfg.tapo;
           };
         };
         systemd.services.frigate.serviceConfig = lanFence // {
