@@ -271,6 +271,13 @@ Containment tests from a disposable worker should confirm that arbitrary DNS,
 direct internet access, host SSH, and other guests are unreachable while the
 configured model API and Nix cache paths work through squid.
 
+## Keeping the harness honest
+
+Re-run representative dispatch harnesses when a major model changes. Keep
+planner/evaluator or multi-iteration scaffolding only while it measurably
+improves output; vendor guidance repeatedly finds that model upgrades make old
+harness assumptions dead weight.
+
 ## Remaining design work
 
 - Decide whether the web cockpit remains the full-power `max` seat or moves to
