@@ -93,41 +93,11 @@
           ];
 
 
+          # Columns left→right and tiles top→bottom are both alphabetical
+          # (captain's ordering) — list order here is display order.
           services = [
             {
-              Media = [
-                {
-                  Jellyfin = {
-                    href = "${host}:8096";
-                    description = "movies & TV";
-                    icon = "jellyfin.png";
-                  };
-                }
-                {
-                  Calibre-Web = {
-                    href = "${host}:8083";
-                    description = "ebooks — upload here, e-reader pulls via OPDS";
-                    icon = "calibre-web.png";
-                  };
-                }
-              ];
-            }
-            {
               Arr = [
-                {
-                  Radarr = {
-                    href = "${host}:7878";
-                    description = "movies";
-                    icon = "radarr.png";
-                  };
-                }
-                {
-                  Sonarr = {
-                    href = "${host}:8989";
-                    description = "TV";
-                    icon = "sonarr.png";
-                  };
-                }
                 {
                   Bazarr = {
                     href = "${host}:6767";
@@ -143,19 +113,59 @@
                   };
                 }
                 {
+                  Radarr = {
+                    href = "${host}:7878";
+                    description = "movies";
+                    icon = "radarr.png";
+                  };
+                }
+                {
                   SABnzbd = {
                     href = "${host}:8080";
                     description = "downloads";
                     icon = "sabnzbd.png";
                   };
                 }
+                {
+                  Sonarr = {
+                    href = "${host}:8989";
+                    description = "TV";
+                    icon = "sonarr.png";
+                  };
+                }
               ];
             }
-            # Status column (rightmost — group order here is display order):
-            # just the UPS, fed by the ship-stats shim below through
-            # homepage's customapi widget. (No native NUT widget in homepage
-            # — its UPS widget wants PeaNUT, a whole extra web app, for
-            # three fields.)
+            {
+              Media = [
+                {
+                  Calibre-Web = {
+                    href = "${host}:8083";
+                    description = "ebooks — upload here, e-reader pulls via OPDS";
+                    icon = "calibre-web.png";
+                  };
+                }
+              ]
+              ++ lib.lists.optional config.services.immich.enable {
+                Immich = {
+                  href = "${host}:2283";
+                  description = "family photos";
+                  icon = "immich.png";
+                };
+              }
+              ++ [
+                {
+                  Jellyfin = {
+                    href = "${host}:8096";
+                    description = "movies & TV";
+                    icon = "jellyfin.png";
+                  };
+                }
+              ];
+            }
+            # Status column: just the UPS, fed by the ship-stats shim below
+            # through homepage's customapi widget. (No native NUT widget in
+            # homepage — its UPS widget wants PeaNUT, a whole extra web app,
+            # for three fields.)
             {
               Status = lib.lists.optional config.alerts.ups.enable {
                 UPS = {

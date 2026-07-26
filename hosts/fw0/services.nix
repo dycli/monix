@@ -64,6 +64,11 @@
     subnet = "192.168.1.0/24";
   };
 
+  # Family photo library (immich.mod.nix): tailnet-only at :2283, photos
+  # under /srv/photos. Accounts, phone backup, and any remote access are
+  # captain-paced web-UI/app state.
+  services.immich.enable = true;
+
   # The ship's front door (homepage.mod.nix): dashboard of links to every
   # web UI at plain http://fw0, so no ports to memorize. Tailnet-only.
   services.homepage-dashboard.enable = true;
