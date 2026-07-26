@@ -1,18 +1,11 @@
 # Ship proxy aspect — pretty names for the ship's web UIs, tailnet-only.
-# nginx terminates TLS for <service>.su.is and proxies to the local ports;
-# the names resolve publicly (grey-cloud A records → fw0's tailnet IP,
-# 100.102.113.74) but the address only routes inside the tailnet, so
-# reachability is network-level, not auth-level. No tunnels: those are for
-# things that must work without Tailscale (chat.su.is, ai.su.is).
+# nginx terminates TLS for <service>.su.is and proxies to local ports; names
+# resolve publicly (grey-cloud A records → fw0's tailnet IP) but only route
+# inside the tailnet, so reachability is network-level, not auth-level.
 #
-# TLS is a single wildcard *.su.is Let's Encrypt cert via DNS-01 (the host
-# is not publicly reachable, so HTTP-01 cannot work). lego talks to
-# Cloudflare with a DNS-edit token supplied through shipProxy.acmeTokenFile
-# (agenix). Ports 80/443 are never opened on the public firewall — the
-# trusted tailscale0 interface is the only way in.
-#
-# Captain's side per new service: one grey-cloud A record in Cloudflare
-# (<name>.su.is → 100.102.113.74). The wildcard cert already covers it.
+# TLS is a single wildcard *.su.is cert via DNS-01 (the host isn't publicly
+# reachable, so HTTP-01 can't work), using a Cloudflare DNS-edit token via
+# shipProxy.acmeTokenFile. Ports 80/443 never open on the public firewall.
 {
   flake.nixosModules.ship-proxy =
     { config, lib, ... }:
@@ -119,8 +112,7 @@
               ${cfg.dashboardHost} = proxy config.services.homepage-dashboard.listenPort { };
             }
             # Default catch-all on :80 keeps plain http://fw0 (and the
-            # tailnet IP / MagicDNS name) landing on the dashboard, which
-            # itself now lives on loopback :8082.
+            # tailnet IP / MagicDNS name) landing on the dashboard.
             // optionalAttrs config.services.homepage-dashboard.enable {
               homepage-catchall = {
                 serverName = "fw0";

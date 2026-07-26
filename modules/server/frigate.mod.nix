@@ -2,23 +2,21 @@
 # cameras (Reolink RLC-520A PoE pair; Tapo C225s can join the same way).
 # Inert until a host sets `shipCameras.enable`.
 #
-# SHAPE. go2rtc (separate unit, loopback-only) connects to each camera
-# once and restreams; Frigate consumes the restreams: full-res stream is
-# recorded, the small sub-stream feeds detection. Detection runs on CPU
-# for now (two cameras is light); VAAPI handles decode. Recordings live
-# in /var/lib/frigate (StateDirectory) until the RAID array offers a
-# better home — camera footage is transient bulk, not the precious tier.
+# go2rtc (separate unit, loopback-only) connects to each camera once and
+# restreams; Frigate consumes the restreams: full-res stream is recorded,
+# the small sub-stream feeds detection. Detection runs on CPU (two
+# cameras is light); VAAPI handles decode. Recordings live in
+# /var/lib/frigate (StateDirectory) — camera footage is transient bulk,
+# not the precious tier.
 #
-# REACHABILITY. The web UI rides the ship proxy: the upstream module
-# creates the nginx vhost for `hostname`, we layer the wildcard cert on
-# it. Frigate + go2rtc themselves are fenced to LAN (cameras) + loopback
-# — an NVR needs zero internet, so unlike the media stack nothing falls
-# through to the public net.
+# The web UI rides the ship proxy: the upstream module creates the nginx
+# vhost for `hostname`, we layer the wildcard cert on it. Frigate + go2rtc
+# are fenced to LAN (cameras) + loopback — an NVR needs zero internet.
 #
-# CAMERA CREDENTIALS come from envFile (agenix): FRIGATE_RTSP_PASSWORD=...
+# Camera credentials come from envFile (agenix): FRIGATE_RTSP_PASSWORD=...
 # — one `frigate` account with the same password on every camera (Reolink
-# users and Tapo "camera accounts" alike; captain's choice, fine for
-# LAN-fenced cams). go2rtc expands ${VARS}; Frigate expands {FRIGATE_*}.
+# users and Tapo "camera accounts" alike). go2rtc expands ${VARS};
+# Frigate expands {FRIGATE_*}.
 {
   flake.nixosModules.frigate =
     {
@@ -45,10 +43,9 @@
         IPAddressDeny = networkFences.privateRanges ++ [ "any" ];
       };
 
-      # The camera stream map, shared by go2rtc (which does the connecting;
-      # ''${VAR} env syntax) and Frigate's own config (which only needs to
-      # KNOW the restreams exist so its UI offers MSE/WebRTC — with an
-      # external go2rtc, frigate can't see its config; {VAR} env syntax).
+      # Shared by go2rtc (which does the connecting; ''${VAR} env syntax)
+      # and Frigate's own config (which only needs to know the restreams
+      # exist so its UI offers MSE/WebRTC; {VAR} env syntax).
       streamsWith =
         pass:
         concatMapAttrs (name: ip: {
@@ -126,7 +123,7 @@
             rtsp.listen = "127.0.0.1:8554";
             # WebRTC negotiates directly between browser and go2rtc (it
             # can't ride the nginx proxy) — bind wide, reachability is the
-            # firewall's job (tailscale0 trusted, nothing else open).
+            # firewall's job.
             webrtc.listen = ":8555";
             streams = streamsWith "\${FRIGATE_RTSP_PASSWORD}";
           };
@@ -152,7 +149,7 @@
           settings = {
             # See streamsWith: frigate must know the external go2rtc's
             # streams or its UI never offers MSE/WebRTC (endless spinner
-            # on fullscreen — found live).
+            # on fullscreen).
             go2rtc.streams = streamsWith "{FRIGATE_RTSP_PASSWORD}";
 
             mqtt = {

@@ -55,17 +55,11 @@
           };
 
           # Daemon flags (gtk-single-instance, initial-window, etc.) must not
-          # live in the config file: that file is also read by every plain
-          # `ghostty` invocation (e.g. the SUPER+RETURN keybind), and
-          # initial-window=false there suppressed windows for normal launches.
-          # Those flags belong only on the daemon's ExecStart, which is why we
-          # use upstream's systemd unit (default `systemd.enable = true`)
-          # instead of hand-rolling one. It's WantedBy=graphical-session.target
-          # and After=graphical-session.target, which is safe now that UWSM
-          # (not this module's own `hyprland-session.target` hook, which is
-          # disabled — see `wayland.windowManager.hyprland.systemd` in
-          # hyprland.mod.nix) brings up `graphical-session.target` only after
-          # `uwsm finalize` has exported session vars.
+          # live in the config file: it's also read by every plain `ghostty`
+          # invocation, and initial-window=false there suppressed windows for
+          # normal launches. Those flags belong only on the daemon's
+          # ExecStart, which is why we use upstream's systemd unit instead of
+          # hand-rolling one.
         };
       };
     };

@@ -1,13 +1,13 @@
 # Fleet ops feed — streams the agent-fleet audit log into a Matrix room,
 # line for line, no AI involved. A resident service tails
-# /var/lib/agents/tasks/log (world-readable by design) and posts each new
-# batch of lines to a dedicated room, so the captain can watch dispatches,
-# escalations, and completions live from any Matrix client.
+# /var/lib/agents/tasks/log and posts each new batch of lines to a
+# dedicated room, so dispatches, escalations, and completions are visible
+# live from any Matrix client.
 #
 # The bot reuses the alertbot account (same credentials env file as
-# alerts.mod.nix) but posts to its own room, which it CREATES on first
-# start — private, invites the configured users — and remembers in its
-# state directory. Nothing about the room lives in the repo or a secret.
+# alerts.mod.nix) but posts to its own room, which it creates on first
+# start and remembers in its state directory. Nothing about the room
+# lives in the repo or a secret.
 #
 # Lines arriving within a 2s window are batched into one message so a
 # task fan-out doesn't become a message flood. Send failures are logged

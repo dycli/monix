@@ -1,42 +1,18 @@
-# remy aspect — the family's household chat bot (see remy/bot.py). One
-# Python service, three Matrix rooms, room-scoped skills:
+# remy aspect: the family's household chat bot (remy/bot.py). One Python
+# service, three Matrix rooms: "Household" (tasks, morning/evening posts,
+# calendar), "Scratchpad" (personal notes against a separate scratch.db,
+# calendar read-only, no scheduled posts), and "Budget" (the budgetbot skill
+# set against /var/lib/budgetbot/budget.db, the ledger remy absorbed).
 #
-#   - "Household" (created by the bot on first start, family invited):
-#     tasks with due dates and named lists in plain language, a morning
-#     plan (07:00) and evening report (19:00) with week-ahead sections,
-#     folding in the family's Migadu calendar.
-#   - "Scratchpad" (created on first start when scratchpad.users is set;
-#     captain only): the same organizer skills against a separate
-#     scratch.db — notes/reminders/quick lists. Calendar is read-only
-#     there (shows in summaries, never written); no scheduled posts.
-#   - "Budget" (pre-existing): the complete budgetbot skill set against
-#     the same ledger at /var/lib/budgetbot/budget.db — remy ABSORBED
-#     budgetbot 2026-07-13 (its module is gone; the ledger, its git
-#     history, and the room stayed put).
+# Deliberately NOT a general agent: chat text only ever classifies into a
+# fixed intent schema — no path to shell, SQL text, or the fleet.
 #
-# Deliberately NOT a general agent (budgetbot's constraint, upheld): chat
-# text is untrusted input that only ever classifies into a fixed intent
-# schema — no path to shell, SQL text, or the fleet. Inert until a host
-# sets `remy.enable`.
-#
-# FOUR UNITS, one shared identity (static user `remy`, because DynamicUser
-# can't share /var/lib across units):
-#   - remy-register (oneshot): bootstraps @remy from the homeserver's
-#     registration token; idempotent (login-check first). Loopback.
-#   - remy-adopt-budget-room (oneshot): logs in as the RETIRED budgetbot
-#     account once and invites @remy into the Budget room, so the merge
-#     needs no manual Element step. Loopback; harmless on re-runs.
-#   - remy: the bot. EVERY dependency is loopback — tuwunel (:6167),
-#     llama-swap (:8091), the SQLite files, calendar.json. Total egress
-#     fence; it holds exactly one credential: its own Matrix account.
-#   - remy-calendar-sync (timer, only if calendar creds are configured):
-#     the ONLY unit with internet egress and the ONLY holder of the
-#     CalDAV credentials. Pulls upcoming events to calendar.json for the
-#     bot to read. LAN/tailnet/fleet ranges stay denied even here.
-#
-# DATA. /var/lib/remy/home.db (organizer) + /var/lib/budgetbot/budget.db
-# (ledger, path unchanged from budgetbot). Both on the list for the
-# pending off-host backup design (with tuwunel).
+# Four units share one static user `remy` (DynamicUser can't share /var/lib
+# across units): remy-register bootstraps the account; remy-adopt-budget-room
+# invites @remy into the Budget room as the retired budgetbot account; remy
+# itself is loopback-only (tuwunel, llama-swap, local files); and
+# remy-calendar-sync is the ONLY unit with internet egress and the only
+# holder of CalDAV credentials, pulling events into calendar.json.
 {
   flake.nixosModules.remy =
     {
@@ -62,10 +38,8 @@
 
       calPython = pkgs.python3.withPackages (ps: [ ps.caldav ]);
 
-      # Register the bot's account on the loopback tuwunel if it doesn't
-      # exist yet: try a login with the configured password; on failure walk
-      # the registration-token UIA flow. Idempotent, loud on real failures
-      # (wrong password for an existing account, bad token).
+      # Try a login with the configured password; on failure walk the
+      # registration-token UIA flow. Idempotent, loud on real failures.
       register = pkgs.writeShellApplication {
         name = "remy-register";
         runtimeInputs = [
@@ -107,10 +81,8 @@
         '';
       };
 
-      # One-time room handover: as the old budgetbot account, invite remy
-      # into the Budget room. Every step tolerates having already happened
-      # (re-invite of a member 403s; that's fine — remy joins on invite or
-      # at startup).
+      # One-time room handover; tolerates already having happened
+      # (re-invite of a member 403s, which is fine).
       adopt = pkgs.writeShellApplication {
         name = "remy-adopt-budget-room";
         runtimeInputs = [
@@ -136,8 +108,7 @@
         '';
       };
 
-      # Hardening shared by all units (cf. the retired budgetbot.mod.nix;
-      # the tenant-standard sandbox). Egress differs per unit, set below.
+      # Hardening shared by all units; egress differs per unit, set below.
       sandbox = {
         User = "remy";
         Group = "remy";
@@ -365,9 +336,8 @@
             "tuwunel.service"
             "remy-register.service"
           ];
-          # Both env files use the same MATRIX_* names, so the old
-          # account's file arrives as a systemd credential and is read
-          # into OLD_* here instead of clobbering remy's own vars.
+          # Both env files use the same MATRIX_* names, so the old account's
+          # file is read into OLD_* here instead of clobbering remy's vars.
           script = ''
             f="$CREDENTIALS_DIRECTORY/budgetbot-env"
             OLD_MATRIX_USER=$(grep '^MATRIX_USER=' "$f" | cut -d= -f2-)
@@ -378,9 +348,8 @@
           serviceConfig = sandbox // loopbackOnly // {
             Type = "oneshot";
             RemainAfterExit = true;
-            # remy's own env gives MATRIX_USER (the invitee); the old
-            # account's file arrives as a systemd credential so its
-            # MATRIX_* names can't collide with remy's.
+            # The old account's file arrives as a systemd credential so its
+            # MATRIX_* names can't collide with remy's own env.
             EnvironmentFile = cfg.credentialsEnvFile;
             LoadCredential = "budgetbot-env:${cfg.budgetbotEnvFile}";
           };
@@ -442,10 +411,8 @@
           serviceConfig = sandbox // {
             Type = "oneshot";
             ExecStart = "${calPython}/bin/python ${./remy/calsync.py}";
-            # The one remy unit allowed out: HTTPS to the CalDAV host
-            # (plus loopback for the resolver stub). Private, link-local,
-            # tailnet, and fleet ranges stay denied — egress to the
-            # internet only, never inward.
+            # The one remy unit allowed out: HTTPS to the CalDAV host plus
+            # loopback. LAN/tailnet/fleet ranges stay denied.
             IPAddressAllow = [
               "127.0.0.0/8"
               "::1"
@@ -470,11 +437,9 @@
           pathConfig.PathChanged = "/var/lib/remy/outbox.flag";
         };
 
-        # Mirror the family log into a vault path (Obsidian). The bot writes
-        # /var/lib/remy/log.md (0700 dir, remy-only) and touches log.flag; this
-        # root oneshot — the only piece that may reach /home — copies it out,
-        # owned by the vault's user. Runs on flag change, so it tracks the
-        # nightly write within seconds.
+        # Mirrors the family log to a vault path. The bot is fenced out of
+        # /home, so this root oneshot — the only piece allowed to reach it —
+        # copies log.md out on flag change, owned by the vault's user.
         systemd.services.remy-famlog = mkIf (cfg.famlog.path != null) {
           description = "mirror remy's daily log into the vault";
           serviceConfig = {

@@ -32,13 +32,12 @@
         # socket rejects, so bar workspace clicking/scrolling silently fails.
         # The flake's master build speaks the new API (hl.dsp.focus{...}).
         #
-        # The overrideAttrs preloads the spotlight launcher: upstream keeps it
-        # in a LazyLoader that only instantiates on the first SUPER+D, making
-        # that first open visibly slow (and nothing ever unloads it afterwards,
-        # so it's a pure once-per-session win). Quickshell's `loading: true`
-        # instantiates it asynchronously at shell startup without showing it.
-        # --replace-fail makes the build break loudly if upstream renames the
-        # loader (then re-check whether they've fixed the lazy-load lag).
+        # The overrideAttrs preloads the spotlight launcher: upstream keeps
+        # it in a LazyLoader that only instantiates on first SUPER+D, making
+        # that first open visibly slow. Quickshell's `loading: true`
+        # instantiates it asynchronously at startup without showing it.
+        # --replace-fail breaks the build loudly if upstream renames the
+        # loader.
         programs.dms-shell.package =
           (inputs.dank-material-shell.packages.${pkgs.stdenv.hostPlatform.system}.dms-shell.overrideAttrs
             (old: {
@@ -55,14 +54,13 @@
         # remaining Qt5 apps.
         #
         # Qt6 theming has two halves. KDE apps (Dolphin, Ark) ignore qt6ct
-        # palettes entirely and follow ~/.config/kdeglobals → DMS's matugen
+        # palettes entirely and follow ~/.config/kdeglobals -> DMS's matugen
         # KColorScheme instead — wired in kde.mod.nix. Non-KDE Qt6 apps read
-        # the qt6ct palette, but nixpkgs' kdePackages.qt6ct is built WITHOUT
+        # the qt6ct palette, but nixpkgs' kdePackages.qt6ct is built without
         # the fork's KColorScheme support (nixpkgs issue #489021), so DMS's
-        # "Apply Qt Themes" does nothing for them; live with it, or overlay
-        # qt6ct-kde if it ever grates. GTK theming is unaffected. DMS owns
-        # the generated files at runtime (gtk.css, qt5ct/qt6ct configs,
-        # color schemes) — nothing under home-manager may manage those paths.
+        # "Apply Qt Themes" does nothing for them. GTK theming is unaffected.
+        # DMS owns the generated files at runtime (gtk.css, qt5ct/qt6ct
+        # configs, color schemes) — home-manager must not manage those paths.
         programs.dms-shell.enableDynamicTheming = true;
         environment.systemPackages = [
           pkgs.adw-gtk3
@@ -77,19 +75,15 @@
           # Mirror the user's DMS state into the greeter: greetd's preStart
           # copies settings.json / session.json / dms-colors.json (and the
           # wallpaper files they reference) from this home into the greeter
-          # cache at every greetd start. The greeter wallpaper/theme is
-          # therefore not configured anywhere — it follows whatever the
-          # session last used (picked from the repo's assets/wallpapers
-          # folder, by convention), applied on next boot.
+          # cache at every greetd start, so greeter theming follows whatever
+          # the session last used.
           configHome = "/home/${config.primaryUser}";
 
-          # dms-greeter's built-in default Hyprland config disables the logo
-          # but not the splash text/quote, so it still flashes before the
-          # greeter UI renders. Passing customConfig REPLACES that default
-          # entirely (the greeter script only ever appends its own
-          # `exec-once = sh -c "$QS_CMD; hyprctl dispatch exit"` line after
-          # it), so we reproduce the default here and add
-          # disable_splash_rendering.
+          # dms-greeter's default Hyprland config disables the logo but not
+          # the splash text/quote, so it still flashes before the greeter UI
+          # renders. customConfig REPLACES that default entirely (the
+          # greeter script only appends its own exec-once line after it), so
+          # we reproduce the default here and add disable_splash_rendering.
           compositor.customConfig = ''
             env = DMS_RUN_GREETER,1
 

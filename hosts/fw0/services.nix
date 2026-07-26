@@ -3,33 +3,30 @@
   users.mutableUsers = false;
   users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.max-password.path;
 
-  # The primary interactive agent cockpit lives here; frontends include
-  # tmux over tailnet SSH and opencode web through Cloudflare Access.
+  # Primary interactive agent cockpit: tmux over tailnet SSH and opencode
+  # web through Cloudflare Access.
   cockpit.enable = true;
 
-  # Agent-fleet microVM host. Brings up the host-only bridge +
-  # egress proxy + microvm.nix runner (see microvm-host.mod.nix).
+  # Agent-fleet microVM host: host-only bridge + egress proxy + microvm.nix
+  # runner (microvm-host.mod.nix).
   agentFleet.enable = true;
 
-  # Matrix alerting (alerts.mod.nix): unit failures and the 6-hourly
-  # sweep post to the Ship Alerts room on the local tuwunel as @alertbot.
+  # Unit failures and the 6-hourly sweep post to the Ship Alerts room.
   alerts.enable = true;
   alerts.credentialsEnvFile = config.secrets.matrix-alertbot-env.path;
 
-  # Fleet ops feed (fleet-log-stream.mod.nix): the agent-fleet audit log
-  # streamed line-for-line into a Fleet Ops room, posted by alertbot.
+  # Agent-fleet audit log streamed line-for-line into a Fleet Ops room.
   fleetLogStream.enable = true;
   fleetLogStream.credentialsEnvFile = config.secrets.matrix-alertbot-env.path;
   fleetLogStream.inviteUsers = [ "@dylan:chat.su.is" ];
 
-  # The engineer's append-only memory CLI (memo.mod.nix). The store itself
-  # is mutable state under ~/cockpit/memory, created once by hand — the
-  # module only ships the tool and bakes the default store path in.
+  # Append-only memory CLI; the store is mutable state under
+  # ~/cockpit/memory, created once by hand.
   memo.enable = true;
   memo.memoryDir = "/home/${config.primaryUser}/cockpit/memory/log";
 
-  # Usage/cost ledger CLI (ship-costs.mod.nix). The OpenRouter section is
-  # bootstrap-gated until its read-only management key is provisioned.
+  # Usage/cost ledger CLI. OpenRouter section bootstrap-gated until its
+  # read-only management key is provisioned.
   shipCosts.enable = true;
   shipCosts.openrouterKeyFile =
     if builtins.pathExists ./secrets/openrouter-management-key.age then
@@ -38,18 +35,16 @@
       null;
 
   # Plain-language line atop failure alerts, from the ship-local model
-  # (free, loopback; degrades to the raw alert if inference is down).
+  # (degrades to the raw alert if inference is down).
   alerts.summary.enable = true;
-  # EcoFlow RIVER 3 Plus over USB HID; probed 2026-07-19 (usbhid-ups, 3746:ffff).
+  # EcoFlow RIVER 3 Plus over USB HID (usbhid-ups, 3746:ffff).
   alerts.ups.enable = true;
 
-  # Declarative Fabric Minecraft server (see minecraft.mod.nix). Tailnet-only
-  # and egress-fenced so a compromised server cannot pivot onto the host.
+  # Fabric Minecraft server, tailnet-only and egress-fenced.
   minecraft.enable = true;
 
-  # Media stack (media.mod.nix): Jellyfin + Sonarr/Radarr/Bazarr/Prowlarr/
-  # SABnzbd, tailnet-only and egress-fenced. Tree at /srv/media pending the
-  # future RAID array. *arr wiring is web-UI state; SABnzbd is declarative
+  # Jellyfin + Sonarr/Radarr/Bazarr/Prowlarr/SABnzbd, tailnet-only and
+  # egress-fenced. *arr wiring is web-UI state; SABnzbd is declarative
   # (read-only ini) with credentials bootstrap-gated until the secret exists.
   media.enable = true;
   media.sabnzbdSecretsFile =
@@ -57,22 +52,20 @@
       config.secrets.sabnzbd-secrets.path
     else
       null;
-  # Calibre-web's OPDS feed is pulled by the Xteink X3 e-reader (ESP32,
-  # can't join the tailnet), so its port is additionally opened on the LAN.
+  # The Xteink X3 e-reader (ESP32, can't join the tailnet) pulls the OPDS
+  # feed, so its port is additionally opened on the LAN.
   media.calibreWebLan = {
     interface = "enp191s0";
     subnet = "192.168.1.0/24";
   };
 
-  # Smart-home backend (home-assistant.mod.nix): tailnet-only at :8123 /
-  # ha.su.is. Nest + ESPHome components preloaded; device wiring is UI
-  # state, captain-paced (thermostat first, cameras/Frigate later).
+  # Smart-home backend, tailnet-only at :8123 / ha.su.is. Device wiring is
+  # UI state.
   services.home-assistant.enable = true;
   homeAssistant.lanSubnets = [ "192.168.1.0/24" ];
 
-  # Frigate NVR (frigate.mod.nix): Reolink RLC-520A pair (cam2 joins when
-  # plugged in; Tapo C225s can join later). Bootstrap-gated on the camera
-  # credentials secret; frigate.su.is via the ship proxy.
+  # Frigate NVR, bootstrap-gated on the camera credentials secret;
+  # frigate.su.is via the ship proxy.
   shipCameras.enable = builtins.pathExists ./secrets/frigate.env.age;
   shipCameras.reolink = {
     cam1 = "192.168.1.201";
@@ -90,14 +83,11 @@
       # Placeholder; shipCameras stays disabled until the secret exists.
       "/dev/null";
 
-  # Family photo library (immich.mod.nix): tailnet-only at :2283, photos
-  # under /srv/photos. Accounts, phone backup, and any remote access are
-  # captain-paced web-UI/app state.
+  # Family photo library, tailnet-only at :2283, photos under /srv/photos.
   services.immich.enable = true;
 
-  # Tailnet-only pretty names (ship-proxy.mod.nix): <service>.su.is vhosts
-  # on nginx with a wildcard DNS-01 cert. Bootstrap-gated on the Cloudflare
-  # DNS token; A records (grey-cloud → 100.102.113.74) are dashboard state.
+  # Tailnet-only pretty names: <service>.su.is vhosts on nginx with a
+  # wildcard DNS-01 cert, bootstrap-gated on the Cloudflare DNS token.
   shipProxy.enable = builtins.pathExists ./secrets/cloudflare-dns-token.env.age;
   shipProxy.dashboardHost = "in.su.is";
   shipProxy.acmeTokenFile =
@@ -106,12 +96,11 @@
     else
       null;
 
-  # The ship's front door (homepage.mod.nix): dashboard of links to every
-  # web UI at plain http://fw0, so no ports to memorize. Tailnet-only.
+  # Dashboard of links to every web UI at plain http://fw0. Tailnet-only.
   services.homepage-dashboard.enable = true;
 
-  # Local inference: llama.cpp (Vulkan) behind llama-swap on :8091,
-  # tailnet-only, with models loaded on demand.
+  # llama.cpp (Vulkan) behind llama-swap on :8091, tailnet-only, models
+  # loaded on demand.
   inference.enable = true;
   inference.models."qwen3.6-35b-a3b" = {
     file = "Qwen3.6-35B-A3B-UD-Q5_K_XL.gguf";
@@ -135,10 +124,9 @@
     ];
     aliases = [ "gpt-oss" ];
   };
-  # Dense small models for judgment-heavy chat (remy). Both ~18-20G UD-Q4_K_XL,
-  # so they populate fast; dense (not the 3B-active MoE) = better instruction
-  # following and routing. Mistral is remy's brain; Qwen 27B is on the bench
-  # for an A/B via remy.model.
+  # Dense small models for judgment-heavy chat (remy); better instruction
+  # following/routing than the 3B-active MoE. Mistral is remy's brain;
+  # Qwen 27B is on the bench for an A/B via remy.model.
   inference.models."mistral-small-3.2-24b" = {
     file = "Mistral-Small-3.2-24B-Instruct-2506-UD-Q4_K_XL.gguf";
     flags = [
@@ -165,11 +153,11 @@
     aliases = [ "qwen3.6-dense" ];
   };
 
-  # Syncthing serves the declaratively managed ~/crate/sync mesh.
+  # Serves the declaratively managed ~/crate/sync mesh.
   services.syncthing.enable = true;
 
-  # Family Matrix homeserver: tuwunel without federation, token-gated
-  # registration, exposed at chat.su.is through its own tunnel.
+  # tuwunel without federation, token-gated registration, exposed at
+  # chat.su.is through its own tunnel.
   matrix.enable = true;
   matrix.serverName = "chat.su.is";
   matrix.registrationTokenEnvFile = config.secrets.matrix-registration-env.path;
@@ -187,11 +175,10 @@
   ];
   remy.scratchpad.users = [ "@dylan:chat.su.is" ];
   remy.calendar.credentialsFile = config.secrets.remy-caldav-json.path;
-  # A French bot deserves a French model. Mistral Small 3.2 (dense 24B) —
-  # sharper instruction following/routing than the qwen a3b MoE. Flip this to
-  # "qwen3.6-27b" or "qwen3.6-35b-a3b" to A/B.
+  # Dense 24B: sharper instruction following/routing than the qwen a3b MoE.
+  # Flip to "qwen3.6-27b" or "qwen3.6-35b-a3b" to A/B.
   remy.model = "mistral-small-3.2-24b";
-  # Mirror the daily log into the Syncthing/Obsidian vault (max:syncthing tree).
+  # Mirror the daily log into the Syncthing/Obsidian vault.
   remy.famlog.path = "/home/max/crate/sync/notes/famlog.md";
   remy.famlog.owner = "max";
   remy.famlog.group = "syncthing";

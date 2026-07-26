@@ -1,8 +1,8 @@
-# Single canonical source of truth for the ship's operating guide.
-# Returns { system, pilot, worker } — three markdown strings that compose into
-# the two audience-specific documents:
-#   system + worker → drone hint injected at dispatch time (agent-vm.mod.nix)
-#   system + pilot  → /home/max/cockpit/AGENTS.md read by the ship's engineer (cockpit.mod.nix)
+# Canonical source for the ship's operating guide. Returns
+# { system, pilot, worker } — three markdown strings that compose into two
+# audience-specific documents:
+#   system + worker -> drone hint injected at dispatch time (agent-vm.mod.nix)
+#   system + pilot  -> /home/max/cockpit/AGENTS.md (cockpit.mod.nix)
 {
   system = ''
     # The ship THE KESTREL (fw0)

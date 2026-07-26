@@ -9,9 +9,6 @@
 # upstream module, so the flake is the source of truth: peers or folders
 # added through the web UI are removed on the next switch. GUI credentials
 # and the API key stay runtime state.
-#
-# Transcribed 2026-07-14 from the runtime configs after the fw0<->fw3
-# pairing was set up and verified through the UI (work-backwards step).
 {
   flake.nixosModules.syncthing =
     { config, lib, ... }:

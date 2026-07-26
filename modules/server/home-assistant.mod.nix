@@ -1,18 +1,14 @@
-# Home Assistant aspect — the smart-home backend (thermostat, sensors,
-# eventually Frigate cameras). Inert until a host sets
-# `services.home-assistant.enable`.
+# Home Assistant aspect — smart-home backend (thermostat, sensors, Frigate
+# cameras). Inert until a host sets `services.home-assistant.enable`.
 #
-# Reachability: tailnet-only on :8123, pretty name via the ship proxy
-# (ha.<domain>). Integration wiring (Nest OAuth, device pairing) is
-# web-UI/.storage state like the *arrs — Nix owns the service, components,
-# and reachability; the UI owns which devices exist.
+# Tailnet-only on :8123, pretty name via the ship proxy (ha.<domain>).
+# Integration wiring (OAuth, device pairing) is web-UI/.storage state like
+# the *arrs — Nix owns the service, components, and reachability only.
 #
-# FENCE EXCEPTION. Unlike the media stack, HA's *job* is talking to the
-# home LAN (thermostats, cameras, mDNS discovery), so the configured LAN
-# subnets are allowed alongside tailnet + loopback. The fleet bridge and
-# every other private range stay denied; public internet falls through
-# (Nest is a cloud integration until the thermostat is replaced with
-# something local-first).
+# FENCE EXCEPTION: HA's job is talking to the home LAN (thermostats,
+# cameras, mDNS discovery), so configured LAN subnets are allowed alongside
+# tailnet + loopback; the fleet bridge and every other private range stay
+# denied.
 {
   flake.nixosModules.home-assistant =
     {
@@ -43,10 +39,7 @@
             "met"
             "radio_browser"
             "backup"
-            # ESPHome ready for future local-first sensors/devices. (Nest
-            # deliberately absent: captain declined Google's Device Access
-            # paperwork for the current thermostat — local-first Z-Wave/
-            # Zigbee planned at replacement time instead.)
+            # ESPHome ready for future local-first sensors/devices.
             "esphome"
           ]
           # Frigate events arrive over MQTT when the NVR is up.
@@ -54,15 +47,13 @@
 
           # The Frigate integration is a custom component (HACS-land
           # upstream, packaged in nixpkgs). UI setup: point it at
-          # http://127.0.0.1:5000 (frigate's unauthenticated local port).
+          # http://127.0.0.1:5000 (frigate's local port).
           customComponents = lib.lists.optional config.shipCameras.enable (
             pkgs.home-assistant-custom-components.frigate
           );
 
-          # The Advanced Camera Card (né frigate-hass-card): live WebRTC,
-          # PTZ, and clip/event browsing as a dashboard card — the piece
-          # that makes HA a first-class camera surface instead of
-          # stills-with-a-tap-through.
+          # Advanced Camera Card (né frigate-hass-card): live WebRTC, PTZ,
+          # and clip/event browsing as a dashboard card.
           customLovelaceModules = lib.lists.optional config.shipCameras.enable (
             pkgs.home-assistant-custom-lovelace-modules.advanced-camera-card
           );

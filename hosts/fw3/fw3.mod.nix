@@ -38,9 +38,7 @@
 
         # DISK (WD Black SN850X 2TB). Disko derives the mount config: /boot
         # from the ESP, / from btrfs subvol @ inside LUKS (opened as
-        # /dev/mapper/cryptroot). Partlabels disk-main-boot/disk-main-luks are
-        # set by disko on a fresh format; the pre-disko install needed them
-        # set once by hand (sgdisk --change-name).
+        # /dev/mapper/cryptroot).
         disko.devices.disk.main = {
           device = "/dev/disk/by-id/nvme-WD_BLACK_SN850X_2000GB_24144X801841";
           type = "disk";
@@ -118,13 +116,10 @@
         # DESKTOP EXTRAS
         programs.steam.enable = true;
 
-        # Minecraft client, for the fw0 tailnet server (see
-        # modules/server/minecraft.mod.nix). Prism over the stock launcher:
-        # trivial to pin a client instance to the server's exact Minecraft
-        # version, which the server tracks behind latest (mod availability).
-        #
-        # Element, for the family Matrix on chat.su.is (remy's rooms; see
-        # modules/server/matrix.mod.nix + remy.mod.nix on fw0).
+        # Prism (not the stock launcher) to pin the Minecraft client to the
+        # fw0 server's exact version (see modules/server/minecraft.mod.nix).
+        # Element for the family Matrix on chat.su.is (see
+        # modules/server/matrix.mod.nix).
         environment.systemPackages = [
           pkgs.prismlauncher
           pkgs.element-desktop

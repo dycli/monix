@@ -1,16 +1,13 @@
-# memo — the engineer's autobiographical memory (a behavior-identical Rust
-# port of VictorTaelin/OptMem). One append-only LOG.txt of one-line memories
-# plus a TREE/ of LLM-written summaries; `memo wake` prints a fixed-size
-# digest whose detail is proportional to recency. The tool never summarizes:
+# memo — the engineer's autobiographical memory (a Rust port of
+# VictorTaelin/OptMem). Append-only LOG.txt of one-line memories plus a
+# TREE/ of LLM-written summaries; `memo wake` prints a fixed-size digest
+# whose detail is proportional to recency. The tool never summarizes itself:
 # it hands compression prompts to the agent and bookkeeps the results.
 #
-# The store (MEMORY_DIR) is mutable state under the cockpit, NOT managed by
-# Nix; the default path is baked into the binary at build time so no session
-# env plumbing is needed. The directory is never auto-created — making it is
-# creating the identity, a deliberate one-time act (mkdir + memo import).
-#
-# House rules live in fleet-guide.nix, not here: only the cockpit engineer
-# runs memo; drones and subagents never do.
+# The store (MEMORY_DIR) is mutable state, NOT managed by Nix; the default
+# path is baked into the binary at build time so no session env plumbing is
+# needed. The directory is never auto-created — making it is a deliberate
+# one-time identity-creation step (mkdir + memo import).
 {
   flake.nixosModules.memo =
     {

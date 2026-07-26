@@ -3,19 +3,18 @@
 # directory; a worker runs it on a pristine VM and the report comes back —
 # no SSH into guests, no forge in the loop.
 #
-#   /var/lib/agents/tasks/queue/<name>.md   <- tasks land here, enqueued by the
-#                                              `fleet` tool run as the operator
-#                                              user (see fleet-tool.mod.nix); the
-#                                              queue is operator-owned, not
-#                                              wheel-writable
+#   /var/lib/agents/tasks/queue/<name>.md   <- tasks land here, enqueued by
+#                                              the `fleet` tool run as the
+#                                              operator user (see
+#                                              fleet-tool.mod.nix)
 #   /var/lib/agents/tasks/done/<id>/        <- prompt.md + report.md + agent.log
 #   /var/lib/agents/tasks/failed/<id>/      <- same, for nonzero exit or timeout
 #   /var/lib/agents/tasks/rejected/         <- quarantined non-regular queue entries
 #
-# Scheduling: one resident drainer per roster worker maintains a fresh warm VM,
-# atomically claims queued tasks, and delivers each prompt into an already-live
-# guest. After one task it stops the VM, safely archives bounded output, wipes
-# the writable volumes, and boots a fresh idle replacement.
+# Scheduling: one resident drainer per roster worker maintains a fresh warm
+# VM, atomically claims queued tasks, and delivers each prompt into an
+# already-live guest. After one task it stops the VM, archives bounded
+# output, wipes the writable volumes, and boots a fresh idle replacement.
 {
   flake.nixosModules.agent-dispatch =
     {

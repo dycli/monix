@@ -1,11 +1,8 @@
-# Cockpit: the user's primary interactive agent session lives on the host that
-# enables this. Claude Code over tmux/SSH and opencode web are interchangeable
-# frontends to the same captain's seat. It carries full user privileges
-# (contrast with the locked-down fleet workers of agent-vm.mod.nix).
-#
-# The agent tooling itself (claude-code, codex, CLAUDE.md) comes from the
-# existing home aspects in packages.mod.nix / claude.mod.nix, which gate on
-# `isDesktop || cockpit.enable`.
+# Cockpit: the user's primary interactive agent session. Claude Code over
+# tmux/SSH and opencode web are interchangeable frontends to the same seat,
+# carrying full user privileges (contrast the locked-down fleet workers of
+# agent-vm.mod.nix). Agent tooling itself comes from packages.mod.nix /
+# claude.mod.nix, gated on `isDesktop || cockpit.enable`.
 { inputs, ... }:
 {
   flake.homeModules.cockpit =
@@ -26,8 +23,8 @@
       cockpitDir = "${userHome}/cockpit";
       cockpitMemoryDir = "${userHome}/cockpit/memory";
       claudeMemoryDir = "${userHome}/.claude/projects/-home-max-cockpit/memory";
-      # Claude's cockpit policy is canonical. Render the shared explicit
-      # permissions in both frontend-specific formats.
+      # Claude's cockpit policy is canonical; rendered into both
+      # frontend-specific formats below.
       gitReadCommands = [
         "status*"
         "diff*"
@@ -51,8 +48,7 @@
         "sudo -n -u fleet-operator fleet *"
         "fleet dispatch *"
         "ship-status"
-        # The engineer's own memory (memo.mod.nix): wake/note/sleep/recall
-        # must never prompt, or noting-in-the-moment dies of friction.
+        # memo (memo.mod.nix) must never prompt, or in-the-moment notes die.
         "memo"
         "memo *"
         "nix build *"
@@ -64,8 +60,8 @@
       ]
       ++ gitReadPermissions
       ++ [
-        # The captain's standing policy is "commit and test freely, push only
-        # on his word": stage/commit never prompt, push remains absent.
+        # Standing policy: commit/test freely, push only on explicit word —
+        # so stage/commit never prompt, push stays absent.
         "git -C ${monixDir} add *"
         "git -C ${monixDir} commit *"
         # journalctl mutations require root; systemctl gets only read verbs.
@@ -90,10 +86,10 @@
       ]
       ++ [
         # Read-only inspection commands. Claude's built-in classifier already
-        # auto-approves most of these; listing them explicitly is what stops
-        # OpenCode (static globs only) prompting on every grep/ls. Anything
-        # that mutates state, writes files by design, or reaches the network
-        # (curl, ssh, sed -i, rm, pkill, nix shell/run) stays prompt-bound.
+        # auto-approves most; listing them stops OpenCode's static globs
+        # prompting on every grep/ls. Anything mutating, network-reaching, or
+        # otherwise unsafe (curl, ssh, sed -i, rm, pkill, nix shell/run)
+        # stays prompt-bound.
         "echo *"
         "grep *"
         "rg *"
@@ -132,18 +128,17 @@
           "WebSearch"
           "SendUserFile"
         ];
-      # OpenCode evaluates the final matching permission rule. Keep the
-      # catch-all first, then append the current Claude-approved capabilities.
+      # OpenCode evaluates the final matching rule; keep the catch-all first.
       mkOpenCodeRules = patterns: { "*" = "ask"; } // genAttrs patterns (_: "allow");
-      # OpenCode strips the leading slash before checking file-tool paths, but
+      # OpenCode strips the leading slash for file-tool paths, but
       # external_directory checks the same path in absolute form.
       opencodeFilePermissions = concatMap (path: [
         "${path}/**"
         "${lib.strings.removePrefix "/" path}/**"
       ]) claudeFilePermissions;
-      # Claude permits reads within its working directory. OpenCode's explicit
-      # read catch-all would otherwise prompt for ordinary cockpit files such
-      # as AGENTS.md, while edits must remain limited to the canonical paths.
+      # Claude permits reads within its working directory; OpenCode needs this
+      # explicitly or it prompts for ordinary cockpit files like AGENTS.md.
+      # Edits stay limited to the canonical paths.
       opencodeReadPermissions = opencodeFilePermissions ++ [
         "${cockpitDir}/**"
         "${lib.strings.removePrefix "/" cockpitDir}/**"
@@ -151,29 +146,27 @@
         "${lib.strings.removePrefix "/" holdDir}/**"
       ];
       opencodePermissions = {
-        # Claude also has a validated read-only command classifier. OpenCode
-        # only has static globs, so unmatched commands must stay prompt-bound
-        # rather than broadening this list unsafely.
+        # OpenCode only has static globs (no read-only classifier), so
+        # unmatched commands stay prompt-bound rather than broadening this.
         bash = mkOpenCodeRules claudeBashPermissions;
         read = mkOpenCodeRules opencodeReadPermissions;
         edit = mkOpenCodeRules opencodeFilePermissions;
         external_directory = mkOpenCodeRules (map (path: "${path}/**") claudeFilePermissions);
-        # Claude permits its built-in discovery and delegation tools without
-        # explicit allowlist entries; preserve that behavior in OpenCode.
+        # Mirror Claude's built-in discovery/delegation tool allowances.
         glob = "allow";
         grep = "allow";
         list = "allow";
         task = "allow";
-        # OpenCode cannot scope webfetch by domain, so keep it stricter than
-        # Claude's github.com-only allow rather than permitting every domain.
+        # OpenCode can't scope webfetch by domain; keep it stricter than
+        # Claude's github.com-only allow.
         webfetch = "ask";
         websearch = "allow";
         todowrite = "allow";
         question = "allow";
         skill = "allow";
       };
-      # Top-level permissions are appended after built-in agent rules. Restore
-      # the restrictions that make Plan non-editing and Explore read-only.
+      # Restore the restrictions that make Plan non-editing and Explore
+      # read-only (appended after OpenCode's built-in agent rules).
       opencodePlanPermissions = opencodePermissions // {
         edit = "deny";
         task = {
@@ -206,9 +199,8 @@
           text = "@AGENTS.md\n";
         };
 
-        # OpenCode's native permissions are generated from the established
-        # Claude cockpit allowlist. Its config is normally mutable state, but
-        # this cockpit policy must not drift by frontend.
+        # Generated from the Claude cockpit allowlist so policy can't drift
+        # by frontend, even though this config is normally mutable state.
         home.file.".config/opencode/opencode.jsonc" = {
           force = true;
           text = builtins.toJSON {
@@ -231,43 +223,33 @@
           };
         };
 
-        # Durable cockpit memory lives at the vendor-neutral path for real:
-        # ~/cockpit/memory is the actual directory (mutable state, not managed
-        # here). Claude's per-project auto-memory location is a symlink INTO
-        # it, so the Claude harness reads/writes the same files every other
-        # frontend sees — no vendor owns the storage.
+        # ~/cockpit/memory is the real, vendor-neutral directory; Claude's
+        # per-project memory path is a symlink into it so every frontend
+        # reads/writes the same files.
         home.file.".claude/projects/-home-max-cockpit/memory" = {
           force = true;
           source = config.lib.file.mkOutOfStoreSymlink ("/home/${osConfig.primaryUser}/cockpit/memory");
         };
 
-        # Claude Code project permissions, declarative so the allowlist can
-        # never drift from what AGENTS.md promises ("fleet commands are
-        # pre-authorized"). The whole scoped-sudo fleet hop is allowed as one
-        # prefix: the immutable fleet tool itself is the boundary, so listing
-        # subcommands here would only re-create drift when the tool grows one.
-        # Everything else is read-only or build-sandboxed.
+        # Declarative so the allowlist can't drift from what AGENTS.md
+        # promises. The scoped-sudo fleet hop is allowed as one prefix rather
+        # than per-subcommand, since the immutable fleet tool is the boundary.
         home.file."cockpit/.claude/settings.json" = {
           force = true;
           text = builtins.toJSON {
             permissions = {
               allow = claudeAllow;
-              # Transcript audit found ~400 prompts caused solely by `cd
-              # ~/ark/monix && …` leaving the cockpit working directory.
-              # Treat the flake repo and the projects dir as additional
-              # working directories: cd/read stop prompting there, while
-              # edits still follow the explicit Edit/Write rules above.
+              # `cd ~/ark/monix && …` was the single largest source of
+              # prompts; treat the flake repo and projects dir as additional
+              # working directories so cd/read stop prompting there.
               additionalDirectories = [
                 monixDir
                 holdDir
               ];
             };
-            # Waking is the condition of being on, not a ritual: every session
-            # starts with part 1 of the memory digest already in context. The
-            # agent continues the remaining parts itself (`Run: memo wake 2 T`
-            # ... "You are awake."). `|| true` because a refusal (pending
-            # compressions) exits 1 but its stdout is the instruction the
-            # agent needs to see.
+            # Every session starts with part 1 of the memory digest already
+            # in context; `|| true` because a refusal (pending compressions)
+            # exits 1 but its stdout is still the instruction to surface.
             hooks.SessionStart = [
               {
                 hooks = [
@@ -337,23 +319,17 @@
         programs.tmux.enable = true;
         programs.tmux.historyLimit = 50000;
 
-        # The cockpit is where secrets get created/rotated (`agenix -e ...`
-        # from the repo root) — fleet credentials in particular originate
-        # here (`claude setup-token`, Codex's auth.json). python3/jq keep
-        # everyday data munging off the `nix shell nixpkgs#python3` path,
-        # which prompted on every use (interpreters are never allowlisted).
+        # python3/jq keep everyday data munging off the `nix shell
+        # nixpkgs#python3` path, which prompted on every use.
         environment.systemPackages = [
           inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
           pkgs.python3
           pkgs.jq
         ];
 
-        # OPENCODE WEB — the cockpit from a browser: opencode's bundled
-        # server + web UI, running AS the primary user (this is the human's
-        # seat — it needs their auth.json, home, and full tooling, so it is
-        # deliberately NOT filesystem-sandboxed like a tenant service). Binds
-        # to loopback behind nginx; Cloudflare Tunnel is the public ingress
-        # when enabled. nginx keeps ai.su.is stable on :4096.
+        # Runs AS the primary user (needs their auth.json/home/tooling, so
+        # not filesystem-sandboxed like a tenant service). Binds to loopback
+        # behind nginx; Cloudflare Tunnel is the public ingress when enabled.
         services.nginx = mkIf config.cockpit.webEnable {
           enable = true;
           recommendedProxySettings = true;
@@ -377,11 +353,8 @@
           wantedBy = [ "multi-user.target" ];
           wants = [ "network-online.target" ];
           after = [ "network-online.target" ];
-          # Agents spawned from web sessions need the same tools a login
-          # shell would have: system-wide packages plus the user's own
-          # profile (where claude-code/codex/opencode themselves live).
           # NixOS privilege wrappers must precede the unwrapped packages in
-          # the system profile; otherwise sudo finds its non-setuid binary.
+          # the system profile, or sudo finds its non-setuid binary.
           path = [
             "/run/wrappers"
             "/run/current-system/sw"
@@ -399,8 +372,7 @@
           };
         };
 
-        # The captain's seat legitimately runs builds and tools, but a remote
-        # session still must not consume every byte or PID on the host.
+        # A remote session must not consume every byte or PID on the host.
         systemd.slices.cockpit.sliceConfig = mkIf config.cockpit.webEnable {
           MemoryHigh = "48G";
           MemoryMax = "64G";
@@ -436,10 +408,8 @@
           };
         };
 
-        # Cloudflare Access is configured outside Nix. Probe it without a
-        # cookie so dashboard drift cannot silently turn this shell-capable
-        # endpoint public again; a failed check remains visible in systemd and
-        # `fleet health` until corrected.
+        # Cloudflare Access is configured outside Nix; probe without a cookie
+        # so dashboard drift can't silently turn this endpoint public again.
         systemd.services.opencode-web-access-check = mkIf (config.cockpit.webTunnelTokenFile != null) {
           description = "Verify Cloudflare Access protects the opencode cockpit";
           wants = [ "network-online.target" ];

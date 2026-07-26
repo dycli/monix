@@ -2,8 +2,7 @@
 {
   nixpkgs.hostPlatform = "x86_64-linux";
 
-  # CPU/GPU/pstate/microcode come from the nixos-hardware profile. This
-  # kernel-module list was generated on the machine.
+  # CPU/GPU/pstate/microcode come from the nixos-hardware profile.
   boot.initrd.availableKernelModules = [
     "nvme"
     "xhci_pci"
@@ -16,8 +15,8 @@
   hardware.enableRedistributableFirmware = true;
   networking.useDHCP = lib.mkDefault true;
 
-  # The btrfs root lives inside cryptroot. Its key is sealed into the TPM so
-  # the host auto-boots headless; a passphrase slot remains for recovery.
+  # btrfs root lives inside cryptroot; key sealed into the TPM so the host
+  # auto-boots headless, with a passphrase slot for recovery.
   boot.initrd.systemd.enable = true;
 
   disko.devices.disk.main = {
@@ -50,8 +49,8 @@
         type = "luks";
         name = "cryptroot";
 
-        # Read only at format time; never committed. TPM enrollment replaces
-        # this temporary recovery passphrase as the normal unlock path.
+        # Read only at format time, never committed; TPM enrollment replaces
+        # this as the normal unlock path.
         passwordFile = "/tmp/luks.key";
 
         settings = {
@@ -62,7 +61,7 @@
         content = {
           type = "btrfs";
 
-          # Separate agent state and model weights from the root dataset.
+          # Agent state and model weights get their own subvolumes.
           subvolumes."@".mountpoint = "/";
           subvolumes."@agents".mountpoint = "/var/lib/agents";
           subvolumes."@models".mountpoint = "/var/lib/models";
@@ -71,10 +70,8 @@
     };
   };
 
-  # Per-tenant runaway fences, intentionally overcommitted: these are ceilings,
-  # not reservations, and normal peaks do not coincide. Aggregate pressure can
-  # still invoke the kernel OOM policy; lower these if concurrent model/fleet
-  # workloads begin approaching physical memory.
+  # Per-tenant ceilings, intentionally overcommitted (normal peaks don't
+  # coincide); lower these if concurrent workloads approach physical memory.
   systemd.slices.agents.sliceConfig.MemoryMax = "48G";
   systemd.slices.inference.sliceConfig.MemoryMax = "96G";
   systemd.slices.services.sliceConfig.MemoryMax = "16G";

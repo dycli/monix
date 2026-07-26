@@ -1,22 +1,19 @@
 # newsbot aspect — morning/evening news digests in a private Matrix room.
 #
-# A timer (07:00 + 19:00 local) runs HEADLESS CLAUDE (`claude -p`, bills
-# the subscription per the 2026-07-12 finding) with web search to compile
-# a cross-category digest from the repo-tracked prompt
-# (newsbot/prompt.md — the tuning knob; captain expects heavy iteration),
-# then posts it to the "News" room as @newsbot. One-way for now: the bot
-# never reads the room, so there is no chat-input attack surface at all —
-# adding interactivity later is a separate permission decision.
+# A timer (07:00 + 19:00 local) runs headless claude (`claude -p`, bills
+# the subscription) with web search to compile a cross-category digest
+# from the repo-tracked prompt (newsbot/prompt.md), then posts it to the
+# "News" room as @newsbot. One-way: the bot never reads the room, so
+# there is no chat-input attack surface.
 #
-# Unlike remy/budgetbot this NEEDS internet egress (api.anthropic.com;
-# the web search itself runs server-side at Anthropic) — fenced like
-# remy-calendar-sync: public allowed, loopback allowed (tuwunel post),
-# LAN/tailnet/fleet denied. Credentials: its own Matrix account + the
-# fleet's existing claude token (read via LoadCredential).
+# Unlike remy/budgetbot this needs internet egress (api.anthropic.com;
+# web search runs server-side at Anthropic): public allowed, loopback
+# allowed (tuwunel post), LAN/tailnet/fleet denied. Credentials: its own
+# Matrix account + the fleet's existing claude token (LoadCredential).
 #
-# Room bootstrap is self-serve (fleet-log-stream pattern): first run
-# creates the room, invites the family, stamps the id in the state dir.
-# Account bootstrap reuses remy's registration-token UIA walk.
+# Room bootstrap is self-serve: first run creates the room, invites the
+# family, stamps the id in the state dir. Account bootstrap reuses remy's
+# registration-token UIA walk.
 {
   flake.nixosModules.newsbot =
     {
@@ -34,8 +31,7 @@
       cfg = config.newsbot;
       networkFences = import ../../lib/network-fences.nix;
 
-      # Same idempotent registration walk as remy-register (third user
-      # would justify extracting a shared builder).
+      # Same idempotent registration walk as remy-register.
       register = pkgs.writeShellApplication {
         name = "newsbot-register";
         runtimeInputs = [

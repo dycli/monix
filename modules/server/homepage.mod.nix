@@ -1,14 +1,9 @@
-# Homepage aspect — the ship's front door (gethomepage.dev). One dashboard
-# with a tile per web UI so nobody memorizes ports: browse to http://fw0 and
-# click. Inert until a host sets `services.homepage-dashboard.enable`.
+# Homepage aspect (gethomepage.dev) — one dashboard with a tile per web UI.
+# Inert until a host sets `services.homepage-dashboard.enable`.
 #
-# Serves on loopback :8082 behind the ship proxy (ship-proxy.mod.nix),
-# whose default catch-all vhost keeps plain http://fw0 working. Zero open
-# firewall ports; the trusted tailscale0 interface is the only way in.
-#
-# Tiles are static links (YAML from Nix, no web-UI state). Live-status
-# widgets need per-service API keys — deliberately left for a later pass
-# via environmentFile + agenix if wanted.
+# Serves on loopback :8082 behind the ship proxy (ship-proxy.mod.nix), whose
+# default catch-all vhost keeps plain http://fw0 working. Zero open firewall
+# ports; the trusted tailscale0 interface is the only way in.
 {
   flake.nixosModules.homepage =
     {
@@ -22,9 +17,8 @@
 
       networkFences = import ../../lib/network-fences.nix;
 
-      # Tile links: pretty ship-proxy names when the front door is up,
-      # otherwise the tailnet short name + port (both only resolve/route for
-      # devices that can reach the dashboard at all).
+      # Tile links: ship-proxy pretty names when the front door is up,
+      # otherwise the tailnet short name + port.
       url =
         sub: port:
         if config.shipProxy.enable then
@@ -60,13 +54,12 @@
         ];
 
         services.homepage-dashboard = {
-          # Loopback behind the ship proxy (nginx owns :80/:443 and serves
-          # http://fw0 as its default catch-all; see ship-proxy.mod.nix).
+          # Loopback behind the ship proxy (nginx owns :80/:443; see
+          # ship-proxy.mod.nix).
           listenPort = 8082;
           openFirewall = false;
 
-          # Host-header allowlist (homepage refuses others). Reachability is
-          # already tailnet-only; this just names the ways we browse to it.
+          # Host-header allowlist (homepage refuses others).
           allowedHosts = lib.strings.concatStringsSep "," (
             [
               "fw0"
@@ -95,16 +88,14 @@
                 memory = true;
                 cputemp = true;
                 # Only real mountpoints work here; /srv/media is a directory
-                # on / until the RAID array lands — add it back when it
-                # becomes its own filesystem.
+                # on / until the RAID array lands.
                 disk = [ "/" ];
               };
             }
           ];
 
 
-          # Columns left→right and tiles top→bottom are both alphabetical
-          # (captain's ordering) — list order here is display order.
+          # Columns and tiles are alphabetical; list order here is display order.
           services = [
             {
               Arr = [
@@ -192,10 +183,8 @@
                 }
               ];
             }
-            # Status column: just the UPS, fed by the ship-stats shim below
-            # through homepage's customapi widget. (No native NUT widget in
-            # homepage — its UPS widget wants PeaNUT, a whole extra web app,
-            # for three fields.)
+            # Status column: UPS, fed by the ship-stats shim below via
+            # homepage's customapi widget (no native NUT widget in homepage).
             {
               Status = lib.lists.optional config.alerts.ups.enable {
                 UPS = {
@@ -244,9 +233,8 @@
         };
 
         # Stats → JSON shim for the UPS tile: socket-activated one-shot on
-        # loopback :3494. GET /ups answers with upsc output as JSON. Dots in
-        # NUT names become underscores (customapi mappings treat dots as
-        # nesting); runtime is rounded to hours.
+        # loopback :3494. GET /ups returns upsc output as JSON; dots in NUT
+        # names become underscores (customapi mappings treat dots as nesting).
         systemd.sockets.ship-stats = mkIf config.alerts.ups.enable {
           wantedBy = [ "sockets.target" ];
           socketConfig = {
@@ -295,9 +283,9 @@
           '';
         };
 
-        # Public ingress: Cloudflare Tunnel to homepage.domain, same shape as
-        # the matrix and opencode tunnels. Origin + Access policy live in
-        # Cloudflare Zero Trust; this unit only runs the connector.
+        # Public ingress: Cloudflare Tunnel to homepage.domain. Origin +
+        # Access policy live in Cloudflare Zero Trust; this unit only runs
+        # the connector.
         systemd.services.homepage-tunnel = mkIf (config.homepage.tunnelTokenFile != null) {
           description = "Cloudflare Tunnel for the homepage dashboard";
           wantedBy = [ "multi-user.target" ];

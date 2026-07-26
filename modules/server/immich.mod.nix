@@ -1,16 +1,12 @@
-# Immich aspect — self-hosted family photo library (Google-Photos-shaped:
-# phone auto-backup, timeline, albums, on-server ML for faces and search).
-# Inert until a host sets `services.immich.enable`.
+# Immich aspect — self-hosted family photo library (phone auto-backup,
+# timeline, albums, on-server ML for faces and search). Inert until a host
+# sets `services.immich.enable`.
 #
 # Same reachability posture as the media stack: binds everywhere, zero open
 # firewall ports, reached over the trusted tailscale0 interface (:2283).
-# Remote phone backup (away from home) is deliberately unsolved for now —
-# family phones on the tailnet, or a tunnel, is a later decision.
 #
 # STORAGE. /srv/photos — its own tree, NOT the media tree: photos are
-# irreplaceable family state (and the standing trigger for the deferred
-# off-host backup design), while /srv/media is redownloadable. Same RAID
-# migration story: copy tree, remount, done.
+# irreplaceable family state, while /srv/media is redownloadable.
 #
 # The NixOS module brings up PostgreSQL (with pgvector) and Redis itself;
 # machine-learning defaults on — models download from Hugging Face on first
@@ -25,8 +21,8 @@
     {
       config = mkIf config.services.immich.enable {
         # The upstream module only auto-creates its default /var/lib
-        # location; a custom mediaLocation is on us (verified live: EACCES
-        # crash-loop on first start). 0750 — the tree is immich's alone.
+        # location; a custom mediaLocation needs this. 0750 — the tree is
+        # immich's alone.
         systemd.tmpfiles.rules = [
           "d ${config.services.immich.mediaLocation} 0750 immich immich -"
         ];
@@ -38,11 +34,10 @@
           mediaLocation = mkDefault "/srv/photos";
         };
 
-        # Anti-pivot fence, media-stack shape: tailnet + loopback (postgres,
-        # redis, ML sidecar) allowed, every private range denied, public
-        # internet falls through (ML model downloads, reverse geocoding).
-        # No Slice override — upstream already confines both units to its
-        # own system-immich.slice.
+        # Anti-pivot fence, media-stack shape: tailnet + loopback allowed,
+        # every private range denied, public internet falls through (ML
+        # model downloads, reverse geocoding). No Slice override — upstream
+        # already confines both units to system-immich.slice.
         systemd.services.immich-server.serviceConfig = {
           IPAddressAllow = [
             "100.64.0.0/10"

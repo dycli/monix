@@ -1,31 +1,28 @@
 # Ship alerting — every alarm on the host reaches the Matrix alert room
-# through one Rust mouth (alerts/ship-alert), and every sensor is a borrowed
-# specialist with a thin hook:
+# through one Rust mouth (alerts/ship-alert), and every sensor is a
+# borrowed specialist with a thin hook:
 #
-#   1. systemd (software): a GLOBAL drop-in (service.d/, shipped via
-#      systemd.packages — environment.etc can't nest under the generated
-#      /etc/systemd/system) attaches OnFailure=alert-unit-failure@%n to every
-#      system service, so any failure posts the unit name and a journal tail
-#      within seconds.
+#   1. systemd: a global drop-in (service.d/, shipped via systemd.packages
+#      — environment.etc can't nest under the generated
+#      /etc/systemd/system) attaches OnFailure=alert-unit-failure@%n to
+#      every service, so any failure posts the unit name and a journal
+#      tail within seconds.
 #   2. The 6-hourly sweep: still-failed units, filesystems over the disk
-#      threshold, hwmon temperatures over the heat threshold, and a pending
-#      kernel (what OnFailure can't see: units already failed at boot,
-#      creeping usage, dying fans).
-#   3. smartd (disks): SMART health/attribute/self-test events fire a -M exec
-#      hook; scheduled short/long self-tests keep the attributes honest.
-#   4. upsmon (power, optional): NOTIFYCMD spools events as the unprivileged
-#      nut user; a path unit relays them as root. LOWBATT keeps upsmon's
-#      clean-shutdown behavior.
+#      threshold, hwmon temperatures over the heat threshold, and a
+#      pending kernel (what OnFailure can't see).
+#   3. smartd (disks): SMART health/attribute/self-test events fire a -M
+#      exec hook; scheduled short/long self-tests keep attributes honest.
+#   4. upsmon (power, optional): NOTIFYCMD spools events as the
+#      unprivileged nut user; a path unit relays them as root.
 #
-# ship-alert owns delivery: password login → send → logout on the loopback
-# tuwunel (no device accumulation), one-time room join stamped in
-# /var/lib/alerts, optional local-LLM enrichment, repeat throttling. If the
-# homeserver is down alerts can't send; accepted — meta-monitoring needs an
-# off-host watcher, which this deliberately is not.
+# ship-alert owns delivery: password login -> send -> logout on the
+# loopback tuwunel, one-time room join stamped in /var/lib/alerts,
+# optional local-LLM enrichment, repeat throttling. If the homeserver is
+# down alerts can't send — meta-monitoring would need an off-host
+# watcher, which this is not.
 #
 # The env secret carries MATRIX_USER, MATRIX_PASSWORD, and ALERT_ROOM_ID —
-# room id included so nothing about the room lives in the repo and the
-# host wiring can gate on the one secret existing.
+# room id included so nothing about the room lives in the repo.
 {
   flake.nixosModules.alerts =
     {

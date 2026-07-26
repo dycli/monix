@@ -19,8 +19,8 @@
     {
       environment.variables.EDITOR = "nvim";
 
-      # neovim deliberately absent: NvChad's wrapper provides `nvim` per-user
-      # (see editors.mod.nix) and collides with a plain install.
+      # neovim absent: NvChad's wrapper provides `nvim` per-user (see
+      # editors.mod.nix) and collides with a plain install.
       environment.systemPackages = [
         pkgs.vim
       ];

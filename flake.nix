@@ -37,9 +37,8 @@
     inputs.darwin.follows = "";
   };
 
-  # master, not stable: v1.4.6/stable predate the fixes for Hyprland 0.55's
-  # Lua command socket (old-style `dispatch workspace N` strings are rejected,
-  # breaking DMS workspace clicking; fixed on master ~2026-05).
+  # master, not stable: stable predates the fixes for Hyprland 0.55's Lua
+  # command socket needed for DMS workspace clicking.
   inputs.dank-material-shell = {
     url = "github:AvengeMedia/DankMaterialShell";
     inputs.nixpkgs.follows = "nixpkgs";
@@ -58,12 +57,9 @@
   };
 
   # nix-minecraft: declarative Fabric/vanilla/etc. Minecraft servers as a
-  # NixOS service, plus prebuilt server packages pinned per game version
-  # (see modules/server/minecraft.mod.nix, gated on services.minecraft-servers
-  # via minecraft.enable). Does NOT follow our nixpkgs: the flake's server
-  # packages (fabricServers.*) and their loader/launcher wrapper are built and
-  # cached against its own pinned nixpkgs, and only its `minecraft-servers`
-  # NixOS module + overlay are consumed here — so leaving its nixpkgs pinned
+  # NixOS service (see modules/server/minecraft.mod.nix, gated on
+  # minecraft.enable). Does NOT follow our nixpkgs: its server packages are
+  # built and cached against its own pinned nixpkgs, so leaving it pinned
   # avoids a mass rebuild and keeps the binary cache hits.
   inputs.nix-minecraft = {
     url = "github:Infinidoge/nix-minecraft";

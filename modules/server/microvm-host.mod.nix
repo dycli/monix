@@ -1,18 +1,12 @@
-# Agent-fleet microVM host. See docs/agent-fleet.md. Provides:
-#   - the microvm.nix host runner (microvm@<name> units, virtiofsd, state dir);
-#   - a HOST-ONLY bridge `br-agents` (10.100.0.1/24) with no NAT, no routing,
-#     no DNS for guests — guests can reach nothing except the proxy below;
-#   - `squid` as the SOLE egress path, a CONNECT allowlist that also produces
-#     the egress audit log.
+# Agent-fleet microVM host (docs/agent-fleet.md). Provides the microvm.nix
+# host runner, a HOST-ONLY bridge `br-agents` (10.100.0.1/24, no NAT/routing/
+# DNS for guests), and `squid` as the sole egress path (CONNECT allowlist +
+# audit log). Guests have no default route or DNS, so squid is structurally
+# the only way out — default-deny by construction, not just policy.
 #
-# Egress is structural, not a rule to get right: guests have no default route
-# and no DNS, so the only way out is CONNECT through squid on the bridge IP,
-# which enforces the domain allowlist. Default-deny by construction.
-#
-# NETWORKING SAFETY: this touches ONLY `br-agents` and the `vm-*` taps via
-# systemd-networkd. The host uplinks stay on their existing dhcpcd DHCP —
-# `dhcpcd.denyInterfaces` fences the bridge/taps off so the two managers never
-# fight. A misconfigured bridge cannot take down the uplinks (or your SSH).
+# Networking touches ONLY br-agents and vm-* taps via systemd-networkd; host
+# uplinks stay on dhcpcd (`dhcpcd.denyInterfaces` keeps the two managers from
+# fighting), so a misconfigured bridge can't take down uplinks or SSH.
 { inputs, ... }:
 {
   flake.nixosModules.microvm-host =
@@ -31,12 +25,10 @@
       topology = import ../../lib/fleet-topology.nix;
       inherit (topology) bridge hostAddr;
 
-      # The egress allowlist — the ONLY destinations a guest can reach. Keep it
-      # minimal; every entry is a potential exfiltration channel. Widen only by
-      # reviewed commit. A leading-dot dstdomain matches the domain AND all
-      # subdomains, so the dotted forms below already cover api.anthropic.com,
-      # cache/channels.nixos.org, etc. — don't
-      # also list the specific hosts (squid rejects the redundancy).
+      # The ONLY destinations a guest can reach; widen only by reviewed
+      # commit. A leading-dot dstdomain matches the domain and all
+      # subdomains, so don't also list specific hosts (squid rejects the
+      # redundancy).
       allowedDomains = [
         ".anthropic.com" # Claude API + Claude Code auth/telemetry
         ".openai.com" # Codex: OpenAI API + auth
@@ -52,35 +44,25 @@
       options.agentFleet.enable = mkEnableOption "the agent-fleet microVM host role";
 
       config = mkMerge [
-        # The microvm.nix host runner defaults to ON once its module is
-        # imported, and this aspect is imported on every host — so gate it
-        # explicitly (unconditionally) to keep it OFF on desktops/non-fleet
-        # servers.
+        # microvm.nix's host runner defaults ON once its module is imported,
+        # and this aspect loads on every host, so gate it explicitly.
         { microvm.host.enable = cfg.enable; }
 
         (mkIf cfg.enable {
-        # Guest state (scratch images, overlays) on the dedicated @agents
-        # dataset, not the root subvol.
+        # Guest state on the dedicated @agents dataset, not the root subvol.
         microvm.stateDir = "/var/lib/agents/microvms";
 
-        # Pre-own each worker's state dir as microvm:kvm. microvm.nix's
-        # install-microvm runs as root and chowns each dir itself, but when a
-        # BATCH of new workers installs at once and an install is interrupted
-        # before its chown, the dir is left root-owned — then the microvm-user
-        # `microvm-set-booted` step fails with EACCES and aborts the whole
-        # activation (this is what broke the jump 2->12). A tmpfiles `d` rule
-        # sets AND repairs the ownership deterministically, and it runs early in
-        # activation (before the microvm units), so a large pool activates
-        # cleanly and any previously root-owned dirs get fixed on the next switch.
+        # If install-microvm is interrupted before chowning a worker's state
+        # dir, it's left root-owned and microvm-set-booted fails with EACCES,
+        # aborting the whole activation (broke the jump 2->12). This tmpfiles
+        # `d` rule sets/repairs ownership early, before the microvm units.
         systemd.tmpfiles.rules = map (
           w: "d ${config.microvm.stateDir}/${w.name} 0755 microvm kvm -"
         ) cfg.workers;
 
-        # NETWORKING — full systemd-networkd (NOT mixed with scripted dhcpcd,
-        # which NixOS warns can drop networking). networkd becomes authoritative
-        # for all interfaces, so the onboard uplink is configured explicitly
-        # (DHCP, unchanged behaviour); the host-only bridge and VM taps are the
-        # new managed links.
+        # Full systemd-networkd, not mixed with scripted dhcpcd (NixOS warns
+        # this can drop networking): networkd becomes authoritative for all
+        # interfaces, so the onboard uplink is configured explicitly too.
         networking.useNetworkd = true;
 
         boot.kernel.sysctl = {
@@ -95,18 +77,15 @@
           }
         ];
 
-        # Onboard uplink (enp*) stays on DHCP. tailscale0 is left to tailscaled
-        # (no match here); lo is networkd's own default.
+        # tailscale0 is left to tailscaled (no match here); lo is networkd's default.
         systemd.network.networks."10-uplink" = {
           matchConfig.Name = "en*";
           networkConfig.DHCP = "yes";
           linkConfig.RequiredForOnline = "routable";
         };
 
-        # HOST-ONLY BRIDGE — no uplink port is ever enslaved, so it cannot route
-        # anywhere. Guests attach via vm-* taps (auto-enslaved by the match
-        # below). RequiredForOnline=no so a carrier-less internal bridge never
-        # blocks boot.
+        # No uplink port is ever enslaved to this bridge, so it can't route
+        # anywhere; RequiredForOnline=no so a carrier-less bridge never blocks boot.
         systemd.network.netdevs."30-${bridge}".netdevConfig = {
           Name = bridge;
           Kind = "bridge";
@@ -129,21 +108,17 @@
           bridgeConfig.Isolated = true;
         };
 
-        # EGRESS FIREWALL — from the bridge, guests may reach ONLY squid, plus
-        # (when the host serves local inference) the llama-swap endpoint: a
-        # deliberate pinhole so drones can call the ship's own models. That
-        # service is the second host process parsing untrusted guest bytes
-        # (squid is the first) and is sandboxed accordingly (inference.mod.nix).
-        # br-agents is deliberately NOT a trusted interface, so the default
-        # DROP handles everything else (incl. DNS/53 and the host's sshd). No
-        # IP forwarding is enabled anywhere, so even this is belt-and-braces:
-        # guests have no route off the bridge regardless.
+        # From the bridge, guests may reach only squid, plus (when serving
+        # local inference) llama-swap — a deliberate pinhole, sandboxed like
+        # squid since it also parses untrusted guest bytes (inference.mod.nix).
+        # br-agents is NOT a trusted interface, so default DROP covers
+        # everything else; belt-and-braces since IP forwarding is off anyway.
         networking.firewall.interfaces.${bridge}.allowedTCPPorts = [
           3128
         ]
         ++ lib.lists.optionals config.inference.enable [ config.inference.port ];
 
-        # SQUID — the single audited egress point. Bound to the bridge IP only.
+        # The single audited egress point, bound to the bridge IP only.
         services.squid = {
           enable = true;
           configText = ''
@@ -174,12 +149,10 @@
             coredump_dir /var/cache/squid
           '';
         };
-        # HARDENING — squid is the ONE host process that parses bytes from the
-        # untrusted guests, i.e. the single crack in the otherwise-clean KVM
-        # boundary. Sandbox it so an exploited squid lands in an empty room:
-        # read-only filesystem (logs/cache/pidfile excepted), no home dirs, no
-        # new privileges, and only the capabilities/syscalls it needs to drop
-        # from root to the squid user at startup (@setuid/@chown).
+        # squid parses bytes from untrusted guests — the one crack in the
+        # otherwise-clean KVM boundary — so it's sandboxed to an empty room:
+        # read-only filesystem except logs/cache/pidfile, no new privileges,
+        # only the capabilities needed to drop from root at startup.
         systemd.services.squid.serviceConfig = {
           Slice = "agents.slice";
 
@@ -188,8 +161,7 @@
           ProtectHome = true;
           PrivateTmp = true;
           # ProtectSystem=strict leaves /run read-only, so the pidfile moves
-          # into a RuntimeDirectory (the upstream module points PIDFile at
-          # /run/squid.pid — realign it).
+          # into a RuntimeDirectory (realigned from upstream's /run/squid.pid).
           RuntimeDirectory = "squid";
           PIDFile = lib.mkForce "/run/squid/squid.pid";
           ReadWritePaths = [
