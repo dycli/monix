@@ -97,7 +97,7 @@
               ];
             }
             {
-              Automation = [
+              Arr = [
                 {
                   Radarr = {
                     href = "${host}:7878";
@@ -138,24 +138,10 @@
             {
               Ship = [
                 {
-                  "llama-swap" = {
-                    href = "${host}:8091";
-                    description = "local inference";
-                    icon = "mdi-brain";
-                  };
-                }
-                {
                   opencode = {
                     href = "https://ai.su.is";
                     description = "web cockpit seat (Cloudflare Access)";
                     icon = "mdi-console";
-                  };
-                }
-                {
-                  Matrix = {
-                    href = "https://chat.su.is";
-                    description = "family chat (tuwunel)";
-                    icon = "matrix.png";
                   };
                 }
               ];
