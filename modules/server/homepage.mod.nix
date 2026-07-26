@@ -23,9 +23,15 @@
 
       networkFences = import ../../lib/network-fences.nix;
 
-      # Tile links use the tailnet short name — resolvable from every device
-      # that can reach the dashboard at all.
-      host = "http://fw0";
+      # Tile links: pretty ship-proxy names when the front door is up,
+      # otherwise the tailnet short name + port (both only resolve/route for
+      # devices that can reach the dashboard at all).
+      url =
+        sub: port:
+        if config.shipProxy.enable then
+          "https://${sub}.${config.shipProxy.domain}"
+        else
+          "http://fw0:${toString port}";
     in
     {
       options.homepage.domain = lib.options.mkOption {
@@ -69,6 +75,9 @@
               "127.0.0.1"
             ]
             ++ lib.lists.optional (config.homepage.domain != null) config.homepage.domain
+            ++ lib.lists.optional (
+              config.shipProxy.enable && config.shipProxy.dashboardHost != null
+            ) config.shipProxy.dashboardHost
           );
 
           settings = {
@@ -100,35 +109,35 @@
               Arr = [
                 {
                   Bazarr = {
-                    href = "${host}:6767";
+                    href = url "bazarr" 6767;
                     description = "Subtitles";
                     icon = "bazarr.png";
                   };
                 }
                 {
                   Prowlarr = {
-                    href = "${host}:9696";
+                    href = url "prowlarr" 9696;
                     description = "Indexers";
                     icon = "prowlarr.png";
                   };
                 }
                 {
                   Radarr = {
-                    href = "${host}:7878";
+                    href = url "radarr" 7878;
                     description = "Movies";
                     icon = "radarr.png";
                   };
                 }
                 {
                   SABnzbd = {
-                    href = "${host}:8080";
+                    href = url "sab" 8080;
                     description = "Downloads";
                     icon = "sabnzbd.png";
                   };
                 }
                 {
                   Sonarr = {
-                    href = "${host}:8989";
+                    href = url "sonarr" 8989;
                     description = "TV";
                     icon = "sonarr.png";
                   };
@@ -139,7 +148,7 @@
               Media = [
                 {
                   Calibre-Web = {
-                    href = "${host}:8083";
+                    href = url "calibre" 8083;
                     description = "eBooks";
                     icon = "calibre-web.png";
                   };
@@ -147,7 +156,7 @@
               ]
               ++ lib.lists.optional config.services.immich.enable {
                 Immich = {
-                  href = "${host}:2283";
+                  href = url "immich" 2283;
                   description = "Photos";
                   icon = "immich.png";
                 };
@@ -155,7 +164,7 @@
               ++ [
                 {
                   Jellyfin = {
-                    href = "${host}:8096";
+                    href = url "jellyfin" 8096;
                     description = "Movies & TV";
                     icon = "jellyfin.png";
                   };

@@ -69,6 +69,17 @@
   # captain-paced web-UI/app state.
   services.immich.enable = true;
 
+  # Tailnet-only pretty names (ship-proxy.mod.nix): <service>.su.is vhosts
+  # on nginx with a wildcard DNS-01 cert. Bootstrap-gated on the Cloudflare
+  # DNS token; A records (grey-cloud → 100.102.113.74) are dashboard state.
+  # dashboardHost stays unset until the captain names it.
+  shipProxy.enable = builtins.pathExists ./secrets/cloudflare-dns-token.env.age;
+  shipProxy.acmeTokenFile =
+    if builtins.pathExists ./secrets/cloudflare-dns-token.env.age then
+      config.secrets.cloudflare-dns-token.path
+    else
+      null;
+
   # The ship's front door (homepage.mod.nix): dashboard of links to every
   # web UI at plain http://fw0, so no ports to memorize. Tailnet-only.
   services.homepage-dashboard.enable = true;
@@ -206,6 +217,12 @@
     openrouter-management-key = {
       file = ./secrets/openrouter-management-key.age;
       owner = config.primaryUser;
+    };
+  }
+  // lib.optionalAttrs (builtins.pathExists ./secrets/cloudflare-dns-token.env.age) {
+    cloudflare-dns-token = {
+      file = ./secrets/cloudflare-dns-token.env.age;
+      owner = "acme";
     };
   }
   // lib.optionalAttrs (builtins.pathExists ./secrets/sabnzbd-secrets.ini.age) {

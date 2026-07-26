@@ -196,6 +196,12 @@
             host = "0.0.0.0";
             local_ranges = "127.0.0.1, ::1, 100.64.0.0/10";
 
+            # SABnzbd rejects Host headers it doesn't know; teach it the
+            # ship-proxy name when the front door is up.
+            host_whitelist = lib.strings.concatStringsSep ", " (
+              lib.lists.optional config.shipProxy.enable "sab.${config.shipProxy.domain}"
+            );
+
             # The media tree (see STORAGE in the header). Group-readable
             # completes so the *arr importers (media group) can hardlink.
             download_dir = "${mediaRoot}/downloads/incomplete";
