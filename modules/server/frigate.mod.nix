@@ -45,6 +45,21 @@
         IPAddressDeny = networkFences.privateRanges ++ [ "any" ];
       };
 
+      # The camera stream map, shared by go2rtc (which does the connecting;
+      # ''${VAR} env syntax) and Frigate's own config (which only needs to
+      # KNOW the restreams exist so its UI offers MSE/WebRTC — with an
+      # external go2rtc, frigate can't see its config; {VAR} env syntax).
+      streamsWith =
+        pass:
+        concatMapAttrs (name: ip: {
+          ${name} = [ "rtsp://frigate:${pass}@${ip}:554/h264Preview_01_main" ];
+          "${name}_sub" = [ "rtsp://frigate:${pass}@${ip}:554/h264Preview_01_sub" ];
+        }) cfg.reolink
+        // concatMapAttrs (name: ip: {
+          ${name} = [ "rtsp://frigate:${pass}@${ip}:554/stream1" ];
+          "${name}_sub" = [ "rtsp://frigate:${pass}@${ip}:554/stream2" ];
+        }) cfg.tapo;
+
       # One Frigate camera definition per entry: record the go2rtc main
       # restream, detect on the sub restream.
       frigateCamera = detect: name: _: {
@@ -113,19 +128,7 @@
             # can't ride the nginx proxy) — bind wide, reachability is the
             # firewall's job (tailscale0 trusted, nothing else open).
             webrtc.listen = ":8555";
-            streams =
-              concatMapAttrs (name: ip: {
-                ${name} = [
-                  "rtsp://frigate:\${FRIGATE_RTSP_PASSWORD}@${ip}:554/h264Preview_01_main"
-                ];
-                "${name}_sub" = [
-                  "rtsp://frigate:\${FRIGATE_RTSP_PASSWORD}@${ip}:554/h264Preview_01_sub"
-                ];
-              }) cfg.reolink
-              // concatMapAttrs (name: ip: {
-                ${name} = [ "rtsp://frigate:\${FRIGATE_RTSP_PASSWORD}@${ip}:554/stream1" ];
-                "${name}_sub" = [ "rtsp://frigate:\${FRIGATE_RTSP_PASSWORD}@${ip}:554/stream2" ];
-              }) cfg.tapo;
+            streams = streamsWith "\${FRIGATE_RTSP_PASSWORD}";
           };
         };
         systemd.services.go2rtc.serviceConfig = lanFence // {
@@ -147,6 +150,11 @@
           checkConfig = false;
 
           settings = {
+            # See streamsWith: frigate must know the external go2rtc's
+            # streams or its UI never offers MSE/WebRTC (endless spinner
+            # on fullscreen — found live).
+            go2rtc.streams = streamsWith "{FRIGATE_RTSP_PASSWORD}";
+
             mqtt = {
               enabled = true;
               host = "127.0.0.1";
