@@ -140,7 +140,7 @@
                 {
                   Calibre-Web = {
                     href = "${host}:8083";
-                    description = "Ebooks — upload here, e-reader pulls via OPDS";
+                    description = "eBooks";
                     icon = "calibre-web.png";
                   };
                 }
@@ -148,7 +148,7 @@
               ++ lib.lists.optional config.services.immich.enable {
                 Immich = {
                   href = "${host}:2283";
-                  description = "Family photos";
+                  description = "Photos";
                   icon = "immich.png";
                 };
               }
