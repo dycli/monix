@@ -76,7 +76,7 @@
   shipCameras.enable = builtins.pathExists ./secrets/frigate.env.age;
   shipCameras.reolink = {
     cam1 = "192.168.1.201";
-    cam2 = "192.168.1.202";
+    cam2 = "192.168.1.55";
   };
   shipCameras.lanSubnets = [ "192.168.1.0/24" ];
   shipCameras.envFile =
