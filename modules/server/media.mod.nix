@@ -251,6 +251,19 @@
           };
         };
 
+        # First-boot library bootstrap. calibre-web cannot create a Calibre
+        # library and its upstream pre-start hard-fails without one, so seed
+        # an empty metadata.db (schema dumped from `calibredb` 9.10, checked
+        # in as SQL text) before the upstream check runs. preStart is
+        # mkBefore'd onto ExecStartPre by the systemd module, and runs as the
+        # calibre-web user, who owns the books dir.
+        systemd.services.calibre-web.preStart = ''
+          if [ ! -f ${mediaRoot}/books/metadata.db ]; then
+            ${pkgs.sqlite}/bin/sqlite3 ${mediaRoot}/books/metadata.db \
+              < ${./calibre-library-init.sql}
+          fi
+        '';
+
         networking.firewall = mkIf (cfg.calibreWebLan != null) {
           interfaces.${cfg.calibreWebLan.interface}.allowedTCPPorts = [
             config.services.calibre-web.listen.port
