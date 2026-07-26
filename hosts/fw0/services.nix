@@ -70,6 +70,19 @@
   services.home-assistant.enable = true;
   homeAssistant.lanSubnets = [ "192.168.1.0/24" ];
 
+  # Frigate NVR (frigate.mod.nix): Reolink RLC-520A pair (cam2 joins when
+  # plugged in; Tapo C225s can join later). Bootstrap-gated on the camera
+  # credentials secret; frigate.su.is via the ship proxy.
+  shipCameras.enable = builtins.pathExists ./secrets/frigate.env.age;
+  shipCameras.reolink.cam1 = "192.168.1.201";
+  shipCameras.lanSubnets = [ "192.168.1.0/24" ];
+  shipCameras.envFile =
+    if builtins.pathExists ./secrets/frigate.env.age then
+      config.secrets.frigate-env.path
+    else
+      # Placeholder; shipCameras stays disabled until the secret exists.
+      "/dev/null";
+
   # Family photo library (immich.mod.nix): tailnet-only at :2283, photos
   # under /srv/photos. Accounts, phone backup, and any remote access are
   # captain-paced web-UI/app state.
@@ -230,6 +243,9 @@
       file = ./secrets/cloudflare-dns-token.env.age;
       owner = "acme";
     };
+  }
+  // lib.optionalAttrs (builtins.pathExists ./secrets/frigate.env.age) {
+    frigate-env.file = ./secrets/frigate.env.age;
   }
   // lib.optionalAttrs (builtins.pathExists ./secrets/sabnzbd-secrets.ini.age) {
     sabnzbd-secrets = {

@@ -1,0 +1,216 @@
+# Frigate aspect — NVR with on-host object detection for the ship's
+# cameras (Reolink RLC-520A PoE pair; Tapo C225s can join the same way).
+# Inert until a host sets `shipCameras.enable`.
+#
+# SHAPE. go2rtc (separate unit, loopback-only) connects to each camera
+# once and restreams; Frigate consumes the restreams: full-res stream is
+# recorded, the small sub-stream feeds detection. Detection runs on CPU
+# for now (two cameras is light); VAAPI handles decode. Recordings live
+# in /var/lib/frigate (StateDirectory) until the RAID array offers a
+# better home — camera footage is transient bulk, not the precious tier.
+#
+# REACHABILITY. The web UI rides the ship proxy: the upstream module
+# creates the nginx vhost for `hostname`, we layer the wildcard cert on
+# it. Frigate + go2rtc themselves are fenced to LAN (cameras) + loopback
+# — an NVR needs zero internet, so unlike the media stack nothing falls
+# through to the public net.
+#
+# CAMERA CREDENTIALS come from envFile (agenix):
+#   FRIGATE_RTSP_PASSWORD=...   (the `frigate` user on the Reolinks)
+#   FRIGATE_TAPO_PASSWORD=...   (Tapo app "camera account", when added)
+# go2rtc expands ${VARS}; Frigate expands {FRIGATE_*}.
+{
+  flake.nixosModules.frigate =
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
+    let
+      inherit (lib.attrsets) concatMapAttrs mapAttrs;
+      inherit (lib.modules) mkIf;
+      inherit (lib.options) mkEnableOption mkOption;
+
+      networkFences = import ../../lib/network-fences.nix;
+      cfg = config.shipCameras;
+
+      lanFence = {
+        Slice = "services.slice";
+        IPAddressAllow = [
+          "127.0.0.0/8"
+          "::1"
+        ]
+        ++ cfg.lanSubnets;
+        IPAddressDeny = networkFences.privateRanges ++ [ "any" ];
+      };
+
+      # One Frigate camera definition per entry: record the go2rtc main
+      # restream, detect on the sub restream.
+      frigateCamera = detect: name: _: {
+        ffmpeg.inputs = [
+          {
+            path = "rtsp://127.0.0.1:8554/${name}";
+            input_args = "preset-rtsp-restream";
+            roles = [ "record" ];
+          }
+          {
+            path = "rtsp://127.0.0.1:8554/${name}_sub";
+            input_args = "preset-rtsp-restream";
+            roles = [ "detect" ];
+          }
+        ];
+        inherit detect;
+      };
+    in
+    {
+      options.shipCameras = {
+        enable = mkEnableOption "Frigate NVR for the ship's cameras";
+
+        reolink = mkOption {
+          type = lib.types.attrsOf lib.types.str;
+          default = { };
+          example = {
+            front = "192.168.1.201";
+          };
+          description = "Reolink cameras (RLC-520A pattern): name → IP.";
+        };
+
+        tapo = mkOption {
+          type = lib.types.attrsOf lib.types.str;
+          default = { };
+          description = "Tapo cameras (C225 pattern): name → IP.";
+        };
+
+        lanSubnets = mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [ "192.168.1.0/24" ];
+          description = "Subnets the cameras live on.";
+        };
+
+        envFile = mkOption {
+          type = lib.types.path;
+          description = "agenix env file with the FRIGATE_* camera credentials.";
+        };
+      };
+
+      config = mkIf cfg.enable {
+        assertions = [
+          {
+            assertion = config.shipProxy.enable;
+            message = "shipCameras needs shipProxy (frigate.<domain> vhost + cert)";
+          }
+        ];
+
+        # --- go2rtc: one connection per camera, restreamed on loopback ---
+        services.go2rtc = {
+          enable = true;
+          settings = {
+            api.listen = "127.0.0.1:1984";
+            rtsp.listen = "127.0.0.1:8554";
+            webrtc.listen = "127.0.0.1:8555";
+            streams =
+              concatMapAttrs (name: ip: {
+                ${name} = [
+                  "rtsp://frigate:\${FRIGATE_RTSP_PASSWORD}@${ip}:554/h264Preview_01_main"
+                ];
+                "${name}_sub" = [
+                  "rtsp://frigate:\${FRIGATE_RTSP_PASSWORD}@${ip}:554/h264Preview_01_sub"
+                ];
+              }) cfg.reolink
+              // concatMapAttrs (name: ip: {
+                ${name} = [ "rtsp://frigate:\${FRIGATE_TAPO_PASSWORD}@${ip}:554/stream1" ];
+                "${name}_sub" = [ "rtsp://frigate:\${FRIGATE_TAPO_PASSWORD}@${ip}:554/stream2" ];
+              }) cfg.tapo;
+          };
+        };
+        systemd.services.go2rtc.serviceConfig = lanFence // {
+          EnvironmentFile = cfg.envFile;
+        };
+
+        # --- Frigate ---
+        services.frigate = {
+          enable = true;
+          hostname = "frigate.${config.shipProxy.domain}";
+          vaapiDriver = "radeonsi";
+
+          settings = {
+            mqtt = {
+              enabled = true;
+              host = "127.0.0.1";
+            };
+
+            ffmpeg.hwaccel_args = "preset-vaapi";
+
+            detectors.cpu1 = {
+              type = "cpu";
+              num_threads = 4;
+            };
+
+            objects.track = [
+              "person"
+              "car"
+              "dog"
+              "cat"
+            ];
+
+            record = {
+              enabled = true;
+              retain = {
+                days = 7;
+                mode = "motion";
+              };
+              alerts.retain.days = 14;
+              detections.retain.days = 14;
+            };
+            snapshots.enabled = true;
+
+            cameras =
+              # RLC-520A sub-stream is 640x480.
+              mapAttrs (frigateCamera {
+                enabled = true;
+                width = 640;
+                height = 480;
+              }) cfg.reolink
+              # C225 sub-stream is 640x360.
+              // mapAttrs (frigateCamera {
+                enabled = true;
+                width = 640;
+                height = 360;
+              }) cfg.tapo;
+          };
+        };
+        systemd.services.frigate.serviceConfig = lanFence // {
+          EnvironmentFile = cfg.envFile;
+        };
+
+        # Wildcard cert + TLS on the vhost the upstream module created.
+        services.nginx.virtualHosts.${config.services.frigate.hostname} = {
+          useACMEHost = config.shipProxy.domain;
+          forceSSL = true;
+        };
+
+        # --- MQTT broker (loopback-only) for Frigate→HA events ---
+        services.mosquitto = {
+          enable = true;
+          listeners = [
+            {
+              address = "127.0.0.1";
+              port = 1883;
+              settings.allow_anonymous = true;
+              acl = [ "topic readwrite #" ];
+            }
+          ];
+        };
+        systemd.services.mosquitto.serviceConfig = {
+          Slice = "services.slice";
+          IPAddressAllow = [
+            "127.0.0.0/8"
+            "::1"
+          ];
+          IPAddressDeny = "any";
+        };
+      };
+    };
+}

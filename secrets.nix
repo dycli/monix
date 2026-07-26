@@ -48,6 +48,9 @@ in
   # Cloudflare API token (Zone→DNS→Edit on su.is) for the ship-proxy
   # wildcard cert's DNS-01 (CLOUDFLARE_DNS_API_TOKEN=...).
   "hosts/fw0/secrets/cloudflare-dns-token.env.age".publicKeys = [ fw0 ] ++ admin;
+  # Camera credentials for Frigate/go2rtc (FRIGATE_RTSP_PASSWORD=... and,
+  # when Tapos join, FRIGATE_TAPO_PASSWORD=...).
+  "hosts/fw0/secrets/frigate.env.age".publicKeys = [ fw0 ] ++ admin;
   # Reserved for the currently disabled LiteLLM/Open WebUI modules.
   "hosts/fw0/secrets/litellm.env.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/open-webui.env.age".publicKeys = [ fw0 ] ++ admin;

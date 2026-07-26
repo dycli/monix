@@ -103,7 +103,7 @@
               "jellyfin.${cfg.domain}" = proxy 8096 { };
             }
             // optionalAttrs config.services.home-assistant.enable {
-              "ha.${cfg.domain}" = proxy config.services.home-assistant.port { };
+              "ha.${cfg.domain}" = proxy 8123 { };
             }
             // optionalAttrs config.services.immich.enable {
               "immich.${cfg.domain}" = proxy 2283 {

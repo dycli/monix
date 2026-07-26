@@ -15,7 +15,12 @@
 # something local-first).
 {
   flake.nixosModules.home-assistant =
-    { config, lib, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     let
       inherit (lib.modules) mkIf;
       networkFences = import ../../lib/network-fences.nix;
@@ -43,7 +48,16 @@
             "nest"
             # ESPHome ready for future local-first sensors/devices.
             "esphome"
-          ];
+          ]
+          # Frigate events arrive over MQTT when the NVR is up.
+          ++ lib.lists.optional config.shipCameras.enable "mqtt";
+
+          # The Frigate integration is a custom component (HACS-land
+          # upstream, packaged in nixpkgs). UI setup: point it at
+          # http://127.0.0.1:5000 (frigate's unauthenticated local port).
+          customComponents = lib.lists.optional config.shipCameras.enable (
+            pkgs.home-assistant-custom-components.frigate
+          );
 
           config = {
             # default_config = the standard integration bundle (automations,

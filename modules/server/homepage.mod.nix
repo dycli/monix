@@ -150,12 +150,19 @@
             Home = [
               {
                 "Home Assistant" = {
-                  href = url "ha" config.services.home-assistant.port;
+                  href = url "ha" 8123;
                   description = "Smart home";
                   icon = "home-assistant.png";
                 };
               }
-            ];
+            ]
+            ++ lib.lists.optional config.shipCameras.enable {
+              Frigate = {
+                href = "https://frigate.${config.shipProxy.domain}";
+                description = "Cameras";
+                icon = "frigate.png";
+              };
+            };
           }
           ++ [
             {
