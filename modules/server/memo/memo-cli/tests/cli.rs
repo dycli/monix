@@ -51,7 +51,7 @@ fn stderr(out: &Output) -> String {
 }
 
 fn nap_id(out: &str) -> String {
-    let start = out.find("memo sleep ").expect("nap command") + "memo sleep ".len();
+    let start = out.find("memo nap ").expect("nap command") + "memo nap ".len();
     out[start..].split_whitespace().next().unwrap().to_owned()
 }
 
@@ -66,7 +66,7 @@ fn settle(store: &Path, summary: &str) -> usize {
         }
         let command_line = text
             .lines()
-            .find(|line| line.contains("memo sleep "))
+            .find(|line| line.contains("memo nap "))
             .expect("command");
         assert!(command_line.starts_with("Run: "));
         let id = nap_id(&text);

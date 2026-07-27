@@ -68,7 +68,7 @@
     - SLEEP. When a note returns a compression prompt, pay it on the spot: one line,
       at most 280 chars — keep every name, number, date, decision and outcome; drop
       wording, not facts; invent nothing. Before a session ends or context clears,
-      run `memo sleep` until "Nothing left to compress", and tell the captain what
+      run `memo nap` until "Nothing left to compress", and tell the captain what
       state the ship sleeps in: running tasks, background jobs, uncommitted or
       unpushed work.
     - RECALL. `memo recall <regex>` searches every memory ever recorded, for when a

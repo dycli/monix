@@ -20,9 +20,10 @@ const USAGE: &str = r#"OptMem: a permanent, append-only memory for AI agents.
 
   memo wake [part [T]]     read your memory. Run first, every session.
   memo note "..."          record one memory: one line, at most 280 chars.
-  memo sleep [id "..."]    do the pending compressions.
+  memo nap [id "..."]      do the pending compressions.
   memo recall <regex>      search every memory ever recorded.
-  memo forget <lo>-<hi>    drop a bad summary; sleep rebuilds it.
+  memo zoom <lo>-<hi>      open a tree node: its two halves.
+  memo forget <lo>-<hi>    drop a bad summary; nap rebuilds it.
   memo import <file>       bulk-load dated memories (bootstrap only).
 
 Everything lives in $MEMORY_DIR. See README.md."#;
@@ -359,7 +360,13 @@ fn nap_prompt(d: &Path, lo: usize, hi: usize, left: usize, c: Config) -> Result<
         let mut halves = Vec::new();
         for (a, b) in [(lo, mid), (mid, hi)] {
             let Some(s) = tree_get(d, a, b)? else {
-                return die(format!("Summary {a}-{} is missing. Run: memo sleep", b - 1));
+                // pending() lists a block only after its halves settled, so a
+                // missing half is a blank record — a corrupt write.
+                return die(format!(
+                    "The summary of #{a}-{} is blank. Run: memo forget {a}-{}",
+                    b - 1,
+                    b - 1
+                ));
             };
             halves.push(format!("  #{a}-{} {s}", b - 1));
         }
@@ -374,10 +381,9 @@ fn nap_prompt(d: &Path, lo: usize, hi: usize, left: usize, c: Config) -> Result<
     };
     Ok(format!(
         "Compress memories #{lo}-{} into one line of at most {} characters.\n\
-         Keep every name, number, date, decision and outcome.\n\
-         Drop wording, not facts. Invent nothing.\n\n\
+         Keep what has lasting effect, drop what does not. Invent nothing.\n\n\
          {body}\n{tail}\n\
-         Run: memo sleep {lo}-{} \"<your line>\"",
+         Run: memo nap {lo}-{} \"<your line>\"",
         hi - 1,
         c.entry_chars,
         hi - 1
@@ -431,16 +437,6 @@ fn cmd_wake(d: &Path, args: &[String], c: Config) -> Result<(), String> {
             }
         }
     }
-    if let Some(nap) = next_nap(d, t, c)? {
-        let n = pending_count(d, t).max(1);
-        println!(
-            "Cannot wake: {} pending. Do {}, then run memo wake again.\n",
-            plural(n, "compression"),
-            if n == 1 { "it" } else { "them" }
-        );
-        println!("{nap}");
-        std::process::exit(1);
-    }
     if t == 0 {
         println!("No memories yet. Record the first with: memo note \"<one line>\"");
         println!("You are awake.");
@@ -453,8 +449,23 @@ fn cmd_wake(d: &Path, args: &[String], c: Config) -> Result<(), String> {
             lines.push(format!("#{} {} {}", e.id, e.date, e.text));
         } else {
             let Some(s) = tree_get(d, lo, hi)? else {
+                // Refuse only when the document itself needs this summary;
+                // pending work the document does not need is handed over
+                // after the read instead.
+                if let Some(nap) = next_nap(d, t, c)? {
+                    println!(
+                        "Cannot wake: the memory context needs #{lo}-{}, which is \
+                         not compressed yet.\nDo the {} below, then run memo wake \
+                         again.\n",
+                        hi - 1,
+                        plural(pending_count(d, t), "compression")
+                    );
+                    println!("{nap}");
+                    std::process::exit(1);
+                }
                 return die(format!(
-                    "Summary {lo}-{} is missing. Run: memo sleep",
+                    "The summary of #{lo}-{} is blank. Run: memo forget {lo}-{}",
+                    hi - 1,
                     hi - 1
                 ));
             };
@@ -469,13 +480,20 @@ fn cmd_wake(d: &Path, args: &[String], c: Config) -> Result<(), String> {
         ));
     }
     if parts.len() > 1 {
-        println!("Your memory, part {k} of {}, oldest first.", parts.len());
+        println!(
+            "Your memory, part {k} of {}, oldest first ({}).",
+            parts.len(),
+            plural(t, "memory")
+        );
     }
     println!("{}", parts[k - 1].join("\n"));
     if k < parts.len() {
-        println!("Run: memo wake {} {t}", k + 1);
+        println!("Not awake yet. Run: memo wake {} {t}", k + 1);
     } else {
         println!("You are awake.");
+        if let Some(nap) = next_nap(d, t, c)? {
+            println!("\n{nap}");
+        }
     }
     Ok(())
 }
@@ -501,12 +519,12 @@ fn block_id(arg: &str) -> Option<(usize, usize)> {
     Some((caps[1].parse().ok()?, caps[2].parse::<usize>().ok()? + 1))
 }
 
-fn cmd_sleep(d: &Path, args: &[String], c: Config) -> Result<(), String> {
+fn cmd_nap(d: &Path, args: &[String], c: Config) -> Result<(), String> {
     let t = log_len(d);
     let said = !args.is_empty();
     if said {
         if args.len() != 2 {
-            return die("usage: memo sleep <lo>-<hi> \"<one line>\"");
+            return die("usage: memo nap <lo>-<hi> \"<one line>\"");
         }
         let Some((lo, hi)) = block_id(&args[0]) else {
             return die(format!(
@@ -524,7 +542,7 @@ fn cmd_sleep(d: &Path, args: &[String], c: Config) -> Result<(), String> {
                 println!("{lo}-{} is already settled.", hi - 1);
             } else {
                 return die(format!(
-                    "Wrong block: {}. Blocks are built in order; the next is {}-{}. Run: memo sleep",
+                    "Wrong block: {}. Blocks are built in order; the next is {}-{}. Run: memo nap",
                     args[0],
                     todo[0].0,
                     todo[0].1 - 1
@@ -563,7 +581,7 @@ fn cmd_forget(d: &Path, args: &[String]) -> Result<(), String> {
         return die(format!("No summary at {}.", args[0]));
     }
     println!(
-        "Forgot {}, from {}-{} up. Run: memo sleep",
+        "Forgot {}, from {}-{} up. Run: memo nap",
         plural(gone.len(), "summary"),
         gone[0].0,
         gone[0].1 - 1
@@ -671,7 +689,54 @@ fn cmd_import(d: &Path, args: &[String], c: Config) -> Result<(), String> {
     );
     let n = pending_count(d, log_len(d));
     if n > 0 {
-        println!("{} pending. Run: memo sleep", plural(n, "compression"))
+        println!("{} pending. Run: memo nap", plural(n, "compression"))
+    }
+    Ok(())
+}
+
+fn cmd_zoom(d: &Path, args: &[String]) -> Result<(), String> {
+    // One node of the tree, opened: its two halves, each rendered as wake
+    // renders it. The navigating intelligence is the agent's; the tool only
+    // reads.
+    if args.len() != 1 {
+        return die("usage: memo zoom <lo>-<hi>   # a block id, as wake prints them");
+    }
+    let Some((lo, hi)) = block_id(&args[0]) else {
+        return die(format!(
+            "'{}' is not a block id. Copy it from wake's output.",
+            args[0]
+        ));
+    };
+    let size = hi - lo;
+    if size < 2 || !size.is_power_of_two() || !lo.is_multiple_of(size) {
+        return die(format!(
+            "{} is not a block. Copy the id printed by wake, like 16-31.",
+            args[0]
+        ));
+    }
+    let t = log_len(d);
+    if lo >= t {
+        return die(format!(
+            "#{} is beyond the memory: it holds {}. Run: memo wake",
+            args[0],
+            plural(t, "memory")
+        ));
+    }
+    let mid = (lo + hi) / 2;
+    for (a, b) in [(lo, mid), (mid, hi)] {
+        if a >= t {
+            continue; // the future: no memories there yet
+        }
+        if b - a == 1 {
+            let e = log_get(d, a)?;
+            println!("#{} {} {}", e.id, e.date, e.text);
+        } else {
+            println!(
+                "#{a}-{} {}",
+                b - 1,
+                tree_get(d, a, b)?.unwrap_or_else(|| "not compressed yet".to_owned())
+            );
+        }
     }
     Ok(())
 }
@@ -684,7 +749,7 @@ fn run() -> Result<(), String> {
     }
     if !matches!(
         args[0].as_str(),
-        "wake" | "note" | "sleep" | "recall" | "forget" | "import"
+        "wake" | "note" | "nap" | "sleep" | "recall" | "zoom" | "forget" | "import"
     ) {
         eprintln!("No such command: {}\n", args[0]);
         eprintln!("{USAGE}");
@@ -695,8 +760,10 @@ fn run() -> Result<(), String> {
     match args[0].as_str() {
         "wake" => cmd_wake(&d, &args[1..], c),
         "note" => cmd_note(&d, &args[1..], c),
-        "sleep" => cmd_sleep(&d, &args[1..], c),
+        // "sleep" survives as an alias: older guides name it.
+        "nap" | "sleep" => cmd_nap(&d, &args[1..], c),
         "recall" => cmd_recall(&d, &args[1..], c),
+        "zoom" => cmd_zoom(&d, &args[1..]),
         "forget" => cmd_forget(&d, &args[1..]),
         "import" => cmd_import(&d, &args[1..], c),
         _ => unreachable!(),
