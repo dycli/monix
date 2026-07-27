@@ -7,6 +7,12 @@
   # web through Cloudflare Access.
   cockpit.enable = true;
 
+  # Infrastructure resolves locally (router DNS), not through the
+  # tailnet's global nameservers: the Mullvad ad-block resolver is for
+  # interactive devices, and a server shouldn't inherit its outages or
+  # filter false-positives (merges with the aspect's --ssh).
+  services.tailscale.extraSetFlags = [ "--accept-dns=false" ];
+
   # Agent-fleet microVM host: host-only bridge + egress proxy + microvm.nix
   # runner (microvm-host.mod.nix).
   agentFleet.enable = true;
