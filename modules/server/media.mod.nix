@@ -190,17 +190,6 @@
         # books are kept as EPUB only, no conversion service.
         services.calibre-web = {
           enable = true;
-          # Build workaround (drop once nixpkgs heals): tests disabled
-          # because nativeCheckInputs pull in an unbuildable pip-chill
-          # (imports pkg_resources, removed in setuptools 82), not part of
-          # the runtime closure; plus two upstream version pins relaxed.
-          package = pkgs.calibre-web.overridePythonAttrs (old: {
-            doCheck = false;
-            pythonRelaxDeps = old.pythonRelaxDeps ++ [
-              "chardet"
-              "certifi"
-            ];
-          });
           group = "media";
           openFirewall = false;
           listen = {
