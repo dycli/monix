@@ -3,11 +3,10 @@
 # idle handling, wallpaper manager, clipboard history, and polkit agent.
 # Started from Hyprland via `dms run` (see hyprland.mod.nix).
 #
-# The shell itself stays on nixpkgs' `programs.dms-shell` module. The
-# `dank-material-shell` flake input is used only for its `nixosModules.greeter`
-# (nixpkgs does not ship a DMS greetd greeter) — `programs.dank-material-shell`
-# (the flake's own shell option) is deliberately left disabled so we don't run
-# two DMS shells.
+# The shell itself stays on nixpkgs' `programs.dms-shell` module; the
+# `dank-material-shell` flake input supplies only the newer dms package.
+# The greetd greeter lives in the separate `dank-greeter` flake (nixpkgs
+# does not ship a DMS greeter module).
 { inputs, ... }:
 {
   flake.nixosModules.dank =
@@ -22,7 +21,7 @@
       inherit (lib.lists) singleton;
     in
     {
-      imports = singleton inputs.dank-material-shell.nixosModules.greeter;
+      imports = singleton inputs.dank-greeter.nixosModules.default;
 
       config = mkIf config.isDesktop {
         programs.dms-shell.enable = true;
@@ -68,7 +67,7 @@
           pkgs.libsForQt5.qt5ct
         ];
 
-        programs.dank-material-shell.greeter = {
+        programs.dms-greeter = {
           enable = true;
           compositor.name = "hyprland";
 

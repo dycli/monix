@@ -44,6 +44,13 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
+  # The DMS greetd greeter moved out of DankMaterialShell into its own repo
+  # (2026-07); nixpkgs still ships no DMS greeter module.
+  inputs.dank-greeter = {
+    url = "github:AvengeMedia/dank-greeter";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
   inputs.nix4nvchad = {
     url = "github:nix-community/nix4nvchad";
     inputs.nixpkgs.follows = "nixpkgs";
