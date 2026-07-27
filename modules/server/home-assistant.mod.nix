@@ -42,8 +42,13 @@
             # ESPHome ready for future local-first sensors/devices.
             "esphome"
           ]
-          # Frigate events arrive over MQTT when the NVR is up.
-          ++ lib.lists.optional config.shipCameras.enable "mqtt";
+          # Camera-stack integrations: Frigate events arrive over MQTT, and
+          # tplink talks to the Tapo cams directly (privacy mode, LED, ...)
+          # using the same in-app "camera account" Frigate's RTSP uses.
+          ++ lib.lists.optionals config.shipCameras.enable [
+            "mqtt"
+            "tplink"
+          ];
 
           # The Frigate integration is a custom component (HACS-land
           # upstream, packaged in nixpkgs). UI setup: point it at
