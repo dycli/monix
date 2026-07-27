@@ -241,10 +241,13 @@
               allow = claudeAllow;
               # `cd ~/ark/monix && …` was the single largest source of
               # prompts; treat the flake repo and projects dir as additional
-              # working directories so cd/read stop prompting there.
+              # working directories so cd/read stop prompting there. The
+              # memory symlink path is outside cwd, so edit rules alone
+              # still prompted — it needs working-directory status too.
               additionalDirectories = [
                 monixDir
                 holdDir
+                claudeMemoryDir
               ];
             };
             # Every session starts with part 1 of the memory digest already
