@@ -34,6 +34,21 @@
         services.home-assistant = {
           openFirewall = false; # tailnet-only (UI/API on :8123)
 
+          # Current Tapo camera firmware (C225 1.x, 2026) rejects plain-RSA
+          # key exchange; python-kasa <=0.10.2 offers only RSA-kx ciphers so
+          # the TLS handshake fails. Upstream added ECDHE after 0.10.2 —
+          # drop this override once the nixpkgs pin carries it.
+          package = pkgs.home-assistant.override {
+            packageOverrides = _: prev: {
+              python-kasa = prev.python-kasa.overridePythonAttrs (old: {
+                postPatch = (old.postPatch or "") + ''
+                  substituteInPlace kasa/transports/sslaestransport.py \
+                    --replace-fail '"AES256-GCM-SHA384",' '"ECDHE-RSA-AES128-GCM-SHA256", "AES256-GCM-SHA384",'
+                '';
+              });
+            };
+          };
+
           extraComponents = [
             # Sane onboarding baseline (weather, radio browser, backups).
             "met"
