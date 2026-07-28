@@ -85,7 +85,8 @@
           } // lib.optionalAttrs (cfg.testGuildId != null) {
             DISCORD_TEST_GUILD_ID = cfg.testGuildId;
           };
-          serviceConfig = {
+          # Shared hardening preset (lib/hardened.nix) + unit identity.
+          serviceConfig = (import ../../../lib/hardened.nix).tenant // {
             ExecStart = "${python}/bin/python ${./bot.py}";
             EnvironmentFile = cfg.credentialsEnvFile;
             Restart = "always";
@@ -103,34 +104,6 @@
               "::1"
             ];
             IPAddressDeny = networkFences.internetOnlyDeny;
-
-            CapabilityBoundingSet = "";
-            LockPersonality = true;
-            NoNewPrivileges = true;
-            PrivateDevices = true;
-            PrivateTmp = true;
-            PrivateUsers = true;
-            ProcSubset = "pid";
-            ProtectClock = true;
-            ProtectControlGroups = true;
-            ProtectHome = true;
-            ProtectHostname = true;
-            ProtectKernelLogs = true;
-            ProtectKernelModules = true;
-            ProtectKernelTunables = true;
-            ProtectProc = "invisible";
-            ProtectSystem = "strict";
-            RestrictAddressFamilies = [
-              "AF_INET"
-              "AF_INET6"
-            ];
-            RestrictNamespaces = true;
-            RestrictRealtime = true;
-            RestrictSUIDSGID = true;
-            SystemCallArchitectures = "native";
-            SystemCallFilter = [ "@system-service" ];
-            SystemCallErrorNumber = "EPERM";
-            UMask = "0077";
           };
         };
       };

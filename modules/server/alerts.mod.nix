@@ -41,6 +41,16 @@
       cfg = config.alerts;
       hostname = config.networking.hostName;
 
+      # Shared preset + the loopback-only egress every alert unit shares
+      # (delivery is loopback tuwunel; enrichment is loopback llama-swap).
+      sensorHardening = (import ../../lib/hardened.nix).rootSensor // {
+        IPAddressAllow = [
+          "127.0.0.0/8"
+          "::1"
+        ];
+        IPAddressDeny = "any";
+      };
+
       shipAlert = pkgs.rustPlatform.buildRustPackage {
         pname = "ship-alert";
         version = "0.1.0";
@@ -169,7 +179,9 @@
 
           systemd.services."alert-unit-failure@" = {
             description = "Post %i failure to the Matrix alert room";
-            serviceConfig = {
+            # rootSensor preset: journal reads and D-Bus need uid 0, all
+            # delivery is loopback (tuwunel + llama-swap).
+            serviceConfig = sensorHardening // {
               Type = "oneshot";
               EnvironmentFile = cfg.credentialsEnvFile;
               StateDirectory = "alerts";
@@ -190,7 +202,7 @@
 
           systemd.services.alert-sweep = {
             description = "Sweep for failed units, full disks, and heat";
-            serviceConfig = {
+            serviceConfig = sensorHardening // {
               Type = "oneshot";
               EnvironmentFile = cfg.credentialsEnvFile;
               StateDirectory = "alerts";
@@ -325,10 +337,13 @@
 
           systemd.services.alert-ups = {
             description = "Relay spooled UPS events to the Matrix alert room";
-            serviceConfig = {
+            serviceConfig = sensorHardening // {
               Type = "oneshot";
               EnvironmentFile = cfg.credentialsEnvFile;
               StateDirectory = "alerts";
+              # The spool is outside the state directory (written by the
+              # unprivileged nut user) and gets consumed here.
+              ReadWritePaths = [ upsSpool ];
             };
             path = [
               pkgs.coreutils

@@ -69,6 +69,25 @@
             ExecStart = getExe agentDispatcher;
             Restart = "always";
             RestartSec = 2;
+
+            # Conservative hardening only: the drainer is root on purpose
+            # (cross-user chown, VM lifecycle over D-Bus) and its full
+            # filesystem footprint spans the task tree, credential staging,
+            # and microvm shares — ProtectSystem/ProtectHome and a syscall
+            # filter wait for a runtime-verified pass. These directives are
+            # safe for any root daemon.
+            LockPersonality = true;
+            NoNewPrivileges = true;
+            PrivateTmp = true;
+            ProtectClock = true;
+            ProtectHostname = true;
+            ProtectKernelLogs = true;
+            ProtectKernelModules = true;
+            ProtectKernelTunables = true;
+            RestrictRealtime = true;
+            RestrictSUIDSGID = true;
+            SocketBindDeny = "any";
+            SystemCallArchitectures = "native";
           };
           environment = {
             FLEET_TASKS_DIR = tasksDir;
@@ -134,7 +153,11 @@
           "d ${tasksDir}/steer 0770 root ${op} -"
           "d ${tasksDir}/answers 0770 root ${op} -"
           "d ${tasksDir}/cancel 0770 root ${op} -"
-          "f ${tasksDir}/log 0664 root ${op} -"
+          # Group op writes (fleet submit appends SUBMIT lines); the readers
+          # group gets read via ACL; the world gets nothing — task ids,
+          # models, and usernames are not public.
+          "f ${tasksDir}/log 0660 root ${op} -"
+          "a+ ${tasksDir}/log - - - - group:${readers}:r"
         ];
 
         systemd.services = {

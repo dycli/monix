@@ -70,12 +70,23 @@
           # beyond the network-facing homeserver being reachable — and even
           # that only costs dropped batches, not a crash.
           startLimitIntervalSec = 0;
-          serviceConfig = {
+          # Shared hardening preset: this is the lone credentialed daemon
+          # outside the tenant pattern otherwise. Loopback-only egress (the
+          # homeserver is loopback tuwunel); the readers group grants the
+          # dynamic user the audit log, which is no longer world-readable.
+          serviceConfig = (import ../../lib/hardened.nix).tenant // {
             DynamicUser = true;
+            SupplementaryGroups = [ topology.readersGroup ];
             StateDirectory = "fleet-log-stream";
             EnvironmentFile = cfg.credentialsEnvFile;
             Restart = "always";
             RestartSec = 10;
+
+            IPAddressAllow = [
+              "127.0.0.0/8"
+              "::1"
+            ];
+            IPAddressDeny = "any";
           };
           path = [
             pkgs.coreutils
@@ -134,7 +145,7 @@
               done
               send "$batch" || exit 1
               batch=""
-            done < <(tail -F -n 0 ${fleetLog} 2>/dev/null)
+            done < <(tail -F -n 0 ${fleetLog})
           '';
         };
       };

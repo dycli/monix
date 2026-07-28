@@ -78,41 +78,14 @@
         '';
       };
 
-      # Hardening shared by all units; egress differs per unit, set below.
-      sandbox = {
+      # Shared hardening preset (lib/hardened.nix) + unit identity; egress
+      # differs per unit, set below.
+      sandbox = (import ../../lib/hardened.nix).tenant // {
         User = "remy";
         Group = "remy";
         StateDirectory = "remy";
         StateDirectoryMode = "0700";
         Slice = "services.slice";
-
-        CapabilityBoundingSet = "";
-        LockPersonality = true;
-        NoNewPrivileges = true;
-        PrivateDevices = true;
-        PrivateTmp = true;
-        PrivateUsers = true;
-        ProcSubset = "pid";
-        ProtectClock = true;
-        ProtectControlGroups = true;
-        ProtectHome = true;
-        ProtectHostname = true;
-        ProtectKernelLogs = true;
-        ProtectKernelModules = true;
-        ProtectKernelTunables = true;
-        ProtectProc = "invisible";
-        ProtectSystem = "strict";
-        RestrictAddressFamilies = [
-          "AF_INET"
-          "AF_INET6"
-        ];
-        RestrictNamespaces = true;
-        RestrictRealtime = true;
-        RestrictSUIDSGID = true;
-        SystemCallArchitectures = "native";
-        SystemCallFilter = [ "@system-service" ];
-        SystemCallErrorNumber = "EPERM";
-        UMask = "0077";
       };
 
       loopbackOnly = {
