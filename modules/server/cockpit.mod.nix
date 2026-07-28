@@ -48,6 +48,8 @@
         "sudo -n -u fleet-operator fleet *"
         "fleet dispatch *"
         "ship-status"
+        "ship-costs"
+        "ship-costs *"
         # memo (memo.mod.nix) must never prompt, or in-the-moment notes die.
         "memo"
         "memo *"
@@ -118,10 +120,13 @@
       ];
       claudeAllow =
         map (command: "Bash(${command})") claudeBashPermissions
+        # The paths are already absolute — interpolating them bare keeps the
+        # rule a single slash; a doubled slash never matches, silently
+        # killing the rule (bit us live: memory writes prompted).
         ++ concatMap (path: [
-          "Read(/${path}/**)"
-          "Edit(/${path}/**)"
-          "Write(/${path}/**)"
+          "Read(${path}/**)"
+          "Edit(${path}/**)"
+          "Write(${path}/**)"
         ]) claudeFilePermissions
         ++ [
           "WebFetch(domain:github.com)"
