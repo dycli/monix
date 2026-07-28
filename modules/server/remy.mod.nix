@@ -9,8 +9,11 @@
 # Three units share one static user `remy` (DynamicUser can't share /var/lib
 # across units): remy-register bootstraps the account; remy itself is
 # loopback-only (tuwunel, llama-swap, local files); and remy-calendar-sync
-# is the ONLY unit with internet egress and the only holder of CalDAV
-# credentials, pulling events into calendar.json.
+# is the ONLY unit with internet egress, pulling events into calendar.json.
+# The shared UID means the bot COULD read the CalDAV secret — accepted: the
+# Migadu account is calendar-only (a resource the bot already reads and
+# writes by design), and the bot's fence leaves no path to use or exfiltrate
+# a credential beyond posting it into the family's own Matrix room.
 {
   flake.nixosModules.remy =
     {
