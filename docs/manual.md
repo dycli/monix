@@ -61,7 +61,7 @@ the mount config and can format a blank disk to match.
 The single switch is `isDesktop` (default `false` ⇒ server). Desktop aspects
 (Hyprland, audio, fonts, NetworkManager, the user's graphical session) gate on
 it with `mkIf config.isDesktop`, so a server simply omits them by leaving the
-flag false. Service aspects (LiteLLM, Open WebUI, Tailscale) gate on their own
+flag false. Service aspects (Jellyfin, Frigate, Tailscale) gate on their own
 `enable` options, which each host may turn on.
 
 ## Adding a host
@@ -83,13 +83,7 @@ the rest.
 ## Secrets (agenix)
 
 agenix manages login password hashes, fw0's fleet subscription credentials,
-optional provider keys, and Cloudflare Tunnel tokens. Disabled LiteLLM/Open
-WebUI secret files remain placeholders and must be replaced with real age
-ciphertext before those services are enabled.
-
-`opencode-web-env.age` is retained for an optional app-local password layer.
-The current deployment deliberately uses Cloudflare Access as its sole web gate;
-set `cockpit.webEnvFile` before relying on that encrypted environment file.
+optional provider keys, and Cloudflare Tunnel tokens.
 
 `keys.nix` is the single source of truth for SSH public keys (host keys + admin
 keys). `secrets.nix` maps each secret file to the keys it is encrypted to and is
@@ -107,11 +101,7 @@ key (`/etc/ssh/ssh_host_ed25519_key`).
    ```sh
     agenix -e hosts/fw0/secrets/agent-claude-token.age
     agenix -e hosts/fw0/secrets/agent-codex-auth.age
-    agenix -e hosts/fw0/secrets/opencode-web-cloudflare-tunnel-token.age
    ```
-
-`hosts/fw0/secrets/tailscale.age` retains the original one-line enrollment key.
-The enrolled fw0 node does not consume it during normal activation.
 
 > Both hosts use immutable users with encrypted password hashes. Provision the
 > host's password secret before activation; changing a password means replacing
@@ -127,8 +117,8 @@ fleet-wide resource limits. Each guest boots a sealed read-only erofs image of
 its own closure rather than sharing the host's live store, so host store
 maintenance (gc/optimise) cannot touch a running worker. They have no forge
 access: the cockpit supplies a source capsule and receives a report plus patch.
-The primary cockpit is available through tmux/SSH and at `ai.su.is` through
-Cloudflare Access. See [agent-fleet.md](agent-fleet.md) for mechanics and trust
+The primary cockpit is available through tmux/SSH and at `ai.su.is`, both
+tailnet-only. See [agent-fleet.md](agent-fleet.md) for mechanics and trust
 boundaries.
 
 How a task moves through the system, end to end:
@@ -168,16 +158,6 @@ The full decision tree — dispatch routing, the worker VM lifecycle with all
 failure paths, every mid-task interaction (live peek, steering, cockpit
 escalation), and the results flow — is in
 [fleet-flow.md](fleet-flow.md).
-
-## Optional AI services
-
-The repository contains reusable LiteLLM and Open WebUI modules, but fw0 does
-not currently enable either service. Their encrypted environment files are
-retained for a possible future deployment. A host enabling them must supply the
-LiteLLM model list and both services' environment files; the modules only set
-safe binding, firewall, telemetry, and backend defaults. The active AI services
-on fw0 are the local inference endpoint, the agent fleet, and the OpenCode web
-cockpit described above.
 
 ## Building
 

@@ -23,10 +23,9 @@ The cockpit and workers have deliberately different authority:
   read that user's home, credentials, and working trees. `max` is also a trusted
   Nix user, so compromise of an authenticated cockpit session should be treated
   as potential host compromise.
-- `ai.su.is` reaches opencode through Cloudflare Access, Cloudflare Tunnel,
-  loopback nginx, and loopback opencode. The Access policy is external state;
-  `opencode-web-access-check` probes `/` and `/session` every five minutes and
-  fails visibly if an unauthenticated request no longer redirects to Access.
+- `ai.su.is` is a tailnet-only ship-proxy vhost (grey-cloud A record to fw0's
+  tailnet IP, nginx TLS, loopback opencode). Reaching the web seat means being
+  on the tailnet; there is no auth layer in front of it beyond that.
 - Workers are untrusted disposable guests. Guest root is expected and is not a
   boundary. KVM, networking, credentials, host file exchange, and resource
   limits form the boundary.
@@ -255,17 +254,11 @@ Routine host checks:
 sudo -n -u fleet-operator fleet health
 systemctl --failed
 systemctl list-units 'microvm@worker-*.service'
-systemctl status opencode-web-access-check.timer
 sysctl net.ipv4.ip_forward net.ipv6.conf.all.forwarding
 ```
 
-From a logged-out external client, both of these must redirect to the account's
-`cloudflareaccess.com` login domain, never return the OpenCode application:
-
-```sh
-curl -I https://ai.su.is/
-curl -I https://ai.su.is/session
-```
+From a client outside the tailnet, `https://ai.su.is/` must not connect at all
+(the name resolves to a tailnet IP that is unroutable from the internet).
 
 Containment tests from a disposable worker should confirm that arbitrary DNS,
 direct internet access, host SSH, and other guests are unreachable while the
@@ -284,7 +277,5 @@ harness assumptions dead weight.
   a dedicated non-wheel, non-Nix-trusted account.
 - Add executor-qualified, text-only cross-provider guidance.
 - Add generic manual retry and richer running-task inspection controls.
-- Move Access application/policy state into Terraform if dashboard drift becomes
-  operationally unacceptable.
 - Add NixOS integration tests for bridge, firewall, credential, exchange, and
   worker lifecycle invariants.
