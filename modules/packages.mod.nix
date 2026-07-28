@@ -55,7 +55,6 @@
         # dev: git is here (not only in the home git concern) because
         # managing and rebuilding this flake repo requires it in root's PATH.
         pkgs.git
-        pkgs.gnumake
       ];
     };
 
