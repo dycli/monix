@@ -1,4 +1,3 @@
-use chrono::{Duration, NaiveDate};
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
@@ -7,6 +6,37 @@ use std::process::{Child, Command, Output, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const N: usize = 2000;
+
+/// 2020-01-01 plus `days`, as `YYYY-MM-DD` — enough calendar to seed dated
+/// entries without a chrono dev-dependency.
+fn seed_date(mut days: u32) -> String {
+    let (mut year, mut month, mut day) = (2020u32, 1u32, 1u32);
+    loop {
+        let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+        let len = match month {
+            4 | 6 | 9 | 11 => 30,
+            2 => {
+                if leap {
+                    29
+                } else {
+                    28
+                }
+            }
+            _ => 31,
+        };
+        let remaining = len - day;
+        if days <= remaining {
+            day += days;
+            break;
+        }
+        days -= remaining + 1;
+        (month, day) = (month + 1, 1);
+        if month == 13 {
+            (year, month) = (year + 1, 1);
+        }
+    }
+    format!("{year:04}-{month:02}-{day:02}")
+}
 const WAKE_LINES: usize = 208;
 const CAP_CHARS: usize = 30000;
 const CAP_LINES: usize = 2000;
@@ -161,9 +191,8 @@ fn complete_python_cli_suite_port() {
     assert!(stdout(&r).trim_end().ends_with("You are awake."));
 
     let mut seed = String::new();
-    let day = NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
     for i in 0..N {
-        let date = day + Duration::days((i / 5) as i64);
+        let date = seed_date((i / 5) as u32);
         seed.push_str(&format!(
             "{date} memory number {i}, a thing that happened\n"
         ));

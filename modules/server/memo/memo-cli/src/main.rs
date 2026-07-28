@@ -1,12 +1,23 @@
 mod blocks;
 
-use chrono::Local;
 use regex::{Regex, RegexBuilder};
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
+
+/// Today's local date as `YYYY-MM-DD`, via libc (the fleet-cli/agent-dispatch
+/// shape) — the standard-library-only alternative to a chrono dependency.
+fn today() -> String {
+    let tm = unsafe {
+        let now = libc::time(std::ptr::null_mut());
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&now, &mut tm);
+        tm
+    };
+    format!("{:04}-{:02}-{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday)
+}
 
 const ENTRY_CHARS: usize = 280;
 const WAKE_LINES: usize = 208;
@@ -506,7 +517,7 @@ fn cmd_note(d: &Path, args: &[String], c: Config) -> Result<(), String> {
         ));
     }
     let text = check(&args[0], c)?;
-    let i = log_append(d, &[(Local::now().date_naive().to_string(), text)])?;
+    let i = log_append(d, &[(today(), text)])?;
     println!("Saved as #{i}.");
     if let Some(nap) = next_nap(d, i + 1, c)? {
         println!("\n{nap}");
