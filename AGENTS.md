@@ -32,7 +32,7 @@ until switched on. Gate its `config` with `mkIf`:
 - desktop-only aspects gate on `config.isDesktop` (or `osConfig.isDesktop` in
   Home Manager aspects);
 - service aspects gate on their service's `enable` option
-  (e.g. `mkIf config.services.litellm.enable`), which the host turns on.
+  (e.g. `mkIf config.services.jellyfin.enable`), which the host turns on.
 
 Never make an aspect apply unconditionally unless it is genuinely universal.
 

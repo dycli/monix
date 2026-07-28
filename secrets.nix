@@ -4,7 +4,7 @@
 # public keys it is encrypted to. A host's secrets are encrypted to that host's
 # key plus every admin key, so an admin can always rekey them.
 #
-# To create or edit a secret:    agenix -e hosts/fw0/secrets/litellm.env.age
+# To create or edit a secret:    agenix -e hosts/fw0/secrets/frigate.env.age
 # To rekey everything after a
 # key change:                    agenix -r
 #
@@ -51,7 +51,4 @@ in
   # Camera credentials for Frigate/go2rtc (FRIGATE_RTSP_PASSWORD=... and,
   # when Tapos join, FRIGATE_TAPO_PASSWORD=...).
   "hosts/fw0/secrets/frigate.env.age".publicKeys = [ fw0 ] ++ admin;
-  # Reserved for the currently disabled LiteLLM/Open WebUI modules.
-  "hosts/fw0/secrets/litellm.env.age".publicKeys = [ fw0 ] ++ admin;
-  "hosts/fw0/secrets/open-webui.env.age".publicKeys = [ fw0 ] ++ admin;
 }
