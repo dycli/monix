@@ -760,7 +760,7 @@ fn run() -> Result<(), String> {
     }
     if !matches!(
         args[0].as_str(),
-        "wake" | "note" | "nap" | "sleep" | "recall" | "zoom" | "forget" | "import"
+        "wake" | "note" | "nap" | "recall" | "zoom" | "forget" | "import"
     ) {
         eprintln!("No such command: {}\n", args[0]);
         eprintln!("{USAGE}");
@@ -771,8 +771,7 @@ fn run() -> Result<(), String> {
     match args[0].as_str() {
         "wake" => cmd_wake(&d, &args[1..], c),
         "note" => cmd_note(&d, &args[1..], c),
-        // "sleep" survives as an alias: older guides name it.
-        "nap" | "sleep" => cmd_nap(&d, &args[1..], c),
+        "nap" => cmd_nap(&d, &args[1..], c),
         "recall" => cmd_recall(&d, &args[1..], c),
         "zoom" => cmd_zoom(&d, &args[1..]),
         "forget" => cmd_forget(&d, &args[1..]),

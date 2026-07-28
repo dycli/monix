@@ -88,7 +88,7 @@ fn nap_id(out: &str) -> String {
 fn settle(store: &Path, summary: &str) -> usize {
     let mut naps = 0;
     loop {
-        let offered = run(store, &["sleep"]);
+        let offered = run(store, &["nap"]);
         assert!(offered.status.success(), "{}", stderr(&offered));
         let text = stdout(&offered);
         if text.contains("Nothing left to compress") {
@@ -116,7 +116,7 @@ fn settle(store: &Path, summary: &str) -> usize {
         } else {
             compressed
         };
-        let saved = run(store, &["sleep", &id, compressed]);
+        let saved = run(store, &["nap", &id, compressed]);
         assert!(
             saved.status.success(),
             "{}\n{}",
@@ -213,11 +213,11 @@ fn complete_python_cli_suite_port() {
     assert!(stdout(&r).contains("run memo wake again"));
     assert!(!stdout(&r).contains("None"));
 
-    let r = run(&store.0, &["sleep"]);
+    let r = run(&store.0, &["nap"]);
     assert!(stdout(&r).contains("Compress memories #"));
     let naps = settle(&store.0, "synthetic summary preserving all relevant facts");
     assert_eq!(naps, complete_len(N));
-    assert!(!stdout(&run(&store.0, &["sleep"])).contains("You are awake"));
+    assert!(!stdout(&run(&store.0, &["nap"])).contains("You are awake"));
     assert!(run(&store.0, &["wake"]).status.success());
 
     // Pagination survives the transport caps and tiles the whole wake.
@@ -256,7 +256,7 @@ fn complete_python_cli_suite_port() {
     for entry in fs::read_dir(store.0.join("TREE")).unwrap() {
         assert_eq!(entry.unwrap().metadata().unwrap().len() % 288, 0);
     }
-    let r = run(&store.0, &["sleep", "0-1", "attempted overwrite"]);
+    let r = run(&store.0, &["nap", "0-1", "attempted overwrite"]);
     assert!(r.status.success() && stdout(&r).contains("Nothing left to compress"));
 
     let r = run(&store.0, &["recall", "memory number 7,"]);
@@ -276,10 +276,10 @@ fn complete_python_cli_suite_port() {
     );
     assert!(!run(&store.0, &["wake"]).status.success());
     let mid = tree_size(&store.0);
-    let r = run(&store.0, &["sleep", "0-1", "attempted overwrite"]);
+    let r = run(&store.0, &["nap", "0-1", "attempted overwrite"]);
     assert!(r.status.success() && stdout(&r).contains("already settled"));
     assert_eq!(tree_size(&store.0), mid);
-    let r = run(&store.0, &["sleep", "0-31", "out of order"]);
+    let r = run(&store.0, &["nap", "0-31", "out of order"]);
     assert!(!r.status.success() && stderr(&r).contains("Wrong block"));
     assert!(settle(&store.0, "rebuilt after forget") > 0);
     assert!(run(&store.0, &["wake"]).status.success());

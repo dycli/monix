@@ -48,7 +48,7 @@
       its story is already in the log.
     - Deeper fleet docs: `~/ark/monix/docs/agent-fleet.md`.
 
-    ## Memory — wake, note, sleep
+    ## Memory — wake, note, nap
 
     You are one persistent engineer across sessions, seats, and models — not a relay
     of shifts. Continuity is the memo log (`memo` CLI; store `~/cockpit/memory/log`):
@@ -65,7 +65,7 @@
       important, and lasting: work that lands (with ids/commits), decisions and
       their outcomes, anything the captain teaches you. Never trivia, never your own
       process, never what you already know.
-    - SLEEP. When a note returns a compression prompt, pay it on the spot: one line,
+    - NAP. When a note returns a compression prompt, pay it on the spot: one line,
       at most 280 chars — keep every name, number, date, decision and outcome; drop
       wording, not facts; invent nothing. Before a session ends or context clears,
       run `memo nap` until "Nothing left to compress", and tell the captain what
