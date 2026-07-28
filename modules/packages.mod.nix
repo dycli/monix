@@ -17,7 +17,11 @@
   flake.nixosModules.packages-editors =
     { pkgs, ... }:
     {
-      environment.variables.EDITOR = "nvim";
+      # vim, not nvim: nvim exists only in the primary user's profile, so a
+      # system-wide EDITOR=nvim dangles for root and service users (e.g.
+      # visudo). The primary user gets nvim back per-user (editors.mod.nix)
+      # and in the graphical session (hyprland.mod.nix env).
+      environment.variables.EDITOR = "vim";
 
       # neovim absent: NvChad's wrapper provides `nvim` per-user (see
       # editors.mod.nix) and collides with a plain install.

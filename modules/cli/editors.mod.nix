@@ -30,5 +30,11 @@
       home.file.".vimrc".text = ''
         set shell=/bin/sh
       '';
+
+      # Overrides the system-wide EDITOR=vim (packages-editors): nvim exists
+      # in this user's profile. Reaches interactive logins via the HM bash
+      # init (interactive-shell.mod.nix); the desktop session sets the same
+      # in hyprland.mod.nix's env block.
+      home.sessionVariables.EDITOR = "nvim";
     };
 }
