@@ -173,7 +173,7 @@
   remy.famlog.owner = "max";
   remy.famlog.group = "syncthing";
 
-  # Curtis, the work-Discord bot: wholesale order lines + staff requests.
+  # Curtis, the work-Discord bot: staff requests (wholesale commands parked).
   # guildId pins slash-command sync to one server for instant availability
   # (global sync can take Discord up to an hour).
   curtisbot.enable = true;

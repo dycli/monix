@@ -119,7 +119,9 @@ run cancel "$id"                # cancel a queued/running task
 run patch "$id"                 # bounded automatic git diff
 run status                      # recent lifecycle log
 run health                      # current queue, workers, units, memory, disk
+run active                      # one line per running task (ship-status uses it)
 run note "$id" reviewed-output
+run run slug < task.md          # submit + watch + fetch in one call
 ```
 
 `submit` reads standard input, limits prompts to 1 MiB, publishes atomically,
@@ -238,7 +240,8 @@ enforced. Normal boots do not recursively rescan historical results.
 ## Audit trail
 
 `/var/lib/agents/tasks/log` records SUBMIT, DISPATCH, ESCALATE, STEER/STEERED,
-ANSWER/ANSWERED, CANCEL/CANCELLED, NOTE, DONE, FAILED, STALLED, CAP, OVERSIZE, and rejection
+ANSWER/ANSWERED, CANCEL/CANCELLED, NOTE, DONE, FAILED, STALLED, CAPPED,
+OVERSIZE, INVALID-OUTPUT, and rejection
 events. Front-matter values are
 sanitised to one token so prompts cannot forge log fields.
 

@@ -22,8 +22,9 @@ registers *aspects* into one of two collections:
 
 Packages follow one convention: a tool that carries configuration gets its own
 concern file with package and settings together (`modules/cli/git.mod.nix`,
-`modules/cli/ghostty.mod.nix`); config-less tools are grouped in
-`modules/packages.mod.nix` as functional bundles; Nix-workflow tools sit with the
+`modules/cli/ghostty.mod.nix`); config-less tools live in
+`modules/packages.mod.nix` — one universal system list plus gated Home Manager
+lists; Nix-workflow tools sit with the
 Nix concern in `modules/core/nix.mod.nix`. There is no separate `home/` directory —
 a concern file registers its Home Manager aspect directly, and may also register a
 NixOS aspect (as `desktop/hyprland.mod.nix` does for the compositor and the
@@ -33,11 +34,12 @@ The folders under `modules/` are namespacing only (discovery is by the
 `.mod.nix` suffix, not location): `core/` is the every-host base layer,
 `cli/` terminal tools, `desktop/` the graphical session, `networking/` and
 `server/` what their names say. `packages.mod.nix` sits at the root because
-its bundles span categories.
+its lists span categories.
 
-A host (`hosts/<name>/<name>.mod.nix`) defines its NixOS configuration
-directly, imports the aspect collection, and composes explicit local modules
-for machine hardware and service selection:
+A host (`hosts/<name>/<name>.mod.nix`) defines its NixOS configuration —
+identity, hardware facts, disk layout — directly in one file, imports the
+aspect collection, and (for a host with many services, like fw0) composes a
+local `services.nix` for service selection:
 
 ```nix
 flake.nixosConfigurations.<name> = lib.nixosSystem {
@@ -83,7 +85,8 @@ the rest.
 ## Secrets (agenix)
 
 agenix manages login password hashes, fw0's fleet subscription credentials,
-optional provider keys, and Cloudflare Tunnel tokens.
+optional provider keys, the Matrix tunnel token, and the Cloudflare DNS-01
+token for the ship proxy's wildcard cert.
 
 `keys.nix` is the single source of truth for SSH public keys (host keys + admin
 keys). `secrets.nix` maps each secret file to the keys it is encrypted to and is
@@ -191,8 +194,8 @@ sudo nixos-install --flake .#<host>
 ## The desktop (fw3)
 
 - **Hyprland config is written in Lua** (`configType = "lua"`), not hyprlang.
-  Hyprland deprecated hyprlang at 0.55 (nixpkgs currently ships 0.55.4) in
-  favor of Lua, with hyprlang stated to be dropped "1-2 releases" after 0.55.
+  Hyprland deprecated hyprlang at 0.55 in favor of Lua, with hyprlang stated
+  to be dropped "1-2 releases" after 0.55.
   Binds are built with a small `mkBind`/`mkEnv` helper in
   `modules/desktop/hyprland.mod.nix`; each bind carries a `description`,
   read back at runtime via `hyprctl binds -j` to power the DMS keybinds
@@ -205,8 +208,9 @@ sudo nixos-install --flake .#<host>
   app launcher (spotlight), OSD, control center, lock screen with idle
   handling, wallpaper manager, clipboard history UI, and polkit agent all
   come from it (`modules/desktop/dank.mod.nix`, `programs.dms-shell` from
-  nixpkgs; the `dank-material-shell` flake input supplies the greetd greeter
-  and a newer shell build — see the comments there).
+  nixpkgs; the `dank-material-shell` flake input supplies a newer shell
+  build, and the separate `dank-greeter` input the greetd greeter — see the
+  comments there).
 - **Theming:** DMS's dynamic (wallpaper-synced) theming is enabled for
   GTK/Qt apps via matugen + adw-gtk3 + qt5ct/qt6ct; other apps (ghostty,
   btop, Hyprland borders) use their default themes. CaskaydiaMono Nerd Font

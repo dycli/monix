@@ -812,9 +812,8 @@ def do_item_edit(db, act):
     if act.get("new_name"):
         changes.append("name=?"); params.append(act["new_name"].strip()[:80])
     if act.get("new_due"):
-        # A move also re-opens a done item ("push #3 to friday" implies not done).
+        # get_open only returns open items, so done_ts is already NULL here.
         changes.append("due=?"); params.append(valid_date(act["new_due"]))
-        changes.append("done_ts=NULL")
     if act.get("new_assignee"):
         changes.append("assignee=?"); params.append(valid_assignee(act["new_assignee"]))
     if not changes:

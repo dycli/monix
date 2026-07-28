@@ -83,7 +83,7 @@ flowchart TD
 
 </details>
 
-Fan-out is free: submit N tasks and up to 10 warm drones run them
+Fan-out is free: submit N tasks and up to 8 warm drones run them
 concurrently; the same review can be sent to two vendors in parallel for
 genuinely independent opinions.
 
@@ -211,7 +211,7 @@ Every **state-changing** hop leaves a line in `/var/lib/agents/tasks/log`
 SUBMIT → DISPATCH → [STEER → STEERED]*
                   → [CANCEL → CANCELLED]?
                   → [ESCALATE (→ ANSWER → ANSWERED, cockpit guidance only)]*
-                  → DONE | TIMEOUT (after a STALLED / CAP / OVERSIZE line)
+                  → DONE | FAILED | STALLED | CAPPED | OVERSIZE | INVALID-OUTPUT
 ```
 
 A pre-pickup stall instead logs a requeue and later a second `DISPATCH`.

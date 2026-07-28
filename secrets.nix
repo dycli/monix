@@ -41,7 +41,7 @@ in
   # Cloudflare API token (Zone→DNS→Edit on su.is) for the ship-proxy
   # wildcard cert's DNS-01 (CLOUDFLARE_DNS_API_TOKEN=...).
   "hosts/fw0/secrets/cloudflare-dns-token.env.age".publicKeys = [ fw0 ] ++ admin;
-  # Camera credentials for Frigate/go2rtc (FRIGATE_RTSP_PASSWORD=... and,
-  # when Tapos join, FRIGATE_TAPO_PASSWORD=...).
+  # Camera credentials for Frigate/go2rtc (FRIGATE_RTSP_PASSWORD=..., used
+  # by both camera brands).
   "hosts/fw0/secrets/frigate.env.age".publicKeys = [ fw0 ] ++ admin;
 }

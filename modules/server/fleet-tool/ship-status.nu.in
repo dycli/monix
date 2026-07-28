@@ -117,12 +117,11 @@ def main [] {
   rule "├" "┤" "SYSTEMS" $bw "cyan"
   if $narrow {
     row $"cockpit (svc opencode-web.service)  nginx (svc nginx.service)"
-    row $"tunnel (svc opencode-web-tunnel.service)  squid (svc squid.service)"
-    row $"inference (svc llama-swap.service)"
+    row $"squid (svc squid.service)  inference (svc llama-swap.service)"
     row $"tailscale (svc tailscaled.service)"
   } else {
-    row $"cockpit (svc opencode-web.service | fill -w 14) tunnel (svc opencode-web-tunnel.service | fill -w 14) inference (svc llama-swap.service)"
-    row $"nginx   (svc nginx.service | fill -w 14) squid  (svc squid.service | fill -w 14) tailscale (svc tailscaled.service)"
+    row $"cockpit (svc opencode-web.service | fill -w 14) squid  (svc squid.service | fill -w 14) inference (svc llama-swap.service)"
+    row $"nginx   (svc nginx.service | fill -w 14) tailscale (svc tailscaled.service)"
   }
 
   rule "├" "┤" "DRONE BAY" $bw "cyan"
