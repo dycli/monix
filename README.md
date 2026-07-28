@@ -8,7 +8,7 @@ Welcome aboard the Kestrel — an unmanned, semi-autonomous research and develop
 ship. No human walks her decks: the crew that lives aboard is made of minds, and the
 Captain flies the ship remotely, from his outposts. He sets the heading and turns the
 key; nearly everything else, the ship handles on her own: missions flown and reviewed,
-the household kept, the news fetched, the books balanced, the alarms watched. A quiet
+the household kept, the alarms watched. A quiet
 hull with a lot going on below decks.
 
 ## The crew
@@ -37,9 +37,6 @@ at 19:00, the calendar tended both ways, and the ledger in which nothing is ever
 struck out — every change just becomes the next line in a record that only ever grows.
 Remy's mind was grown aboard, in the inference bay, so the family's words are
 understood without once leaving the hull.
-
-**The newsbot** — the ship's press office. Twice a day it goes out among the stars and
-comes back with the news; ask it anything in the privacy of a small wardroom.
 
 **The alertbot** — the klaxon, and it has no mind at all: it watches everything,
 thinks nothing, and shouts the instant something breaks. Every six hours it walks the

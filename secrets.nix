@@ -37,7 +37,6 @@ in
   "hosts/fw0/secrets/matrix-cloudflare-tunnel-token.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/matrix-budgetbot.env.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/matrix-remy.env.age".publicKeys = [ fw0 ] ++ admin;
-  "hosts/fw0/secrets/matrix-newsbot.env.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/remy-caldav.json.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/matrix-alertbot.env.age".publicKeys = [ fw0 ] ++ admin;
   # Discord bot token for Curtis, the work orders/requests bot (DISCORD_TOKEN=...).

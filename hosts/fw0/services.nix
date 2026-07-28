@@ -189,13 +189,6 @@
   remy.famlog.owner = "max";
   remy.famlog.group = "syncthing";
 
-  # News digests post twice daily to the captain's private News room.
-  newsbot.enable = true;
-  newsbot.credentialsEnvFile = config.secrets.matrix-newsbot-env.path;
-  newsbot.registrationEnvFile = config.secrets.matrix-registration-env.path;
-  newsbot.claudeTokenFile = config.secrets.agent-claude-token.path;
-  newsbot.inviteUsers = [ "@dylan:chat.su.is" ];
-
   # Curtis, the work-Discord bot: wholesale order lines + staff requests.
   # guildId pins slash-command sync to one server for instant availability
   # (global sync can take Discord up to an hour).
@@ -223,7 +216,6 @@
     # Retained for remy's adopt-budget-room oneshot.
     matrix-budgetbot-env.file = ./secrets/matrix-budgetbot.env.age;
     matrix-remy-env.file = ./secrets/matrix-remy.env.age;
-    matrix-newsbot-env.file = ./secrets/matrix-newsbot.env.age;
     remy-caldav-json = {
       file = ./secrets/remy-caldav.json.age;
       owner = "remy";
