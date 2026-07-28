@@ -22,9 +22,22 @@
             version = "0";
             src = "${self}/${path}";
             cargoLock.lockFile = "${self}/${path}/Cargo.lock";
+            # Lint gate rides the test build: warnings are errors here (the
+            # gate) without polluting the production module builds.
+            nativeBuildInputs = [ pkgs.clippy ];
+            postCheck = "cargo clippy --all-targets -- -D warnings";
           }
           // extras
         );
+
+      cratePaths = [
+        "modules/server/agent-dispatch"
+        "modules/server/agent-vm"
+        "modules/server/fleet-tool/fleet-cli"
+        "modules/server/memo/memo-cli"
+        "modules/server/ship-costs/ship-costs-cli"
+        "modules/server/alerts/ship-alert"
+      ];
 
       # Every tracked *.age must have a rule in secrets.nix and every rule
       # must point at a tracked file — a new secret can't silently lack an
@@ -54,6 +67,24 @@
         memo = crate "modules/server/memo/memo-cli" { };
         ship-costs = crate "modules/server/ship-costs/ship-costs-cli" { };
         ship-alert = crate "modules/server/alerts/ship-alert" { };
+
+        rustfmt =
+          pkgs.runCommand "rustfmt-check"
+            {
+              nativeBuildInputs = [
+                pkgs.rustfmt
+                pkgs.findutils
+              ];
+            }
+            ''
+              ${lib.strings.concatMapStrings (path: ''
+                # The store copy of a crate has no target/ (untracked), so a
+                # bare find over the crate root is exactly src + tests.
+                find ${self}/${path} -name '*.rs' \
+                  | xargs --no-run-if-empty rustfmt --edition 2024 --check
+              '') cratePaths}
+              touch $out
+            '';
 
         # A tracked secret without a rule is an error (it can't be rekeyed
         # and nothing owns it). A rule without its file is only a warning:

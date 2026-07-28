@@ -70,24 +70,38 @@
             Restart = "always";
             RestartSec = 2;
 
-            # Conservative hardening only: the drainer is root on purpose
-            # (cross-user chown, VM lifecycle over D-Bus) and its full
-            # filesystem footprint spans the task tree, credential staging,
-            # and microvm shares — ProtectSystem/ProtectHome and a syscall
-            # filter wait for a runtime-verified pass. These directives are
-            # safe for any root daemon.
+            # Root on purpose (cross-user chown, VM lifecycle over D-Bus),
+            # so no PrivateUsers/capability clamp — but everything else is
+            # fenced: the write universe is exactly the task tree and the
+            # credential staging area, the only sockets are unix (D-Bus;
+            # connect works on read-only mounts), and the syscall surface is
+            # @system-service. Verified by a live dispatch probe.
             LockPersonality = true;
             NoNewPrivileges = true;
+            PrivateDevices = true;
             PrivateTmp = true;
             ProtectClock = true;
+            ProtectControlGroups = true;
+            ProtectHome = true;
             ProtectHostname = true;
             ProtectKernelLogs = true;
             ProtectKernelModules = true;
             ProtectKernelTunables = true;
+            ProtectProc = "invisible";
+            ProcSubset = "pid";
+            ProtectSystem = "strict";
+            ReadWritePaths = [
+              "/var/lib/agents"
+              "/run/agents"
+            ];
+            RestrictAddressFamilies = [ "AF_UNIX" ];
+            RestrictNamespaces = true;
             RestrictRealtime = true;
             RestrictSUIDSGID = true;
             SocketBindDeny = "any";
             SystemCallArchitectures = "native";
+            SystemCallFilter = [ "@system-service" ];
+            SystemCallErrorNumber = "EPERM";
           };
           environment = {
             FLEET_TASKS_DIR = tasksDir;

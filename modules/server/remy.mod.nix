@@ -322,7 +322,7 @@
 
         # Mirrors the family log to a vault path. The bot is fenced out of
         # /home, so this root oneshot — the only piece allowed to reach it —
-        # copies log.md out on flag change, owned by the vault's user.
+        # copies log.md out when it changes, owned by the vault's user.
         systemd.services.remy-famlog = mkIf (cfg.famlog.path != null) {
           description = "mirror remy's daily log into the vault";
           serviceConfig = {
@@ -345,7 +345,9 @@
 
         systemd.paths.remy-famlog = mkIf (cfg.famlog.path != null) {
           wantedBy = [ "multi-user.target" ];
-          pathConfig.PathChanged = "/var/lib/remy/log.flag";
+          # Watches the log itself: the append is the trigger, so a mirror
+          # can never be silently skipped by a failed flag write.
+          pathConfig.PathChanged = "/var/lib/remy/log.md";
         };
       };
     };

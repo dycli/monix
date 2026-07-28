@@ -63,10 +63,9 @@ TZ = ZoneInfo(os.environ.get("BOT_TZ", "America/New_York"))
 MORNING = os.environ.get("BOT_MORNING", "07:00")
 EVENING = os.environ.get("BOT_EVENING", "19:00")
 # The family log: an append-only markdown journal the bot writes once a day.
-# It lives in the state dir (a separate unit mirrors it into the Obsidian
-# vault — the fenced bot can't reach /home). LOG_FLAG pokes that mirror.
+# It lives in the state dir; a separate unit watching the file mirrors it
+# into the Obsidian vault (the fenced bot can't reach /home).
 LOG_PATH = os.environ.get("BOT_LOG", os.path.join(os.path.dirname(DB_PATH), "log.md"))
-LOG_FLAG = os.path.join(os.path.dirname(DB_PATH), "log.flag")
 LOG_TIME = os.environ.get("BOT_LOG_TIME", "23:50")
 
 START_MS = int(time.time() * 1000)
@@ -1193,11 +1192,8 @@ def write_log(db, day):
         os.chmod(LOG_PATH, 0o644)  # the mirror unit (a different user) reads it
     except OSError:
         pass
-    try:
-        with open(LOG_FLAG, "w") as f:
-            f.write(str(time.time()))
-    except OSError:
-        log.exception("log flag write failed")
+    # The vault mirror's path unit watches log.md itself — the append above
+    # already IS the trigger; no fallible flag indirection.
 
 
 HOME_HELP = """I keep the family organized around three things — lists, the
@@ -1251,7 +1247,12 @@ class Bot:
             content["format"] = "org.matrix.custom.html"
             content["formatted_body"] = escaped.replace(
                 html.escape(f"@{mention}"), pill, 1)
-        await self.client.room_send(room_id, "m.room.message", content)
+        resp = await self.client.room_send(room_id, "m.room.message", content)
+        # nio reports Matrix-level failures (4xx/5xx) as error OBJECTS, not
+        # exceptions — without this check a failed send would still count as
+        # delivered wherever callers stamp after send.
+        if not getattr(resp, "event_id", None):
+            raise RuntimeError(f"send to {room_id} failed: {resp}")
 
     # -------------------------------------------------------- dispatch
 

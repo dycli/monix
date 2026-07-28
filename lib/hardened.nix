@@ -13,11 +13,16 @@
 let
   tenant = {
     CapabilityBoundingSet = "";
+    # No core dumps: these processes hold credentials in memory.
+    LimitCORE = 0;
     LockPersonality = true;
     NoNewPrivileges = true;
+    # PrivateDevices implies DevicePolicy=closed, so that isn't set here.
     PrivateDevices = true;
+    PrivateIPC = true;
     PrivateTmp = true;
     PrivateUsers = true;
+    RemoveIPC = true;
     ProcSubset = "pid";
     ProtectClock = true;
     ProtectControlGroups = true;

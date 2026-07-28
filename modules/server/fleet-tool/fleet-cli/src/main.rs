@@ -89,6 +89,10 @@ impl Config {
         self.tasks.join("failed")
     }
 
+    fn rejected(&self) -> PathBuf {
+        self.tasks.join("rejected")
+    }
+
     fn live_root(&self) -> PathBuf {
         self.tasks.join("live")
     }
@@ -854,11 +858,16 @@ fn require_id<'a>(arguments: &'a [String], usage: &str) -> Result<&'a String> {
     Ok(id)
 }
 
-/// Block until the task leaves the live set, polling every 15s.
-fn wait_for_result(config: &Config, id: &str) -> PathBuf {
+/// Block until the task reaches a terminal state, polling every 15s.
+/// Rejection is terminal too — the dispatcher can bounce an admitted task
+/// to rejected/ after a watcher started, and forever-wait must not follow.
+fn wait_for_result(config: &Config, id: &str) -> Result<PathBuf> {
     loop {
         if let Some(directory) = resolve(config, id) {
-            return directory;
+            return Ok(directory);
+        }
+        if is_regular_nofollow(&config.rejected().join(format!("{id}.md"))) {
+            return Err(format!("task {id} was rejected (see fleet status)"));
         }
         thread::sleep(Duration::from_secs(15));
     }
@@ -870,7 +879,7 @@ fn cmd_watch(config: &Config, arguments: &[String]) -> Result<i32> {
     if !task_exists(config, id) {
         return Err(format!("no such task: {id}"));
     }
-    let directory = wait_for_result(config, id);
+    let directory = wait_for_result(config, id)?;
     if directory.starts_with(config.done()) {
         println!("done {}", directory.display());
         Ok(0)
@@ -945,7 +954,7 @@ fn cmd_run(config: &Config, arguments: &[String]) -> Result<i32> {
     let slug = arguments.first().map(String::as_str).unwrap_or("task");
     let base = submit_impl(config, slug)?;
     eprintln!("fleet: dispatched {base}");
-    wait_for_result(config, &base);
+    wait_for_result(config, &base)?;
     cmd_fetch(config, &[base])
 }
 

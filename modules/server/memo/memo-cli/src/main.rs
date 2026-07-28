@@ -308,8 +308,8 @@ fn plural(n: usize, word: &str) -> String {
     if n == 1 {
         return format!("1 {word}");
     }
-    let word = if word.ends_with('y') {
-        format!("{}ie", &word[..word.len() - 1])
+    let word = if let Some(stem) = word.strip_suffix('y') {
+        format!("{stem}ie")
     } else if word.ends_with(['s', 'h', 'x']) {
         format!("{word}e")
     } else {
