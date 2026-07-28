@@ -25,6 +25,11 @@
       # and in the graphical session (hyprland.mod.nix env).
       environment.variables.EDITOR = "vim";
 
+      # The courtesy layer is off: everything this ship carries above the
+      # NixOS core set is in the one list below. (Stock defaults were perl,
+      # rsync, strace — the two we want rejoin the list on our own terms.)
+      environment.defaultPackages = [ ];
+
       environment.systemPackages = [
         # editors: neovim absent — NvChad's wrapper provides `nvim` per-user
         # (see editors.mod.nix) and collides with a plain install.
@@ -46,6 +51,11 @@
         pkgs.dig
         pkgs.traceroute
         pkgs.wget
+        pkgs.rsync
+
+        # debugging: syscall tracing — what a failing process was actually
+        # doing (invaluable inside tight systemd sandboxes).
+        pkgs.strace
 
         # archives
         pkgs.p7zip
