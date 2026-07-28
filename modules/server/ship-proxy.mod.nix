@@ -98,6 +98,15 @@
             // optionalAttrs config.services.home-assistant.enable {
               "ha.${cfg.domain}" = proxy 8123 { };
             }
+            # The opencode web cockpit seat (cockpit.mod.nix). Shell-capable:
+            # its whole access control is tailnet membership, like every
+            # other name here — flag it in the dashboard, not in nginx.
+            // optionalAttrs config.cockpit.webEnable {
+              "ai.${cfg.domain}" = proxy 4097 {
+                # SSE/streaming responses must not be buffered.
+                extraConfig = "proxy_buffering off;";
+              };
+            }
             // optionalAttrs config.services.immich.enable {
               "immich.${cfg.domain}" = proxy 2283 {
                 # Phone backup ships originals; immich checks size itself.

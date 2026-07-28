@@ -276,44 +276,22 @@
       ...
     }:
     let
-      inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
-      inherit (lib.options) mkEnableOption mkOption;
-      inherit (lib) types;
+      inherit (lib.options) mkEnableOption;
     in
     {
       options.cockpit.enable = mkEnableOption "the persistent cockpit session role on this host";
 
       options.cockpit.webEnable = mkEnableOption "the opencode web cockpit seat";
 
-      options.cockpit.webEnvFile = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = ''
-          EnvironmentFile holding OPENCODE_SERVER_PASSWORD=<basic-auth pw>
-          for the opencode web UI; null = no web UI. This is the app-local
-          password layer. If the UI is exposed beyond the tailnet, put
-          Cloudflare Access in front too: opencode web controls a shell-capable
-          cockpit seat.
-        '';
-      };
-
-      options.cockpit.webTunnelTokenFile = mkOption {
-        type = types.nullOr types.path;
-        default = null;
-        description = ''
-          Cloudflare Tunnel connector token for exposing the opencode web
-          cockpit at ai.su.is; null = no public tunnel. The public hostname
-          and origin service are managed in Cloudflare Zero Trust.
-        '';
-      };
-
       config = mkIf config.cockpit.enable {
         assertions = [
           {
-            assertion = config.cockpit.webTunnelTokenFile == null || config.cockpit.webEnable;
-            message = "cockpit.webTunnelTokenFile requires cockpit.webEnable";
+            # The seat is shell-capable and reachable only as ai.<domain>
+            # through the ship proxy; without it the unit would run unreachable.
+            assertion = config.cockpit.webEnable -> config.shipProxy.enable;
+            message = "cockpit.webEnable requires shipProxy.enable (the tailnet-only front door)";
           }
         ];
 
@@ -331,26 +309,10 @@
         ];
 
         # Runs AS the primary user (needs their auth.json/home/tooling, so
-        # not filesystem-sandboxed like a tenant service). Binds to loopback
-        # behind nginx; Cloudflare Tunnel is the public ingress when enabled.
-        services.nginx = mkIf config.cockpit.webEnable {
-          enable = true;
-          recommendedProxySettings = true;
-          virtualHosts."opencode-web-cockpit" = {
-            listen = singleton {
-              addr = "127.0.0.1";
-              port = 4096;
-            };
-            locations."/" = {
-              proxyPass = "http://127.0.0.1:4097";
-              proxyWebsockets = true;
-              extraConfig = ''
-                proxy_buffering off;
-              '';
-            };
-          };
-        };
-
+        # not filesystem-sandboxed like a tenant service). Binds to loopback;
+        # the ship proxy serves it tailnet-only as ai.<domain>, so reaching
+        # the seat means being on the tailnet — same posture as every other
+        # ship service, no app-level auth in front.
         systemd.services.opencode-web = mkIf config.cockpit.webEnable {
           description = "opencode web UI cockpit seat";
           wantedBy = [ "multi-user.target" ];
@@ -367,7 +329,6 @@
             User = config.primaryUser;
             Group = "users";
             Slice = "cockpit.slice";
-            EnvironmentFile = mkIf (config.cockpit.webEnvFile != null) config.cockpit.webEnvFile;
             WorkingDirectory = "/home/${config.primaryUser}/cockpit";
             ExecStart = "${getExe pkgs.opencode} web --hostname 127.0.0.1 --port 4097 --cors https://ai.su.is --print-logs";
             Restart = "always";
@@ -380,86 +341,6 @@
           MemoryHigh = "48G";
           MemoryMax = "64G";
           TasksMax = 8192;
-        };
-
-        systemd.services.opencode-web-tunnel = mkIf (config.cockpit.webTunnelTokenFile != null) {
-          description = "Cloudflare Tunnel for opencode web";
-          wantedBy = [ "multi-user.target" ];
-          partOf = [
-            "nginx.service"
-            "opencode-web.service"
-          ];
-          wants = [
-            "network-online.target"
-            "nginx.service"
-            "opencode-web.service"
-          ];
-          after = [
-            "network-online.target"
-            "nginx.service"
-            "opencode-web.service"
-          ];
-          serviceConfig = {
-            DynamicUser = true;
-            LoadCredential = [ "token:${config.cockpit.webTunnelTokenFile}" ];
-            ExecStart = "${getExe pkgs.cloudflared} tunnel --no-autoupdate run --token-file %d/token";
-            Restart = "always";
-            RestartSec = 5;
-          };
-          environment = {
-            TUNNEL_TRANSPORT_PROTOCOL = "http2";
-          };
-        };
-
-        # Cloudflare Access is configured outside Nix; probe without a cookie
-        # so dashboard drift can't silently turn this endpoint public again.
-        systemd.services.opencode-web-access-check = mkIf (config.cockpit.webTunnelTokenFile != null) {
-          description = "Verify Cloudflare Access protects the opencode cockpit";
-          wants = [ "network-online.target" ];
-          after = [
-            "network-online.target"
-            "opencode-web-tunnel.service"
-          ];
-          path = [ pkgs.curl ];
-          serviceConfig = {
-            Type = "oneshot";
-            DynamicUser = true;
-            NoNewPrivileges = true;
-            PrivateTmp = true;
-            ProtectHome = true;
-            ProtectSystem = "strict";
-          };
-          script = ''
-            # Three attempts per URL: a single timeout or Cloudflare hiccup
-            # is not dashboard drift, and since unit failures page the alert
-            # room (alerts.mod.nix) a one-shot probe was too trigger-happy.
-            # An endpoint that actually answers without demanding Access
-            # still fails every attempt and alerts within the same run.
-            check() {
-              for attempt in 1 2 3; do
-                [ "$attempt" -gt 1 ] && sleep 10
-                result="$(curl --silent --show-error --max-time 20 --output /dev/null \
-                  --write-out '%{http_code} %{redirect_url}' "$1")" || result="curl error"
-                case "$result" in
-                  302\ https://*.cloudflareaccess.com/*) return 0 ;;
-                esac
-              done
-              echo "Cloudflare Access check failed for $1: $result" >&2
-              exit 1
-            }
-            check https://ai.su.is/
-            check https://ai.su.is/session
-          '';
-        };
-
-        systemd.timers.opencode-web-access-check = mkIf (config.cockpit.webTunnelTokenFile != null) {
-          description = "Periodically verify Cloudflare Access";
-          wantedBy = [ "timers.target" ];
-          timerConfig = {
-            OnBootSec = "2m";
-            OnUnitActiveSec = "5m";
-            Unit = "opencode-web-access-check.service";
-          };
         };
       };
     };

@@ -81,10 +81,9 @@
           default = null;
           description = ''
             Cloudflare Tunnel connector token for the chat hostname; null =
-            tailnet-only. Its own tunnel, independent of the cockpit's, so
-            chat exposure is separately revocable. Hostname ->
-            http://127.0.0.1:<port> mapping is dashboard-side; do NOT put a
-            Cloudflare Access app on this hostname (see header).
+            tailnet-only. Hostname -> http://127.0.0.1:<port> mapping is
+            dashboard-side; do NOT put a Cloudflare Access app on this
+            hostname (see header).
           '';
         };
       };

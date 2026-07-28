@@ -4,7 +4,7 @@
   users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.max-password.path;
 
   # Primary interactive agent cockpit: tmux over tailnet SSH and opencode
-  # web through Cloudflare Access.
+  # web at ai.su.is, both tailnet-only.
   cockpit.enable = true;
 
   # Infrastructure resolves locally (router DNS), not through the
@@ -196,19 +196,18 @@
   # Test server sandbox: same commands, separate test.db.
   curtisbot.testGuildId = "1529484237210910753";
 
-  # opencode web UI cockpit seat, authenticated by Cloudflare Access.
+  # opencode web UI cockpit seat, tailnet-only at ai.su.is via the ship
+  # proxy (grey-cloud A record → fw0's tailnet IP).
   cockpit.webEnable = true;
   systemd.services.opencode-web.serviceConfig.Environment = [
     "OPENCODE_CONFIG=/home/max/.config/opencode/opencode.jsonc"
   ];
-  cockpit.webTunnelTokenFile = config.secrets.opencode-web-cloudflare-tunnel-token.path;
 
   secrets = {
     max-password.file = ./secrets/max-password.age;
     agent-claude-token.file = ./secrets/agent-claude-token.age;
     agent-codex-auth.file = ./secrets/agent-codex-auth.age;
     agent-openrouter-key.file = ./secrets/agent-openrouter-key.age;
-    opencode-web-cloudflare-tunnel-token.file = ./secrets/opencode-web-cloudflare-tunnel-token.age;
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
     matrix-remy-env.file = ./secrets/matrix-remy.env.age;
     remy-caldav-json = {
@@ -243,9 +242,6 @@
 
   # agenix in this input has no restartUnits option; make the encrypted
   # source an explicit unit trigger so token rotation restarts cloudflared.
-  systemd.services.opencode-web-tunnel.restartTriggers = [
-    ./secrets/opencode-web-cloudflare-tunnel-token.age
-  ];
   systemd.services.matrix-tunnel.restartTriggers = [
     ./secrets/matrix-cloudflare-tunnel-token.age
   ];

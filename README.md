@@ -22,8 +22,8 @@ waiting for a heading. When the Captain signs off, the Pilot settles its memory 
 sleeps.
 
 **The Pilot** — the ship's resident mind, keeping the bridge watch without sleeping.
-Reach the Pilot from any outpost in the Constellation, or from beyond it through one
-guarded door — and no other. The Pilot plans beside the Captain, runs every system,
+Reach the Pilot from any outpost in the Constellation — and from nowhere else.
+The Pilot plans beside the Captain, runs every system,
 hands the drones their orders, reads everything they carry home and believes none of
 it until it has been checked. The Pilot does not change with a watch: one mind sleeps
 and wakes. What matters is written the moment it happens into a log that only ever
