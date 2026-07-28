@@ -13,7 +13,7 @@
 #   3. smartd (disks): SMART health/attribute/self-test events fire a -M
 #      exec hook; scheduled short/long self-tests keep attributes honest.
 #   4. upsmon (power, optional): NOTIFYCMD spools events as the
-#      unprivileged nut user; a path unit relays them as root.
+#      unprivileged nutmon user; a path unit relays them as root.
 #
 # ship-alert owns delivery: password login -> send -> logout on the
 # loopback tuwunel, one-time room join stamped in /var/lib/alerts,
@@ -324,7 +324,12 @@
             fi
           '';
 
-          systemd.tmpfiles.rules = [ "d ${upsSpool} 0770 root nut -" ];
+          # upsmon's group, derived (it's nutmon, NOT nut — a nut group
+          # doesn't exist, tmpfiles silently skipped this rule, and no UPS
+          # event ever spooled until this was fixed).
+          systemd.tmpfiles.rules = [
+            "d ${upsSpool} 0770 root ${config.power.ups.upsmon.group} -"
+          ];
 
           systemd.paths.alert-ups = {
             description = "Watch for spooled UPS events";
@@ -342,7 +347,7 @@
               EnvironmentFile = cfg.credentialsEnvFile;
               StateDirectory = "alerts";
               # The spool is outside the state directory (written by the
-              # unprivileged nut user) and gets consumed here.
+              # unprivileged nutmon user) and gets consumed here.
               ReadWritePaths = [ upsSpool ];
             };
             path = [
@@ -350,10 +355,19 @@
               shipAlert
             ];
             script = ''
+              # An event is deleted only after successful delivery: a power
+              # event must survive a homeserver outage. On failure, back off
+              # briefly and exit 0 — the spool keeps the path condition
+              # true, so the unit retries rather than hot-looping or paging
+              # the (probably equally unreachable) alert room recursively.
               for event in ${upsSpool}/[0-9]*; do
                 [ -f "$event" ] || continue
-                printf '🔋 %s: UPS %s' ${hostname} "$(cat "$event")" | ship-alert || true
-                rm -f "$event"
+                if printf '🔋 %s: UPS %s' ${hostname} "$(cat "$event")" | ship-alert; then
+                  rm -f "$event"
+                else
+                  sleep 60
+                  exit 0
+                fi
               done
             '';
           };

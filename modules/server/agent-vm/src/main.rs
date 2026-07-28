@@ -855,7 +855,13 @@ impl Supervisor {
 
     // One credential file into the executor's private location: 0700 dir,
     // 0400 file, owned by that executor, nothing broader.
-    fn install_secret(&self, directory: &Path, file: &str, owner: &str, contents: &[u8]) -> Result<()> {
+    fn install_secret(
+        &self,
+        directory: &Path,
+        file: &str,
+        owner: &str,
+        contents: &[u8],
+    ) -> Result<()> {
         ensure_dir(directory, 0o700, Some(owner))?;
         let destination = directory.join(file);
         write_replace(&destination, contents, 0o400)?;
@@ -1042,7 +1048,11 @@ impl Supervisor {
         before_exit_code: F,
     ) -> Result<()> {
         let git_present = self.config.workspace.join(".git").is_dir();
-        let steps = final_steps(executor.is_some(), !context.baseline.is_empty(), git_present);
+        let steps = final_steps(
+            executor.is_some(),
+            !context.baseline.is_empty(),
+            git_present,
+        );
         let mut trusted_ready = false;
         let mut before_exit_code = Some(before_exit_code);
         for step in steps {
@@ -1270,8 +1280,8 @@ mod tests {
 
     #[test]
     fn parses_canonical_task_meta() {
-        let meta = parse_task_meta("agent=claude\nmodel=sonnet\neffort=high\n")
-            .expect("valid meta");
+        let meta =
+            parse_task_meta("agent=claude\nmodel=sonnet\neffort=high\n").expect("valid meta");
         assert_eq!(
             meta,
             TaskMeta {
@@ -1293,9 +1303,7 @@ mod tests {
         assert!(parse_task_meta("agent=claude\nmodel=x\neffort=\nkind=loop-implement\n").is_err());
         assert!(parse_task_meta("agent=claude\nagent=codex\nmodel=x\neffort=\n").is_err());
         assert!(parse_task_meta("just a line\n").is_err());
-        assert!(
-            parse_task_meta(&format!("agent={}\nmodel=x\neffort=\n", "a".repeat(65))).is_err()
-        );
+        assert!(parse_task_meta(&format!("agent={}\nmodel=x\neffort=\n", "a".repeat(65))).is_err());
         // Missing fields parse as empty (downstream selection rejects them).
         let sparse = parse_task_meta("agent=claude\n").expect("sparse meta");
         assert_eq!(sparse.model, "");

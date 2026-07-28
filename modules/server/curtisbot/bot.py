@@ -1,10 +1,12 @@
-"""Curtis: work-Discord bot for wholesale order lines and staff requests.
+"""Curtis: work-Discord bot for staff requests (wholesale is parked).
 
-Slash commands (app_commands) plus interactive bits: /wholesale and
-/request open modal entry forms; /orders and /requests list rows with an
-inline ✓ button per open row. Checked-off rows stay in the lists, struck
-through with who checked them, until /clear hides them. Nothing is ever
-deleted: checking off stamps done_at/done_by, clearing stamps cleared_at.
+Slash commands (app_commands) plus interactive bits: /request-off opens a
+modal entry form; /requests lists rows with an inline ✓ button per open
+row. Checked-off rows stay in the list, struck through with who checked
+them, until /clear-requests hides them. Nothing is ever deleted: checking
+off stamps done_at/done_by, clearing stamps cleared_at. The wholesale
+command set (/wholesale, /orders, /clear-wholesale) is unregistered but
+its machinery stays live so old order-list buttons keep working.
 
 Environment:
   DISCORD_TOKEN          bot token (required; never logged)

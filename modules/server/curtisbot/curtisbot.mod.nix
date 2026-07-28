@@ -2,11 +2,12 @@
 # Self-contained in this folder so it can be removed or moved wholesale —
 # delete these two paths plus the enable/secret lines in hosts/fw0.
 #
-# Slash commands for staff requests (/request form, /requests), checked off
-# via inline per-row buttons; checked rows stay struck-through until /clear.
-# Rows are never deleted — check-off and clear are timestamps. The wholesale
-# command set is PARKED (unregistered; see bot.py) — old wholesale message
-# buttons still work against the retained orders schema.
+# Slash commands for staff requests (/request-off form, /requests), checked
+# off via inline per-row buttons; checked rows stay struck-through until
+# /clear-requests. Rows are never deleted — check-off and clear are
+# timestamps. The wholesale command set is PARKED (unregistered; see
+# bot.py) — old wholesale message buttons still work against the retained
+# orders schema.
 #
 # Egress is internet-only (Discord gateway/API) plus loopback for the
 # resolver; LAN/tailnet/fleet ranges stay denied. The only credential is the

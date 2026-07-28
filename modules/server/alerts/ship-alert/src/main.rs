@@ -33,7 +33,10 @@ const fn build_default(value: Option<&'static str>, default: &'static str) -> &'
     }
 }
 
-const HOMESERVER: &str = build_default(option_env!("SHIP_ALERT_HOMESERVER"), "http://127.0.0.1:6167");
+const HOMESERVER: &str = build_default(
+    option_env!("SHIP_ALERT_HOMESERVER"),
+    "http://127.0.0.1:6167",
+);
 const STATE_DIR: &str = build_default(option_env!("SHIP_ALERT_STATE_DIR"), "/var/lib/alerts");
 const SUMMARY_URL: &str = build_default(option_env!("SHIP_ALERT_SUMMARY_URL"), "");
 const SUMMARY_MODEL: &str = build_default(option_env!("SHIP_ALERT_SUMMARY_MODEL"), "");
@@ -223,14 +226,20 @@ fn summarize(body: &str) -> Option<String> {
             {"role": "user", "content": body},
         ],
     });
-    let mut command = Command::new(CURL);
-    command
+    // Same stdin-config transport as curl_json: the payload embeds journal
+    // tails, which don't belong on a world-readable argv either.
+    let config = format!("data = \"{}\"\n", curl_config_quote(&payload.to_string()));
+    let mut child = Command::new(CURL)
         .args(["-sf", "--max-time", "150"])
         .args(["-H", "Content-Type: application/json"])
-        .args([&format!("{SUMMARY_URL}/v1/chat/completions"), "-d", &payload.to_string()])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null());
-    let output = command.output().ok()?;
+        .args([&format!("{SUMMARY_URL}/v1/chat/completions"), "-K", "-"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    child.stdin.take()?.write_all(config.as_bytes()).ok()?;
+    let output = child.wait_with_output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -367,7 +376,11 @@ mod tests {
         assert_eq!(options.throttle_minutes, 0);
 
         let options = parse_arguments(
-            &["--summarize".into(), "--throttle-minutes".into(), "30".into()],
+            &[
+                "--summarize".into(),
+                "--throttle-minutes".into(),
+                "30".into(),
+            ],
             || "from stdin\n".into(),
         )
         .unwrap();

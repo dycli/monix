@@ -42,12 +42,14 @@ const PRICING: &[(&str, [f64; 5])] = &[
     ("gpt-", [5.0, 30.0, 0.5, 0.0, 0.0]), // unknown gpt: price like Sol, flagged
 ];
 
-fn rates(model: &str) -> Option<&'static [f64; 5]> {
+/// Rates plus whether the match was exact — the generic "gpt-" fallback is
+/// a conservative guess and must carry the output's warning marker.
+fn rates(model: &str) -> Option<(&'static [f64; 5], bool)> {
     let name = model.rsplit('/').next().unwrap_or(model);
     PRICING
         .iter()
         .find(|(prefix, _)| name.starts_with(prefix))
-        .map(|(_, rate)| rate)
+        .map(|(prefix, rate)| (rate, *prefix != "gpt-"))
 }
 
 fn pool_of(model: &str) -> &'static str {
@@ -89,7 +91,7 @@ fn cost_usd(model: &str, tokens: &Tokens) -> f64 {
     if pool_of(model) == "local" {
         return 0.0;
     }
-    let Some([i, o, cr, cw5, cw1]) = rates(model) else {
+    let Some(([i, o, cr, cw5, cw1], _exact)) = rates(model) else {
         return tokens.cost;
     };
     (tokens.input as f64 * i
@@ -338,9 +340,9 @@ fn iter_opencode(home: &Path, events: &mut Vec<Event>) {
             continue;
         };
         for row in rows.as_array().map(Vec::as_slice).unwrap_or(&[]) {
-            let Some(message) = text(row, "data").and_then(|data| {
-                serde_json::from_str::<Value>(data).ok()
-            }) else {
+            let Some(message) =
+                text(row, "data").and_then(|data| serde_json::from_str::<Value>(data).ok())
+            else {
                 continue;
             };
             if text(&message, "role") != Some("assistant") {
@@ -564,8 +566,7 @@ fn main() {
         _ => 9,
     };
     // MTD-only keys can exist on day 31.
-    let mut keys: Vec<(String, String, String)> =
-        d30.keys().chain(mtd.keys()).cloned().collect();
+    let mut keys: Vec<(String, String, String)> = d30.keys().chain(mtd.keys()).cloned().collect();
     keys.sort_by(|left, right| {
         (pool_order(&left.0), &left.1, &left.2).cmp(&(pool_order(&right.0), &right.1, &right.2))
     });
@@ -590,10 +591,11 @@ fn main() {
         *totals_d30.entry(pool.clone()).or_default() += usd30;
         *totals_mtd.entry(pool.clone()).or_default() += usdmtd;
         let sum = t30.or(tmtd).cloned().unwrap_or_default();
-        let mtok = (sum.input + sum.output + sum.cache_read + sum.cache_write_5m
-            + sum.cache_write_1h) as f64
-            / 1e6;
-        let star = if rates(model).is_some() || pool == "local" {
+        let mtok =
+            (sum.input + sum.output + sum.cache_read + sum.cache_write_5m + sum.cache_write_1h)
+                as f64
+                / 1e6;
+        let star = if pool == "local" || rates(model).is_some_and(|(_, exact)| exact) {
             ""
         } else {
             " *"
@@ -631,9 +633,15 @@ fn main() {
                 totals_d30[pool]
             );
         }
-        println!("{:<11}{}{grand_mtd:>9.2}{grand_d30:>9.2}", "ALL", " ".repeat(54));
+        println!(
+            "{:<11}{}{grand_mtd:>9.2}{grand_d30:>9.2}",
+            "ALL",
+            " ".repeat(54)
+        );
     }
-    println!("\n* no pricing entry — token counts real, cost not estimated");
+    println!(
+        "\n* no exact pricing entry — cost missing, or estimated at the generic fallback rate"
+    );
 
     match openrouter_exact() {
         Some(rows) => {
@@ -681,11 +689,23 @@ mod tests {
 
     #[test]
     fn pricing_prefix_match_first_hit_wins() {
-        assert_eq!(rates("claude-haiku-4-5-20251001"), Some(&[1.0, 5.0, 0.1, 1.25, 2.0]));
-        assert_eq!(rates("openrouter/x/claude-opus-4"), Some(&[5.0, 25.0, 0.5, 6.25, 10.0]));
-        assert_eq!(rates("gpt-5.6-sol"), Some(&[5.0, 30.0, 0.5, 0.0, 0.0]));
-        // the generic gpt- fallback
-        assert_eq!(rates("gpt-99-future"), Some(&[5.0, 30.0, 0.5, 0.0, 0.0]));
+        assert_eq!(
+            rates("claude-haiku-4-5-20251001"),
+            Some((&[1.0, 5.0, 0.1, 1.25, 2.0], true))
+        );
+        assert_eq!(
+            rates("openrouter/x/claude-opus-4"),
+            Some((&[5.0, 25.0, 0.5, 6.25, 10.0], true))
+        );
+        assert_eq!(
+            rates("gpt-5.6-sol"),
+            Some((&[5.0, 30.0, 0.5, 0.0, 0.0], true))
+        );
+        // The generic gpt- fallback is priced but flagged inexact.
+        assert_eq!(
+            rates("gpt-99-future"),
+            Some((&[5.0, 30.0, 0.5, 0.0, 0.0], false))
+        );
         assert_eq!(rates("moonshotai/kimi-k2"), None);
     }
 
@@ -710,7 +730,10 @@ mod tests {
             cost: 42.0,
         };
         // Priced model: table only, recorded cost ignored.
-        assert_eq!(cost_usd("claude-haiku-4-5", &tokens), 1.0 + 5.0 + 0.1 + 1.25 + 2.0);
+        assert_eq!(
+            cost_usd("claude-haiku-4-5", &tokens),
+            1.0 + 5.0 + 0.1 + 1.25 + 2.0
+        );
         // Unpriced model: recorded cost only.
         assert_eq!(cost_usd("openrouter/kimi", &tokens), 42.0);
         // Local: always free.

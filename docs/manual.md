@@ -165,7 +165,8 @@ escalation), and the results flow — is in
 ## Building
 
 ```sh
-nix flake check                          # evaluate everything
+nix flake check   # evaluate everything, build + test all six Rust crates,
+                  # and verify every tracked .age has a secrets.nix rule
 nixos-rebuild switch --flake .#fw3       # or .#fw0
 ```
 

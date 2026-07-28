@@ -143,7 +143,10 @@ impl TempPath {
                 Ok(_) => return Ok(Self(path)),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(error) => {
-                    return Err(format!("create staging file in {}: {error}", directory.display()));
+                    return Err(format!(
+                        "create staging file in {}: {error}",
+                        directory.display()
+                    ));
                 }
             }
         }
@@ -171,11 +174,17 @@ impl TempDir {
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(error) => {
-                    return Err(format!("create staging directory in {}: {error}", directory.display()));
+                    return Err(format!(
+                        "create staging directory in {}: {error}",
+                        directory.display()
+                    ));
                 }
             }
         }
-        Err(format!("create staging directory in {}", directory.display()))
+        Err(format!(
+            "create staging directory in {}",
+            directory.display()
+        ))
     }
 }
 
@@ -314,7 +323,12 @@ fn file_size(path: &Path) -> Result<u64> {
 
 fn directory_entries(directory: &Path) -> Vec<PathBuf> {
     let mut entries: Vec<PathBuf> = fs::read_dir(directory)
-        .map(|reader| reader.filter_map(|entry| entry.ok()).map(|entry| entry.path()).collect())
+        .map(|reader| {
+            reader
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .collect()
+        })
         .unwrap_or_default();
     entries.sort();
     entries
@@ -365,7 +379,13 @@ fn stage_stdin(config: &Config, prefix: &str, limit: u64, too_large: &str) -> Re
 }
 
 /// Stage either the joined arguments or stdin, like the steer/answer helpers.
-fn stage_message(config: &Config, prefix: &str, arguments: &[String], limit: u64, too_large: &str) -> Result<TempPath> {
+fn stage_message(
+    config: &Config,
+    prefix: &str,
+    arguments: &[String],
+    limit: u64,
+    too_large: &str,
+) -> Result<TempPath> {
     if arguments.is_empty() {
         return stage_stdin(config, prefix, limit, too_large);
     }
@@ -383,8 +403,8 @@ fn stage_message(config: &Config, prefix: &str, arguments: &[String], limit: u64
 /// Return the front-matter header lines iff the file starts with a closed
 /// `---` block (the bash `validate_frontmatter`).
 fn frontmatter_lines(path: &Path) -> Result<Vec<String>> {
-    let contents = fs::read_to_string(path)
-        .with_context(|| format!("read prompt {}", path.display()))?;
+    let contents =
+        fs::read_to_string(path).with_context(|| format!("read prompt {}", path.display()))?;
     let mut lines = contents.lines();
     if lines.next() != Some("---") {
         return Err("prompt must have a closed front-matter block".into());
@@ -444,9 +464,15 @@ fn validate_prompt(config: &Config, path: &Path) -> Result<PromptMeta> {
     match agent.as_str() {
         "claude" | "codex" | "opencode" => {}
         "" => {
-            return Err("agent not specified in front-matter (agent: claude|codex|opencode)".into());
+            return Err(
+                "agent not specified in front-matter (agent: claude|codex|opencode)".into(),
+            );
         }
-        other => return Err(format!("unknown agent: {other} (known: claude|codex|opencode)")),
+        other => {
+            return Err(format!(
+                "unknown agent: {other} (known: claude|codex|opencode)"
+            ));
+        }
     }
     let model = san(&fm(&header, "model"))?.to_string();
     if model.is_empty() {
@@ -740,8 +766,11 @@ fn cmd_submit_capsule(config: &Config, arguments: &[String]) -> Result<i32> {
         // A submitter crash can leave the context hard link behind before
         // prompt publication. The deterministic key owns that name, so it is
         // safe to clear this otherwise-unclaimable orphan before retrying.
-        let orphan = config.queue().join(format!("{}.context.tar.zst", meta.task_key));
-        if exists_any(&orphan) && !exists_any(&config.queue().join(format!("{}.md", meta.task_key))) {
+        let orphan = config
+            .queue()
+            .join(format!("{}.context.tar.zst", meta.task_key));
+        if exists_any(&orphan) && !exists_any(&config.queue().join(format!("{}.md", meta.task_key)))
+        {
             let _ = fs::remove_file(&orphan);
         }
     }
@@ -797,7 +826,11 @@ fn cmd_dispatch(config: &Config, arguments: &[String]) -> Result<i32> {
     fs::copy(prompt, temp.0.join("prompt.md")).context("stage prompt")?;
     fs::set_permissions(temp.0.join("prompt.md"), fs::Permissions::from_mode(0o600))
         .context("restrict staged prompt")?;
-    pack_context(config, Path::new(context_dir), &temp.0.join("context.tar.zst"))?;
+    pack_context(
+        config,
+        Path::new(context_dir),
+        &temp.0.join("context.tar.zst"),
+    )?;
     require_success(
         Command::new(TAR)
             .arg("--create")
@@ -870,7 +903,10 @@ fn cmd_fetch(config: &Config, arguments: &[String]) -> Result<i32> {
             continue;
         }
         println!();
-        println!("----- {} (ask-cockpit guidance Q&A) -----", file_name_utf8(&answer));
+        println!(
+            "----- {} (ask-cockpit guidance Q&A) -----",
+            file_name_utf8(&answer)
+        );
         stream_file(&answer)?;
     }
     if directory.join("changes.patch").is_file() {
@@ -920,7 +956,9 @@ fn cmd_peek(config: &Config, arguments: &[String]) -> Result<i32> {
         if resolve(config, id).is_some() {
             return Err(format!("task {id} already finished — use fleet fetch {id}"));
         }
-        return Err(format!("no live view for {id} (queued, not yet dispatched, or unknown)"));
+        return Err(format!(
+            "no live view for {id} (queued, not yet dispatched, or unknown)"
+        ));
     }
     println!("===== BEGIN UNTRUSTED LIVE TASK VIEW ({id}) =====");
     if live.join("progress.md").is_file() {
@@ -955,7 +993,10 @@ fn cmd_peek(config: &Config, arguments: &[String]) -> Result<i32> {
             continue;
         }
         println!();
-        println!("----- delivered steering {} -----", file_name_utf8(&message));
+        println!(
+            "----- delivered steering {} -----",
+            file_name_utf8(&message)
+        );
         stream_file(&message)?;
     }
     if live.join("agent-tail.log").is_file() {
@@ -989,12 +1030,19 @@ fn cmd_steer(config: &Config, arguments: &[String]) -> Result<i32> {
     }
     let mut published = None;
     for number in 1..=32 {
-        if exists_any(&config.live_root().join(id).join(format!("message-{number}.md"))) {
+        if exists_any(
+            &config
+                .live_root()
+                .join(id)
+                .join(format!("message-{number}.md")),
+        ) {
             continue;
         }
         if fs::hard_link(
             &stage.0,
-            config.steer_spool().join(format!("{id}.message-{number}.md")),
+            config
+                .steer_spool()
+                .join(format!("{id}.message-{number}.md")),
         )
         .is_ok()
         {
@@ -1002,7 +1050,8 @@ fn cmd_steer(config: &Config, arguments: &[String]) -> Result<i32> {
             break;
         }
     }
-    let number = published.ok_or_else(|| format!("steering limit (32 messages) reached for {id}"))?;
+    let number =
+        published.ok_or_else(|| format!("steering limit (32 messages) reached for {id}"))?;
     audit(
         config,
         &format!(
@@ -1044,7 +1093,9 @@ fn cmd_answer(config: &Config, arguments: &[String]) -> Result<i32> {
     }
     fs::hard_link(
         &stage.0,
-        config.answer_spool().join(format!("{id}.answer-{number}.md")),
+        config
+            .answer_spool()
+            .join(format!("{id}.answer-{number}.md")),
     )
     .map_err(|_| format!("answer {number} already queued for {id}"))?;
     audit(
@@ -1313,14 +1364,19 @@ mod tests {
         fn new() -> Self {
             static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let root = env::temp_dir().join(format!(
-                "fleet-cli-test-{}-{serial}",
-                std::process::id()
-            ));
+            let root =
+                env::temp_dir().join(format!("fleet-cli-test-{}-{serial}", std::process::id()));
             let tasks = root.join("tasks");
             for directory in [
-                "queue", "staging", "running/worker", "done", "failed", "live", "steer",
-                "answers", "cancel",
+                "queue",
+                "staging",
+                "running/worker",
+                "done",
+                "failed",
+                "live",
+                "steer",
+                "answers",
+                "cancel",
             ] {
                 fs::create_dir_all(tasks.join(directory)).unwrap();
             }
@@ -1363,7 +1419,10 @@ mod tests {
 
     #[test]
     fn san_matches_bash() {
-        assert_eq!(san("openrouter/deepseek-v3").unwrap(), "openrouter/deepseek-v3");
+        assert_eq!(
+            san("openrouter/deepseek-v3").unwrap(),
+            "openrouter/deepseek-v3"
+        );
         assert_eq!(san("").unwrap(), "");
         assert!(san("has space").is_err());
         assert!(san(&"x".repeat(65)).is_err());
@@ -1384,7 +1443,11 @@ mod tests {
 
         let unclosed = write_prompt(&fixture, "unclosed.md", "---\nagent: claude\nbody\n");
         assert!(validate_prompt(&fixture.config, &unclosed).is_err());
-        let unknown = write_prompt(&fixture, "unknown.md", "---\nagent: gemini\nmodel: x\n---\n");
+        let unknown = write_prompt(
+            &fixture,
+            "unknown.md",
+            "---\nagent: gemini\nmodel: x\n---\n",
+        );
         assert!(validate_prompt(&fixture.config, &unknown).is_err());
         // The loop-era verify agent is no longer a thing anywhere.
         let verify = write_prompt(
@@ -1437,7 +1500,10 @@ mod tests {
     fn answer_requires_pending_question() {
         let fixture = Fixture::new();
         let config = &fixture.config;
-        let arguments: Vec<String> = ["job", "1", "go ahead"].iter().map(|s| s.to_string()).collect();
+        let arguments: Vec<String> = ["job", "1", "go ahead"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         assert!(cmd_answer(config, &arguments).is_err());
         fs::create_dir_all(config.live_root().join("job")).unwrap();
         fs::write(config.live_root().join("job/question-1.md"), "?").unwrap();

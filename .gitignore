@@ -1,7 +1,8 @@
 # Deny-by-default: nothing is trackable unless its type is whitelisted
-# below. With this many encrypted secrets in-tree, an accidentally
-# committed plaintext secret must be structurally impossible — a new
-# legitimate file type costs one line here.
+# below. Type-level hygiene, not a content scanner: it blocks the classic
+# stray-file commits (.env, .key, dumps), while a secret pasted into a
+# whitelisted type still needs eyes on the diff. A new legitimate file
+# type costs one line here.
 *
 !*/
 
