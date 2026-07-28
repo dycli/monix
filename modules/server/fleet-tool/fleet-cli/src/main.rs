@@ -833,6 +833,10 @@ fn wait_for_result(config: &Config, id: &str) -> PathBuf {
 
 fn cmd_watch(config: &Config, arguments: &[String]) -> Result<i32> {
     let id = require_id(arguments, "usage: fleet watch <id>")?;
+    // A typo'd id must error, not wait forever looking like a long task.
+    if !task_exists(config, id) {
+        return Err(format!("no such task: {id}"));
+    }
     let directory = wait_for_result(config, id);
     if directory.starts_with(config.done()) {
         println!("done {}", directory.display());

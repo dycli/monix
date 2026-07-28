@@ -21,7 +21,12 @@
           user = mkDefault config.primaryUser;
           dataDir = mkDefault "/home/${config.primaryUser}";
           configDir = mkDefault "/home/${config.primaryUser}/.config/syncthing";
-          openDefaultPorts = true;
+          # No global firewall opening: every peer is a tailnet device, and
+          # the trusted tailscale0 interface already passes the sync/discovery
+          # ports. openDefaultPorts=true was the only all-interface inbound
+          # on the servers, contradicting fw0's zero-inbound posture. Peers
+          # find the tailnet addresses via global discovery.
+          openDefaultPorts = false;
           settings.devices = {
             fw3.id = "G2BLKW7-HEC7IY3-F2NUM4K-4AH57JV-JVJ4SJZ-HHOLW7F-DQEGXGU-2OVC5Q2";
             fw0.id = "35P3LQK-ULGW6UH-SJPXDGG-KY6XBM3-OAHST4N-JTVUEAB-5HU53P2-P2RAUAP";

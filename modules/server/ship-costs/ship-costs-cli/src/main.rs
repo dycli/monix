@@ -136,16 +136,30 @@ fn parse_ts_lenient(raw: &str) -> Option<DateTime<Utc>> {
         .map(|naive| Utc.from_utc_datetime(&naive))
 }
 
-/// Recursive *.suffix files under root, symlinks followed like glob's.
+/// Recursive *.suffix files under root. Symlinked directories are not
+/// descended (the transcript trees are user-writable; a link cycle must not
+/// recurse forever) and depth is bounded; symlinked files still match.
 fn walk(root: &Path, suffix: &str, into: &mut Vec<PathBuf>) {
+    walk_bounded(root, suffix, 12, into);
+}
+
+fn walk_bounded(root: &Path, suffix: &str, depth: u32, into: &mut Vec<PathBuf>) {
+    if depth == 0 {
+        return;
+    }
     let Ok(entries) = fs::read_dir(root) else {
         return;
     };
     let mut paths: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
     paths.sort();
     for path in paths {
+        let symlink = fs::symlink_metadata(&path)
+            .map(|metadata| metadata.file_type().is_symlink())
+            .unwrap_or(true);
         if path.is_dir() {
-            walk(&path, suffix, into);
+            if !symlink {
+                walk_bounded(&path, suffix, depth - 1, into);
+            }
         } else if path
             .file_name()
             .and_then(|name| name.to_str())

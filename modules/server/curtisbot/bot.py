@@ -152,12 +152,14 @@ def open_orders(conn):
 
 
 def check_order(conn, order_id, who):
-    """Returns 'ok', 'missing', or the prior done_at if already checked."""
-    row = conn.execute("SELECT done_at FROM orders WHERE id = ?", (order_id,)).fetchone()
+    """Returns 'ok', 'missing', or ('done', done_at, done_by) if already checked."""
+    row = conn.execute(
+        "SELECT done_at, done_by FROM orders WHERE id = ?", (order_id,)
+    ).fetchone()
     if row is None:
         return "missing"
     if row["done_at"] is not None:
-        return row["done_at"]
+        return ("done", row["done_at"], row["done_by"])
     conn.execute(
         "UPDATE orders SET done_at = ?, done_by = ? WHERE id = ?", (now(), who, order_id)
     )
@@ -197,11 +199,13 @@ def clear_done(conn, table):
 
 
 def close_request(conn, req_id, who):
-    row = conn.execute("SELECT done_at FROM requests WHERE id = ?", (req_id,)).fetchone()
+    row = conn.execute(
+        "SELECT done_at, done_by FROM requests WHERE id = ?", (req_id,)
+    ).fetchone()
     if row is None:
         return "missing"
     if row["done_at"] is not None:
-        return row["done_at"]
+        return ("done", row["done_at"], row["done_by"])
     conn.execute(
         "UPDATE requests SET done_at = ?, done_by = ? WHERE id = ?", (now(), who, req_id)
     )
@@ -299,6 +303,10 @@ class CheckOffButton(
                 "That row doesn't exist.", ephemeral=True
             )
             return
+        # On a repeated click, render and credit the person who actually
+        # completed the row, not the current clicker.
+        already = result if isinstance(result, tuple) else None
+        done_by = (already[2] or "?") if already else who
         # Messages from before the layout-component switch carry plain
         # content + a button row; just strike the text and drop the button.
         if interaction.message.content:
@@ -307,14 +315,14 @@ class CheckOffButton(
                 if getattr(child, "custom_id", None) == self.custom_id:
                     view.remove_item(child)
             await interaction.response.edit_message(view=view)
-            return
-        view = rebuilt_view(
-            interaction.message.components, f"egb:{self.kind}:{self.row_id}", who
-        )
-        await interaction.response.edit_message(view=view)
-        if result != "ok":
+        else:
+            view = rebuilt_view(
+                interaction.message.components, f"egb:{self.kind}:{self.row_id}", done_by
+            )
+            await interaction.response.edit_message(view=view)
+        if already:
             await interaction.followup.send(
-                f"(that one was already checked off on {fmt_date(result)})",
+                f"(that one was already checked off by {done_by} on {fmt_date(already[1])})",
                 ephemeral=True,
             )
 
