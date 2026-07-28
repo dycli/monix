@@ -140,24 +140,24 @@ fn clean_summary(raw: &str) -> String {
 
 /// Identical bodies within the window are dropped: sensors like smartd can
 /// re-fire the same condition on every poll. Keyed by body hash in the state
-/// directory; failures never block the alert.
-fn throttled(state: &Path, body: &str, minutes: u64) -> bool {
+/// directory. The check and the commit are split: the marker is written only
+/// after a successful delivery (see run), so a transient Matrix failure
+/// can't suppress the retry for the whole window.
+fn throttle_marker(state: &Path, body: &str) -> PathBuf {
+    let mut hasher = DefaultHasher::new();
+    body.hash(&mut hasher);
+    state.join(format!("throttle-{:016x}", hasher.finish()))
+}
+
+fn throttled(marker: &Path, minutes: u64) -> bool {
     if minutes == 0 {
         return false;
     }
-    let mut hasher = DefaultHasher::new();
-    body.hash(&mut hasher);
-    let marker = state.join(format!("throttle-{:016x}", hasher.finish()));
-    let recent = fs::metadata(&marker)
+    fs::metadata(marker)
         .and_then(|metadata| metadata.modified())
         .ok()
         .and_then(|modified| SystemTime::now().duration_since(modified).ok())
-        .is_some_and(|age| age.as_secs() < minutes * 60);
-    if recent {
-        return true;
-    }
-    let _ = fs::write(&marker, b"");
-    false
+        .is_some_and(|age| age.as_secs() < minutes * 60)
 }
 
 // ---- HTTP via curl ---------------------------------------------------------
@@ -268,17 +268,20 @@ fn deliver(state: &Path, body: &str) -> Result<()> {
         .ok_or("login returned no access token")?
         .to_string();
 
-    // One-time setup, stamped: accept the room invite and set the display
-    // name. Both best-effort — joining is idempotent but concurrent alerts
-    // can race here, and the send below must still happen.
+    // One-time setup: accept the room invite and set the display name. The
+    // send below must still happen whatever these return (concurrent alerts
+    // can race here; joining is idempotent) — but the stamp is written only
+    // after a successful join, so a failed first join is retried on the
+    // next alert instead of muting the bot forever. Profile is best-effort.
     let stamp = state.join("initialized");
     if !stamp.exists() {
-        let _ = curl_json(
+        let joined = curl_json(
             "POST",
             &format!("{HOMESERVER}/_matrix/client/v3/join/{room}"),
             Some(&token),
             &json!({}),
-        );
+        )
+        .is_ok();
         let _ = curl_json(
             "PUT",
             &format!(
@@ -288,7 +291,9 @@ fn deliver(state: &Path, body: &str) -> Result<()> {
             Some(&token),
             &json!({"displayname": "alertbot"}),
         );
-        let _ = fs::write(&stamp, b"");
+        if joined {
+            let _ = fs::write(&stamp, b"");
+        }
     }
 
     // txn id: nanoseconds + PID, so two concurrent alerts in the same
@@ -323,7 +328,8 @@ fn run() -> Result<()> {
 
     let state = PathBuf::from(STATE_DIR);
     let _ = fs::create_dir_all(&state);
-    if throttled(&state, &options.body, options.throttle_minutes) {
+    let marker = throttle_marker(&state, &options.body);
+    if throttled(&marker, options.throttle_minutes) {
         return Ok(());
     }
     let body = match options.summarize {
@@ -333,7 +339,12 @@ fn run() -> Result<()> {
         },
         false => options.body,
     };
-    deliver(&state, &body)
+    deliver(&state, &body)?;
+    // Commit the throttle only now: delivery succeeded.
+    if options.throttle_minutes > 0 {
+        let _ = fs::write(&marker, b"");
+    }
+    Ok(())
 }
 
 fn main() {
@@ -402,11 +413,15 @@ mod tests {
         let state = env::temp_dir().join(format!("ship-alert-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&state);
         fs::create_dir_all(&state).unwrap();
-        assert!(!throttled(&state, "same body", 30));
-        assert!(throttled(&state, "same body", 30));
-        assert!(!throttled(&state, "different body", 30));
+        let marker = throttle_marker(&state, "same body");
+        // Not throttled until the marker is committed (post-delivery).
+        assert!(!throttled(&marker, 30));
+        assert!(!throttled(&marker, 30));
+        fs::write(&marker, b"").unwrap();
+        assert!(throttled(&marker, 30));
+        assert!(!throttled(&throttle_marker(&state, "different body"), 30));
         // Window zero disables throttling entirely.
-        assert!(!throttled(&state, "same body", 0));
+        assert!(!throttled(&marker, 0));
         let _ = fs::remove_dir_all(&state);
     }
 }

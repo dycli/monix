@@ -204,9 +204,11 @@ def main():
         except Exception:
             failures += 1
             log.exception("fetch failed for %s", cal_cfg.get("name", "?"))
-    if failures == len(calendars):
-        # Nothing fetched: keep the previous file (stale beats empty) and
-        # fail the unit so the failure alerts to the Ship Alerts room.
+    if failures:
+        # ANY failed account: keep the previous file (stale beats a fresh
+        # snapshot that silently lost that account's events) and fail the
+        # unit so the failure alerts to the Ship Alerts room. The next
+        # timer tick retries.
         sys.exit(1)
     events.sort(key=lambda e: e["start"])
     payload = {"fetched_at": int(time.time()), "events": events}

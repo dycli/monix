@@ -1348,30 +1348,36 @@ class Bot:
     async def scheduler(self):
         """All timed posts, one minute-tick loop.
 
-        Each post is stamped per-day in meta, so a restart after its time
-        still posts (late) exactly once, and a downed bot never back-fills
-        yesterday's posts.
+        Each post is stamped per-day in meta after a successful send, so a
+        restart or send failure after its time still posts (late), and a
+        downed bot never back-fills yesterday's posts. At-least-once: a
+        crash in the moment between send and stamp can duplicate a post —
+        the right trade for family announcements.
         """
         while True:
             await asyncio.sleep(60)
             now = datetime.now(TZ)
             hhmm = now.strftime("%H:%M")
             day = now.date().isoformat()
-            # Household: morning plan + evening report.
+            # Household: morning plan + evening report. The day-stamp is
+            # committed only after a successful send (like the reminder loop
+            # below), so a transient homeserver failure retries on the next
+            # tick instead of silently skipping the day.
             for key, at, make in (("morning", MORNING, morning_post),
                                   ("evening", EVENING, evening_post)):
                 if hhmm >= at and meta_get(self.hdb, f"last_{key}") != day:
-                    meta_set(self.hdb, f"last_{key}", day)
                     try:
                         await self.send(self.home_room, make(self.hdb), notify=True)
+                        meta_set(self.hdb, f"last_{key}", day)
                     except Exception:
                         log.exception("%s post failed", key)
             # The family log: composed once, late, for the day that's ending.
             # Household only (the scratchpad has no scheduled writes).
+            # Stamp after the write for the same retry-on-failure reason.
             if hhmm >= LOG_TIME and meta_get(self.hdb, "last_log") != day:
-                meta_set(self.hdb, "last_log", day)
                 try:
                     await asyncio.to_thread(write_log, self.hdb, now.date())
+                    meta_set(self.hdb, "last_log", day)
                 except Exception:
                     log.exception("log write failed")
             # Reminders due now (or missed while down — fired late, once,
