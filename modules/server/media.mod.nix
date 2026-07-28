@@ -62,7 +62,7 @@
         enable = mkEnableOption "the tailnet-only Jellyfin + Usenet automation media stack";
 
         sabnzbdSecretsFile = mkOption {
-          type = types.nullOr types.path;
+          type = types.nullOr types.str;
           default = null;
           description = ''
             Path to an agenix-decrypted INI (readable by the sabnzbd user)

@@ -68,7 +68,7 @@
         };
 
         registrationTokenEnvFile = mkOption {
-          type = types.path;
+          type = types.str;
           description = ''
             agenix-managed environment file containing
             TUWUNEL_REGISTRATION_TOKEN=<token> — the only way to create an
@@ -77,7 +77,7 @@
         };
 
         tunnelTokenFile = mkOption {
-          type = types.nullOr types.path;
+          type = types.nullOr types.str;
           default = null;
           description = ''
             Cloudflare Tunnel connector token for the chat hostname; null =

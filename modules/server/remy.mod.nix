@@ -128,7 +128,7 @@
         enable = mkEnableOption "the family household chat bot";
 
         credentialsEnvFile = mkOption {
-          type = types.path;
+          type = types.str;
           description = ''
             agenix env file with MATRIX_USER=@bot:server and
             MATRIX_PASSWORD=... — the bot's own Matrix account, its only
@@ -137,7 +137,7 @@
         };
 
         registrationEnvFile = mkOption {
-          type = types.path;
+          type = types.str;
           description = ''
             agenix env file with TUWUNEL_REGISTRATION_TOKEN=... (the
             homeserver's, see matrix.mod.nix) — used only by the oneshot
@@ -235,7 +235,7 @@
         };
 
         calendar.credentialsFile = mkOption {
-          type = types.nullOr types.path;
+          type = types.nullOr types.str;
           default = null;
           description = ''
             agenix JSON file listing CalDAV accounts to fold into the

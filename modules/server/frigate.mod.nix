@@ -102,7 +102,7 @@
         };
 
         envFile = mkOption {
-          type = lib.types.path;
+          type = lib.types.str;
           description = "agenix env file with the FRIGATE_* camera credentials.";
         };
       };

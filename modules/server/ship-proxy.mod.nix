@@ -36,7 +36,7 @@
         };
 
         acmeTokenFile = mkOption {
-          type = lib.types.nullOr lib.types.path;
+          type = lib.types.nullOr lib.types.str;
           default = null;
           description = ''
             agenix-decrypted file containing the Cloudflare API token

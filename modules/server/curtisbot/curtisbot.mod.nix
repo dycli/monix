@@ -36,7 +36,7 @@
         enable = mkEnableOption "Curtis work-Discord orders/requests bot";
 
         credentialsEnvFile = mkOption {
-          type = types.path;
+          type = types.str;
           description = ''
             agenix env file with DISCORD_TOKEN=... — the bot token from the
             Discord developer portal.

@@ -334,8 +334,15 @@
             User = config.primaryUser;
             Group = "users";
             Slice = "cockpit.slice";
+            # The declaratively generated config (opencode.jsonc above) is
+            # the one the seat must run with.
+            Environment = [
+              "OPENCODE_CONFIG=/home/${config.primaryUser}/.config/opencode/opencode.jsonc"
+            ];
             WorkingDirectory = "/home/${config.primaryUser}/cockpit";
-            ExecStart = "${getExe pkgs.opencode} web --hostname 127.0.0.1 --port 4097 --cors https://ai.su.is --print-logs";
+            # Origin derived from the ship proxy's zone so a domain change
+            # can't silently break the seat's CORS.
+            ExecStart = "${getExe pkgs.opencode} web --hostname 127.0.0.1 --port 4097 --cors https://ai.${config.shipProxy.domain} --print-logs";
             Restart = "always";
             RestartSec = 3;
           };

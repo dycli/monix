@@ -185,9 +185,6 @@
   # opencode web UI cockpit seat, tailnet-only at ai.su.is via the ship
   # proxy (grey-cloud A record → fw0's tailnet IP).
   cockpit.webEnable = true;
-  systemd.services.opencode-web.serviceConfig.Environment = [
-    "OPENCODE_CONFIG=/home/max/.config/opencode/opencode.jsonc"
-  ];
 
   secrets = {
     max-password.file = ./secrets/max-password.age;

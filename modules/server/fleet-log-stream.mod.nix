@@ -36,7 +36,7 @@
         enable = mkEnableOption "streaming the fleet audit log to a Matrix room";
 
         credentialsEnvFile = mkOption {
-          type = types.path;
+          type = types.str;
           description = ''
             agenix env file with MATRIX_USER=@bot:server and
             MATRIX_PASSWORD=... — normally the same file the alerts
@@ -46,7 +46,7 @@
 
         homeserverUrl = mkOption {
           type = types.str;
-          default = "http://127.0.0.1:6167";
+          default = "http://127.0.0.1:${toString config.matrix.port}";
           description = "Homeserver base URL (default: the loopback tuwunel).";
         };
 
