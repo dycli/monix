@@ -35,7 +35,7 @@
   # read-only management key is provisioned.
   shipCosts.enable = true;
   shipCosts.openrouterKeyFile =
-    if builtins.pathExists ./secrets/openrouter-management-key.age then
+    if lib.pathExists ./secrets/openrouter-management-key.age then
       config.secrets.openrouter-management-key.path
     else
       null;
@@ -210,7 +210,7 @@
       owner = "sabnzbd";
     };
   }
-  // lib.optionalAttrs (builtins.pathExists ./secrets/openrouter-management-key.age) {
+  // lib.optionalAttrs (lib.pathExists ./secrets/openrouter-management-key.age) {
     # Still bootstrap-gated: this key hasn't been provisioned yet.
     openrouter-management-key = {
       file = ./secrets/openrouter-management-key.age;

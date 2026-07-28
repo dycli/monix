@@ -23,6 +23,7 @@
       ...
     }:
     let
+      inherit (lib) dirOf;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption mkOption;
@@ -341,7 +342,7 @@
               '';
             });
             ProtectSystem = "strict";
-            ReadWritePaths = [ (builtins.dirOf cfg.famlog.path) ];
+            ReadWritePaths = [ (dirOf cfg.famlog.path) ];
             ReadOnlyPaths = [ "/var/lib/remy" ];
           };
         };

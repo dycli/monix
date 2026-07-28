@@ -24,7 +24,7 @@
       # The whole block is gated on the (git-tracked) ciphertext existing, so
       # clones without the secret still evaluate.
       comicCodeAge = ../../assets/fonts/comic-code.age;
-      hasComicCode = builtins.pathExists comicCodeAge;
+      hasComicCode = lib.pathExists comicCodeAge;
     in
     {
       config = mkIf config.isDesktop (mkMerge [

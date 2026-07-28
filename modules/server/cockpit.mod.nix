@@ -17,6 +17,7 @@
       inherit (lib.attrsets) genAttrs;
       inherit (lib.lists) concatMap map;
       inherit (lib.modules) mkIf;
+      inherit (lib.strings) toJSON;
       userHome = "/home/${osConfig.primaryUser}";
       monixDir = "${userHome}/ark/monix";
       holdDir = "${userHome}/hold";
@@ -208,7 +209,7 @@
         # by frontend, even though this config is normally mutable state.
         home.file.".config/opencode/opencode.jsonc" = {
           force = true;
-          text = builtins.toJSON {
+          text = toJSON {
             "$schema" = "https://opencode.ai/config.json";
             provider.local = {
               npm = "@ai-sdk/openai-compatible";
@@ -241,7 +242,7 @@
         # than per-subcommand, since the immutable fleet tool is the boundary.
         home.file."cockpit/.claude/settings.json" = {
           force = true;
-          text = builtins.toJSON {
+          text = toJSON {
             permissions = {
               allow = claudeAllow;
               # `cd ~/ark/monix && …` was the single largest source of

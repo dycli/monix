@@ -57,7 +57,7 @@
       # one is a conscious act.
       nixpkgs.config.allowUnfreePredicate =
         pkg:
-        builtins.elem (lib.getName pkg) [
+        lib.lists.elem (lib.getName pkg) [
           "claude-code"
           # Mojang's EULA'd server jar underneath the Fabric server.
           "minecraft-server"

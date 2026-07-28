@@ -40,7 +40,7 @@
       inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkForce mkIf;
       inherit (lib.options) mkOption;
-      inherit (lib.strings) concatMapStringsSep fixedWidthString hasSuffix optionalString;
+      inherit (lib.strings) concatMapStringsSep fixedWidthString hasSuffix optionalString toJSON;
       inherit (lib) types;
 
       guide = import ../../lib/fleet-guide.nix;
@@ -60,7 +60,7 @@
       # from llama-swap. Dispatch as `agent: opencode` + `model: local/<name>`.
       # The ai-sdk loader wants a non-empty apiKey; llama-swap ignores it.
       opencodeConfig = pkgs.writeText "opencode.json" (
-        builtins.toJSON (
+        toJSON (
           {
             "$schema" = "https://opencode.ai/config.json";
           }

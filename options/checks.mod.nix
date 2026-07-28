@@ -12,13 +12,16 @@
   perSystem =
     { pkgs, lib, ... }:
     let
+      inherit (lib) baseNameOf;
+      inherit (lib.attrsets) attrNames;
+      inherit (lib.lists) elem filter;
       inherit (lib.strings) hasSuffix removePrefix;
 
       crate =
         path: extras:
         pkgs.rustPlatform.buildRustPackage (
           {
-            pname = "${builtins.baseNameOf path}-check";
+            pname = "${baseNameOf path}-check";
             version = "0";
             src = "${self}/${path}";
             cargoLock.lockFile = "${self}/${path}/Cargo.lock";
@@ -42,15 +45,15 @@
       # Every tracked *.age must have a rule in secrets.nix and every rule
       # must point at a tracked file — a new secret can't silently lack an
       # owner, and a deleted one can't leave a dangling rule.
-      ruled = builtins.attrNames (import "${self}/secrets.nix");
+      ruled = attrNames (import "${self}/secrets.nix");
       tracked =
-        builtins.filter (path: hasSuffix ".age" path) (
+        filter (path: hasSuffix ".age" path) (
           map (path: removePrefix "${self}/" (toString path)) (
             lib.filesystem.listFilesRecursive self
           )
         );
-      unruled = builtins.filter (path: !builtins.elem path ruled) tracked;
-      dangling = builtins.filter (path: !builtins.elem path tracked) ruled;
+      unruled = filter (path: !elem path ruled) tracked;
+      dangling = filter (path: !elem path tracked) ruled;
     in
     {
       checks = {
@@ -85,6 +88,21 @@
               '') cratePaths}
               touch $out
             '';
+
+        # Enforces the AGENTS.md rule mechanically: the builtins namespace
+        # stays out of modules (lib equivalents exist for everything modules
+        # need). Standalone files that evaluate without nixpkgs —
+        # secrets.nix, keys.nix, the plain-data lib/ files — are exempt by
+        # scope. The bracketed pattern keeps the check from matching its
+        # own source.
+        nix-style =
+          pkgs.runCommand "nix-style-check" { } ''
+            if grep -rn 'builtins[.]' ${self}/modules ${self}/options ${self}/hosts --include='*.nix'; then
+              echo 'builtins usage in a module - use the lib equivalent (AGENTS.md, Nix style)' >&2
+              exit 1
+            fi
+            touch $out
+          '';
 
         # A tracked secret without a rule is an error (it can't be rekeyed
         # and nothing owns it). A rule without its file is only a warning:

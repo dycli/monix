@@ -26,6 +26,7 @@
     let
       inherit (lib.lists) singleton;
       inherit (lib.modules) mkIf;
+      inherit (lib.strings) toJSON;
       inherit (lib.options) mkEnableOption;
 
       cfg = config.minecraft;
@@ -146,7 +147,7 @@
             # Chunksmith-Client companion mod our stock-vanilla players don't
             # run. Off. files, not symlinks: the mod rewrites this config.
             files."config/chunksmith.json" = pkgs.writeText "chunksmith.json" (
-              builtins.toJSON { lodEnabled = false; }
+              toJSON { lodEnabled = false; }
             );
 
             # online-mode true means Mojang-authenticated accounts only (why

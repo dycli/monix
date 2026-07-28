@@ -24,6 +24,7 @@
     }:
     let
       inherit (lib.modules) mkIf;
+      inherit (lib.strings) toJSON;
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib) types;
 
@@ -115,7 +116,7 @@
               room_id=$(mcurl -X POST -H "Authorization: Bearer $tok" \
                 "$hs/_matrix/client/v3/createRoom" \
                 -d "$(jq -n --arg n ${lib.escapeShellArg cfg.roomName} \
-                  --argjson inv ${lib.escapeShellArg (builtins.toJSON cfg.inviteUsers)} \
+                  --argjson inv ${lib.escapeShellArg (toJSON cfg.inviteUsers)} \
                   '{name:$n, preset:"private_chat", invite:$inv,
                     topic:"Live fleet audit log — every SUBMIT/DISPATCH/ESCALATE/STEER/ANSWER/DONE as it happens"}')" \
                 | jq -er .room_id)
