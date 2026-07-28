@@ -62,8 +62,8 @@ impl Config {
         Ok(Self {
             task_dir: env_path_or("FLEET_GUEST_TASK_DIR", "/run/task"),
             creds_dir: env_path_or("FLEET_GUEST_CREDS_DIR", "/run/host-creds"),
-            workspace: env_path_or("FLEET_GUEST_WORKSPACE", "/workspace"),
-            context_root: env_path_or("FLEET_GUEST_CONTEXT_ROOT", "/run/fleet-context"),
+            workspace: PathBuf::from("/workspace"),
+            context_root: PathBuf::from("/run/fleet-context"),
             hint_file: env_path("FLEET_GUEST_HINT_FILE")?,
             exec_claude: env_path("FLEET_GUEST_EXEC_CLAUDE")?,
             exec_codex: env_path("FLEET_GUEST_EXEC_CODEX")?,

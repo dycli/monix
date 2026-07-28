@@ -821,19 +821,25 @@ fn require_id<'a>(arguments: &'a [String], usage: &str) -> Result<&'a String> {
     Ok(id)
 }
 
-fn cmd_watch(config: &Config, arguments: &[String]) -> Result<i32> {
-    let id = require_id(arguments, "usage: fleet watch <id>")?;
+/// Block until the task leaves the live set, polling every 15s.
+fn wait_for_result(config: &Config, id: &str) -> PathBuf {
     loop {
         if let Some(directory) = resolve(config, id) {
-            return if directory.starts_with(config.done()) {
-                println!("done {}", directory.display());
-                Ok(0)
-            } else {
-                println!("failed {}", directory.display());
-                Ok(1)
-            };
+            return directory;
         }
         thread::sleep(Duration::from_secs(15));
+    }
+}
+
+fn cmd_watch(config: &Config, arguments: &[String]) -> Result<i32> {
+    let id = require_id(arguments, "usage: fleet watch <id>")?;
+    let directory = wait_for_result(config, id);
+    if directory.starts_with(config.done()) {
+        println!("done {}", directory.display());
+        Ok(0)
+    } else {
+        println!("failed {}", directory.display());
+        Ok(1)
     }
 }
 
@@ -899,12 +905,7 @@ fn cmd_run(config: &Config, arguments: &[String]) -> Result<i32> {
     let slug = arguments.first().map(String::as_str).unwrap_or("task");
     let base = submit_impl(config, slug)?;
     eprintln!("fleet: dispatched {base}");
-    loop {
-        if resolve(config, &base).is_some() {
-            break;
-        }
-        thread::sleep(Duration::from_secs(15));
-    }
+    wait_for_result(config, &base);
     cmd_fetch(config, &[base])
 }
 

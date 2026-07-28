@@ -181,18 +181,13 @@
                 '';
               };
 
+              # Also serves the credentialless local executor: agent-local
+              # can't read /run/agent-opencode/env, so the guard skips it.
               opencodeExecutor = pkgs.writeShellApplication {
                 name = "agent-opencode-exec";
                 text = ''
                   # shellcheck disable=SC1091
                   [ ! -r /run/agent-opencode/env ] || . /run/agent-opencode/env
-                  exec ${getExe pkgs.opencode} "$@"
-                '';
-              };
-
-              localExecutor = pkgs.writeShellApplication {
-                name = "agent-local-exec";
-                text = ''
                   exec ${getExe pkgs.opencode} "$@"
                 '';
               };
@@ -328,7 +323,6 @@
                 claudeExecutor
                 codexExecutor
                 opencodeExecutor
-                localExecutor
                 pkgs.git
                 pkgs.ripgrep
                 pkgs.fd
@@ -398,7 +392,7 @@
                     "FLEET_GUEST_EXEC_CLAUDE=${getExe claudeExecutor}"
                     "FLEET_GUEST_EXEC_CODEX=${getExe codexExecutor}"
                     "FLEET_GUEST_EXEC_OPENCODE=${getExe opencodeExecutor}"
-                    "FLEET_GUEST_EXEC_LOCAL=${getExe localExecutor}"
+                    "FLEET_GUEST_EXEC_LOCAL=${getExe opencodeExecutor}"
                   ];
                   # No single guest-created file may grow unbounded.
                   LimitFSIZE = cfg.taskExchangeMaxBytes;

@@ -198,7 +198,6 @@ impl Systemd {
                 .arg(&self.unit),
         )
     }
-
 }
 
 impl Dispatcher {
@@ -704,20 +703,7 @@ impl Dispatcher {
         mode: u32,
         expected_uid: Option<u32>,
     ) -> Result<()> {
-        let input = OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
-            .open(source)
-            .with_context(|| format!("open bounded source {}", source.display()))?;
-        let metadata = input
-            .metadata()
-            .with_context(|| format!("inspect bounded source {}", source.display()))?;
-        if !metadata.file_type().is_file()
-            || metadata.len() > limit
-            || expected_uid.is_some_and(|uid| metadata.uid() != uid)
-        {
-            return Err(format!("unsafe or oversized source: {}", source.display()));
-        }
+        let input = open_bounded_owned(source, limit, expected_uid)?;
 
         let copy = (|| {
             let mut output = OpenOptions::new()
@@ -1282,10 +1268,9 @@ fn is_regular_nofollow(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Bounded read of a worker-reachable file: O_NOFOLLOW open, then type/size/
-/// owner checks on the descriptor so nothing can be swapped between check and
-/// read.
-fn read_bounded_owned(path: &Path, limit: u64, expected_uid: Option<u32>) -> Result<Vec<u8>> {
+/// O_NOFOLLOW open of a worker-reachable file, then type/size/owner checks on
+/// the descriptor so nothing can be swapped between check and use.
+fn open_bounded_owned(path: &Path, limit: u64, expected_uid: Option<u32>) -> Result<fs::File> {
     let input = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
@@ -1300,6 +1285,12 @@ fn read_bounded_owned(path: &Path, limit: u64, expected_uid: Option<u32>) -> Res
     {
         return Err(format!("unsafe or oversized source: {}", path.display()));
     }
+    Ok(input)
+}
+
+/// Bounded read via `open_bounded_owned`.
+fn read_bounded_owned(path: &Path, limit: u64, expected_uid: Option<u32>) -> Result<Vec<u8>> {
+    let input = open_bounded_owned(path, limit, expected_uid)?;
     let mut bytes = Vec::new();
     input
         .take(limit.saturating_add(1))
@@ -1693,78 +1684,72 @@ impl Drop for Fixture {
 }
 
 #[cfg(test)]
-fn self_test() -> Result<()> {
-    let fixture = Fixture::new()?;
-    let config = fixture.config()?;
-    let dispatcher = Dispatcher::new(config.clone());
-    let prompt = config.queue().join("stable-key.md");
-    fs::write(
-        &prompt,
-        "---\nagent: codex\nmodel: gpt-5\ntimeout: 30\n---\nwork\n",
-    )
-    .context("write claim fixture")?;
-    fs::write(
-        config.queue().join("stable-key.context.tar.zst"),
-        b"context",
-    )
-    .context("write context fixture")?;
-    let claim = dispatcher
-        .claim_next()?
-        .ok_or_else(|| "fixture did not claim a task".to_string())?;
-    if claim.id != "stable-key" || claim.context.is_none() {
-        return Err("claim did not preserve the task key and context pairing".into());
-    }
-    fs::write(config.cancel_spool().join("stable-key"), b"")
-        .context("write cancellation fixture")?;
-    if !dispatcher.pending_cancel(&claim)? {
-        return Err("pending cancellation was not detected before dispatch".into());
-    }
-
-    let malformed = config.queue().join("linked.md");
-    std::os::unix::fs::symlink("missing", &malformed).context("create symlink fixture")?;
-    if dispatcher.claim_next()?.is_some() || !exists_any(&config.rejected().join("linked.md")) {
-        return Err("symlink queue entry was not rejected".into());
-    }
-
-    let metadata = TaskMetadata::read(&claim.prompt, config.task_timeout)?;
-    if !matches!(
-        select_credential(&config, &metadata)?,
-        Credential::File {
-            name: "codex-auth.json",
-            ..
-        }
-    ) {
-        return Err("credential selector chose the wrong implementation credential".into());
-    }
-    let verify_prompt = fixture.root.join("verify.md");
-    fs::write(
-        &verify_prompt,
-        "---\nagent: verify\nmodel: fixed\n---\nverify\n",
-    )
-    .context("write verifier fixture")?;
-    if TaskMetadata::read(&verify_prompt, config.task_timeout).is_ok() {
-        return Err("retired loop-era verify agent was accepted".into());
-    }
-
-    if deadline_decision(120, 0, 0, 120, 1000, false) != Some(TaskStatus::Requeue)
-        || deadline_decision(120, 0, 0, 120, 1000, true) != Some(TaskStatus::Stalled)
-        || deadline_decision(120, 0, 1, 120, 1000, false) != Some(TaskStatus::Stalled)
-        || deadline_decision(1000, 999, 1, 120, 1000, false) != Some(TaskStatus::Capped)
-        || deadline_decision(1000, 0, 0, 120, 1000, false) != Some(TaskStatus::Capped)
-    {
-        return Err("timeout/stall decisions changed".into());
-    }
-    println!("agent dispatcher self-test passed");
-    Ok(())
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn protocol_fixture() {
-        self_test().unwrap();
+    fn protocol_fixture() -> Result<()> {
+        let fixture = Fixture::new()?;
+        let config = fixture.config()?;
+        let dispatcher = Dispatcher::new(config.clone());
+        let prompt = config.queue().join("stable-key.md");
+        fs::write(
+            &prompt,
+            "---\nagent: codex\nmodel: gpt-5\ntimeout: 30\n---\nwork\n",
+        )
+        .context("write claim fixture")?;
+        fs::write(
+            config.queue().join("stable-key.context.tar.zst"),
+            b"context",
+        )
+        .context("write context fixture")?;
+        let claim = dispatcher
+            .claim_next()?
+            .ok_or_else(|| "fixture did not claim a task".to_string())?;
+        if claim.id != "stable-key" || claim.context.is_none() {
+            return Err("claim did not preserve the task key and context pairing".into());
+        }
+        fs::write(config.cancel_spool().join("stable-key"), b"")
+            .context("write cancellation fixture")?;
+        if !dispatcher.pending_cancel(&claim)? {
+            return Err("pending cancellation was not detected before dispatch".into());
+        }
+
+        let malformed = config.queue().join("linked.md");
+        std::os::unix::fs::symlink("missing", &malformed).context("create symlink fixture")?;
+        if dispatcher.claim_next()?.is_some() || !exists_any(&config.rejected().join("linked.md")) {
+            return Err("symlink queue entry was not rejected".into());
+        }
+
+        let metadata = TaskMetadata::read(&claim.prompt, config.task_timeout)?;
+        if !matches!(
+            select_credential(&config, &metadata)?,
+            Credential::File {
+                name: "codex-auth.json",
+                ..
+            }
+        ) {
+            return Err("credential selector chose the wrong implementation credential".into());
+        }
+        let verify_prompt = fixture.root.join("verify.md");
+        fs::write(
+            &verify_prompt,
+            "---\nagent: verify\nmodel: fixed\n---\nverify\n",
+        )
+        .context("write verifier fixture")?;
+        if TaskMetadata::read(&verify_prompt, config.task_timeout).is_ok() {
+            return Err("retired loop-era verify agent was accepted".into());
+        }
+
+        if deadline_decision(120, 0, 0, 120, 1000, false) != Some(TaskStatus::Requeue)
+            || deadline_decision(120, 0, 0, 120, 1000, true) != Some(TaskStatus::Stalled)
+            || deadline_decision(120, 0, 1, 120, 1000, false) != Some(TaskStatus::Stalled)
+            || deadline_decision(1000, 999, 1, 120, 1000, false) != Some(TaskStatus::Capped)
+            || deadline_decision(1000, 0, 0, 120, 1000, false) != Some(TaskStatus::Capped)
+        {
+            return Err("timeout/stall decisions changed".into());
+        }
+        Ok(())
     }
 
     #[test]
