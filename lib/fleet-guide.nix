@@ -190,10 +190,12 @@
                               #   metered) or local/<name> from the ship's llama-swap
                               #   catalog (free; currently local/qwen3.6-35b-a3b and
                               #   local/gpt-oss-120b).
-        guidance: <model-id>  # optional advisor; Claude ids only. `cockpit` routes
+        guidance: cockpit     # optional; `cockpit` (the only value) routes
                               #   escalations to YOU: they surface in `fleet health`
                               #   and `fleet peek`, answer with `fleet answer` (drone
                               #   waits up to 30 min, then uses its own judgment).
+                              #   Omitted: the drone gets a stock "use your own
+                              #   judgment" answer immediately.
         effort: <level>       # optional; only for models with a thinking level
                               #   (claude low..max; codex none..xhigh; opencode
                               #   provider-specific variant).

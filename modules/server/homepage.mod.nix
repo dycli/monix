@@ -27,32 +27,7 @@
           "http://fw0:${toString port}";
     in
     {
-      options.homepage.domain = lib.options.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Public hostname the dashboard is served at through the tunnel.";
-      };
-
-      options.homepage.tunnelTokenFile = lib.options.mkOption {
-        type = lib.types.nullOr lib.types.path;
-        default = null;
-        description = ''
-          Cloudflare Tunnel connector token for exposing the dashboard at
-          homepage.domain; null = tailnet-only, no public tunnel. The public
-          hostname, origin (http://localhost:80), and the Cloudflare Access
-          policy in front of it are managed in Cloudflare Zero Trust —
-          put Access on it: the dashboard maps the ship's internals.
-        '';
-      };
-
       config = mkIf config.services.homepage-dashboard.enable {
-        assertions = [
-          {
-            assertion = config.homepage.tunnelTokenFile == null || config.homepage.domain != null;
-            message = "homepage.tunnelTokenFile requires homepage.domain";
-          }
-        ];
-
         services.homepage-dashboard = {
           # Loopback behind the ship proxy (nginx owns :80/:443; see
           # ship-proxy.mod.nix).
@@ -68,7 +43,6 @@
               "localhost"
               "127.0.0.1"
             ]
-            ++ lib.lists.optional (config.homepage.domain != null) config.homepage.domain
             ++ lib.lists.optional (
               config.shipProxy.enable && config.shipProxy.dashboardHost != null
             ) config.shipProxy.dashboardHost
@@ -281,33 +255,6 @@
             body="{''${body%,}}"
             printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' "''${#body}" "$body"
           '';
-        };
-
-        # Public ingress: Cloudflare Tunnel to homepage.domain. Origin +
-        # Access policy live in Cloudflare Zero Trust; this unit only runs
-        # the connector.
-        systemd.services.homepage-tunnel = mkIf (config.homepage.tunnelTokenFile != null) {
-          description = "Cloudflare Tunnel for the homepage dashboard";
-          wantedBy = [ "multi-user.target" ];
-          partOf = [ "homepage-dashboard.service" ];
-          wants = [
-            "network-online.target"
-            "homepage-dashboard.service"
-          ];
-          after = [
-            "network-online.target"
-            "homepage-dashboard.service"
-          ];
-          serviceConfig = {
-            DynamicUser = true;
-            LoadCredential = [ "token:${config.homepage.tunnelTokenFile}" ];
-            ExecStart = "${lib.meta.getExe pkgs.cloudflared} tunnel --no-autoupdate run --token-file %d/token";
-            Restart = "always";
-            RestartSec = 5;
-          };
-          environment = {
-            TUNNEL_TRANSPORT_PROTOCOL = "http2";
-          };
         };
       };
     };

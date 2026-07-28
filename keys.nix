@@ -7,7 +7,7 @@
 #
 # This file is the single source of truth for keys: it is imported both by
 # `secrets.nix` (consumed by the agenix CLI) and by `modules/core/keys.mod.nix`
-# (which exposes the keys as flake outputs `keys` and `keys-admin`).
+# (which exposes the admin keys as the flake output `keys-admin`).
 {
   hosts = {
     fw0 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINLRVD/zQrWUetJ3VxVJtZ6Zc6wOck05M9l0opF/Emb8 fw0";

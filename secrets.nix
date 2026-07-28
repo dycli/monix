@@ -24,8 +24,6 @@ in
   "assets/fonts/comic-code.age".publicKeys = [ fw3 ] ++ admin;
 
   "hosts/fw0/secrets/max-password.age".publicKeys = [ fw0 ] ++ admin;
-  # Retained bootstrap key; fw0 is already enrolled and does not consume it at runtime.
-  "hosts/fw0/secrets/tailscale.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/agent-claude-token.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/agent-codex-auth.age".publicKeys = [ fw0 ] ++ admin;
   "hosts/fw0/secrets/agent-openrouter-key.age".publicKeys = [ fw0 ] ++ admin;

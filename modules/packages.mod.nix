@@ -36,7 +36,6 @@
         pkgs.fd
         pkgs.fzf
         pkgs.htop
-        pkgs.less
         pkgs.nushell
         pkgs.ripgrep
         pkgs.tmux
@@ -48,10 +47,7 @@
     { pkgs, ... }:
     {
       environment.systemPackages = [
-        pkgs.curl
         pkgs.dig
-        pkgs.ipcalc
-        pkgs.rsync
         pkgs.traceroute
         pkgs.wget
       ];
@@ -63,9 +59,7 @@
       environment.systemPackages = [
         pkgs.p7zip
         pkgs.unzip
-        pkgs.xz
         pkgs.zip
-        pkgs.zstd
       ];
     };
 
@@ -77,12 +71,11 @@
       environment.systemPackages = [
         pkgs.git
         pkgs.gnumake
-        pkgs.jujutsu
       ];
     };
 
   # The Hyprland session's loose utilities. hyprshot wraps its own grim/slurp
-  # dependencies; libnotify provides notify-send for session scripts.
+  # (and notification) dependencies.
   flake.homeModules.packages-desktop-utils =
     {
       lib,
@@ -100,13 +93,10 @@
           pkgs.cliphist
           pkgs.hyprpicker
           pkgs.hyprshot
-          pkgs.libnotify
-          pkgs.pamixer
           pkgs.pavucontrol
           pkgs.playerctl
           pkgs.wl-clip-persist
           pkgs.wl-clipboard
-          pkgs.wlr-randr
         ];
       };
     };

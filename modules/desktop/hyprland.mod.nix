@@ -296,7 +296,7 @@
                 suppress_event = "maximize";
               }
               {
-                match.class = "^(org.pulseaudio.pavucontrol|blueberry.py)$";
+                match.class = "^org.pulseaudio.pavucontrol$";
                 float = true;
               }
               {

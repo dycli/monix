@@ -2,7 +2,7 @@
 # config is provisioned declaratively, and runtime tools (compiler, lazygit,
 # future LSP servers) are injected into the nvim wrapper only — not the global
 # PATH. Plain pkgs.neovim must NOT be installed alongside it (the wrapper
-# collides); packages-editors carries only helix and vim.
+# collides); packages-editors carries only vim.
 #
 # Both editors pin 'shell' to /bin/sh: nushell is the login shell, and the
 # editors' POSIX `-c` shell-outs die under it ("E79: Cannot expand wildcards").

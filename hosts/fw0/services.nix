@@ -51,13 +51,9 @@
 
   # Jellyfin + Sonarr/Radarr/Bazarr/Prowlarr/SABnzbd, tailnet-only and
   # egress-fenced. *arr wiring is web-UI state; SABnzbd is declarative
-  # (read-only ini) with credentials bootstrap-gated until the secret exists.
+  # (read-only ini).
   media.enable = true;
-  media.sabnzbdSecretsFile =
-    if builtins.pathExists ./secrets/sabnzbd-secrets.ini.age then
-      config.secrets.sabnzbd-secrets.path
-    else
-      null;
+  media.sabnzbdSecretsFile = config.secrets.sabnzbd-secrets.path;
   # The Xteink X3 e-reader (ESP32, can't join the tailnet) pulls the OPDS
   # feed, so its port is additionally opened on the LAN.
   media.calibreWebLan = {
@@ -70,9 +66,8 @@
   services.home-assistant.enable = true;
   homeAssistant.lanSubnets = [ "192.168.1.0/24" ];
 
-  # Frigate NVR, bootstrap-gated on the camera credentials secret;
-  # frigate.su.is via the ship proxy.
-  shipCameras.enable = builtins.pathExists ./secrets/frigate.env.age;
+  # Frigate NVR at frigate.su.is via the ship proxy.
+  shipCameras.enable = true;
   shipCameras.reolink = {
     cam1 = "192.168.1.201";
     cam2 = "192.168.1.55";
@@ -82,25 +77,16 @@
     tapo2 = "192.168.1.220";
   };
   shipCameras.lanSubnets = [ "192.168.1.0/24" ];
-  shipCameras.envFile =
-    if builtins.pathExists ./secrets/frigate.env.age then
-      config.secrets.frigate-env.path
-    else
-      # Placeholder; shipCameras stays disabled until the secret exists.
-      "/dev/null";
+  shipCameras.envFile = config.secrets.frigate-env.path;
 
   # Family photo library, tailnet-only at :2283, photos under /srv/photos.
   services.immich.enable = true;
 
   # Tailnet-only pretty names: <service>.su.is vhosts on nginx with a
-  # wildcard DNS-01 cert, bootstrap-gated on the Cloudflare DNS token.
-  shipProxy.enable = builtins.pathExists ./secrets/cloudflare-dns-token.env.age;
+  # wildcard DNS-01 cert.
+  shipProxy.enable = true;
   shipProxy.dashboardHost = "in.su.is";
-  shipProxy.acmeTokenFile =
-    if builtins.pathExists ./secrets/cloudflare-dns-token.env.age then
-      config.secrets.cloudflare-dns-token.path
-    else
-      null;
+  shipProxy.acmeTokenFile = config.secrets.cloudflare-dns-token.path;
 
   # Dashboard of links to every web UI at plain http://fw0. Tailnet-only.
   services.homepage-dashboard.enable = true;
@@ -217,26 +203,21 @@
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     matrix-alertbot-env.file = ./secrets/matrix-alertbot.env.age;
     curtisbot-env.file = ./secrets/curtisbot.env.age;
-  }
-  // lib.optionalAttrs (builtins.pathExists ./secrets/openrouter-management-key.age) {
-    openrouter-management-key = {
-      file = ./secrets/openrouter-management-key.age;
-      owner = config.primaryUser;
-    };
-  }
-  // lib.optionalAttrs (builtins.pathExists ./secrets/cloudflare-dns-token.env.age) {
     cloudflare-dns-token = {
       file = ./secrets/cloudflare-dns-token.env.age;
       owner = "acme";
     };
-  }
-  // lib.optionalAttrs (builtins.pathExists ./secrets/frigate.env.age) {
     frigate-env.file = ./secrets/frigate.env.age;
-  }
-  // lib.optionalAttrs (builtins.pathExists ./secrets/sabnzbd-secrets.ini.age) {
     sabnzbd-secrets = {
       file = ./secrets/sabnzbd-secrets.ini.age;
       owner = "sabnzbd";
+    };
+  }
+  // lib.optionalAttrs (builtins.pathExists ./secrets/openrouter-management-key.age) {
+    # Still bootstrap-gated: this key hasn't been provisioned yet.
+    openrouter-management-key = {
+      file = ./secrets/openrouter-management-key.age;
+      owner = config.primaryUser;
     };
   };
 
@@ -245,10 +226,7 @@
   systemd.services.matrix-tunnel.restartTriggers = [
     ./secrets/matrix-cloudflare-tunnel-token.age
   ];
-  systemd.services.sabnzbd.restartTriggers =
-    lib.lists.optionals (builtins.pathExists ./secrets/sabnzbd-secrets.ini.age) [
-      ./secrets/sabnzbd-secrets.ini.age
-    ];
+  systemd.services.sabnzbd.restartTriggers = [ ./secrets/sabnzbd-secrets.ini.age ];
 
   agentFleet.credentials = {
     claudeTokenFile = config.secrets.agent-claude-token.path;
