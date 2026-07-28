@@ -1,6 +1,6 @@
 mod blocks;
 
-use regex::{Regex, RegexBuilder};
+use regex_lite::{Regex, RegexBuilder};
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
