@@ -1106,8 +1106,10 @@ fn cmd_active(config: &Config) -> Result<i32> {
             let id = file_name_utf8(&prompt);
             let id = id.trim_end_matches(".md");
             let header = frontmatter_lines(&prompt).unwrap_or_default();
-            let agent = san(&fm(&header, "agent"))?.to_string();
-            let model = san(&fm(&header, "model"))?.to_string();
+            // One malformed prompt must not kill the whole listing (or the
+            // ship-status panel that shells out to it).
+            let agent = san(&fm(&header, "agent")).unwrap_or("?").to_string();
+            let model = san(&fm(&header, "model")).unwrap_or("?").to_string();
             let started = fs::metadata(&prompt)
                 .map(|metadata| metadata.mtime().max(0) as u64)
                 .unwrap_or(now);

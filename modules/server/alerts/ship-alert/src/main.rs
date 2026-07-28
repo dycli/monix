@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 use std::env;
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -162,19 +162,38 @@ fn throttled(state: &Path, body: &str, minutes: u64) -> bool {
 
 // ---- HTTP via curl ---------------------------------------------------------
 
+/// Escape a value for a double-quoted curl config-file parameter.
+fn curl_config_quote(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 fn curl_json(method: &str, url: &str, token: Option<&str>, payload: &Value) -> Result<Value> {
-    let mut command = Command::new(CURL);
-    command
+    // The payload (may carry the password) and the bearer token travel via a
+    // curl config on stdin, never argv — argv is world-readable in /proc.
+    let mut config = format!("data = \"{}\"\n", curl_config_quote(&payload.to_string()));
+    if let Some(token) = token {
+        config.push_str(&format!(
+            "header = \"Authorization: Bearer {}\"\n",
+            curl_config_quote(token)
+        ));
+    }
+    let mut child = Command::new(CURL)
         .args(["-sf", "--connect-timeout", "5", "--max-time", "30"])
         .args(["-H", "Content-Type: application/json"])
-        .args(["-X", method, url, "-d", &payload.to_string()])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null());
-    if let Some(token) = token {
-        command.args(["-H", &format!("Authorization: Bearer {token}")]);
-    }
-    let output = command
-        .output()
+        .args(["-X", method, url, "-K", "-"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("run curl: {error}"))?;
+    child
+        .stdin
+        .take()
+        .ok_or("curl stdin unavailable")?
+        .write_all(config.as_bytes())
+        .map_err(|error| format!("write curl config: {error}"))?;
+    let output = child
+        .wait_with_output()
         .map_err(|error| format!("run curl: {error}"))?;
     if !output.status.success() {
         return Err(format!("{method} {url} failed"));

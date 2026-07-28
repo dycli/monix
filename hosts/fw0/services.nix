@@ -218,12 +218,20 @@
     };
   };
 
-  # agenix in this input has no restartUnits option; make the encrypted
-  # source an explicit unit trigger so token rotation restarts cloudflared.
+  # agenix in this input has no restartUnits option; make each encrypted
+  # source an explicit trigger on its long-running consumer so secret
+  # rotation restarts the daemon (oneshots re-read their env every run and
+  # need none of this).
   systemd.services.matrix-tunnel.restartTriggers = [
     ./secrets/matrix-cloudflare-tunnel-token.age
   ];
   systemd.services.sabnzbd.restartTriggers = [ ./secrets/sabnzbd-secrets.ini.age ];
+  systemd.services.tuwunel.restartTriggers = [ ./secrets/matrix-registration.env.age ];
+  systemd.services.remy.restartTriggers = [ ./secrets/matrix-remy.env.age ];
+  systemd.services.curtisbot.restartTriggers = [ ./secrets/curtisbot.env.age ];
+  systemd.services.fleet-log-stream.restartTriggers = [ ./secrets/matrix-alertbot.env.age ];
+  systemd.services.frigate.restartTriggers = [ ./secrets/frigate.env.age ];
+  systemd.services.go2rtc.restartTriggers = [ ./secrets/frigate.env.age ];
 
   agentFleet.credentials = {
     claudeTokenFile = config.secrets.agent-claude-token.path;

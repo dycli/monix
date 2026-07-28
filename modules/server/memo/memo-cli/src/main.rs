@@ -527,7 +527,12 @@ fn cmd_note(d: &Path, args: &[String], c: Config) -> Result<(), String> {
 
 fn block_id(arg: &str) -> Option<(usize, usize)> {
     let caps = Regex::new(r"^(\d+)-(\d+)$").unwrap().captures(arg)?;
-    Some((caps[1].parse().ok()?, caps[2].parse::<usize>().ok()? + 1))
+    let lo: usize = caps[1].parse().ok()?;
+    let hi: usize = caps[2].parse().ok()?;
+    if lo > hi {
+        return None;
+    }
+    Some((lo, hi.checked_add(1)?))
 }
 
 fn cmd_nap(d: &Path, args: &[String], c: Config) -> Result<(), String> {
@@ -604,6 +609,8 @@ fn cmd_recall(d: &Path, args: &[String], c: Config) -> Result<(), String> {
     if args.len() != 1 {
         return die("usage: memo recall <regex>");
     }
+    // regex-lite folds case ASCII-only: accented text must match its stored
+    // case exactly. Accepted trade for the zero-dep engine.
     let pat = RegexBuilder::new(&args[0])
         .case_insensitive(true)
         .build()

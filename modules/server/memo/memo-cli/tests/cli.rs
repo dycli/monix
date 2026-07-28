@@ -303,6 +303,10 @@ fn complete_python_cli_suite_port() {
         &["note", "a plain ascii memory right after the accented one"],
     );
     assert!(stdout(&run(&store.0, &["recall", "coração"])).contains("João"));
+    // regex-lite case-folds ASCII only (documented trade): mixed-case ASCII
+    // matches, but accented characters must match their stored case exactly.
+    assert!(stdout(&run(&store.0, &["recall", "reunião COM joão"])).contains("São Paulo"));
+    assert!(stdout(&run(&store.0, &["recall", "REUNIÃO com joão"])).contains("No match."));
     assert!(
         stdout(&run(
             &store.0,
