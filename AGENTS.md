@@ -64,10 +64,9 @@ unrelated module.
   tool/concern.
 - Tools coupled to another concern live in that concern's file — `nh` and
   `nix-output-monitor` are in `nix.mod.nix`, font packages in `fonts.mod.nix`.
-- Config-less tools with no natural home are grouped in `modules/packages.mod.nix`
-  as small functional bundles, each a named aspect with a bare package list
-  (`packages-shell-utils`, `packages-desktop`, ...). Desktop-only bundles gate on
-  `osConfig.isDesktop`. There is no host-class (`server`/`desktop`) partition of
+- Config-less tools with no natural home live in `modules/packages.mod.nix`:
+  one universal system list, plus home lists gated on `osConfig.isDesktop` /
+  `cockpit.enable`. There is no host-class (`server`/`desktop`) partition of
   packages; differentiation comes from the per-aspect gate.
 
 Home aspects are expressed with home-manager (`home.packages`,

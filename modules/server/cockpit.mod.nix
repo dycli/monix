@@ -296,7 +296,7 @@
         ];
 
         # tmux is the session's persistence layer; the binary is already
-        # system-wide (packages-shell-utils), this adds the /etc config.
+        # system-wide (packages.mod.nix), this adds the /etc config.
         programs.tmux.enable = true;
         programs.tmux.historyLimit = 50000;
 

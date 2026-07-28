@@ -126,7 +126,7 @@
         systemd.user.tmpfiles.rules = [
           "f %h/.config/hypr/dms/outputs.lua 0644 - - -"
           # Cursor theme/size are DMS-owned the same way (Settings → cursor);
-          # the theme package itself is installed by cursor.mod.nix.
+          # the theme package itself is installed by packages.mod.nix.
           "f %h/.config/hypr/dms/cursor.lua 0644 - - -"
         ];
 
