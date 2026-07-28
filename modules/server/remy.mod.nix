@@ -155,12 +155,6 @@
           '';
         };
 
-        roomName = mkOption {
-          type = types.str;
-          default = "Household";
-          description = "Name of the room the bot creates on first start.";
-        };
-
         scratchpad.users = mkOption {
           type = types.listOf types.str;
           default = [ ];
@@ -171,12 +165,6 @@
             scheduled posts). The first entry gets admin power in the
             room. Empty list = no scratchpad room.
           '';
-        };
-
-        scratchpad.roomName = mkOption {
-          type = types.str;
-          default = "Scratchpad";
-          description = "Name of the scratchpad room the bot creates.";
         };
 
         model = mkOption {
@@ -298,9 +286,10 @@
           ];
           environment = {
             BOT_HS_URL = "http://127.0.0.1:${toString config.matrix.port}";
+            # Room names are the bot's own defaults (Household/Scratchpad):
+            # an option here would look tunable, but the rooms are created
+            # once and renaming the option renames nothing.
             BOT_INVITE_USERS = lib.concatStringsSep "," cfg.inviteUsers;
-            BOT_ROOM_NAME = cfg.roomName;
-            BOT_SCRATCH_ROOM_NAME = cfg.scratchpad.roomName;
             BOT_SCRATCH_USERS = lib.concatStringsSep "," cfg.scratchpad.users;
             BOT_SCRATCH_DB = "/var/lib/remy/scratch.db";
             LLM_URL = "http://127.0.0.1:${toString config.inference.port}/v1/chat/completions";

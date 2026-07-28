@@ -1,7 +1,12 @@
 { inputs, ... }:
 {
   flake.nixosModules.nix =
-    { config, pkgs, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     {
       nix.settings = {
         experimental-features = [
@@ -47,7 +52,21 @@
         options = "--delete-older-than 90d";
       };
 
-      nixpkgs.config.allowUnfree = true;
+      # Per-package unfree allowlist instead of a blanket allowUnfree: every
+      # piece of proprietary software on the ship is named here, and adding
+      # one is a conscious act.
+      nixpkgs.config.allowUnfreePredicate =
+        pkg:
+        builtins.elem (lib.getName pkg) [
+          "claude-code"
+          # Mojang's EULA'd server jar underneath the Fabric server.
+          "minecraft-server"
+          "obsidian"
+          "steam"
+          "steam-unwrapped"
+          # sabnzbd's rar extraction.
+          "unrar"
+        ];
 
       environment.systemPackages = [
         pkgs.nh

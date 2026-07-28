@@ -1,7 +1,35 @@
+# Deny-by-default: nothing is trackable unless its type is whitelisted
+# below. With this many encrypted secrets in-tree, an accidentally
+# committed plaintext secret must be structurally impossible — a new
+# legitimate file type costs one line here.
+*
+!*/
+
+# The flake and its documentation.
+!*.nix
+!*.md
+!*.lock
+!.gitignore
+
+# Encrypted secrets (age ciphertext only).
+!*.age
+
+# The ship's own software.
+!*.rs
+!*.toml
+!*.py
+!*.sql
+!*.nu.in
+
+# Assets: docs diagrams and the DMS-referenced wallpaper.
+!*.svg
+!*.jpg
+
+# Build artifacts and runtime junk trump the whitelist (later rules win).
+target/
 result
 result-*
 .direnv/
-target/
+__pycache__/
 *.qcow2
 *.swp
-__pycache__/

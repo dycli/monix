@@ -27,8 +27,11 @@
 
       # The courtesy layer is off: everything this ship carries above the
       # NixOS core set is in the one list below. (Stock defaults were perl,
-      # rsync, strace — the two we want rejoin the list on our own terms.)
+      # rsync, strace — the two we want rejoin the list on our own terms;
+      # nano rides its own default-enabled module, so it's switched off
+      # here too. vim is the ship's fallback editor.)
       environment.defaultPackages = [ ];
+      programs.nano.enable = false;
 
       environment.systemPackages = [
         # editors: neovim absent — NvChad's wrapper provides `nvim` per-user
