@@ -1,18 +1,16 @@
 # remy aspect: the family's household chat bot (remy/bot.py). One Python
-# service, three Matrix rooms: "Household" (tasks, morning/evening posts,
-# calendar), "Scratchpad" (personal notes against a separate scratch.db,
-# calendar read-only, no scheduled posts), and "Budget" (the budgetbot skill
-# set against /var/lib/budgetbot/budget.db, the ledger remy absorbed).
+# service, two Matrix rooms: "Household" (tasks, morning/evening posts,
+# calendar) and "Scratchpad" (personal notes against a separate scratch.db,
+# calendar read-only, no scheduled posts).
 #
 # Deliberately NOT a general agent: chat text only ever classifies into a
 # fixed intent schema — no path to shell, SQL text, or the fleet.
 #
-# Four units share one static user `remy` (DynamicUser can't share /var/lib
-# across units): remy-register bootstraps the account; remy-adopt-budget-room
-# invites @remy into the Budget room as the retired budgetbot account; remy
-# itself is loopback-only (tuwunel, llama-swap, local files); and
-# remy-calendar-sync is the ONLY unit with internet egress and the only
-# holder of CalDAV credentials, pulling events into calendar.json.
+# Three units share one static user `remy` (DynamicUser can't share /var/lib
+# across units): remy-register bootstraps the account; remy itself is
+# loopback-only (tuwunel, llama-swap, local files); and remy-calendar-sync
+# is the ONLY unit with internet egress and the only holder of CalDAV
+# credentials, pulling events into calendar.json.
 {
   flake.nixosModules.remy =
     {
@@ -32,7 +30,6 @@
 
       python = pkgs.python3.withPackages (ps: [
         ps.matrix-nio
-        ps.matplotlib
         ps.requests
       ]);
 
@@ -81,38 +78,11 @@
         '';
       };
 
-      # One-time room handover; tolerates already having happened
-      # (re-invite of a member 403s, which is fine).
-      adopt = pkgs.writeShellApplication {
-        name = "remy-adopt-budget-room";
-        runtimeInputs = [
-          pkgs.curl
-          pkgs.jq
-        ];
-        text = ''
-          hs="http://127.0.0.1:${toString config.matrix.port}"
-          room=$(jq -rn --arg r ${lib.escapeShellArg cfg.budgetRoomId} '$r|@uri')
-          mcurl() {
-            curl -s --connect-timeout 5 --max-time 30 \
-              -H "Content-Type: application/json" "$@"
-          }
-          tok=$(mcurl -X POST "$hs/_matrix/client/v3/login" \
-            -d "$(jq -n --arg u "$OLD_MATRIX_USER" --arg p "$OLD_MATRIX_PASSWORD" \
-              '{type:"m.login.password",identifier:{type:"m.id.user",user:$u},password:$p}')" \
-            | jq -er .access_token)
-          mcurl -X POST -H "Authorization: Bearer $tok" \
-            "$hs/_matrix/client/v3/rooms/$room/invite" \
-            -d "$(jq -n --arg u "$MATRIX_USER" '{user_id:$u}')" || true
-          mcurl -X POST -H "Authorization: Bearer $tok" \
-            "$hs/_matrix/client/v3/logout" -d '{}' > /dev/null || true
-        '';
-      };
-
       # Hardening shared by all units; egress differs per unit, set below.
       sandbox = {
         User = "remy";
         Group = "remy";
-        StateDirectory = "remy budgetbot";
+        StateDirectory = "remy";
         StateDirectoryMode = "0700";
         Slice = "services.slice";
 
@@ -172,23 +142,6 @@
             agenix env file with TUWUNEL_REGISTRATION_TOKEN=... (the
             homeserver's, see matrix.mod.nix) — used only by the oneshot
             account-registration unit, never by the bot itself.
-          '';
-        };
-
-        budgetRoomId = mkOption {
-          type = types.str;
-          example = "!abcdef:chat.example.com";
-          description = "The existing Budget room (budgetbot's old home).";
-        };
-
-        budgetbotEnvFile = mkOption {
-          type = types.nullOr types.path;
-          default = null;
-          description = ''
-            The RETIRED budgetbot account's agenix env file (MATRIX_USER/
-            MATRIX_PASSWORD) — used once by the adopt oneshot to invite
-            remy into the Budget room. null once the invite has happened
-            and the secret is retired.
           '';
         };
 
@@ -328,33 +281,6 @@
           };
         };
 
-        systemd.services.remy-adopt-budget-room = mkIf (cfg.budgetbotEnvFile != null) {
-          description = "invite remy into the Budget room as old budgetbot";
-          wantedBy = [ "multi-user.target" ];
-          wants = [ "remy-register.service" ];
-          after = [
-            "tuwunel.service"
-            "remy-register.service"
-          ];
-          # Both env files use the same MATRIX_* names, so the old account's
-          # file is read into OLD_* here instead of clobbering remy's vars.
-          script = ''
-            f="$CREDENTIALS_DIRECTORY/budgetbot-env"
-            OLD_MATRIX_USER=$(grep '^MATRIX_USER=' "$f" | cut -d= -f2-)
-            OLD_MATRIX_PASSWORD=$(grep '^MATRIX_PASSWORD=' "$f" | cut -d= -f2-)
-            export OLD_MATRIX_USER OLD_MATRIX_PASSWORD
-            exec ${getExe adopt}
-          '';
-          serviceConfig = sandbox // loopbackOnly // {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            # The old account's file arrives as a systemd credential so its
-            # MATRIX_* names can't collide with remy's own env.
-            EnvironmentFile = cfg.credentialsEnvFile;
-            LoadCredential = "budgetbot-env:${cfg.budgetbotEnvFile}";
-          };
-        };
-
         systemd.services.remy = {
           description = "family household chat bot";
           wantedBy = [ "multi-user.target" ];
@@ -368,28 +294,23 @@
           after = [
             "tuwunel.service"
             "remy-register.service"
-            "remy-adopt-budget-room.service"
             "llama-swap.service"
           ];
           environment = {
             BOT_HS_URL = "http://127.0.0.1:${toString config.matrix.port}";
             BOT_INVITE_USERS = lib.concatStringsSep "," cfg.inviteUsers;
             BOT_ROOM_NAME = cfg.roomName;
-            BOT_BUDGET_ROOM_ID = cfg.budgetRoomId;
             BOT_SCRATCH_ROOM_NAME = cfg.scratchpad.roomName;
             BOT_SCRATCH_USERS = lib.concatStringsSep "," cfg.scratchpad.users;
             BOT_SCRATCH_DB = "/var/lib/remy/scratch.db";
             LLM_URL = "http://127.0.0.1:${toString config.inference.port}/v1/chat/completions";
             LLM_MODEL = cfg.model;
             BOT_DB = "/var/lib/remy/home.db";
-            BOT_BUDGET_DB = "/var/lib/budgetbot/budget.db";
             BOT_CALENDAR_JSON = "/var/lib/remy/calendar.json";
             BOT_MORNING = cfg.morningTime;
             BOT_EVENING = cfg.eveningTime;
             BOT_LOG_TIME = cfg.logTime;
             BOT_TZ = config.time.timeZone;
-            # matplotlib wants a writable config dir; PrivateTmp provides one.
-            MPLCONFIGDIR = "/tmp/mpl";
           };
           serviceConfig = sandbox // loopbackOnly // {
             ExecStart = "${python}/bin/python ${./remy/bot.py}";

@@ -33,10 +33,8 @@ what the Pilot knew.
 
 **Remy** — steward and quartermaster. He keeps the household running: the family's
 tasks and lists and reminders, the morning plan posted at 07:00 and the evening report
-at 19:00, the calendar tended both ways, and the ledger in which nothing is ever truly
-struck out — every change just becomes the next line in a record that only ever grows.
-Remy's mind was grown aboard, in the inference bay, so the family's words are
-understood without once leaving the hull.
+at 19:00, and the calendar tended both ways. Remy's mind was grown aboard, in the
+inference bay, so the family's words are understood without once leaving the hull.
 
 **The alertbot** — the klaxon, and it has no mind at all: it watches everything,
 thinks nothing, and shouts the instant something breaks. Every six hours it walks the
@@ -77,8 +75,7 @@ and no memories. The fleet has flown more than a hundred and fifty missions.
 - **The rec room** — a small private world for friends and family. Boarding is by the
   Captain's invitation and by no other means.
 - **The comms room** — the household's own array, sovereign, unfederated,
-  invitation-only, with the household books kept beside it. Remy and the bots have
-  their quarters here.
+  invitation-only. Remy and the bots have their quarters here.
 - **The inference bay** — where the ship grows minds of her own: local, tetherless,
   free. They keep Remy thinking and stand ready to fill an empty drone.
 - **The vault** — the ship's secrets, sealed so that each hull can open only its own

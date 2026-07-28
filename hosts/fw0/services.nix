@@ -169,12 +169,10 @@
   matrix.registrationTokenEnvFile = config.secrets.matrix-registration-env.path;
   matrix.tunnelTokenFile = config.secrets.matrix-cloudflare-tunnel-token.path;
 
-  # Household organizer and budget-room assistant.
+  # Household organizer.
   remy.enable = true;
   remy.credentialsEnvFile = config.secrets.matrix-remy-env.path;
   remy.registrationEnvFile = config.secrets.matrix-registration-env.path;
-  remy.budgetRoomId = "!pSYRAx0dRdSkbxwgPr:chat.su.is";
-  remy.budgetbotEnvFile = config.secrets.matrix-budgetbot-env.path;
   remy.inviteUsers = [
     "@dylan:chat.su.is"
     "@gab:chat.su.is"
@@ -212,9 +210,6 @@
     agent-openrouter-key.file = ./secrets/agent-openrouter-key.age;
     opencode-web-cloudflare-tunnel-token.file = ./secrets/opencode-web-cloudflare-tunnel-token.age;
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
-
-    # Retained for remy's adopt-budget-room oneshot.
-    matrix-budgetbot-env.file = ./secrets/matrix-budgetbot.env.age;
     matrix-remy-env.file = ./secrets/matrix-remy.env.age;
     remy-caldav-json = {
       file = ./secrets/remy-caldav.json.age;

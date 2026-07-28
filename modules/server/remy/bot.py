@@ -1,6 +1,6 @@
 """remy — the family's household chat bot.
 
-One bot, three rooms, room-scoped skills:
+One bot, two rooms, room-scoped skills:
 
   - "Household" (created by the bot on first start, family invited):
     tasks with due dates and named lists in plain language ("we need to
@@ -18,13 +18,7 @@ One bot, three rooms, room-scoped skills:
     and cal_add is refused. No scheduled posts (reminders still fire;
     summaries on demand).
 
-  - "Budget" (the pre-existing room; remy absorbed budgetbot 2026-07-13):
-    the complete budgetbot skill set against the same ledger at
-    /var/lib/budgetbot/budget.db — purchases in plain language, edits,
-    soft deletes, queries, charts, the Sunday check-in and stale-entry
-    nag. Data and behavior unchanged; only the account answering did.
-
-Design constraints (inherited from budgetbot):
+Design constraints:
   - Chat text is UNTRUSTED input. The LLM only ever classifies it into a
     fixed per-room intent schema; SQL is always parameterized from typed
     fields; there is no path from message text to shell, SQL, or Matrix
@@ -36,7 +30,6 @@ Design constraints (inherited from budgetbot):
 
 import asyncio
 import html
-import io
 import json
 import logging
 import os
@@ -49,7 +42,7 @@ from functools import partial
 from zoneinfo import ZoneInfo
 
 import requests
-from nio import AsyncClient, InviteMemberEvent, RoomMessageText
+from nio import AsyncClient, RoomMessageText
 
 log = logging.getLogger("remy")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -59,31 +52,22 @@ USER_ID = os.environ["MATRIX_USER"]
 PASSWORD = os.environ["MATRIX_PASSWORD"]
 INVITE_USERS = [u for u in os.environ.get("BOT_INVITE_USERS", "").split(",") if u]
 ROOM_NAME = os.environ.get("BOT_ROOM_NAME", "Household")
-BUDGET_ROOM_ID = os.environ.get("BOT_BUDGET_ROOM_ID", "")
 SCRATCH_ROOM_NAME = os.environ.get("BOT_SCRATCH_ROOM_NAME", "Scratchpad")
 SCRATCH_USERS = [u for u in os.environ.get("BOT_SCRATCH_USERS", "").split(",") if u]
 SCRATCH_DB_PATH = os.environ.get("BOT_SCRATCH_DB", "/var/lib/remy/scratch.db")
 LLM_URL = os.environ.get("LLM_URL", "http://127.0.0.1:8091/v1/chat/completions")
 LLM_MODEL = os.environ.get("LLM_MODEL", "qwen3.6-35b-a3b")
 DB_PATH = os.environ.get("BOT_DB", "/var/lib/remy/home.db")
-BUDGET_DB_PATH = os.environ.get("BOT_BUDGET_DB", "/var/lib/budgetbot/budget.db")
 CAL_PATH = os.environ.get("BOT_CALENDAR_JSON", "/var/lib/remy/calendar.json")
 TZ = ZoneInfo(os.environ.get("BOT_TZ", "America/New_York"))
 MORNING = os.environ.get("BOT_MORNING", "07:00")
 EVENING = os.environ.get("BOT_EVENING", "19:00")
-BUDGET_REMIND_HOUR = int(os.environ.get("BOT_BUDGET_REMIND_HOUR", "18"))
-BUDGET_STALE_DAYS = int(os.environ.get("BOT_BUDGET_STALE_DAYS", "3"))
 # The family log: an append-only markdown journal the bot writes once a day.
 # It lives in the state dir (a separate unit mirrors it into the Obsidian
 # vault — the fenced bot can't reach /home). LOG_FLAG pokes that mirror.
 LOG_PATH = os.environ.get("BOT_LOG", os.path.join(os.path.dirname(DB_PATH), "log.md"))
 LOG_FLAG = os.path.join(os.path.dirname(DB_PATH), "log.flag")
 LOG_TIME = os.environ.get("BOT_LOG_TIME", "23:50")
-
-DEFAULT_CATEGORIES = [
-    "groceries", "dining", "transport", "household", "health",
-    "entertainment", "utilities", "clothing", "gifts", "travel", "other",
-]
 
 START_MS = int(time.time() * 1000)
 
@@ -218,34 +202,6 @@ def home_db(path=DB_PATH, cal=True):
     return db
 
 
-def budget_db():
-    # Same schema budgetbot created; executescript is a no-op on the live
-    # ledger but lets a fresh host bootstrap too.
-    db = connect(BUDGET_DB_PATH)
-    db.executescript("""
-        CREATE TABLE IF NOT EXISTS tx(
-            id INTEGER PRIMARY KEY,
-            date TEXT NOT NULL,            -- ISO yyyy-mm-dd, local
-            payee TEXT NOT NULL,
-            amount_cents INTEGER NOT NULL, -- positive = spending
-            category TEXT NOT NULL,
-            note TEXT DEFAULT '',
-            entered_by TEXT NOT NULL,
-            event_id TEXT UNIQUE,
-            created_ts INTEGER NOT NULL,
-            deleted INTEGER NOT NULL DEFAULT 0  -- soft delete: recoverable
-        );
-        CREATE TABLE IF NOT EXISTS categories(name TEXT PRIMARY KEY);
-        CREATE TABLE IF NOT EXISTS processed(event_id TEXT PRIMARY KEY, ts INTEGER);
-        CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
-    """)
-    if not db.execute("SELECT 1 FROM categories LIMIT 1").fetchone():
-        db.executemany("INSERT INTO categories(name) VALUES (?)",
-                       [(c,) for c in DEFAULT_CATEGORIES])
-    db.commit()
-    return db
-
-
 def meta_get(db, k):
     row = db.execute("SELECT v FROM meta WHERE k=?", (k,)).fetchone()
     return row["v"] if row else None
@@ -262,19 +218,16 @@ def git_snapshot(db, db_path, reason):
     Every mutation lands as one commit, so any past state is one
     `git show`/`git checkout` away even if a bug (or a mis-parsed message)
     mangles the live database. Failures are logged, never fatal — history
-    is a safety net, not a dependency. For the budget ledger this is the
-    SAME history repo budgetbot kept (/var/lib/budgetbot/history).
+    is a safety net, not a dependency.
     """
     try:
         hist = os.path.join(os.path.dirname(db_path), "history")
         os.makedirs(hist, exist_ok=True)
         if not os.path.isdir(os.path.join(hist, ".git")):
             subprocess.run(["git", "init", "-q"], cwd=hist, check=True)
-        # budgetbot's history file was ledger.sql; keep appending to it so
-        # the ledger's history stays one unbroken series. home.db and
-        # scratch.db share /var/lib/remy/history under their own names.
-        name = ("ledger.sql" if db_path == BUDGET_DB_PATH
-                else os.path.basename(db_path).replace(".db", ".sql"))
+        # home.db and scratch.db share /var/lib/remy/history under their
+        # own names.
+        name = os.path.basename(db_path).replace(".db", ".sql")
         with open(os.path.join(hist, name), "w") as f:
             for line in db.iterdump():
                 f.write(line + "\n")
@@ -301,7 +254,7 @@ def llm_call(system, text, schema, max_tokens=800):
         "response_format": {"type": "json_schema",
                             "json_schema": {"name": "action", "schema": schema}},
         # No thinking for a classification call: reasoning tokens count
-        # against max_tokens and can starve the JSON entirely (bit budgetbot
+        # against max_tokens and can starve the JSON entirely (bit us
         # live); this also cuts reply latency to ~a second.
         "chat_template_kwargs": {"enable_thinking": False},
         "temperature": 0.1,
@@ -461,8 +414,8 @@ HOME_ACTION = {
         "reply": {"type": "string"},
     },
     # Every field required: with a grammar-constrained lazy model, optional
-    # fields simply never get emitted (budgetbot live finding). Unused
-    # fields carry "" / 0 / [].
+    # fields simply never get emitted (live finding). Unused fields carry
+    # "" / 0 / [].
     "required": ["intent", "items", "list_name", "new_list_name", "section",
                  "due", "at", "rem_id", "assignee", "item_id", "new_name",
                  "new_due", "new_assignee", "scope", "kind", "text", "reply"],
@@ -1258,8 +1211,7 @@ calendar, and reminders — plus a daily log. Examples:
 • put the dentist on the calendar tuesday at 3 — goes straight to Migadu
 • add to log: Julia had her baby today — I write the day's log each night
 • what's on today? / this week? — morning/evening summaries post at 7:00 and 19:00
-If I'm not sure which list something belongs on, I'll ask.
-(Money things live in the Budget room — I answer there too.)"""
+If I'm not sure which list something belongs on, I'll ask."""
 
 SCRATCH_HELP = """Your scratchpad — notes, reminders, to-dos, quick lists. Examples:
 • note: the gate code is 4482 / show the notes list
@@ -1271,230 +1223,12 @@ add events in the Household room. No scheduled posts; ask when you
 want a summary."""
 
 
-# ================================================================ budget
-# budgetbot's skill set, verbatim behavior, same ledger.
-
-def fmt_amount(cents):
-    return f"${cents / 100:,.2f}"
-
-
-def fmt_tx(r):
-    return f"#{r['id']} {r['date']} {r['payee']} {fmt_amount(r['amount_cents'])} → {r['category']}"
-
-
-def categories(db):
-    return [r["name"] for r in db.execute("SELECT name FROM categories ORDER BY name")]
-
-
-def recent_tx(db, n=15):
-    return db.execute("SELECT * FROM tx WHERE deleted=0 ORDER BY id DESC LIMIT ?",
-                      (n,)).fetchall()
-
-
-BUDGET_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "intent": {"type": "string",
-                   "enum": ["add", "edit", "delete", "restore", "query", "chart",
-                            "add_category", "help", "other"]},
-        "payee": {"type": "string"},
-        "amount": {"type": "number"},
-        "category": {"type": "string"},
-        "date": {"type": "string"},
-        "note": {"type": "string"},
-        "tx_id": {"type": "integer"},
-        "new_amount": {"type": "number"},
-        "new_category": {"type": "string"},
-        "new_payee": {"type": "string"},
-        "new_date": {"type": "string"},
-        "query_kind": {"type": "string",
-                       "enum": ["month_summary", "category_total", "recent", "compare_months"]},
-        "month": {"type": "string"},
-        "chart_kind": {"type": "string", "enum": ["month_bar", "trend"]},
-        "reply": {"type": "string"},
-    },
-    "required": ["intent", "payee", "amount", "category", "date", "note",
-                  "tx_id", "new_amount", "new_category", "new_payee", "new_date",
-                 "query_kind", "month", "chart_kind", "reply"],
-}
-
-
-def budget_parse(db, sender_name, text):
-    now = today()
-    recent = "\n".join(fmt_tx(r) for r in recent_tx(db)) or "(none)"
-    deleted = "\n".join(fmt_tx(r) for r in db.execute(
-        "SELECT * FROM tx WHERE deleted=1 ORDER BY id DESC LIMIT 5"))
-    system = f"""You classify one message from a family budget chat into a JSON action.
-Today is {now.isoformat()} ({now.strftime('%A')}). Message author: {sender_name}.
-Known categories: {", ".join(categories(db))}.
-Recent transactions (id date payee amount category):
-{recent}
-Recently deleted (restorable):
-{deleted or "(none)"}
-
-Rules:
-- A purchase mention ("costco 84.12", "40 on gas yesterday") => intent add.
-  amount in dollars; date ISO (resolve words like yesterday/tuesday, default today);
-  payee short and capitalized; pick the closest existing category ("other" if none fits).
-- Correcting/changing an existing entry => intent edit, with tx_id from the list
-  above and only the new_* fields being changed. Deleting one => intent delete + tx_id.
-  Undeleting/bringing one back ("restore #12") => intent restore + tx_id.
-- Questions about spending => intent query (pick query_kind; month as yyyy-mm,
-  default current month; category_total also needs category).
-- Asking for a chart/graph => intent chart (month_bar = this month's categories,
-  trend = monthly totals over time).
-- "add category X" => intent add_category with category.
-- Asking what you can do => intent help.
-- Anything else (greetings, chatter between the humans, unclear) => intent other
-  with reply as a one-line response ONLY if the message was addressed to the bot,
-  else reply "".
-Every JSON field is required: set unused string fields to "" and unused
-number fields to 0. For intent add, payee, amount, category and date MUST
-be filled in.
-Output only the JSON object."""
-    return llm_call(system, text, BUDGET_SCHEMA)
-
-
-def do_budget_add(db, act, sender, event_id):
-    cents = round(float(act["amount"]) * 100)
-    cat = act.get("category") or "other"
-    if cat not in categories(db):
-        cat = "other"
-    day = act.get("date") or today().isoformat()
-    payee = (act.get("payee") or "?").strip()[:80]
-    db.execute(
-        "INSERT INTO tx(date,payee,amount_cents,category,note,entered_by,event_id,created_ts)"
-        " VALUES(?,?,?,?,?,?,?,?)",
-        (day, payee, cents, cat, act.get("note", "")[:200], sender, event_id, int(time.time())))
-    db.commit()
-    r = db.execute("SELECT * FROM tx WHERE event_id=?", (event_id,)).fetchone()
-    month_total = db.execute(
-        "SELECT COALESCE(SUM(amount_cents),0) t FROM tx WHERE date LIKE ? AND deleted=0",
-        (day[:7] + "%",)).fetchone()["t"]
-    return (f"✓ {fmt_amount(cents)} {payee} → {cat}"
-            f"{'' if day == today().isoformat() else ' on ' + day}"
-            f"  (#{r['id']}; {day[:7]} total {fmt_amount(month_total)})")
-
-
-def do_budget_edit(db, act):
-    r = db.execute("SELECT * FROM tx WHERE id=?", (act.get("tx_id"),)).fetchone()
-    if not r:
-        return "Couldn't tell which entry you meant — say it with the #id (e.g. 'change #12 to 84')."
-    changes, params = [], []
-    if act.get("new_amount"):  # 0 = "not changed" by schema convention
-        changes.append("amount_cents=?"); params.append(round(float(act["new_amount"]) * 100))
-    if act.get("new_category"):
-        cat = act["new_category"] if act["new_category"] in categories(db) else None
-        if cat:
-            changes.append("category=?"); params.append(cat)
-    if act.get("new_payee"):
-        changes.append("payee=?"); params.append(act["new_payee"].strip()[:80])
-    if act.get("new_date"):
-        changes.append("date=?"); params.append(act["new_date"])
-    if not changes:
-        return "Nothing to change that I understood."
-    db.execute(f"UPDATE tx SET {','.join(changes)} WHERE id=?", (*params, r["id"]))
-    db.commit()
-    return "✏️ " + fmt_tx(db.execute("SELECT * FROM tx WHERE id=?", (r["id"],)).fetchone())
-
-
-def do_budget_delete(db, act):
-    r = db.execute("SELECT * FROM tx WHERE id=? AND deleted=0",
-                   (act.get("tx_id"),)).fetchone()
-    if not r:
-        return "Couldn't tell which entry to delete — use its #id."
-    db.execute("UPDATE tx SET deleted=1 WHERE id=?", (r["id"],))
-    db.commit()
-    return f"🗑 removed {fmt_tx(r)} (say 'restore #{r['id']}' to undo)"
-
-
-def do_budget_restore(db, act):
-    r = db.execute("SELECT * FROM tx WHERE id=? AND deleted=1",
-                   (act.get("tx_id"),)).fetchone()
-    if not r:
-        return "Nothing deleted under that #id."
-    db.execute("UPDATE tx SET deleted=0 WHERE id=?", (r["id"],))
-    db.commit()
-    return "↩️ restored " + fmt_tx(r)
-
-
-def month_rows(db, month):
-    return db.execute(
-        "SELECT category, SUM(amount_cents) c FROM tx WHERE date LIKE ? AND deleted=0 "
-        "GROUP BY category ORDER BY c DESC", (month + "%",)).fetchall()
-
-
-def do_budget_query(db, act):
-    kind = act.get("query_kind", "month_summary")
-    month = act.get("month") or today().isoformat()[:7]
-    if kind == "recent":
-        rows = recent_tx(db, 10)
-        return "Recent:\n" + ("\n".join(fmt_tx(r) for r in rows) or "(nothing yet)")
-    if kind == "category_total":
-        cat = act.get("category") or "other"
-        row = db.execute(
-            "SELECT COALESCE(SUM(amount_cents),0) c, COUNT(*) n FROM tx "
-            "WHERE date LIKE ? AND category=? AND deleted=0", (month + "%", cat)).fetchone()
-        return f"{month} {cat}: {fmt_amount(row['c'])} across {row['n']} entries"
-    if kind == "compare_months":
-        rows = db.execute(
-            "SELECT substr(date,1,7) m, SUM(amount_cents) c FROM tx WHERE deleted=0 "
-            "GROUP BY m ORDER BY m DESC LIMIT 6").fetchall()
-        return "Monthly totals:\n" + "\n".join(f"{r['m']}: {fmt_amount(r['c'])}" for r in rows)
-    rows = month_rows(db, month)
-    if not rows:
-        return f"No entries for {month} yet."
-    total = sum(r["c"] for r in rows)
-    lines = [f"{month} — total {fmt_amount(total)}"]
-    lines += [f"  {r['category']}: {fmt_amount(r['c'])}" for r in rows]
-    return "\n".join(lines)
-
-
-def make_chart(db, act):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    fig, ax = plt.subplots(figsize=(7, 4), dpi=140)
-    if act.get("chart_kind") == "trend":
-        rows = db.execute(
-            "SELECT substr(date,1,7) m, SUM(amount_cents)/100.0 t FROM tx "
-            "WHERE deleted=0 GROUP BY m ORDER BY m").fetchall()
-        ax.plot([r["m"] for r in rows], [r["t"] for r in rows], marker="o")
-        ax.set_title("Monthly spending")
-        title = "trend.png"
-    else:
-        month = act.get("month") or today().isoformat()[:7]
-        rows = month_rows(db, month)
-        ax.bar([r["category"] for r in rows], [r["c"] / 100 for r in rows])
-        ax.set_title(f"Spending by category — {month}")
-        ax.tick_params(axis="x", rotation=30)
-        title = f"{month}.png"
-    ax.set_ylabel("$")
-    fig.tight_layout()
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    buf.seek(0)
-    return title, buf
-
-
-BUDGET_HELP = """I file whatever you type into the ledger. Examples:
-• costco 84.12 — logs a purchase (I guess the category)
-• gas 40 yesterday / lunch 15 last tuesday
-• change #12 to 84 / #12 was household / delete #12 / restore #12
-• how much on groceries this month? / recent / monthly totals
-• chart / trend — pictures
-• add category kids"""
-
-
 # ================================================================ bot
 
 class Bot:
     def __init__(self):
         self.hdb = home_db()
         self.sdb = home_db(SCRATCH_DB_PATH, cal=False) if SCRATCH_USERS else None
-        self.bdb = budget_db()
         self.client = AsyncClient(HS_URL, USER_ID)
         self.home_room = None
         self.scratch_room = None
@@ -1520,18 +1254,6 @@ class Bot:
                 html.escape(f"@{mention}"), pill, 1)
         await self.client.room_send(room_id, "m.room.message", content)
 
-    async def send_image(self, room_id, name, buf):
-        data = buf.getvalue()
-        resp, _ = await self.client.upload(io.BytesIO(data), content_type="image/png",
-                                           filename=name, filesize=len(data))
-        if not getattr(resp, "content_uri", None):
-            await self.send(room_id, "(chart upload failed)")
-            return
-        await self.client.room_send(room_id, "m.room.message", {
-            "msgtype": "m.image", "body": name, "url": resp.content_uri,
-            "info": {"mimetype": "image/png", "size": len(data)},
-        })
-
     # -------------------------------------------------------- dispatch
 
     async def on_message(self, room, event):
@@ -1541,13 +1263,11 @@ class Bot:
             handler = partial(self.handle_home, self.hdb)
         elif self.scratch_room and room.room_id == self.scratch_room:
             handler = partial(self.handle_home, self.sdb)
-        elif room.room_id == BUDGET_ROOM_ID:
-            handler = self.handle_budget
         else:
             return
         # One processed-table (the household db) covers both rooms. Mark before
         # handling for deliberate at-most-once semantics: replaying after a
-        # crash could duplicate household or budget mutations.
+        # crash could duplicate household or scratchpad mutations.
         if self.hdb.execute("SELECT 1 FROM processed WHERE event_id=?",
                             (event.event_id,)).fetchone():
             return
@@ -1556,8 +1276,7 @@ class Bot:
         self.hdb.commit()
         # Replay policy: catch up on messages missed while down (up to 7
         # days), but NEVER before this database first existed — a fresh DB
-        # must not chew either room's prior history into duplicate entries
-        # (the Budget room has weeks of already-filed messages).
+        # must not chew either room's prior history into duplicate entries.
         first_start = int(meta_get(self.hdb, "first_start_ms") or 0)
         if event.server_timestamp < max(first_start, START_MS - 7 * 86400 * 1000):
             return
@@ -1625,44 +1344,6 @@ class Bot:
             await asyncio.to_thread(git_snapshot, db, db_path,
                                     f"{'+'.join(mutated)} by {sender}: {text[:60]}")
 
-    async def handle_budget(self, room_id, sender, event, text):
-        try:
-            act = await asyncio.to_thread(budget_parse, self.bdb, sender, text)
-        except Exception:
-            log.exception("parse failed")
-            await self.send(room_id, "(I choked parsing that — try again?)")
-            return
-        log.info("budget %s: %r -> %s", sender, text, act.get("intent"))
-        intent = act.get("intent")
-        mutated = intent in ("add", "edit", "delete", "restore", "add_category")
-        if intent == "add" and act.get("amount"):
-            await self.send(room_id, do_budget_add(self.bdb, act, sender, event.event_id))
-        elif intent == "edit":
-            await self.send(room_id, do_budget_edit(self.bdb, act))
-        elif intent == "delete":
-            await self.send(room_id, do_budget_delete(self.bdb, act))
-        elif intent == "restore":
-            await self.send(room_id, do_budget_restore(self.bdb, act))
-        elif intent == "query":
-            await self.send(room_id, do_budget_query(self.bdb, act))
-        elif intent == "chart":
-            name, buf = await asyncio.to_thread(make_chart, self.bdb, act)
-            await self.send_image(room_id, name, buf)
-        elif intent == "add_category":
-            cat = (act.get("category") or "").strip().lower()[:30]
-            if cat:
-                self.bdb.execute(
-                    "INSERT OR IGNORE INTO categories(name) VALUES(?)", (cat,))
-                self.bdb.commit()
-                await self.send(room_id, f"category '{cat}' added")
-        elif intent == "help":
-            await self.send(room_id, BUDGET_HELP)
-        elif intent == "other" and act.get("reply"):
-            await self.send(room_id, act["reply"][:400])
-        if mutated:
-            await asyncio.to_thread(git_snapshot, self.bdb, BUDGET_DB_PATH,
-                                    f"{intent} by {sender}: {text[:60]}")
-
     # -------------------------------------------------------- schedules
 
     async def scheduler(self):
@@ -1718,37 +1399,11 @@ class Bot:
                         db.commit()
                     except Exception:
                         log.exception("reminder %s failed", r["id"])
-            # Budget: Sunday check-in / stale-entry nag (budgetbot behavior,
-            # including its meta key — the last stamp carries over).
-            if now.hour == BUDGET_REMIND_HOUR and BUDGET_ROOM_ID \
-                    and meta_get(self.bdb, "last_reminder") != day:
-                last = self.bdb.execute("SELECT MAX(date) d FROM tx").fetchone()["d"]
-                stale = (not last or
-                         (now.date() - date.fromisoformat(last)).days >= BUDGET_STALE_DAYS)
-                try:
-                    if now.weekday() == 6:
-                        meta_set(self.bdb, "last_reminder", day)
-                        await self.send(BUDGET_ROOM_ID,
-                                        "Sunday check-in.\n" + do_budget_query(self.bdb, {}))
-                    elif stale:
-                        meta_set(self.bdb, "last_reminder", day)
-                        days = "ever" if not last else f"since {last}"
-                        await self.send(BUDGET_ROOM_ID,
-                                        f"No entries {days} — anything to log?")
-                except Exception:
-                    log.exception("budget reminder failed")
 
     # -------------------------------------------------------- lifecycle
 
-    async def on_invite(self, room, event):
-        # The adopt oneshot (the old budgetbot account) invites us to the
-        # Budget room; accept only rooms we expect.
-        if room.room_id == BUDGET_ROOM_ID:
-            await self.client.join(room.room_id)
-            log.info("joined budget room %s", room.room_id)
-
     async def ensure_rooms(self):
-        """First start: create the Household room; join Budget if invited."""
+        """First start: create the Household (and scratchpad) rooms."""
         self.home_room = meta_get(self.hdb, "room_id")
         if not self.home_room:
             resp = await self.client.room_create(
@@ -1781,12 +1436,6 @@ class Bot:
             self.scratch_room = resp.room_id
             meta_set(self.hdb, "scratch_room_id", self.scratch_room)
             log.info("created room %s (%s)", SCRATCH_ROOM_NAME, self.scratch_room)
-        if BUDGET_ROOM_ID:
-            # Idempotent; succeeds once the adopt oneshot has invited us,
-            # no-ops on every later start, fails harmlessly before then.
-            resp = await self.client.join(BUDGET_ROOM_ID)
-            if not getattr(resp, "room_id", None):
-                log.warning("not in budget room yet (%s)", resp)
 
     async def run(self):
         if not meta_get(self.hdb, "first_start_ms"):
@@ -1806,10 +1455,8 @@ class Bot:
             meta_set(self.hdb, "device_id", resp.device_id)
         await self.ensure_rooms()
         self.client.add_event_callback(self.on_message, RoomMessageText)
-        self.client.add_event_callback(self.on_invite, InviteMemberEvent)
-        log.info("remy up as %s (home %s, scratch %s, budget %s)",
-                 USER_ID, self.home_room, self.scratch_room or "-",
-                 BUDGET_ROOM_ID or "-")
+        log.info("remy up as %s (home %s, scratch %s)",
+                 USER_ID, self.home_room, self.scratch_room or "-")
         asyncio.get_event_loop().create_task(self.scheduler())
         await self.client.sync_forever(timeout=30000, full_state=True)
 
