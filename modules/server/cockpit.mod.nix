@@ -3,7 +3,13 @@
 # carrying full user privileges (contrast the locked-down fleet workers of
 # agent-vm.mod.nix). Agent tooling itself comes from packages.mod.nix /
 # claude.mod.nix, gated on `isDesktop || cockpit.enable`.
-{ inputs, ... }:
+#
+# MIGRATION IN PROGRESS: the seat is moving from the primary user to the
+# dedicated `bridge` account below — full tool permissions inside, walls
+# enforced by the OS (no wheel, no Nix trust, no secrets, default-deny
+# network). Phase 1 ships the account and its cage; sessions still run as
+# the primary user until state migrates.
+{ inputs, self, ... }:
 {
   flake.homeModules.cockpit =
     {
@@ -282,9 +288,14 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption;
+
+      # Fixed uid: the egress fence below is a drop-in on user-<uid>.slice,
+      # which must name the uid statically.
+      seatUid = 1001;
     in
     {
       options.cockpit.enable = mkEnableOption "the persistent cockpit session role on this host";
@@ -299,7 +310,39 @@
             assertion = config.cockpit.webEnable -> config.shipProxy.enable;
             message = "cockpit.webEnable requires shipProxy.enable (the tailnet-only front door)";
           }
+          {
+            # The seat account's only network door is the cockpit listener on
+            # the fleet's squid; without the fleet the account is network-dead.
+            assertion = config.agentFleet.enable;
+            message = "the cockpit seat's egress proxy rides the fleet squid (microvm-host.mod.nix)";
+          }
         ];
+
+        # THE SEAT ACCOUNT — where the AI will run fully-permissioned. The
+        # boundary is what this user CANNOT do: not in wheel, not a trusted
+        # Nix user, not an agenix recipient, no push credentials, and fenced
+        # by the slice below. Reach it via plain sshd only: a Tailscale SSH
+        # session would run under tailscaled's cgroup and bypass the fence.
+        users.users.bridge = {
+          isNormalUser = true;
+          uid = seatUid;
+          group = "bridge";
+          description = "bridge seat";
+          openssh.authorizedKeys.keys = self.keys-admin;
+        };
+        users.groups.bridge.gid = seatUid;
+
+        # THE CAGE — cgroup-eBPF address filter on every process the seat
+        # user runs, both directions, all interfaces. The tailnet is covered
+        # here precisely because Tailscale ACLs cannot tell fw0's users
+        # apart. The only reachable peer is squid's dedicated loopback
+        # address; domain policy lives in squid's cockpit ACL
+        # (microvm-host.mod.nix). Loopback services on 127.0.0.1 (Matrix,
+        # media, HA) stay out of reach.
+        systemd.slices."user-${toString seatUid}".sliceConfig = {
+          IPAddressDeny = "any";
+          IPAddressAllow = singleton "127.0.1.9/32";
+        };
 
         # tmux is the session's persistence layer; the binary is already
         # system-wide (packages.mod.nix), this adds the /etc config.

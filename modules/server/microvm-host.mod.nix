@@ -19,7 +19,7 @@
       inherit (lib.lists) singleton;
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib.options) mkEnableOption;
-      inherit (lib.strings) concatStringsSep;
+      inherit (lib.strings) concatStringsSep optionalString;
 
       cfg = config.agentFleet;
       topology = import ../../lib/fleet-topology.nix;
@@ -37,6 +37,21 @@
         ".models.dev" # opencode: provider/model registry it fetches at startup
         "cache.nixos.org" # exact trusted binary cache; not user-content *.nixos.org
       ];
+
+      # The bridge seat account's egress allowlist — wider than the workers'
+      # (it develops and researches, they execute), still default-deny. Served
+      # on a dedicated loopback address so the seat's slice fence
+      # (cockpit.mod.nix) can allow exactly this listener by IP without
+      # opening 127.0.0.1 services. Same leading-dot rule as above. ("seat",
+      # not "bridge", in names here: `bridge` is br-agents in this file.)
+      seatDomains = allowedDomains ++ [
+        ".claude.ai" # Claude Code session sync/artifacts
+        ".github.com" # git remotes + gh api
+        ".githubusercontent.com" # raw files, release assets, flake registry
+        ".crates.io" # cargo index + downloads
+        "channels.nixos.org" # nixpkgs channel/flake metadata
+      ];
+      seatProxy = "127.0.1.9:3129";
     in
     {
       imports = singleton inputs.microvm.nixosModules.host;
@@ -123,12 +138,14 @@
             enable = true;
             configText = ''
               http_port ${hostAddr}:3128
+              ${optionalString config.cockpit.enable "http_port ${seatProxy}"}
               pid_filename /run/squid/squid.pid
 
               # Run as the squid user (owns /var/log/squid + /var/cache/squid);
               # without this squid drops to 'nobody' and can't write its logs.
               cache_effective_user squid
 
+              acl fleet_port localport 3128
               acl allowed_domains dstdomain ${concatStringsSep " " allowedDomains}
               acl SSL_ports port 443
               acl CONNECT method CONNECT
@@ -137,7 +154,14 @@
               # needed by any sealed-worker provider or binary-cache endpoint.
               http_access deny !CONNECT
               http_access deny CONNECT !SSL_ports
-              http_access allow allowed_domains
+              http_access allow allowed_domains fleet_port
+              ${optionalString config.cockpit.enable ''
+                # The seat's wider list is valid only on its own listener; the
+                # workers' port cannot reach it.
+                acl seat_port localport 3129
+                acl seat_domains dstdomain ${concatStringsSep " " seatDomains}
+                http_access allow seat_domains seat_port
+              ''}
               http_access deny all
 
               # Proxy, not cache.

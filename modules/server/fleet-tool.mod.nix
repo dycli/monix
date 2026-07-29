@@ -30,6 +30,7 @@
       ...
     }:
     let
+      inherit (lib.lists) optionals;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
       inherit (lib.strings)
@@ -129,6 +130,8 @@
           description = "agent-fleet dispatch operator";
         };
         users.users.${config.primaryUser}.extraGroups = [ readers ];
+        # The bridge seat account (cockpit.mod.nix) reads results the same way.
+        users.users.bridge = mkIf config.cockpit.enable { extraGroups = [ readers ]; };
 
         environment.systemPackages = [
           fleet
@@ -141,7 +144,7 @@
         # so the cockpit's non-interactive `sudo -n` never blocks.
         security.sudo.extraRules = [
           {
-            users = [ config.primaryUser ];
+            users = [ config.primaryUser ] ++ optionals config.cockpit.enable [ "bridge" ];
             runAs = op;
             commands = [
               {
