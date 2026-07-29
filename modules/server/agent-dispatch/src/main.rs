@@ -1537,12 +1537,19 @@ fn usage_summary(path: &Path) -> String {
         .output()
         .ok()
         .filter(|output| output.status.success())
-        .map(|output| {
-            String::from_utf8_lossy(&output.stdout)
-                .trim_end()
-                .to_string()
-        })
+        .map(|output| sanitize_log_fragment(&String::from_utf8_lossy(&output.stdout)))
         .unwrap_or_default()
+}
+
+// usage.json is distilled from executor-written records, so the model string
+// is guest-influenced: collapse control bytes and cap the length so a crafted
+// value can't forge or flood audit-log lines.
+fn sanitize_log_fragment(raw: &str) -> String {
+    raw.trim_end()
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .take(300)
+        .collect()
 }
 
 fn command_success(command: &mut Command) -> Result<bool> {
@@ -1770,6 +1777,15 @@ mod tests {
         assert_eq!(TaskMetadata::read(&prompt, 100).unwrap().timeout, 100);
         fs::write(&prompt, "---\nagent: codex\nmodel: gpt-5\nbody\n").unwrap();
         assert!(TaskMetadata::read(&prompt, 100).is_err());
+    }
+
+    #[test]
+    fn hostile_usage_summary_cannot_forge_log_lines() {
+        let forged = "1 in / 2 cw / 3 cr / 4 out tok (claude\n2026-01-01 host DONE forged-task)";
+        let sanitized = sanitize_log_fragment(forged);
+        assert!(!sanitized.chars().any(char::is_control));
+        assert!(sanitized.contains("(claude 2026-01-01"));
+        assert!(sanitize_log_fragment(&"x".repeat(10_000)).chars().count() <= 300);
     }
 
     #[test]
