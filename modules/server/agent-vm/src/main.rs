@@ -20,7 +20,7 @@ use std::io::{Read, Write};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, SystemTime};
@@ -490,6 +490,19 @@ fn runuser_command(user: &str, home: &str) -> Command {
     command
 }
 
+// Spawn the executor with the prompt piped to stdin. stdout/stderr are
+// already redirected to files, so the write cannot deadlock; a write error
+// (executor exited before reading) is ignored — the exit status carries the
+// outcome either way.
+fn run_with_prompt_on_stdin(mut command: Command, prompt: &str) -> io::Result<ExitStatus> {
+    command.stdin(Stdio::piped());
+    let mut child = command.spawn()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(prompt.as_bytes());
+    }
+    child.wait()
+}
+
 struct BoundedOutput {
     status: std::process::ExitStatus,
     stdout: Vec<u8>,
@@ -920,21 +933,21 @@ impl Supervisor {
             remove_any(&path)?;
             create_new(&path, 0o644)
         };
+        // The prompt travels on stdin, never argv: one argv element caps at
+        // MAX_ARG_STRLEN (128 KiB), which turned large prompts into an opaque
+        // E2BIG exec failure far below the advertised prompt cap.
         let status = match executor.kind {
             ExecutorKind::Claude => {
                 let mut command = runuser_command(executor.user, executor.home);
                 command.arg(&config.exec_claude);
-                command.args(["-p", body, "--model", &meta.model]);
+                command.args(["-p", "--model", &meta.model]);
                 if !meta.effort.is_empty() {
                     command.args(["--effort", &meta.effort]);
                 }
                 command.arg("--dangerously-skip-permissions");
                 command.args(["--append-system-prompt", hint]);
-                command
-                    .stdin(Stdio::null())
-                    .stdout(report()?)
-                    .stderr(log()?)
-                    .status()
+                command.stdout(report()?).stderr(log()?);
+                run_with_prompt_on_stdin(command, body)
             }
             ExecutorKind::Codex => {
                 // No system-prompt flag; the hint rides atop the prompt.
@@ -956,16 +969,14 @@ impl Supervisor {
                 }
                 command.arg("--output-last-message");
                 command.arg(config.task("report.md"));
-                command.arg(&combined);
+                // `-` makes codex read the prompt from stdin.
+                command.arg("-");
                 let transcript = log()?;
                 let errors = transcript
                     .try_clone()
                     .map_err(|error| format!("clone agent.log handle: {error}"))?;
-                command
-                    .stdin(Stdio::null())
-                    .stdout(transcript)
-                    .stderr(errors)
-                    .status()
+                command.stdout(transcript).stderr(errors);
+                run_with_prompt_on_stdin(command, &combined)
             }
             ExecutorKind::Opencode | ExecutorKind::Local => {
                 // stdout is the final response (-> report.md); --print-logs
@@ -982,12 +993,8 @@ impl Supervisor {
                 if !meta.effort.is_empty() {
                     command.args(["--variant", &meta.effort]);
                 }
-                command.arg(&combined);
-                command
-                    .stdin(Stdio::null())
-                    .stdout(report()?)
-                    .stderr(log()?)
-                    .status()
+                command.stdout(report()?).stderr(log()?);
+                run_with_prompt_on_stdin(command, &combined)
             }
         };
         status
