@@ -122,6 +122,11 @@
                   deny 100.102.113.74;
                   allow 100.64.0.0/10;
                   deny all;
+                  # Wear a dedicated source address on the upstream leg so
+                  # the seat's own fence can allow nginx WITHOUT allowing
+                  # 127.0.0.1 — which would hand it every other local
+                  # service (fleet-topology.nix, cockpit.mod.nix).
+                  proxy_bind ${topology.seatIngressAddr};
                 '';
               };
             }

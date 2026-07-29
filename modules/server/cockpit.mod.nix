@@ -451,10 +451,40 @@
             User = "bridge";
             Group = "bridge";
             Slice = "cockpit.slice";
+            # The web seat gets the SAME door as an interactive one. It is
+            # a system service, so it lives in cockpit.slice and the
+            # user-1001.slice fence never covered it — until this, the
+            # squid-only story applied to tmux sessions and not to the seat
+            # reachable from a phone. This denies the public internet, the
+            # LAN, the tailnet, and the fleet bridge, and routes its HTTP
+            # through squid's domain allowlist.
+            #
+            # What it does NOT do, because systemd IP filtering matches
+            # ADDRESSES and not ports: every service bound to 0.0.0.0
+            # answers on these addresses too. Verified from inside the
+            # interactive seat, which carries the same shape of fence:
+            # llama-swap, Immich, SABnzbd and nginx (hence any ship vhost
+            # by Host header) are all reachable through the one allowed
+            # address. Closing that needs services off 0.0.0.0 or a real
+            # network namespace for the seat — see the audit4 backlog. The
+            # fence below is still worth having: it is the difference
+            # between "the household's own services" and "anywhere on the
+            # internet".
+            IPAddressAllow = [
+              "${topology.seatProxyAddr}/32"
+              "${topology.seatIngressAddr}/32"
+            ];
+            IPAddressDeny = "any";
             # The declaratively generated config (opencode.jsonc above) is
-            # the one the seat must run with.
+            # the one the seat must run with. The proxy variables are the
+            # other half of the fence: home.sessionVariables only reach
+            # login shells, so without these the web seat would talk to
+            # squid's allowlist not at all.
             Environment = [
               "OPENCODE_CONFIG=/home/bridge/.config/opencode/opencode.jsonc"
+              "HTTP_PROXY=${seatProxy}"
+              "HTTPS_PROXY=${seatProxy}"
+              "NO_PROXY=127.0.0.1,localhost"
             ];
             WorkingDirectory = "/home/bridge/cockpit";
             # The seat's listener is the one socket this service may open;

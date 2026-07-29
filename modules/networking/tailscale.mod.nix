@@ -20,7 +20,17 @@
           # belt-and-suspenders path (and for non-tailnet desktop access).
           # `set` flags (unlike `up` flags) apply on every activation, with
           # or without an auth key.
-          services.tailscale.extraSetFlags = [ "--ssh" ];
+          #
+          # OFF on the host that runs the caged seat: a Tailscale SSH
+          # session runs under tailscaled's cgroup, so it would bypass the
+          # seat's slice fence entirely (cockpit.mod.nix documents this),
+          # and whether anyone may land as `bridge` would rest on a tailnet
+          # ACL that lives outside this repo. A local boundary should not
+          # depend on remote policy. Plain sshd already serves the tailnet
+          # there, so nothing is lost but the bypass.
+          services.tailscale.extraSetFlags = singleton (
+            if config.cockpit.enable then "--ssh=false" else "--ssh"
+          );
 
           # Trust the tailnet interface so services bound on it are
           # reachable without opening the public firewall.

@@ -17,4 +17,11 @@
   # compromised parser. nginx (ship-proxy) is the only intended client.
   seatWebAddr = "127.0.1.10";
   seatWebPort = 4097;
+
+  # The source address nginx wears when it proxies to the web seat
+  # (ship-proxy.mod.nix sets proxy_bind). The seat's own fence allows this
+  # one address for the inbound leg — using nginx's default 127.0.0.1
+  # source would mean allowing 127.0.0.1 outright, which hands the seat
+  # every other loopback service on the box.
+  seatIngressAddr = "127.0.1.11";
 }
