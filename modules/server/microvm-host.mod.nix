@@ -46,6 +46,7 @@
       # not "bridge", in names here: `bridge` is br-agents in this file.)
       seatDomains = allowedDomains ++ [
         ".claude.ai" # Claude Code session sync/artifacts
+        ".claude.com" # Claude Code OAuth (claude.com + platform.claude.com)
         ".github.com" # git remotes + gh api
         ".githubusercontent.com" # raw files, release assets, flake registry
         ".crates.io" # cargo index + downloads
