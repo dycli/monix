@@ -11,6 +11,7 @@
 !*.md
 !*.lock
 !.gitignore
+!.git-blame-ignore-revs
 
 # Encrypted secrets (age ciphertext only).
 !*.age
