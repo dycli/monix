@@ -343,6 +343,10 @@
           # can reach the seat's repos and files.
           homeMode = "750";
           openssh.authorizedKeys.keys = self.keys-admin;
+          # The system journal is the engineer's debugging sight — reading
+          # it is seat work (captain's call 2026-07-29). Read-only: journal
+          # mutations still need root.
+          extraGroups = singleton "systemd-journal";
         };
         users.groups.bridge.gid = seatUid;
 
