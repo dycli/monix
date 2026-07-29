@@ -92,6 +92,16 @@
           url = "https://cdn.modrinth.com/data/4BeAEBIb/versions/StOy04qm/chunksmith-3.1.1%2B26.2.jar";
           sha512 = "b8bbcd54e064e6a1b33a5ae290077ccff79b5430624271772d82a368670b2474ce2f2c3cd95318778ee7b4c3e5fd5cbc511d43459bb7862c67668e4737cff8d7";
         };
+
+        # --- Library ---
+        # Fabric API — REQUIRED at runtime by Chunksmith, ServerCore, and
+        # spark (fabric-api-base and friends, declared in the mods' own
+        # fabric.mod.json, not visible in this repo). Removing it takes the
+        # whole server down at mod-resolution time.
+        FabricAPI = mod {
+          url = "https://cdn.modrinth.com/data/P7dR8mSH/versions/lVXlbH4w/fabric-api-0.155.2%2B26.2.jar";
+          sha512 = "cc56984378a27c5bcd56374d6ffbb27a45c6bf3355add2ac6be9817ccac5854362249bf9d0147eb271a70fda2716129204e240d53c9aa876a2a7861f4c7f880f";
+        };
       };
     in
     {
