@@ -27,6 +27,7 @@
 
       cfg = config.media;
       networkFences = import ../../lib/network-fences.nix;
+      hardened = import ../../lib/hardened.nix;
 
       # downloads/ (SABnzbd) and library/ (*arr, read by Jellyfin) share this
       # root for hardlink imports.
@@ -240,12 +241,35 @@
         # Egress fence on every unit; Prowlarr too (indexers + *arrs on loopback).
         systemd.services.sonarr.serviceConfig = egressFence;
         systemd.services.radarr.serviceConfig = egressFence;
-        systemd.services.bazarr.serviceConfig = egressFence;
         systemd.services.prowlarr.serviceConfig = egressFence;
-        systemd.services.sabnzbd.serviceConfig = egressFence;
         systemd.services.jellyfin.serviceConfig = egressFence;
         # Widened fence — see LAN EXCEPTION above.
         systemd.services.calibre-web.serviceConfig = calibreWebFence;
+
+        # These two are the stack's heaviest untrusted-input parsers —
+        # SABnzbd unpacks Usenet archives through unrar, Bazarr downloads
+        # and parses subtitle files — and their nixpkgs modules ship no
+        # isolation of their own, while sonarr/radarr's do and
+        # prowlarr's comes free with DynamicUser. Same confinement their
+        # siblings already have, applied downstream where we know the
+        # deployment. ReadWritePaths is the load-bearing part: under
+        # ProtectSystem=strict both must still write the media tree
+        # (downloads land there; subtitles are saved next to the video).
+        systemd.services.bazarr.serviceConfig =
+          egressFence
+          // hardened.vendor
+          // {
+            ReadWritePaths = [
+              mediaRoot
+              "/var/lib/bazarr" # its dataDir; the module declares no StateDirectory
+            ];
+          };
+        systemd.services.sabnzbd.serviceConfig =
+          egressFence
+          // hardened.vendor
+          // {
+            ReadWritePaths = [ mediaRoot ];
+          };
       };
     };
 }
