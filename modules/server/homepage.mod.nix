@@ -68,7 +68,6 @@
             }
           ];
 
-
           # Columns and tiles are alphabetical; list order here is display order.
           services = [
             {

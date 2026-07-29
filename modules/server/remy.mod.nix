@@ -235,15 +235,18 @@
           wantedBy = [ "multi-user.target" ];
           wants = [ "tuwunel.service" ];
           after = [ "tuwunel.service" ];
-          serviceConfig = sandbox // loopbackOnly // {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            ExecStart = getExe register;
-            EnvironmentFile = [
-              cfg.credentialsEnvFile
-              cfg.registrationEnvFile
-            ];
-          };
+          serviceConfig =
+            sandbox
+            // loopbackOnly
+            // {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              ExecStart = getExe register;
+              EnvironmentFile = [
+                cfg.credentialsEnvFile
+                cfg.registrationEnvFile
+              ];
+            };
         };
 
         systemd.services.remy = {
@@ -278,12 +281,15 @@
             BOT_LOG_TIME = cfg.logTime;
             BOT_TZ = config.time.timeZone;
           };
-          serviceConfig = sandbox // loopbackOnly // {
-            ExecStart = "${python}/bin/python ${./remy/bot.py}";
-            EnvironmentFile = cfg.credentialsEnvFile;
-            Restart = "always";
-            RestartSec = 10;
-          };
+          serviceConfig =
+            sandbox
+            // loopbackOnly
+            // {
+              ExecStart = "${python}/bin/python ${./remy/bot.py}";
+              EnvironmentFile = cfg.credentialsEnvFile;
+              Restart = "always";
+              RestartSec = 10;
+            };
         };
 
         systemd.services.remy-calendar-sync = mkIf (cfg.calendar.credentialsFile != null) {
@@ -331,16 +337,18 @@
           description = "mirror remy's daily log into the vault";
           serviceConfig = {
             Type = "oneshot";
-            ExecStart = getExe (pkgs.writeShellApplication {
-              name = "remy-famlog";
-              runtimeInputs = [ pkgs.coreutils ];
-              text = ''
-                src=/var/lib/remy/log.md
-                [ -f "$src" ] || exit 0
-                install -D -o ${cfg.famlog.owner} -g ${cfg.famlog.group} -m 0644 \
-                  "$src" ${lib.escapeShellArg cfg.famlog.path}
-              '';
-            });
+            ExecStart = getExe (
+              pkgs.writeShellApplication {
+                name = "remy-famlog";
+                runtimeInputs = [ pkgs.coreutils ];
+                text = ''
+                  src=/var/lib/remy/log.md
+                  [ -f "$src" ] || exit 0
+                  install -D -o ${cfg.famlog.owner} -g ${cfg.famlog.group} -m 0644 \
+                    "$src" ${lib.escapeShellArg cfg.famlog.path}
+                '';
+              }
+            );
             ProtectSystem = "strict";
             ReadWritePaths = [ (dirOf cfg.famlog.path) ];
             ReadOnlyPaths = [ "/var/lib/remy" ];

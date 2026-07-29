@@ -104,18 +104,21 @@
       # One `hl.bind(keys, dispatcher, opts)` call per list element.
       # `opts` merges over `{ description = ...; }`, so callers only need to
       # add flags (`locked`, `repeating`, `mouse`) that differ from none.
-      mkBind =
-        keys: dispatcherLua: description: opts:
-        {
-          _args = [
-            keys
-            (mkLuaInline dispatcherLua)
-            (recursiveUpdate { inherit description; } opts)
-          ];
-        };
+      mkBind = keys: dispatcherLua: description: opts: {
+        _args = [
+          keys
+          (mkLuaInline dispatcherLua)
+          (recursiveUpdate { inherit description; } opts)
+        ];
+      };
 
       # One `hl.env(key, value)` call per list element.
-      mkEnv = key: value: { _args = [ key value ]; };
+      mkEnv = key: value: {
+        _args = [
+          key
+          value
+        ];
+      };
     in
     {
       config = mkIf osConfig.isDesktop {
@@ -174,9 +177,7 @@
               # Statically expanded: Hyprland's `env` does no shell expansion,
               # so a literal `$VAR` would propagate into the session and break
               # nvim's runtimepath expansion (E79) under non-POSIX shells.
-              (mkEnv "XDG_DATA_DIRS"
-                "/etc/profiles/per-user/${osConfig.primaryUser}/share:/run/current-system/sw/share"
-              )
+              (mkEnv "XDG_DATA_DIRS" "/etc/profiles/per-user/${osConfig.primaryUser}/share:/run/current-system/sw/share")
               (mkEnv "EDITOR" "nvim")
               # adw-gtk3: the theme DMS's generated gtk.css is written against.
               (mkEnv "GTK_THEME" "adw-gtk3-dark")
@@ -359,212 +360,185 @@
             };
 
             # BINDINGS
-            bind =
+            bind = [
+              (mkBind "SUPER + RETURN" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty}")'' "Open terminal" { })
+              (mkBind "SUPER + BACKSPACE" ''hl.dsp.exec_cmd("dms ipc call powermenu toggle")'' "Power menu" { })
+              (mkBind "SUPER + SLASH" ''hl.dsp.exec_cmd("${getExe pkgs.keepassxc}")'' "Open password manager" { })
+              (mkBind "SUPER + C" ''hl.dsp.send_shortcut({ mods = "CTRL", key = "Insert" })''
+                "Copy (send Ctrl+Insert to focused window)"
+                { }
+              )
+              (mkBind "SUPER + D" ''hl.dsp.exec_cmd("dms ipc call spotlight toggle")'' "App launcher" { })
+              (mkBind "SUPER + N" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e nvim")'' "Open editor" { })
+              (mkBind "SUPER + R" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e lf")'' "Open file manager" { })
+              (mkBind "SUPER + SHIFT + R" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e btop")''
+                "Open system monitor"
+                { }
+              )
+              (mkBind "SUPER + S" ''hl.dsp.exec_cmd("signal-desktop")'' "Open messenger" { })
+              (mkBind "SUPER + V" ''hl.dsp.send_shortcut({ mods = "SHIFT", key = "Insert" })''
+                "Paste (send Shift+Insert to focused window)"
+                { }
+              )
+              (mkBind "SUPER + X" ''hl.dsp.send_shortcut({ mods = "CTRL", key = "X" })''
+                "Send Ctrl+X to focused window"
+                { }
+              )
+              (mkBind "SUPER + W"
+                ''hl.dsp.exec_cmd("${getExe pkgs.brave} --new-window --ozone-platform=wayland")''
+                "Open browser"
+                { }
+              )
+
+              (mkBind "SUPER + SHIFT + SPACE" ''hl.dsp.exec_cmd("dms ipc call bar toggle index 0")'' "Toggle bar"
+                { }
+              )
+
+              (mkBind "SUPER + Q" "hl.dsp.window.close()" "Close window" { })
+
+              (mkBind "SUPER + ESCAPE" ''hl.dsp.exec_cmd("dms ipc call lock lock")'' "Lock screen" { })
+              (mkBind "SUPER + SHIFT + ESCAPE" "hl.dsp.exit()" "Exit Hyprland" { })
+              (mkBind "SUPER + CTRL + ESCAPE" ''hl.dsp.exec_cmd("reboot")'' "Reboot" { })
+              (mkBind "SUPER + SHIFT + CTRL + ESCAPE" ''hl.dsp.exec_cmd("systemctl poweroff")'' "Power off" { })
+              (mkBind "SUPER + K" ''hl.dsp.exec_cmd("dms ipc call keybinds toggle hyprland")'' "Show keybindings"
+                { }
+              )
+              (mkBind "SUPER + I" ''hl.dsp.exec_cmd("dms ipc call inhibit toggle")'' "Toggle idle inhibit" { })
+
+              (mkBind "SUPER + J" ''hl.dsp.layout("togglesplit")'' "Toggle split direction" { })
+              (mkBind "SUPER + P" "hl.dsp.window.pseudo()" "Toggle pseudotile" { })
+              (mkBind "SUPER + SHIFT + F" "hl.dsp.window.float()" "Toggle floating" { })
+              (mkBind "SUPER + F" ''hl.dsp.window.fullscreen({ mode = "fullscreen" })'' "Toggle fullscreen" { })
+
+              (mkBind "SUPER + LEFT" ''hl.dsp.focus({ direction = "l" })'' "Focus window left" { })
+              (mkBind "SUPER + RIGHT" ''hl.dsp.focus({ direction = "r" })'' "Focus window right" { })
+              (mkBind "SUPER + UP" ''hl.dsp.focus({ direction = "u" })'' "Focus window up" { })
+              (mkBind "SUPER + DOWN" ''hl.dsp.focus({ direction = "d" })'' "Focus window down" { })
+
+              (mkBind "SUPER + COMMA" ''hl.dsp.focus({ workspace = "-1" })'' "Previous workspace" { })
+              (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
+
+              (mkBind "SUPER + SHIFT + LEFT" ''hl.dsp.window.swap({ direction = "l" })'' "Swap window left" { })
+              (mkBind "SUPER + SHIFT + RIGHT" ''hl.dsp.window.swap({ direction = "r" })'' "Swap window right" { })
+              (mkBind "SUPER + SHIFT + UP" ''hl.dsp.window.swap({ direction = "u" })'' "Swap window up" { })
+              (mkBind "SUPER + SHIFT + DOWN" ''hl.dsp.window.swap({ direction = "d" })'' "Swap window down" { })
+
+              (mkBind "SUPER + MINUS" "hl.dsp.window.resize({ x = -100, y = 0, relative = true })"
+                "Shrink window width"
+                { }
+              )
+              (mkBind "SUPER + EQUAL" "hl.dsp.window.resize({ x = 100, y = 0, relative = true })"
+                "Grow window width"
+                { }
+              )
+              (mkBind "SUPER + SHIFT + MINUS" "hl.dsp.window.resize({ x = 0, y = -100, relative = true })"
+                "Shrink window height"
+                { }
+              )
+              (mkBind "SUPER + SHIFT + EQUAL" "hl.dsp.window.resize({ x = 0, y = 100, relative = true })"
+                "Grow window height"
+                { }
+              )
+
+              (mkBind "SUPER + mouse_down" ''hl.dsp.focus({ workspace = "e+1" })'' "Next open workspace" { })
+              (mkBind "SUPER + mouse_up" ''hl.dsp.focus({ workspace = "e-1" })'' "Previous open workspace" { })
+
+              # SUPER+U, not SUPER+S: S is taken by the messenger bind.
+              (mkBind "SUPER + U" ''hl.dsp.workspace.toggle_special("magic")'' "Toggle special workspace" { })
+              (mkBind "SUPER + SHIFT + U" ''hl.dsp.window.move({ workspace = "special:magic" })''
+                "Move window to special workspace"
+                { }
+              )
+
+              (mkBind "PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprshot} -m region")'' "Screenshot region" { })
+              (mkBind "SHIFT + PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprshot} -m window")'' "Screenshot window"
+                { }
+              )
+              (mkBind "CTRL + PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprshot} -m output")'' "Screenshot output"
+                { }
+              )
+              (mkBind "SUPER + PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprpicker} -a")'' "Pick color" { })
+
+              (mkBind "CTRL + SUPER + V" ''hl.dsp.exec_cmd("dms ipc call clipboard toggle")'' "Clipboard history"
+                { }
+              )
+
+              (mkBind "SUPER + mouse:272" "hl.dsp.window.drag()" "Move window" { mouse = true; })
+              (mkBind "SUPER + mouse:273" "hl.dsp.window.resize()" "Resize window" { mouse = true; })
+
+              (mkBind "XF86AudioRaiseVolume" ''hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+")''
+                "Volume up"
+                {
+                  locked = true;
+                  repeating = true;
+                }
+              )
+              (mkBind "XF86AudioLowerVolume" ''hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-")''
+                "Volume down"
+                {
+                  locked = true;
+                  repeating = true;
+                }
+              )
+              (mkBind "XF86AudioMute" ''hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle")'' "Mute" {
+                locked = true;
+                repeating = true;
+              })
+              (mkBind "XF86AudioMicMute" ''hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle")''
+                "Mic mute"
+                {
+                  locked = true;
+                  repeating = true;
+                }
+              )
+              (mkBind "XF86MonBrightnessUp" ''hl.dsp.exec_cmd("${getExe pkgs.brightnessctl} set 655+")''
+                "Brightness up"
+                {
+                  locked = true;
+                  repeating = true;
+                }
+              )
+              (mkBind "XF86MonBrightnessDown" ''hl.dsp.exec_cmd("${getExe pkgs.brightnessctl} set 655-")''
+                "Brightness down"
+                {
+                  locked = true;
+                  repeating = true;
+                }
+              )
+
+              (mkBind "XF86AudioNext" ''hl.dsp.exec_cmd("${getExe pkgs.playerctl} next")'' "Next track" {
+                locked = true;
+              })
+              (mkBind "XF86AudioPause" ''hl.dsp.exec_cmd("${getExe pkgs.playerctl} play-pause")'' "Play/pause" {
+                locked = true;
+              })
+              (mkBind "XF86AudioPlay" ''hl.dsp.exec_cmd("${getExe pkgs.playerctl} play-pause")'' "Play/pause" {
+                locked = true;
+              })
+              (mkBind "XF86AudioPrev" ''hl.dsp.exec_cmd("${getExe pkgs.playerctl} previous")'' "Previous track" {
+                locked = true;
+              })
+            ]
+            # Switch to / move to workspaces 1-9.
+            ++ (concatMap (
+              i:
+              let
+                n = toString i;
+              in
               [
-                (mkBind "SUPER + RETURN" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty}")'' "Open terminal" { })
-                (mkBind "SUPER + BACKSPACE" ''hl.dsp.exec_cmd("dms ipc call powermenu toggle")'' "Power menu" { })
-                (mkBind "SUPER + SLASH" ''hl.dsp.exec_cmd("${getExe pkgs.keepassxc}")'' "Open password manager" { })
-                (mkBind "SUPER + C" ''hl.dsp.send_shortcut({ mods = "CTRL", key = "Insert" })''
-                  "Copy (send Ctrl+Insert to focused window)"
+                (mkBind "SUPER + ${n}" "hl.dsp.focus({ workspace = ${n} })" "Switch to workspace ${n}" { })
+                (mkBind "SUPER + SHIFT + ${n}" "hl.dsp.window.move({ workspace = ${n} })"
+                  "Move window to workspace ${n}"
                   { }
-                )
-                (mkBind "SUPER + D" ''hl.dsp.exec_cmd("dms ipc call spotlight toggle")''
-                  "App launcher"
-                  { }
-                )
-                (mkBind "SUPER + N" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e nvim")'' "Open editor" { })
-                (mkBind "SUPER + R" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e lf")''
-                  "Open file manager"
-                  { }
-                )
-                (mkBind "SUPER + SHIFT + R" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e btop")''
-                  "Open system monitor"
-                  { }
-                )
-                (mkBind "SUPER + S" ''hl.dsp.exec_cmd("signal-desktop")'' "Open messenger" { })
-                (mkBind "SUPER + V" ''hl.dsp.send_shortcut({ mods = "SHIFT", key = "Insert" })''
-                  "Paste (send Shift+Insert to focused window)"
-                  { }
-                )
-                (mkBind "SUPER + X" ''hl.dsp.send_shortcut({ mods = "CTRL", key = "X" })''
-                  "Send Ctrl+X to focused window"
-                  { }
-                )
-                (mkBind "SUPER + W"
-                  ''hl.dsp.exec_cmd("${getExe pkgs.brave} --new-window --ozone-platform=wayland")''
-                  "Open browser"
-                  { }
-                )
-
-                (mkBind "SUPER + SHIFT + SPACE" ''hl.dsp.exec_cmd("dms ipc call bar toggle index 0")''
-                  "Toggle bar"
-                  { }
-                )
-
-                (mkBind "SUPER + Q" ''hl.dsp.window.close()'' "Close window" { })
-
-                (mkBind "SUPER + ESCAPE" ''hl.dsp.exec_cmd("dms ipc call lock lock")'' "Lock screen" { })
-                (mkBind "SUPER + SHIFT + ESCAPE" ''hl.dsp.exit()'' "Exit Hyprland" { })
-                (mkBind "SUPER + CTRL + ESCAPE" ''hl.dsp.exec_cmd("reboot")'' "Reboot" { })
-                (mkBind "SUPER + SHIFT + CTRL + ESCAPE" ''hl.dsp.exec_cmd("systemctl poweroff")'' "Power off" { })
-                (mkBind "SUPER + K" ''hl.dsp.exec_cmd("dms ipc call keybinds toggle hyprland")''
-                  "Show keybindings"
-                  { }
-                )
-                (mkBind "SUPER + I" ''hl.dsp.exec_cmd("dms ipc call inhibit toggle")'' "Toggle idle inhibit" { })
-
-                (mkBind "SUPER + J" ''hl.dsp.layout("togglesplit")'' "Toggle split direction" { })
-                (mkBind "SUPER + P" ''hl.dsp.window.pseudo()'' "Toggle pseudotile" { })
-                (mkBind "SUPER + SHIFT + F" ''hl.dsp.window.float()'' "Toggle floating" { })
-                (mkBind "SUPER + F" ''hl.dsp.window.fullscreen({ mode = "fullscreen" })'' "Toggle fullscreen" { })
-
-                (mkBind "SUPER + LEFT" ''hl.dsp.focus({ direction = "l" })'' "Focus window left" { })
-                (mkBind "SUPER + RIGHT" ''hl.dsp.focus({ direction = "r" })'' "Focus window right" { })
-                (mkBind "SUPER + UP" ''hl.dsp.focus({ direction = "u" })'' "Focus window up" { })
-                (mkBind "SUPER + DOWN" ''hl.dsp.focus({ direction = "d" })'' "Focus window down" { })
-
-                (mkBind "SUPER + COMMA" ''hl.dsp.focus({ workspace = "-1" })'' "Previous workspace" { })
-                (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
-
-                (mkBind "SUPER + SHIFT + LEFT" ''hl.dsp.window.swap({ direction = "l" })'' "Swap window left" { })
-                (mkBind "SUPER + SHIFT + RIGHT" ''hl.dsp.window.swap({ direction = "r" })'' "Swap window right" { })
-                (mkBind "SUPER + SHIFT + UP" ''hl.dsp.window.swap({ direction = "u" })'' "Swap window up" { })
-                (mkBind "SUPER + SHIFT + DOWN" ''hl.dsp.window.swap({ direction = "d" })'' "Swap window down" { })
-
-                (mkBind "SUPER + MINUS" ''hl.dsp.window.resize({ x = -100, y = 0, relative = true })''
-                  "Shrink window width"
-                  { }
-                )
-                (mkBind "SUPER + EQUAL" ''hl.dsp.window.resize({ x = 100, y = 0, relative = true })''
-                  "Grow window width"
-                  { }
-                )
-                (mkBind "SUPER + SHIFT + MINUS" ''hl.dsp.window.resize({ x = 0, y = -100, relative = true })''
-                  "Shrink window height"
-                  { }
-                )
-                (mkBind "SUPER + SHIFT + EQUAL" ''hl.dsp.window.resize({ x = 0, y = 100, relative = true })''
-                  "Grow window height"
-                  { }
-                )
-
-                (mkBind "SUPER + mouse_down" ''hl.dsp.focus({ workspace = "e+1" })'' "Next open workspace" { })
-                (mkBind "SUPER + mouse_up" ''hl.dsp.focus({ workspace = "e-1" })'' "Previous open workspace" { })
-
-                # SUPER+U, not SUPER+S: S is taken by the messenger bind.
-                (mkBind "SUPER + U" ''hl.dsp.workspace.toggle_special("magic")'' "Toggle special workspace" { })
-                (mkBind "SUPER + SHIFT + U" ''hl.dsp.window.move({ workspace = "special:magic" })''
-                  "Move window to special workspace"
-                  { }
-                )
-
-                (mkBind "PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprshot} -m region")''
-                  "Screenshot region"
-                  { }
-                )
-                (mkBind "SHIFT + PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprshot} -m window")''
-                  "Screenshot window"
-                  { }
-                )
-                (mkBind "CTRL + PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprshot} -m output")''
-                  "Screenshot output"
-                  { }
-                )
-                (mkBind "SUPER + PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprpicker} -a")'' "Pick color" { })
-
-                (mkBind "CTRL + SUPER + V" ''hl.dsp.exec_cmd("dms ipc call clipboard toggle")''
-                  "Clipboard history"
-                  { }
-                )
-
-                (mkBind "SUPER + mouse:272" ''hl.dsp.window.drag()'' "Move window" { mouse = true; })
-                (mkBind "SUPER + mouse:273" ''hl.dsp.window.resize()'' "Resize window" { mouse = true; })
-
-                (mkBind "XF86AudioRaiseVolume" ''hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+")''
-                  "Volume up"
-                  {
-                    locked = true;
-                    repeating = true;
-                  }
-                )
-                (mkBind "XF86AudioLowerVolume" ''hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-")''
-                  "Volume down"
-                  {
-                    locked = true;
-                    repeating = true;
-                  }
-                )
-                (mkBind "XF86AudioMute" ''hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle")''
-                  "Mute"
-                  {
-                    locked = true;
-                    repeating = true;
-                  }
-                )
-                (mkBind "XF86AudioMicMute" ''hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle")''
-                  "Mic mute"
-                  {
-                    locked = true;
-                    repeating = true;
-                  }
-                )
-                (mkBind "XF86MonBrightnessUp" ''hl.dsp.exec_cmd("${getExe pkgs.brightnessctl} set 655+")''
-                  "Brightness up"
-                  {
-                    locked = true;
-                    repeating = true;
-                  }
-                )
-                (mkBind "XF86MonBrightnessDown" ''hl.dsp.exec_cmd("${getExe pkgs.brightnessctl} set 655-")''
-                  "Brightness down"
-                  {
-                    locked = true;
-                    repeating = true;
-                  }
-                )
-
-                (mkBind "XF86AudioNext" ''hl.dsp.exec_cmd("${getExe pkgs.playerctl} next")''
-                  "Next track"
-                  { locked = true; }
-                )
-                (mkBind "XF86AudioPause" ''hl.dsp.exec_cmd("${getExe pkgs.playerctl} play-pause")''
-                  "Play/pause"
-                  { locked = true; }
-                )
-                (mkBind "XF86AudioPlay" ''hl.dsp.exec_cmd("${getExe pkgs.playerctl} play-pause")''
-                  "Play/pause"
-                  { locked = true; }
-                )
-                (mkBind "XF86AudioPrev" ''hl.dsp.exec_cmd("${getExe pkgs.playerctl} previous")''
-                  "Previous track"
-                  { locked = true; }
                 )
               ]
-              # Switch to / move to workspaces 1-9.
-              ++ (
-                concatMap
-                  (
-                    i:
-                    let
-                      n = toString i;
-                    in
-                    [
-                      (mkBind "SUPER + ${n}" ''hl.dsp.focus({ workspace = ${n} })'' "Switch to workspace ${n}" { })
-                      (mkBind "SUPER + SHIFT + ${n}" ''hl.dsp.window.move({ workspace = ${n} })''
-                        "Move window to workspace ${n}"
-                        { }
-                      )
-                    ]
-                  )
-                  (range 1 9)
+            ) (range 1 9))
+            ++ [
+              (mkBind "SUPER + 0" "hl.dsp.focus({ workspace = 10 })" "Switch to workspace 10" { })
+              (mkBind "SUPER + SHIFT + 0" "hl.dsp.window.move({ workspace = 10 })" "Move window to workspace 10"
+                { }
               )
-              ++ [
-                (mkBind "SUPER + 0" ''hl.dsp.focus({ workspace = 10 })'' "Switch to workspace 10" { })
-                (mkBind "SUPER + SHIFT + 0" ''hl.dsp.window.move({ workspace = 10 })''
-                  "Move window to workspace 10"
-                  { }
-                )
-              ];
+            ];
           };
         };
       };

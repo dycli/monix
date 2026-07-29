@@ -146,9 +146,9 @@
             # (slower pregen, extra disk, a second listener) serving the
             # Chunksmith-Client companion mod our stock-vanilla players don't
             # run. Off. files, not symlinks: the mod rewrites this config.
-            files."config/chunksmith.json" = pkgs.writeText "chunksmith.json" (
-              toJSON { lodEnabled = false; }
-            );
+            files."config/chunksmith.json" = pkgs.writeText "chunksmith.json" (toJSON {
+              lodEnabled = false;
+            });
 
             # online-mode true means Mojang-authenticated accounts only (why
             # the egress fence must permit the Mojang session servers).
@@ -220,7 +220,8 @@
           IPAddressDeny = [
             "127.0.0.0/8" # loopback / other localhost services
             "::1"
-          ] ++ networkFences.privateRanges;
+          ]
+          ++ networkFences.privateRanges;
         };
       };
     };

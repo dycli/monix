@@ -301,17 +301,23 @@
               passwordFile = "/var/lib/nut/upsmon.password";
             };
             upsmon.settings.NOTIFYCMD = getExe upsNotify;
-            upsmon.settings.NOTIFYFLAG = map (event: [ event "SYSLOG+EXEC" ]) [
-              "ONLINE"
-              "ONBATT"
-              "LOWBATT"
-              "FSD"
-              "COMMOK"
-              "COMMBAD"
-              "SHUTDOWN"
-              "REPLBATT"
-              "NOCOMM"
-            ];
+            upsmon.settings.NOTIFYFLAG =
+              map
+                (event: [
+                  event
+                  "SYSLOG+EXEC"
+                ])
+                [
+                  "ONLINE"
+                  "ONBATT"
+                  "LOWBATT"
+                  "FSD"
+                  "COMMOK"
+                  "COMMBAD"
+                  "SHUTDOWN"
+                  "REPLBATT"
+                  "NOCOMM"
+                ];
           };
 
           # A local-only secret guarding a loopback socket: generated once,

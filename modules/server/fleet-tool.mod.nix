@@ -32,7 +32,12 @@
     let
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
-      inherit (lib.strings) concatMapStringsSep fileContents hasSuffix replaceStrings;
+      inherit (lib.strings)
+        concatMapStringsSep
+        fileContents
+        hasSuffix
+        replaceStrings
+        ;
       inherit (lib) types;
 
       cfg = config.agentFleet;

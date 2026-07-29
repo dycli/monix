@@ -45,8 +45,7 @@
         };
         cargoLock.lockFile = ./ship-costs/ship-costs-cli/Cargo.lock;
         env = {
-          SHIP_OPENROUTER_KEY_FILE =
-            if cfg.openrouterKeyFile != null then cfg.openrouterKeyFile else "";
+          SHIP_OPENROUTER_KEY_FILE = if cfg.openrouterKeyFile != null then cfg.openrouterKeyFile else "";
           SHIP_SQLITE3 = "${pkgs.sqlite.bin}/bin/sqlite3";
           SHIP_CURL = "${pkgs.curl}/bin/curl";
         };

@@ -37,15 +37,15 @@
         # instantiates it asynchronously at startup without showing it.
         # --replace-fail breaks the build loudly if upstream renames the
         # loader.
-        programs.dms-shell.package =
-          (inputs.dank-material-shell.packages.${pkgs.stdenv.hostPlatform.system}.dms-shell.overrideAttrs
+        programs.dms-shell.package = (
+          inputs.dank-material-shell.packages.${pkgs.stdenv.hostPlatform.system}.dms-shell.overrideAttrs
             (old: {
               postInstall = (old.postInstall or "") + ''
                 substituteInPlace $out/share/quickshell/dms/DMSShell.qml \
                   --replace-fail "id: dankLauncherV2ModalLoader" "id: dankLauncherV2ModalLoader; loading: true"
               '';
             })
-          );
+        );
 
         # Wallpaper-synced app theming (Settings -> Theme & Colors -> "Apply
         # GTK/Qt Themes"). enableDynamicTheming provides matugen; adw-gtk3 is

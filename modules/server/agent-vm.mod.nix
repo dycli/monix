@@ -40,7 +40,13 @@
       inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkForce mkIf;
       inherit (lib.options) mkOption;
-      inherit (lib.strings) concatMapStringsSep fixedWidthString hasSuffix optionalString toJSON;
+      inherit (lib.strings)
+        concatMapStringsSep
+        fixedWidthString
+        hasSuffix
+        optionalString
+        toJSON
+        ;
       inherit (lib) types;
 
       guide = import ../../lib/fleet-guide.nix;
