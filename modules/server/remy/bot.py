@@ -170,6 +170,15 @@ def home_db(path=DB_PATH, cal=True):
             db.execute(f"ALTER TABLE item ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
     if "seq" not in item_cols:
         db.execute("ALTER TABLE item ADD COLUMN seq INTEGER NOT NULL DEFAULT 0")
+    # 2026-07-29 honest interruption tracking: an event is marked 'seen'
+    # before its handler runs and 'done' after; rows stuck at 'seen' are a
+    # crash mid-handling, reported (not replayed) on the next start. Old
+    # rows predate the column and were all completed — default 'done'.
+    processed_cols = [r[1] for r in db.execute("PRAGMA table_info(processed)")]
+    if "status" not in processed_cols:
+        db.execute("ALTER TABLE processed ADD COLUMN status TEXT NOT NULL DEFAULT 'done'")
+        db.execute("ALTER TABLE processed ADD COLUMN body TEXT NOT NULL DEFAULT ''")
+        db.execute("ALTER TABLE processed ADD COLUMN room TEXT NOT NULL DEFAULT ''")
     db.commit()
     if meta_get(db, "merged_v2") != "1":
         for t in db.execute("SELECT * FROM task").fetchall():
@@ -211,6 +220,30 @@ def meta_set(db, k, v):
     db.commit()
 
 
+# The Matrix session lives in its own 0600 file, NOT in the database: every
+# database mutation is dumped wholesale into the git history repo, and a
+# credential in the dump would be a credential in immutable git history
+# (which is exactly where it sat until 2026-07-29 — run() invalidates any
+# token found in an old database on the way past).
+SESSION_PATH = os.environ.get(
+    "BOT_SESSION", os.path.join(os.path.dirname(DB_PATH), "session.json"))
+
+
+def load_session():
+    try:
+        with open(SESSION_PATH) as f:
+            sess = json.load(f)
+        return sess["access_token"], sess["device_id"]
+    except (OSError, ValueError, KeyError):
+        return None, None
+
+
+def save_session(token, device):
+    fd = os.open(SESSION_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump({"access_token": token, "device_id": device}, f)
+
+
 def git_snapshot(db, db_path, reason):
     """Commit a full SQL dump of a database to a git repo next to it.
 
@@ -229,6 +262,12 @@ def git_snapshot(db, db_path, reason):
         name = os.path.basename(db_path).replace(".db", ".sql")
         with open(os.path.join(hist, name), "w") as f:
             for line in db.iterdump():
+                # The session moved out of the database (SESSION_PATH), but
+                # a credential row must never reach git history again even
+                # if one regresses into meta.
+                if line.startswith("INSERT INTO") and "meta" in line[:30] and (
+                        "access_token" in line or "device_id" in line):
+                    continue
                 f.write(line + "\n")
         subprocess.run(["git", "add", name], cwd=hist, check=True)
         subprocess.run(
@@ -1179,8 +1218,20 @@ def build_day_markdown(db, day):
 
 
 def write_log(db, day):
-    """Append the day's entry to the log file and poke the vault mirror."""
+    """Append the day's entry to the log file and poke the vault mirror.
+
+    Idempotent per day: the scheduler stamps completion only after this
+    returns, so a crash in between would retry — the header check turns
+    that retry into a no-op instead of a duplicate day.
+    """
     md = build_day_markdown(db, day)
+    header = md.split("\n", 1)[0]
+    try:
+        with open(LOG_PATH) as f:
+            if header in f.read():
+                return
+    except OSError:
+        pass
     new_file = not os.path.exists(LOG_PATH) or os.path.getsize(LOG_PATH) == 0
     with open(LOG_PATH, "a") as f:
         if new_file:
@@ -1265,15 +1316,10 @@ class Bot:
             handler = partial(self.handle_home, self.sdb)
         else:
             return
-        # One processed-table (the household db) covers both rooms. Mark before
-        # handling for deliberate at-most-once semantics: replaying after a
-        # crash could duplicate household or scratchpad mutations.
+        # One processed-table (the household db) covers both rooms.
         if self.hdb.execute("SELECT 1 FROM processed WHERE event_id=?",
                             (event.event_id,)).fetchone():
             return
-        self.hdb.execute("INSERT INTO processed(event_id,ts) VALUES(?,?)",
-                         (event.event_id, int(time.time())))
-        self.hdb.commit()
         # Replay policy: catch up on messages missed while down (up to 7
         # days), but NEVER before this database first existed — a fresh DB
         # must not chew either room's prior history into duplicate entries.
@@ -1283,12 +1329,29 @@ class Bot:
         text = event.body.strip()
         if not text:
             return
+        # Mark 'seen' before handling, 'done' after: still deliberate
+        # at-most-once (replaying a half-applied mutation could double-file
+        # it), but a crash mid-handling is no longer a silent loss — rows
+        # stuck at 'seen' are reported to the room on the next start
+        # (report_interrupted).
+        self.hdb.execute(
+            "INSERT INTO processed(event_id,ts,status,body,room) VALUES(?,?,?,?,?)",
+            (event.event_id, int(time.time()), "seen", text[:120], room.room_id))
+        self.hdb.commit()
         sender = event.sender.split(":")[0].lstrip("@")
         try:
             await handler(room.room_id, sender, event, text)
         except Exception:
+            # The user saw a reply (or the send itself is what died) —
+            # either way it was handled as far as it will ever be.
             log.exception("action failed")
-            await self.send(room.room_id, "(something broke doing that — it's logged)")
+            try:
+                await self.send(room.room_id, "(something broke doing that — it's logged)")
+            except Exception:
+                log.exception("error reply failed")
+        self.hdb.execute("UPDATE processed SET status='done' WHERE event_id=?",
+                         (event.event_id,))
+        self.hdb.commit()
 
     async def handle_home(self, db, room_id, sender, event, text):
         try:
@@ -1354,57 +1417,70 @@ class Bot:
         downed bot never back-fills yesterday's posts. At-least-once: a
         crash in the moment between send and stamp can duplicate a post —
         the right trade for family announcements.
+
+        One bad tick (a locked database, a hiccuping disk) must not kill
+        the loop: reminders dying while sync lives on is the worst failure
+        mode, because nobody notices. The catch-all keeps the loop alive;
+        run() takes the whole process down if the loop itself ever exits.
         """
         while True:
             await asyncio.sleep(60)
-            now = datetime.now(TZ)
-            hhmm = now.strftime("%H:%M")
-            day = now.date().isoformat()
-            # Household: morning plan + evening report. The day-stamp is
-            # committed only after a successful send (like the reminder loop
-            # below), so a transient homeserver failure retries on the next
-            # tick instead of silently skipping the day.
-            for key, at, make in (("morning", MORNING, morning_post),
-                                  ("evening", EVENING, evening_post)):
-                if hhmm >= at and meta_get(self.hdb, f"last_{key}") != day:
-                    try:
-                        await self.send(self.home_room, make(self.hdb), notify=True)
-                        meta_set(self.hdb, f"last_{key}", day)
-                    except Exception:
-                        log.exception("%s post failed", key)
-            # The family log: composed once, late, for the day that's ending.
-            # Household only (the scratchpad has no scheduled writes).
-            # Stamp after the write for the same retry-on-failure reason.
-            if hhmm >= LOG_TIME and meta_get(self.hdb, "last_log") != day:
+            try:
+                await self.tick()
+            except Exception:
+                log.exception("scheduler tick failed")
+
+    async def tick(self):
+        now = datetime.now(TZ)
+        hhmm = now.strftime("%H:%M")
+        day = now.date().isoformat()
+        # Household: morning plan + evening report. The day-stamp is
+        # committed only after a successful send (like the reminder loop
+        # below), so a transient homeserver failure retries on the next
+        # tick instead of silently skipping the day.
+        for key, at, make in (("morning", MORNING, morning_post),
+                              ("evening", EVENING, evening_post)):
+            if hhmm >= at and meta_get(self.hdb, f"last_{key}") != day:
                 try:
-                    await asyncio.to_thread(write_log, self.hdb, now.date())
-                    meta_set(self.hdb, "last_log", day)
+                    await self.send(self.home_room, make(self.hdb), notify=True)
+                    meta_set(self.hdb, f"last_{key}", day)
                 except Exception:
-                    log.exception("log write failed")
-            # Reminders due now (or missed while down — fired late, once,
-            # flagged with the time they were meant for). Household and
-            # scratchpad each ping their own room.
-            due_now = f"{day} {hhmm}"
-            rooms = [(self.hdb, self.home_room)]
-            if self.sdb and self.scratch_room:
-                rooms.append((self.sdb, self.scratch_room))
-            for db, room in rooms:
-                for r in pending_reminders(db):
-                    if r["at"] > due_now:
-                        break  # sorted by at
-                    late = r["at"] < (now - timedelta(minutes=2)).strftime("%Y-%m-%d %H:%M")
-                    msg = (f"⏰ {'@' + r['assignee'] + ': ' if r['assignee'] else ''}{r['text']}"
-                           f"{' (meant for ' + r['at'] + ')' if late else ''}")
-                    try:
-                        # @tag only an explicitly-named person; an unassigned
-                        # reminder still notifies (m.text) but pings no one.
-                        await self.send(room, msg, notify=True,
-                                        mention=r["assignee"] or None)
-                        db.execute("UPDATE reminder SET fired_ts=? WHERE id=?",
-                                   (int(time.time()), r["id"]))
-                        db.commit()
-                    except Exception:
-                        log.exception("reminder %s failed", r["id"])
+                    log.exception("%s post failed", key)
+        # The family log: composed once, late, for the day that's ending.
+        # Household only (the scratchpad has no scheduled writes).
+        # Stamp after the write for the same retry-on-failure reason;
+        # write_log itself skips a day already in the file, so the
+        # crash-between-write-and-stamp window can't duplicate an entry.
+        if hhmm >= LOG_TIME and meta_get(self.hdb, "last_log") != day:
+            try:
+                await asyncio.to_thread(write_log, self.hdb, now.date())
+                meta_set(self.hdb, "last_log", day)
+            except Exception:
+                log.exception("log write failed")
+        # Reminders due now (or missed while down — fired late, once,
+        # flagged with the time they were meant for). Household and
+        # scratchpad each ping their own room.
+        due_now = f"{day} {hhmm}"
+        rooms = [(self.hdb, self.home_room)]
+        if self.sdb and self.scratch_room:
+            rooms.append((self.sdb, self.scratch_room))
+        for db, room in rooms:
+            for r in pending_reminders(db):
+                if r["at"] > due_now:
+                    break  # sorted by at
+                late = r["at"] < (now - timedelta(minutes=2)).strftime("%Y-%m-%d %H:%M")
+                msg = (f"⏰ {'@' + r['assignee'] + ': ' if r['assignee'] else ''}{r['text']}"
+                       f"{' (meant for ' + r['at'] + ')' if late else ''}")
+                try:
+                    # @tag only an explicitly-named person; an unassigned
+                    # reminder still notifies (m.text) but pings no one.
+                    await self.send(room, msg, notify=True,
+                                    mention=r["assignee"] or None)
+                    db.execute("UPDATE reminder SET fired_ts=? WHERE id=?",
+                               (int(time.time()), r["id"]))
+                    db.commit()
+                except Exception:
+                    log.exception("reminder %s failed", r["id"])
 
     # -------------------------------------------------------- lifecycle
 
@@ -1443,28 +1519,67 @@ class Bot:
             meta_set(self.hdb, "scratch_room_id", self.scratch_room)
             log.info("created room %s (%s)", SCRATCH_ROOM_NAME, self.scratch_room)
 
+    async def report_interrupted(self):
+        """Events stuck at 'seen' are a crash mid-handling: half-done or not
+        done at all. Deliberately NOT replayed (a half-applied mutation
+        could double-file) — say so in the room instead, so a dropped
+        request costs a re-ask, never silence."""
+        for row in self.hdb.execute(
+                "SELECT * FROM processed WHERE status='seen'").fetchall():
+            try:
+                await self.send(row["room"] or self.home_room,
+                                f'⚠️ I was interrupted handling "{row["body"][:80]}" — '
+                                "double-check it took, and re-send if not.")
+            except Exception:
+                # Leave it 'seen'; the next start tries again.
+                log.exception("interrupted-report failed for %s", row["event_id"])
+                continue
+            self.hdb.execute("UPDATE processed SET status='reported' WHERE event_id=?",
+                             (row["event_id"],))
+            self.hdb.commit()
+
     async def run(self):
         if not meta_get(self.hdb, "first_start_ms"):
             meta_set(self.hdb, "first_start_ms", str(START_MS))
-        # Reuse a stored device/token when valid; else password login.
-        tok, dev = meta_get(self.hdb, "access_token"), meta_get(self.hdb, "device_id")
+        # Reuse the stored session when valid; else password login. A
+        # token found in the DATABASE is legacy state whose value is
+        # already baked into the history repo's dumps — log it out (which
+        # invalidates every historical copy of it) and start fresh.
+        legacy_tok = meta_get(self.hdb, "access_token")
+        legacy_dev = meta_get(self.hdb, "device_id")
+        tok, dev = load_session()
         if tok and dev:
             self.client.restore_login(USER_ID, dev, tok)
             whoami = await self.client.whoami()
             if getattr(whoami, "user_id", None) != USER_ID:
                 tok = None
         if not (tok and dev):
+            if legacy_tok and legacy_dev:
+                self.client.restore_login(USER_ID, legacy_dev, legacy_tok)
+                try:
+                    await self.client.logout()
+                except Exception:
+                    log.exception("legacy session logout failed (continuing)")
             resp = await self.client.login(PASSWORD, device_name="remy")
             if not getattr(resp, "access_token", None):
                 raise SystemExit(f"login failed: {resp}")
-            meta_set(self.hdb, "access_token", resp.access_token)
-            meta_set(self.hdb, "device_id", resp.device_id)
+            save_session(resp.access_token, resp.device_id)
+        if legacy_tok or legacy_dev:
+            self.hdb.execute(
+                "DELETE FROM meta WHERE k IN ('access_token','device_id')")
+            self.hdb.commit()
+            git_snapshot(self.hdb, DB_PATH, "scrub the matrix session from the database")
         await self.ensure_rooms()
+        await self.report_interrupted()
         self.client.add_event_callback(self.on_message, RoomMessageText)
         log.info("remy up as %s (home %s, scratch %s)",
                  USER_ID, self.home_room, self.scratch_room or "-")
-        asyncio.get_event_loop().create_task(self.scheduler())
-        await self.client.sync_forever(timeout=30000, full_state=True)
+        # Either loop dying takes the whole process with it — systemd's
+        # Restart=always brings back a complete bot, never a half-alive one
+        # that syncs but forgets the reminders.
+        await asyncio.gather(
+            self.client.sync_forever(timeout=30000, full_state=True),
+            self.scheduler())
 
 
 if __name__ == "__main__":
