@@ -339,6 +339,9 @@
           uid = seatUid;
           group = "bridge";
           description = "bridge seat";
+          # Group-enterable so the primary user (a bridge group member)
+          # can reach the seat's repos and files.
+          homeMode = "750";
           openssh.authorizedKeys.keys = self.keys-admin;
         };
         users.groups.bridge.gid = seatUid;
