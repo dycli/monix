@@ -84,9 +84,13 @@ the rest.
 
 ## Secrets (agenix)
 
-agenix manages login password hashes, fw0's fleet subscription credentials,
-optional provider keys, the Matrix tunnel token, and the Cloudflare DNS-01
-token for the ship proxy's wildcard cert.
+agenix manages login password hashes for both hosts, fw0's fleet subscription
+credentials and provider keys, bot credentials (remy, the alert bot, curtisbot,
+plus the Matrix registration secret and remy's CalDAV account), the Matrix
+tunnel token, media and camera service secrets (SABnzbd, Frigate), the
+Cloudflare DNS-01 token for the ship proxy's wildcard cert, and one licensed
+font. `secrets.nix` is the authoritative inventory; the categories above are a
+summary.
 
 `keys.nix` is the single source of truth for SSH public keys (host keys + admin
 keys). `secrets.nix` maps each secret file to the keys it is encrypted to and is

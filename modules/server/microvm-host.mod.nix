@@ -4,9 +4,9 @@
 # audit log). Guests have no default route or DNS, so squid is structurally
 # the only way out — default-deny by construction, not just policy.
 #
-# Networking touches ONLY br-agents and vm-* taps via systemd-networkd; host
-# uplinks stay on dhcpcd (`dhcpcd.denyInterfaces` keeps the two managers from
-# fighting), so a misconfigured bridge can't take down uplinks or SSH.
+# The whole host runs systemd-networkd (no scripted dhcpcd mixed in): networkd
+# owns br-agents, the vm-* taps, and the onboard uplink (DHCP on `en*`);
+# tailscale0 stays with tailscaled.
 { inputs, ... }:
 {
   flake.nixosModules.microvm-host =

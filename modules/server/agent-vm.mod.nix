@@ -279,8 +279,11 @@
               # squid resolves on its behalf. Address/hostname come from the
               # kernel command line so the closure stays identical across
               # workers; drone-identity writes the networkd unit into /run
-              # before networkd starts. Per-VM address enforcement lives
-              # host-side on the tap, not here.
+              # before networkd starts. The per-VM address is assigned, not
+              # enforced: nothing host-side pins a tap to its MAC/IP, so a
+              # guest could spoof toward the host. The bridge's Isolated
+              # flag still blocks guest<->guest traffic, and squid remains
+              # the only egress either way.
               networking.useNetworkd = true;
               networking.useDHCP = false;
               networking.hostName = "drone"; # overridden at boot from cmdline

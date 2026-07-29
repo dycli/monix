@@ -95,8 +95,9 @@ CLI requires it. Generic workers have no attacker-controlled network destination
 or forge credential to which they can send it. Their intended outputs are only
 the bounded task exchange.
 
-Never place secrets in the Nix store: workers can read the host store through a
-read-only virtiofs mount.
+Never place secrets in the Nix store: the store is world-readable on the host,
+and anything in a worker's closure is baked into the sealed read-only erofs
+store image every guest boots from.
 
 ## Dispatch
 

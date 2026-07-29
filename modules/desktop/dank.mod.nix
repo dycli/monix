@@ -1,7 +1,8 @@
 # DankMaterialShell: one quickshell-based desktop shell providing the bar,
 # notifications, launcher (spotlight), OSD, control center, lock screen with
 # idle handling, wallpaper manager, clipboard history, and polkit agent.
-# Started from Hyprland via `dms run` (see hyprland.mod.nix).
+# Started by its `dms` systemd user unit (WantedBy = graphical-session.target),
+# brought up by UWSM (see hyprland.mod.nix).
 #
 # The shell itself stays on nixpkgs' `programs.dms-shell` module; the
 # `dank-material-shell` flake input supplies only the newer dms package.
