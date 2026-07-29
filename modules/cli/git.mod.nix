@@ -13,6 +13,11 @@
           init.defaultBranch = "main";
           pull.rebase = true;
 
+          # The seat's clone is the repo of record on fw0 (switcharoo pulls
+          # from it); git refuses another user's repo without this. Only in
+          # a global config file — git ignores safe.directory via -c/env.
+          safe.directory = "/home/bridge/ark/monix";
+
           # Credentials are handled by gh (below) — no plaintext
           # `credential.helper = store`.
         };
