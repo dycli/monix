@@ -19,6 +19,13 @@
         })
       ];
 
+      # Unfree grants for this file's home lists: obsidian rides the desktop
+      # list, claude-code the dev-extras list.
+      unfreePackages = [
+        "claude-code"
+        "obsidian"
+      ];
+
       # vim, not nvim: nvim exists only in the primary user's profile, so a
       # system-wide EDITOR=nvim dangles for root and service users (e.g.
       # visudo). The primary user gets nvim back per-user (editors.mod.nix)

@@ -99,6 +99,9 @@
       };
 
       config = mkIf cfg.enable {
+        # sabnzbd's rar extraction.
+        unfreePackages = singleton "unrar";
+
         # Every media-touching service runs with `media` as its primary
         # group. Prowlarr is excluded: it only brokers indexer searches.
         users.groups.media = { };

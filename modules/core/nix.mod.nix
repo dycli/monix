@@ -52,21 +52,10 @@
         options = "--delete-older-than 90d";
       };
 
-      # Per-package unfree allowlist instead of a blanket allowUnfree: every
-      # piece of proprietary software on the ship is named here, and adding
-      # one is a conscious act.
-      nixpkgs.config.allowUnfreePredicate =
-        pkg:
-        lib.lists.elem (lib.getName pkg) [
-          "claude-code"
-          # Mojang's EULA'd server jar underneath the Fabric server.
-          "minecraft-server"
-          "obsidian"
-          "steam"
-          "steam-unwrapped"
-          # sabnzbd's rar extraction.
-          "unrar"
-        ];
+      # Per-package unfree allowlist instead of a blanket allowUnfree. The
+      # names live in `unfreePackages`, contributed by the module that
+      # installs each package (see options/host.mod.nix).
+      nixpkgs.config.allowUnfreePredicate = pkg: lib.lists.elem (lib.getName pkg) config.unfreePackages;
 
       environment.systemPackages = [
         pkgs.nh

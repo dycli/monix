@@ -102,6 +102,9 @@
       options.minecraft.enable = mkEnableOption "the declarative tailnet-only Fabric Minecraft server";
 
       config = mkIf cfg.enable {
+        # Mojang's EULA'd server jar underneath the Fabric server.
+        unfreePackages = singleton "minecraft-server";
+
         # Brings pkgs.fabricServers and the launcher wrapper into scope, from
         # nix-minecraft's own pinned nixpkgs (see flake.nix).
         nixpkgs.overlays = singleton inputs.nix-minecraft.overlay;

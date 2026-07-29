@@ -123,6 +123,10 @@
 
           # DESKTOP EXTRAS
           programs.steam.enable = true;
+          unfreePackages = [
+            "steam"
+            "steam-unwrapped"
+          ];
 
           # Prism (not the stock launcher) to pin the Minecraft client to the
           # fw0 server's exact version (see modules/server/minecraft.mod.nix).

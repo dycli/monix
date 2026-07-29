@@ -500,6 +500,10 @@
       };
 
       config = mkIf cfg.enable {
+        # The guest closure bakes in the Claude executor; grant it here so
+        # the fleet doesn't lean on the dev-extras home list keeping it.
+        unfreePackages = singleton "claude-code";
+
         assertions = [
           {
             assertion =
