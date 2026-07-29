@@ -401,11 +401,15 @@
           pkgs.jq
         ];
 
-        # Runs AS the primary user (needs their auth.json/home/tooling, so
-        # not filesystem-sandboxed like a tenant service). Binds to loopback;
-        # the ship proxy serves it tailnet-only as ai.<domain>, so reaching
-        # the seat means being on the tailnet — same posture as every other
-        # ship service, no app-level auth in front.
+        # Runs AS the seat account (needs its auth.json/home/tooling, so not
+        # filesystem-sandboxed like a tenant service; NOT in the seat's
+        # fenced user slice — the web seat is the sanctioned egress
+        # exception, and only root can start system services). Binds
+        # seatWebAddr, a loopback address the parser fences don't allow, so
+        # a compromised media/immich/frigate service can't drive the seat;
+        # nginx (ship-proxy) serves it tailnet-only as ai.<domain>, so
+        # reaching the seat means being on the tailnet — same posture as
+        # every other ship service, no app-level auth in front.
         systemd.services.opencode-web = mkIf config.cockpit.webEnable {
           description = "opencode web UI cockpit seat";
           wantedBy = [ "multi-user.target" ];
@@ -416,21 +420,25 @@
           path = [
             "/run/wrappers"
             "/run/current-system/sw"
-            "/etc/profiles/per-user/${config.primaryUser}"
+            "/etc/profiles/per-user/bridge"
           ];
           serviceConfig = {
-            User = config.primaryUser;
-            Group = "users";
+            User = "bridge";
+            Group = "bridge";
             Slice = "cockpit.slice";
             # The declaratively generated config (opencode.jsonc above) is
             # the one the seat must run with.
             Environment = [
-              "OPENCODE_CONFIG=/home/${config.primaryUser}/.config/opencode/opencode.jsonc"
+              "OPENCODE_CONFIG=/home/bridge/.config/opencode/opencode.jsonc"
             ];
-            WorkingDirectory = "/home/${config.primaryUser}/cockpit";
+            WorkingDirectory = "/home/bridge/cockpit";
+            # The seat's listener is the one socket this service may open;
+            # anything else it tries to bind is a bug or a compromise.
+            SocketBindAllow = "tcp:${toString topology.seatWebPort}";
+            SocketBindDeny = "any";
             # Origin derived from the ship proxy's zone so a domain change
             # can't silently break the seat's CORS.
-            ExecStart = "${getExe pkgs.opencode} web --hostname 127.0.0.1 --port 4097 --cors https://ai.${config.shipProxy.domain} --print-logs";
+            ExecStart = "${getExe pkgs.opencode} web --hostname ${topology.seatWebAddr} --port ${toString topology.seatWebPort} --cors https://ai.${config.shipProxy.domain} --print-logs";
             Restart = "always";
             RestartSec = 3;
           };

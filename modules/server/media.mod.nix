@@ -40,10 +40,19 @@
         Slice = "services.slice";
         IPAddressAllow = [
           "100.64.0.0/10" # tailnet (CGNAT range)
-          "127.0.0.0/8" # loopback: inter-service APIs + resolved stub
+          # Loopback by exact address, NOT 127.0.0.0/8: the AI seat's web UI
+          # and egress proxy live on other loopback addresses
+          # (fleet-topology.nix), and a compromised parser must not reach
+          # them. Everything this stack legitimately talks to on loopback
+          # sits on these two.
+          "127.0.0.1/32" # inter-service APIs
+          "127.0.0.53/32" # resolved stub
           "::1"
         ];
-        IPAddressDeny = networkFences.privateRanges;
+        # Loopback must ALSO be denied: this fence's deny is not "any", so
+        # anything absent from both lists falls through allowed. Allow wins
+        # for the two /32s above; the rest of 127/8 is blocked.
+        IPAddressDeny = networkFences.privateRanges ++ [ "127.0.0.0/8" ];
       };
 
       # LAN EXCEPTION: the OPDS e-reader (ESP32) can't join the tailnet, so

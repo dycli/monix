@@ -37,21 +37,27 @@
         # Anti-pivot fence, media-stack shape: tailnet + loopback allowed,
         # every private range denied, public internet falls through (ML
         # model downloads, reverse geocoding). No Slice override — upstream
-        # already confines both units to system-immich.slice.
+        # already confines both units to system-immich.slice. Loopback by
+        # exact address, not /8 — the AI seat's addresses stay out of reach
+        # (see media.mod.nix for the full rationale).
+        # (Deny must name 127.0.0.0/8 explicitly: these denies are not
+        # "any", and unmatched traffic falls through allowed.)
         systemd.services.immich-server.serviceConfig = {
           IPAddressAllow = [
             "100.64.0.0/10"
-            "127.0.0.0/8"
+            "127.0.0.1/32"
+            "127.0.0.53/32"
             "::1"
           ];
-          IPAddressDeny = networkFences.privateRanges;
+          IPAddressDeny = networkFences.privateRanges ++ [ "127.0.0.0/8" ];
         };
         systemd.services.immich-machine-learning.serviceConfig = {
           IPAddressAllow = [
-            "127.0.0.0/8"
+            "127.0.0.1/32"
+            "127.0.0.53/32"
             "::1"
           ];
-          IPAddressDeny = networkFences.privateRanges;
+          IPAddressDeny = networkFences.privateRanges ++ [ "127.0.0.0/8" ];
         };
       };
     };

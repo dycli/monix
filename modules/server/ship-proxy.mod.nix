@@ -15,16 +15,18 @@
       inherit (lib.options) mkEnableOption mkOption;
 
       cfg = config.shipProxy;
+      topology = import ../../lib/fleet-topology.nix;
 
-      proxy = port: extra: {
+      proxyTo = upstream: extra: {
         useACMEHost = cfg.domain;
         forceSSL = true;
         locations."/" = {
-          proxyPass = "http://127.0.0.1:${toString port}";
+          proxyPass = upstream;
           proxyWebsockets = true;
         }
         // extra;
       };
+      proxy = port: proxyTo "http://127.0.0.1:${toString port}";
     in
     {
       options.shipProxy = {
@@ -100,12 +102,27 @@
               "ha.${cfg.domain}" = proxy 8123 { };
             }
             # The opencode web cockpit seat (cockpit.mod.nix). Shell-capable:
-            # its whole access control is tailnet membership, like every
-            # other name here — flag it in the dashboard, not in nginx.
+            # its whole access control is tailnet membership — but unlike
+            # every other name here, that is enforced in nginx too: without
+            # the source gate, any local service allowed 127.0.0.1 (or the
+            # host's own tailnet address) could reach this vhost by Host
+            # header and drive the seat, bypassing the parser fences that
+            # keep the seat's own listener out of reach. Its upstream is the
+            # seat's own loopback address, not 127.0.0.1 (fleet-topology.nix).
             // optionalAttrs config.cockpit.webEnable {
-              "ai.${cfg.domain}" = proxy 4097 {
-                # SSE/streaming responses must not be buffered.
-                extraConfig = "proxy_buffering off;";
+              "ai.${cfg.domain}" = proxyTo "http://${topology.seatWebAddr}:${toString topology.seatWebPort}" {
+                # SSE/streaming responses must not be buffered. Only real
+                # tailnet peers may talk to the seat: loopback and the
+                # host's own tailnet address (homepage.mod.nix hardcodes
+                # the same one) are local pivots, not clients.
+                extraConfig = ''
+                  proxy_buffering off;
+                  deny 127.0.0.0/8;
+                  deny ::1;
+                  deny 100.102.113.74;
+                  allow 100.64.0.0/10;
+                  deny all;
+                '';
               };
             }
             // optionalAttrs config.services.immich.enable {

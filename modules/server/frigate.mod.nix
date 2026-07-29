@@ -35,8 +35,12 @@
 
       lanFence = {
         Slice = "services.slice";
+        # Loopback by exact address, not /8 — the AI seat's addresses stay
+        # out of a compromised camera-feed parser's reach (see media.mod.nix
+        # for the full rationale).
         IPAddressAllow = [
-          "127.0.0.0/8"
+          "127.0.0.1/32" # go2rtc <-> frigate, mosquitto
+          "127.0.0.53/32" # resolved stub
           "::1"
         ]
         ++ cfg.lanSubnets;
@@ -243,7 +247,7 @@
         systemd.services.mosquitto.serviceConfig = {
           Slice = "services.slice";
           IPAddressAllow = [
-            "127.0.0.0/8"
+            "127.0.0.1/32"
             "::1"
           ];
           IPAddressDeny = "any";
