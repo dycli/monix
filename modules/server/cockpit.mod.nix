@@ -24,12 +24,19 @@
       inherit (lib.lists) concatMap map;
       inherit (lib.modules) mkIf;
       inherit (lib.strings) toJSON;
-      userHome = "/home/${osConfig.primaryUser}";
+      # Derive every path from the home this module is applied to, NOT from
+      # primaryUser: the same aspect serves both the primary user's seat and
+      # the bridge account (home-manager.users.bridge below), each seeing its
+      # own repos, working dir, and memory.
+      userHome = config.home.homeDirectory;
       monixDir = "${userHome}/ark/monix";
       holdDir = "${userHome}/hold";
       cockpitDir = "${userHome}/cockpit";
       cockpitMemoryDir = "${userHome}/cockpit/memory";
-      claudeMemoryDir = "${userHome}/.claude/projects/-home-max-cockpit/memory";
+      # Claude Code keys per-project state to the working dir path with
+      # slashes turned into dashes ("/home/max/cockpit" -> -home-max-cockpit).
+      projectKey = lib.strings.replaceStrings [ "/" ] [ "-" ] cockpitDir;
+      claudeMemoryDir = "${userHome}/.claude/projects/${projectKey}/memory";
       # Claude's cockpit policy is canonical; rendered into both
       # frontend-specific formats below.
       gitReadCommands = [
@@ -238,9 +245,9 @@
         # ~/cockpit/memory is the real, vendor-neutral directory; Claude's
         # per-project memory path is a symlink into it so every frontend
         # reads/writes the same files.
-        home.file.".claude/projects/-home-max-cockpit/memory" = {
+        home.file.".claude/projects/${projectKey}/memory" = {
           force = true;
-          source = config.lib.file.mkOutOfStoreSymlink ("/home/${osConfig.primaryUser}/cockpit/memory");
+          source = config.lib.file.mkOutOfStoreSymlink cockpitMemoryDir;
         };
 
         # Declarative so the allowlist can't drift from what AGENTS.md
@@ -288,6 +295,7 @@
       ...
     }:
     let
+      inherit (lib.attrsets) attrValues;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
@@ -296,6 +304,9 @@
       # Fixed uid: the egress fence below is a drop-in on user-<uid>.slice,
       # which must name the uid statically.
       seatUid = 1001;
+
+      topology = import ../../lib/fleet-topology.nix;
+      seatProxy = "http://${topology.seatProxyAddr}:${toString topology.seatProxyPort}";
     in
     {
       options.cockpit.enable = mkEnableOption "the persistent cockpit session role on this host";
@@ -341,8 +352,38 @@
         # media, HA) stay out of reach.
         systemd.slices."user-${toString seatUid}".sliceConfig = {
           IPAddressDeny = "any";
-          IPAddressAllow = singleton "127.0.1.9/32";
+          IPAddressAllow = singleton "${topology.seatProxyAddr}/32";
         };
+
+        # THE SEAT'S HOME — the same self-gating home aspects as the primary
+        # user (desktop aspects skip themselves on a server), plus the proxy
+        # environment: every outbound tool inherits the fenced egress door
+        # with no per-tool config. Seat state arrives as COPIES of the
+        # primary user's — migration is copy-first, and the old seat stays
+        # intact until the captain retires it.
+        home-manager.users.bridge = {
+          imports = attrValues self.homeModules;
+
+          home.username = "bridge";
+          home.homeDirectory = "/home/bridge";
+          home.stateVersion = config.system.stateVersion;
+
+          home.sessionVariables = {
+            HTTP_PROXY = seatProxy;
+            HTTPS_PROXY = seatProxy;
+            NO_PROXY = "127.0.0.1,localhost";
+            # memo's compile-time default store points at the primary user's
+            # memory (memo.mod.nix); the env var wins for the seat.
+            MEMORY_DIR = "/home/bridge/cockpit/memory/log";
+          };
+        };
+
+        # The captain reaches the seat's files through its group.
+        users.users.${config.primaryUser}.extraGroups = singleton "bridge";
+
+        # The seat's working directory. Claude Code keys per-project state to
+        # this path, so it must exist before the first session.
+        systemd.tmpfiles.rules = singleton "d /home/bridge/cockpit 0750 bridge bridge -";
 
         # tmux is the session's persistence layer; the binary is already
         # system-wide (packages.mod.nix), this adds the /etc config.

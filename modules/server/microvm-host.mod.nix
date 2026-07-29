@@ -51,7 +51,7 @@
         ".crates.io" # cargo index + downloads
         "channels.nixos.org" # nixpkgs channel/flake metadata
       ];
-      seatProxy = "127.0.1.9:3129";
+      seatProxy = "${topology.seatProxyAddr}:${toString topology.seatProxyPort}";
     in
     {
       imports = singleton inputs.microvm.nixosModules.host;
@@ -158,7 +158,7 @@
               ${optionalString config.cockpit.enable ''
                 # The seat's wider list is valid only on its own listener; the
                 # workers' port cannot reach it.
-                acl seat_port localport 3129
+                acl seat_port localport ${toString topology.seatProxyPort}
                 acl seat_domains dstdomain ${concatStringsSep " " seatDomains}
                 http_access allow seat_domains seat_port
               ''}
