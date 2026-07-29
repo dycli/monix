@@ -330,9 +330,12 @@ fn deliver(state: &Path, body: &str) -> Result<()> {
 fn run() -> Result<()> {
     let arguments: Vec<String> = env::args().skip(1).collect();
     let options = parse_arguments(&arguments, || {
-        let mut text = String::new();
-        let _ = std::io::stdin().take(1_048_576).read_to_string(&mut text);
-        text
+        // Lossy, not read_to_string: journal excerpts from a failing unit can
+        // contain non-UTF-8 bytes, and dropping the alert over them would
+        // silence exactly the message that matters.
+        let mut bytes = Vec::new();
+        let _ = std::io::stdin().take(1_048_576).read_to_end(&mut bytes);
+        String::from_utf8_lossy(&bytes).into_owned()
     })?;
 
     let state = PathBuf::from(STATE_DIR);
