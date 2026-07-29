@@ -45,13 +45,10 @@
           ];
           boot.kernelModules = [ "kvm-amd" ];
           hardware.enableRedistributableFirmware = true;
-          networking.useDHCP = lib.mkDefault true;
 
           # DISK. btrfs root lives inside cryptroot; key sealed into the TPM
           # so the host auto-boots headless, with a passphrase slot for
           # recovery.
-          boot.initrd.systemd.enable = true;
-
           disko.devices.disk.main = {
             device = "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_with_Heatsink_2TB_S6WRNS0T219958J";
             type = "disk";

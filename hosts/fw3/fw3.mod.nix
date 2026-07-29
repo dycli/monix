@@ -43,7 +43,6 @@
           boot.kernelModules = [ "kvm-amd" ];
           hardware.enableRedistributableFirmware = true;
           hardware.cpu.amd.updateMicrocode = true;
-          networking.useDHCP = lib.mkDefault true;
 
           # DISK (WD Black SN850X 2TB). Disko derives the mount config: /boot
           # from the ESP, / from btrfs subvol @ inside LUKS (opened as

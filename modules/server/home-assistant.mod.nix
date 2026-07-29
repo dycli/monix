@@ -54,8 +54,6 @@
             "met"
             "radio_browser"
             "backup"
-            # ESPHome ready for future local-first sensors/devices.
-            "esphome"
           ]
           # Camera-stack integrations: Frigate events arrive over MQTT, and
           # tplink talks to the Tapo cams directly (privacy mode, LED, ...)

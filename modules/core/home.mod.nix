@@ -15,7 +15,6 @@
       home-manager.useGlobalPkgs = true;
       home-manager.useUserPackages = true;
       home-manager.backupFileExtension = "hm-bak";
-      home-manager.extraSpecialArgs = { inherit inputs self; };
 
       home-manager.users.${config.primaryUser} = {
         imports = attrValues self.homeModules;
