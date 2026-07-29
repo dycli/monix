@@ -35,6 +35,7 @@
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib.strings) concatStringsSep;
       inherit (lib) types;
+      networkFences = import ../../lib/network-fences.nix;
 
       cfg = config.inference;
 
@@ -156,14 +157,14 @@
           # llama-servers), the tailnet, and (if this host also runs the
           # agent fleet) the guest bridge subnet, so drones can reach local
           # models via the br-agents pinhole. Deny everything else.
-          IPAddressAllow = [
-            "127.0.0.0/8"
-            "::1"
-            "100.64.0.0/10" # tailnet (CGNAT range)
-          ]
-          ++ optionals config.agentFleet.enable [
-            "10.100.0.0/24" # the br-agents guest subnet (see microvm-host.mod.nix)
-          ];
+          IPAddressAllow =
+            networkFences.loopback
+            ++ [
+              "100.64.0.0/10" # tailnet (CGNAT range)
+            ]
+            ++ optionals config.agentFleet.enable [
+              "10.100.0.0/24" # the br-agents guest subnet (see microvm-host.mod.nix)
+            ];
           IPAddressDeny = "any";
         };
 

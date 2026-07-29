@@ -23,6 +23,7 @@
       inherit (lib.attrsets) genAttrs;
       inherit (lib.lists) concatMap map;
       inherit (lib.modules) mkIf;
+      inherit (lib.options) mkEnableOption;
       inherit (lib.strings) toJSON;
       # Derive every path from the home this module is applied to, NOT from
       # primaryUser: the same aspect serves both the primary user's seat and
@@ -208,6 +209,17 @@
       };
     in
     {
+      # Opt-in per home, NOT derived from the home's path: this aspect serves
+      # both seats, and only the fenced one may drop its prompts. Deriving it
+      # from `userHome == "/home/bridge"` would silently re-enable prompts (or
+      # worse, un-prompt the wrong seat) under the pending cockpit->bridge
+      # rename. Set in home-manager.users.bridge below; max never gets it.
+      options.cockpit.bypassPermissions = mkEnableOption ''
+        running this seat with Claude tool prompts off. Only ever true for a
+        home whose account is fenced at the OS (no wheel, no Nix trust, no
+        secrets, default-deny egress) — the walls replace the prompts
+      '';
+
       config = mkIf osConfig.cockpit.enable {
         home.file."cockpit/AGENTS.md" = {
           force = true;
@@ -257,7 +269,11 @@
           force = true;
           text = toJSON {
             permissions = {
+              # The allowlist stays meaningful even under bypass: it is what
+              # AGENTS.md promises, and the only thing left if the mode is
+              # ever dialed back.
               allow = claudeAllow;
+              defaultMode = if config.cockpit.bypassPermissions then "bypassPermissions" else "default";
               # `cd ~/ark/monix && …` was the single largest source of
               # prompts; treat the flake repo and projects dir as additional
               # working directories so cd/read stop prompting there. The
@@ -374,6 +390,11 @@
           home.username = "bridge";
           home.homeDirectory = "/home/bridge";
           home.stateVersion = config.system.stateVersion;
+
+          # The point of the migration: prompts off inside the cage. Safe
+          # only because this account is the fenced one — see the account and
+          # slice definitions above for what it cannot do.
+          cockpit.bypassPermissions = true;
 
           home.sessionVariables = {
             HTTP_PROXY = seatProxy;

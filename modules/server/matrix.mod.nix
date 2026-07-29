@@ -125,9 +125,8 @@
           # 127.0.0.1, and systemd's IP filter can't distinguish that
           # inbound hop from outbound loopback use. systemd checks Allow
           # before Deny; unmatched = allowed (public).
-          IPAddressAllow = [
-            "127.0.0.0/8" # the cloudflared hop (and resolved's DNS stub)
-            "::1"
+          # loopback = the cloudflared hop and resolved's stub.
+          IPAddressAllow = networkFences.loopback ++ [
             "100.64.0.0/10" # tailnet clients (CGNAT range)
           ];
           IPAddressDeny = networkFences.privateRanges;

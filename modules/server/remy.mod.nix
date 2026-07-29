@@ -93,10 +93,7 @@
       };
 
       loopbackOnly = {
-        IPAddressAllow = [
-          "127.0.0.0/8"
-          "::1"
-        ];
+        IPAddressAllow = networkFences.loopback;
         IPAddressDeny = "any";
       };
     in
@@ -306,10 +303,7 @@
             ExecStart = "${calPython}/bin/python ${./remy/calsync.py}";
             # The one remy unit allowed out: HTTPS to the CalDAV host plus
             # loopback. LAN/tailnet/fleet ranges stay denied.
-            IPAddressAllow = [
-              "127.0.0.0/8"
-              "::1"
-            ];
+            IPAddressAllow = networkFences.loopback;
             IPAddressDeny = networkFences.internetOnlyDeny;
           };
         };

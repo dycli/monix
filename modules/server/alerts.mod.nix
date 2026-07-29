@@ -37,6 +37,7 @@
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib.strings) hasSuffix optionalString;
       inherit (lib) types;
+      networkFences = import ../../lib/network-fences.nix;
 
       cfg = config.alerts;
       hostname = config.networking.hostName;
@@ -44,10 +45,7 @@
       # Shared preset + the loopback-only egress every alert unit shares
       # (delivery is loopback tuwunel; enrichment is loopback llama-swap).
       sensorHardening = (import ../../lib/hardened.nix).rootSensor // {
-        IPAddressAllow = [
-          "127.0.0.0/8"
-          "::1"
-        ];
+        IPAddressAllow = networkFences.loopback;
         IPAddressDeny = "any";
       };
 

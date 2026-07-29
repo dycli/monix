@@ -102,10 +102,7 @@
             Slice = "services.slice";
 
             # Internet + loopback; LAN/tailnet/fleet stay denied.
-            IPAddressAllow = [
-              "127.0.0.0/8"
-              "::1"
-            ];
+            IPAddressAllow = networkFences.loopback;
             IPAddressDeny = networkFences.internetOnlyDeny;
           };
         };

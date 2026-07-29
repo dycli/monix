@@ -27,6 +27,7 @@
       inherit (lib.strings) toJSON;
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib) types;
+      networkFences = import ../../lib/network-fences.nix;
 
       cfg = config.fleetLogStream;
       topology = import ../../lib/fleet-topology.nix;
@@ -83,10 +84,7 @@
             Restart = "always";
             RestartSec = 10;
 
-            IPAddressAllow = [
-              "127.0.0.0/8"
-              "::1"
-            ];
+            IPAddressAllow = networkFences.loopback;
             IPAddressDeny = "any";
           };
           path = [

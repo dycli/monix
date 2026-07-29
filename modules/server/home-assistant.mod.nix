@@ -101,12 +101,7 @@
 
         systemd.services.home-assistant.serviceConfig = {
           Slice = "services.slice";
-          IPAddressAllow = [
-            "100.64.0.0/10"
-            "127.0.0.0/8"
-            "::1"
-          ]
-          ++ cfg.lanSubnets;
+          IPAddressAllow = networkFences.loopback ++ [ "100.64.0.0/10" ] ++ cfg.lanSubnets;
           IPAddressDeny = networkFences.privateRanges;
         };
       };

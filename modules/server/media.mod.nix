@@ -38,20 +38,12 @@
       # internet fall through allowed.
       egressFence = {
         Slice = "services.slice";
-        IPAddressAllow = [
+        IPAddressAllow = networkFences.loopback ++ [
           "100.64.0.0/10" # tailnet (CGNAT range)
-          # Loopback by exact address, NOT 127.0.0.0/8: the AI seat's web UI
-          # and egress proxy live on other loopback addresses
-          # (fleet-topology.nix), and a compromised parser must not reach
-          # them. Everything this stack legitimately talks to on loopback
-          # sits on these two.
-          "127.0.0.1/32" # inter-service APIs
-          "127.0.0.53/32" # resolved stub
-          "::1"
         ];
         # Loopback must ALSO be denied: this fence's deny is not "any", so
-        # anything absent from both lists falls through allowed. Allow wins
-        # for the two /32s above; the rest of 127/8 is blocked.
+        # anything absent from both lists falls through allowed. The seat
+        # plane (127.0.1.x) is outside networkFences.loopback and lands here.
         IPAddressDeny = networkFences.privateRanges ++ [ "127.0.0.0/8" ];
       };
 
