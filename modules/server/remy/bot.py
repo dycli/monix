@@ -1,31 +1,18 @@
-"""remy — the family's household chat bot.
+"""The family's household chat bot.
 
-One bot, two rooms, room-scoped skills:
+Two rooms with room-scoped skills:
 
-  - "Household" (created by the bot on first start, family invited):
-    tasks with due dates and named lists in plain language ("we need to
-    take the car in by Friday", "add milk and eggs to shopping"), plus a
-    morning plan (07:00, with a rest-of-the-week section through Sunday)
-    and evening report (19:00, with a week-ahead section on Sunday for
-    the Monday–Sunday week starting next day), folding in the family
-    calendar (calendar.json, written by the separate remy-calendar-sync
-    unit — this process never leaves loopback).
+  - "Household": lists and dated to-dos in plain language, a 07:00
+    morning plan and 19:00 evening report, folding in the family calendar
+    from calendar.json, which the separate remy-calendar-sync unit writes.
 
-  - "Scratchpad" (created on first start with scratch users configured,
-    captain only): the household skill set against its OWN database
-    (scratch.db) — notes, reminders, tasks, quick lists. The calendar is
-    READ-only from here: summaries show it, but nothing mirrors to CalDAV
-    and cal_add is refused. No scheduled posts (reminders still fire;
-    summaries on demand).
+  - "Scratchpad": the same skills against its own scratch.db, with the
+    calendar read-only and no scheduled posts.
 
-Design constraints:
-  - Chat text is UNTRUSTED input. The LLM only ever classifies it into a
-    fixed per-room intent schema; SQL is always parameterized from typed
-    fields; there is no path from message text to shell, SQL, or Matrix
-    admin.
-  - Idempotent event handling: every processed Matrix event id is recorded
-    and skipped on re-delivery, so restarts/replays never double-file.
-  - No cloud calls: parsing runs on the ship's own GPU.
+Chat text is untrusted: the model only classifies it into a fixed
+per-room intent schema, SQL is parameterized from typed fields, and there
+is no path from a message to a shell or to Matrix admin. Parsing runs on
+the local GPU.
 """
 
 import asyncio
@@ -62,37 +49,32 @@ CAL_PATH = os.environ.get("BOT_CALENDAR_JSON", "/var/lib/remy/calendar.json")
 TZ = ZoneInfo(os.environ.get("BOT_TZ", "America/New_York"))
 MORNING = os.environ.get("BOT_MORNING", "07:00")
 EVENING = os.environ.get("BOT_EVENING", "19:00")
-# The family log: an append-only markdown journal the bot writes once a day.
-# It lives in the state dir; a separate unit watching the file mirrors it
-# into the Obsidian vault (the fenced bot can't reach /home).
+# An append-only journal written once a day into the state dir; a separate
+# unit mirrors it into the vault, since this process cannot reach /home.
 LOG_PATH = os.environ.get("BOT_LOG", os.path.join(os.path.dirname(DB_PATH), "log.md"))
 LOG_TIME = os.environ.get("BOT_LOG_TIME", "23:50")
 
 START_MS = int(time.time() * 1000)
 
 
-# ---------------------------------------------------------------- databases
 
 class Conn(sqlite3.Connection):
-    # .cal: whether this database may WRITE to the family calendar (cal_add
-    # plus task/reminder mirroring). True for the household; the scratchpad
-    # is calendar-read-only — its views show events, but everything
-    # downstream of queue_cal no-ops.
+    # Whether this database may write to the family calendar. False for the
+    # scratchpad, where everything downstream of queue_cal no-ops.
     cal = True
 
 
 def connect(path):
-    # check_same_thread=False: llm parsing reads via asyncio.to_thread while
-    # the event loop owns writes; CPython's sqlite3 is built in serialized
-    # threading mode, so sharing one connection across threads is safe.
+    # check_same_thread=False: parsing reads via asyncio.to_thread while the
+    # event loop owns writes. CPython's sqlite3 is built in serialized
+    # threading mode, so one connection across threads is safe.
     db = sqlite3.connect(path, check_same_thread=False, factory=Conn)
     db.row_factory = sqlite3.Row
     return db
 
 
 def home_db(path=DB_PATH, cal=True):
-    # The scratchpad reuses this whole organizer schema against its own
-    # file, just with the calendar unwired.
+    # The scratchpad reuses this schema against its own file.
     db = connect(path)
     db.cal = cal
     db.executescript("""
@@ -153,27 +135,25 @@ def home_db(path=DB_PATH, cal=True):
         CREATE TABLE IF NOT EXISTS processed(event_id TEXT PRIMARY KEY, ts INTEGER);
         CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
     """)
-    # Migrations for databases created earlier on 2026-07-13.
+    # Migrations for databases created before these columns existed.
     if "assignee" not in [r[1] for r in db.execute("PRAGMA table_info(task)")]:
         db.execute("ALTER TABLE task ADD COLUMN assignee TEXT NOT NULL DEFAULT ''")
     outbox_cols = [r[1] for r in db.execute("PRAGMA table_info(cal_outbox)")]
     if "op" not in outbox_cols:
         db.execute("ALTER TABLE cal_outbox ADD COLUMN op TEXT NOT NULL DEFAULT 'create'")
         db.execute("ALTER TABLE cal_outbox ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
-    # 2026-07-20 unified list model: items gained due/assignee/section/done_by,
-    # and the separate `task` table folds into a plain list called "to-dos"
-    # (a to-do is just a list item that may carry a due date). The old table
-    # is kept for history/rollback but no longer read.
+    # A to-do is just a list item that may carry a due date, so the separate
+    # `task` table folds into a list called "to-dos". The old table is kept
+    # for rollback and no longer read.
     item_cols = [r[1] for r in db.execute("PRAGMA table_info(item)")]
     for col in ("due", "assignee", "section", "done_by"):
         if col not in item_cols:
             db.execute(f"ALTER TABLE item ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
     if "seq" not in item_cols:
         db.execute("ALTER TABLE item ADD COLUMN seq INTEGER NOT NULL DEFAULT 0")
-    # 2026-07-29 honest interruption tracking: an event is marked 'seen'
-    # before its handler runs and 'done' after; rows stuck at 'seen' are a
-    # crash mid-handling, reported (not replayed) on the next start. Old
-    # rows predate the column and were all completed — default 'done'.
+    # An event is marked 'seen' before its handler runs and 'done' after, so
+    # a row stuck at 'seen' is a crash mid-handling, reported rather than
+    # replayed on the next start. Rows predating the column were completed.
     processed_cols = [r[1] for r in db.execute("PRAGMA table_info(processed)")]
     if "status" not in processed_cols:
         db.execute("ALTER TABLE processed ADD COLUMN status TEXT NOT NULL DEFAULT 'done'")
@@ -188,8 +168,8 @@ def home_db(path=DB_PATH, cal=True):
                 (t["title"], t["due"], t["assignee"], t["created_by"], t["created_ts"],
                  t["done_ts"], t["done_by"], t["deleted"]))
             new_id = db.execute("SELECT last_insert_rowid() r").fetchone()["r"]
-            # An open dated to-do already has a calendar mirror under its old
-            # task uid; move it to the item uid so future edits stay in sync.
+            # An open dated to-do already has a calendar mirror under its
+            # task uid; move it to the item uid so edits stay in sync.
             if db.cal and not t["deleted"] and t["done_ts"] is None and t["due"]:
                 queue_cal(db, "delete", task_uid(t["id"]))
                 queue_cal(db, "create", item_uid(new_id),
@@ -197,10 +177,9 @@ def home_db(path=DB_PATH, cal=True):
                           t["due"], t["created_by"])
         meta_set(db, "merged_v2", "1")
     db.commit()
-    # Per-list display numbers: number each list's OPEN items 1..N by id, so
-    # what people see is always gap-free (retired rows are skipped, not
-    # counted). Recomputed every start; the handlers re-run the same
-    # compaction after each change. Retired rows get 0 so they never collide.
+    # Open items are numbered 1..N per list so the display is gap-free.
+    # Recomputed at every start, and by the handlers after each change;
+    # retired rows get 0 so they never collide.
     db.execute("UPDATE item SET seq = (SELECT COUNT(*) FROM item i2 "
                "WHERE i2.list_name = item.list_name AND i2.deleted=0 "
                "AND i2.done_ts IS NULL AND i2.id <= item.id) "
@@ -220,11 +199,10 @@ def meta_set(db, k, v):
     db.commit()
 
 
-# The Matrix session lives in its own 0600 file, NOT in the database: every
-# database mutation is dumped wholesale into the git history repo, and a
-# credential in the dump would be a credential in immutable git history
-# (which is exactly where it sat until 2026-07-29 — run() invalidates any
-# token found in an old database on the way past).
+# The Matrix session lives in its own 0600 file rather than the database:
+# every mutation dumps the database into the git history repo, so a
+# credential there would be a credential in immutable history. run()
+# invalidates any token found in an old database.
 SESSION_PATH = os.environ.get(
     "BOT_SESSION", os.path.join(os.path.dirname(DB_PATH), "session.json"))
 
@@ -262,9 +240,8 @@ def git_snapshot(db, db_path, reason):
         name = os.path.basename(db_path).replace(".db", ".sql")
         with open(os.path.join(hist, name), "w") as f:
             for line in db.iterdump():
-                # The session moved out of the database (SESSION_PATH), but
-                # a credential row must never reach git history again even
-                # if one regresses into meta.
+                # Guards against a credential row regressing into meta and
+                # reaching git history.
                 if line.startswith("INSERT INTO") and "meta" in line[:30] and (
                         "access_token" in line or "device_id" in line):
                     continue
@@ -282,7 +259,6 @@ def today():
     return datetime.now(TZ).date()
 
 
-# ---------------------------------------------------------------- LLM
 
 def llm_call(system, text, schema, max_tokens=800):
     body = {
@@ -292,8 +268,7 @@ def llm_call(system, text, schema, max_tokens=800):
         "response_format": {"type": "json_schema",
                             "json_schema": {"name": "action", "schema": schema}},
         # No thinking for a classification call: reasoning tokens count
-        # against max_tokens and can starve the JSON entirely (bit us
-        # live); this also cuts reply latency to ~a second.
+        # against max_tokens and can starve the JSON entirely.
         "chat_template_kwargs": {"enable_thinking": False},
         "temperature": 0.1,
         "max_tokens": max_tokens,
@@ -323,8 +298,7 @@ def llm_text(system, text, max_tokens=700):
     return resp.json()["choices"][0]["message"]["content"]
 
 
-# ================================================================ household
-# Tasks with due dates + named lists, and the scheduled day posts.
+# Lists, dated to-dos, and the scheduled day posts.
 
 def open_items(db, list_name=None):
     """Open (undone, undeleted) items, optionally in one list. Dated items
@@ -360,8 +334,7 @@ def fmt_due(due):
     return f" (by {nice})"
 
 
-# localparts of the invited family accounts — the names the parser may
-# assign tasks to.
+# Localparts of the invited accounts: the names the parser may assign to.
 FAMILY = [u.split(":")[0].lstrip("@") for u in INVITE_USERS]
 
 
@@ -370,8 +343,7 @@ def fmt_who(r):
 
 
 def fmt_item(r):
-    # Per-list number, clean list style ("1. milk"). Used only in single-list
-    # views; cross-list summaries render names without numbers.
+    # Per-list numbering, used only in single-list views.
     return f"{r['seq']}. {r['name']}{fmt_who(r)}{fmt_due(r['due'])}"
 
 
@@ -389,8 +361,8 @@ def calendar_events(day_from, day_to):
         return [], ""
     out = []
     for ev in data.get("events", []):
-        # Task/reminder mirror-events exist for the phone apps; the posts
-        # already render those as tasks and reminders — don't echo them.
+        # Mirror-events exist for the phone apps; the posts already render
+        # them as tasks and reminders.
         uid = ev.get("uid", "")
         if (uid.startswith("remy-task-") or uid.startswith("remy-rem-")
                 or uid.startswith("remy-item-")):
@@ -402,8 +374,7 @@ def calendar_events(day_from, day_to):
         if day_from <= d <= day_to:
             out.append(ev)
     out.sort(key=lambda e: e["start"])
-    # The source tag ("— dylan") only earns its ink when several named
-    # calendars are in play; a single shared calendar tags nothing.
+    # The source tag is only useful with several named calendars.
     if len({e.get("calendar") for e in out}) <= 1:
         out = [{**e, "calendar": ""} for e in out]
     note = ""
@@ -451,16 +422,14 @@ HOME_ACTION = {
         "text": {"type": "string"},
         "reply": {"type": "string"},
     },
-    # Every field required: with a grammar-constrained lazy model, optional
-    # fields simply never get emitted (live finding). Unused fields carry
-    # "" / 0 / [].
+    # Every field is required: a grammar-constrained model never emits
+    # optional ones. Unused fields carry "", 0 or [].
     "required": ["intent", "items", "list_name", "new_list_name", "section",
                  "due", "at", "rem_id", "assignee", "item_id", "new_name",
                  "new_due", "new_assignee", "scope", "kind", "text", "reply"],
 }
 
-# One message can carry several actions ("by EOD we need X, and by friday
-# Y" = two task_adds) — live finding from the captain's very first message.
+# One message can carry several actions.
 HOME_SCHEMA = {
     "type": "object",
     "properties": {
@@ -473,8 +442,8 @@ HOME_SCHEMA = {
 def home_parse(db, sender_name, text):
     now_dt = datetime.now(TZ)
     now = now_dt.date()
-    # Show the model the open lists grouped, each item as its per-list number
-    # (the same number the user sees), so it can route and reference items.
+    # The model sees each item under the same per-list number the user
+    # sees, so it can route and reference them.
     lists = {}
     for r in open_items(db):
         lists.setdefault(r["list_name"], []).append(r)
@@ -612,8 +581,7 @@ unused numbers to 0, unused arrays to []. For item_add, items MUST be filled in
 (unless starting an empty list). Chatter not addressed to the bot = one "other"
 action with reply "".
 Output only the JSON object: {{"actions": [...]}}."""
-    # Generous token budget: several actions × all-required fields (local
-    # tokens are free; a starved response is not).
+    # Several actions times all-required fields; local tokens are free.
     return llm_call(system, text, HOME_SCHEMA, max_tokens=2000).get("actions", [])
 
 
@@ -630,7 +598,6 @@ def valid_assignee(s):
     return s if s in FAMILY else ""
 
 
-# ---------------------------------------------------------------- reminders
 
 def pending_reminders(db):
     return db.execute(
@@ -741,8 +708,7 @@ def do_cal_add(db, act, sender):
 
 
 def do_remind_cancel(db, act):
-    # Match by words from the reminder (no visible ids). If they didn't say
-    # which and there's more than one pending, ask.
+    # Matched by words, since no ids are visible; ambiguity asks.
     rows = pending_reminders(db)
     txt = (act.get("text") or "").strip().lower()
     if txt:
@@ -1134,7 +1100,6 @@ def evening_post(db):
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------- daily log
 
 def fmt_clock(dt):
     """A datetime -> a friendly '10am' / '2:30pm'."""
@@ -1269,7 +1234,6 @@ add events in the Household room. No scheduled posts; ask when you
 want a summary."""
 
 
-# ================================================================ bot
 
 class Bot:
     def __init__(self):
@@ -1305,7 +1269,6 @@ class Bot:
         if not getattr(resp, "event_id", None):
             raise RuntimeError(f"send to {room_id} failed: {resp}")
 
-    # -------------------------------------------------------- dispatch
 
     async def on_message(self, room, event):
         if event.sender == self.client.user_id:
@@ -1407,7 +1370,6 @@ class Bot:
             await asyncio.to_thread(git_snapshot, db, db_path,
                                     f"{'+'.join(mutated)} by {sender}: {text[:60]}")
 
-    # -------------------------------------------------------- schedules
 
     async def scheduler(self):
         """All timed posts, one minute-tick loop.
@@ -1482,7 +1444,6 @@ class Bot:
                 except Exception:
                     log.exception("reminder %s failed", r["id"])
 
-    # -------------------------------------------------------- lifecycle
 
     async def ensure_rooms(self):
         """First start: create the Household (and scratchpad) rooms."""

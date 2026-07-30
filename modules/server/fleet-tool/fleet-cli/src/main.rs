@@ -1,14 +1,13 @@
-// The `fleet` dispatch tool. See fleet-tool.mod.nix for the security model:
-// this binary lives in the read-only nix store and is the only path from the
-// cockpit account into the operator-owned task queue (via a scoped sudo rule).
-// Mutating subcommands run as the operator; `dispatch` runs as the caller to
-// snapshot caller-readable context, then crosses the same sudo boundary with
-// the capsule on stdin so the operator side never opens a caller-supplied
+// The `fleet` dispatch tool: the only path from the cockpit account into
+// the operator-owned task queue, through a scoped sudo rule.
+//
+// Mutating subcommands run as the operator. `dispatch` runs as the caller
+// to snapshot caller-readable context, then crosses the same boundary with
+// the capsule on stdin, so the operator side never opens a caller-supplied
 // path.
 //
-// Deployment configuration is baked in at build time (option_env!), like the
-// @VAR@ substitution the bash predecessor used: a caller's environment must
-// not be able to repoint the queue or the helper binaries.
+// Deployment configuration is baked in at build time with option_env!, so
+// a caller's environment cannot repoint the queue or the helpers.
 
 use std::env;
 use std::ffi::OsStr;
@@ -114,7 +113,6 @@ impl Config {
     }
 }
 
-// ---- small utilities -------------------------------------------------------
 
 trait IoContext<T> {
     fn context(self, message: &str) -> Result<T>;
@@ -131,7 +129,7 @@ impl<T> IoContext<T> for std::io::Result<T> {
     }
 }
 
-/// A staged file removed on drop (the bash `trap 'rm -f' EXIT` equivalent).
+/// A staged file, removed on drop.
 struct TempPath(PathBuf);
 
 impl TempPath {
@@ -206,7 +204,7 @@ fn random_u64() -> Result<u64> {
     Ok(u64::from_ne_bytes(bytes))
 }
 
-/// Two joined 15-bit values, like the bash `${RANDOM}${RANDOM}` it replaces.
+/// Two joined 15-bit values.
 fn random_suffix() -> Result<String> {
     let bits = random_u64()?;
     Ok(format!("{}{}", bits & 0x7fff, (bits >> 15) & 0x7fff))
@@ -221,7 +219,7 @@ fn local_time() -> libc::tm {
     }
 }
 
-/// `date '+%F %T'`
+/// Local time as `%F %T`.
 fn timestamp() -> String {
     let tm = local_time();
     format!(
@@ -235,7 +233,7 @@ fn timestamp() -> String {
     )
 }
 
-/// `date '+%Y%m%d-%H%M%S'`
+/// Local time as `%Y%m%d-%H%M%S`.
 fn timestamp_compact() -> String {
     let tm = local_time();
     format!(
@@ -260,7 +258,7 @@ fn sudo_user() -> String {
     env::var("SUDO_USER").unwrap_or_else(|_| "?".into())
 }
 
-/// Best-effort append to the audit log, like the bash `>>log || true`.
+/// Best-effort append to the audit log.
 fn audit(config: &Config, line: &str) {
     let _ = OpenOptions::new()
         .create(true)
@@ -289,7 +287,7 @@ fn valid_slug(value: &str) -> bool {
         && characters.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// The bash `san`: metadata tokens are [A-Za-z0-9._/-], at most 64 bytes.
+/// Metadata tokens are [A-Za-z0-9._/-], at most 64 bytes.
 fn san(value: &str) -> Result<&str> {
     if !value
         .chars()
@@ -357,7 +355,7 @@ fn file_name_utf8(path: &Path) -> String {
         .to_string()
 }
 
-/// Copy a file's contents to stdout (the bash `cat`).
+/// Copy a file's contents to stdout.
 fn stream_file(path: &Path) -> Result<()> {
     let mut file = File::open(path).with_context(|| format!("open {}", path.display()))?;
     let stdout = std::io::stdout();
@@ -382,7 +380,7 @@ fn stage_stdin(config: &Config, prefix: &str, limit: u64, too_large: &str) -> Re
     Ok(stage)
 }
 
-/// Stage either the joined arguments or stdin, like the steer/answer helpers.
+/// Stage either the joined arguments or stdin.
 fn stage_message(
     config: &Config,
     prefix: &str,
@@ -405,7 +403,7 @@ fn stage_message(
 // ---- front matter ----------------------------------------------------------
 
 /// Return the front-matter header lines iff the file starts with a closed
-/// `---` block (the bash `validate_frontmatter`).
+/// The leading `---` block.
 fn frontmatter_lines(path: &Path) -> Result<Vec<String>> {
     let contents =
         fs::read_to_string(path).with_context(|| format!("read prompt {}", path.display()))?;
@@ -423,7 +421,7 @@ fn frontmatter_lines(path: &Path) -> Result<Vec<String>> {
     Err("prompt must have a closed front-matter block".into())
 }
 
-/// First `key:` value in the header, leading blanks stripped (the bash `fm`).
+/// First `key:` value in the header, leading blanks stripped.
 fn fm(header: &[String], key: &str) -> String {
     let prefix = format!("{key}:");
     header
@@ -616,7 +614,7 @@ fn pack_context(config: &Config, context_dir: &Path, archive: &Path) -> Result<(
     Ok(())
 }
 
-/// The bash `find -xdev ! -type f ! -type d ! -type l`: no sockets, fifos, or
+/// Rejects sockets, fifos and
 /// devices anywhere in the tree, without crossing filesystems.
 fn reject_special_files(root: &Path) -> Result<()> {
     let device = fs::symlink_metadata(root)
@@ -1266,11 +1264,8 @@ fn cmd_health(config: &Config) -> Result<i32> {
     )?
     .lines()
     .count();
-    // Summed from the worker units themselves. This used to read a custom
-    // agents.slice, which existed for no other purpose than this line —
-    // and the slice also folded in squid and the drainers, so the number
-    // is now closer to what its name claims. A stopped worker reports no
-    // value and contributes nothing, which is correct.
+    // Summed from the worker units themselves; a stopped worker reports no
+    // value and contributes nothing.
     let mut show: Vec<String> = ["show", "-p", "MemoryCurrent", "--value"]
         .iter()
         .map(|argument| (*argument).to_string())
@@ -1475,7 +1470,6 @@ mod tests {
             "---\nagent: gemini\nmodel: x\n---\n",
         );
         assert!(validate_prompt(&fixture.config, &unknown).is_err());
-        // The loop-era verify agent is no longer a thing anywhere.
         let verify = write_prompt(
             &fixture,
             "verify.md",

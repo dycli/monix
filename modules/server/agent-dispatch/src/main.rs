@@ -847,8 +847,7 @@ impl Dispatcher {
     }
 
     // `guidance: cockpit` questions surface in the live view for `fleet
-    // answer`; anything else is answered immediately with the stock text —
-    // there is no advisor tier, the cockpit is the only oracle, and an
+    // answer`; anything else gets the stock text immediately, and an
     // unattended task is expected to state what is missing and exit.
     fn relay_questions(
         &self,
@@ -1122,8 +1121,8 @@ impl TaskMetadata {
         })
     }
 
-    // Placeholder for tasks whose front-matter was rejected: never dispatched,
-    // only the timeout and (empty) guidance are consulted while monitoring.
+    // For tasks whose front matter was rejected: never dispatched, and only
+    // the timeout and empty guidance are consulted while monitoring.
     fn rejected(timeout: u64) -> Self {
         Self {
             agent: Agent::Claude,
@@ -1232,7 +1231,7 @@ fn unix_now() -> u64 {
         .as_secs()
 }
 
-/// `date '+%F %T'` in local time, without the subprocess.
+/// Local time as `%F %T`.
 fn timestamp() -> String {
     let tm = unsafe {
         let now = libc::time(std::ptr::null_mut());
@@ -1391,8 +1390,9 @@ fn write_new_or_replace(path: &Path, contents: &[u8], mode: u32) -> Result<()> {
     write_new(path, contents, mode)
 }
 
-/// Copy a trusted source to a fresh destination. `follow_source` only for
-/// operator-managed inputs (credentials may live behind agenix symlinks);
+/// Copy a trusted source to a fresh destination. `follow_source` is only
+/// for operator-managed inputs, since credentials sit behind agenix
+/// symlinks;
 /// worker-reachable paths must pass `false`.
 fn copy_new(source: &Path, destination: &Path, mode: u32, follow_source: bool) -> Result<()> {
     let regular = if follow_source {

@@ -1,16 +1,12 @@
-// ship-alert — the one mouth for every alarm on the ship. Sensors are
-// borrowed specialists (systemd OnFailure, the sweep timer, smartd, upsmon);
-// each one composes a message and hands it here. This binary owns delivery
-// and nothing else: optional local-LLM enrichment, repeat throttling, then a
-// Matrix post to the alert room over the loopback homeserver.
+// Delivery for every alarm on the ship. Sensors — systemd OnFailure, the
+// sweep timer, smartd, upsmon — each compose a message and hand it here.
+// This binary owns only delivery: optional local-LLM enrichment, repeat
+// throttling, then a Matrix post over the loopback homeserver.
 //
-// Credential model (unchanged from the bash predecessor): the bot's password
-// arrives via environment (MATRIX_USER / MATRIX_PASSWORD / ALERT_ROOM_ID from
-// the agenix env file); every alert logs in, sends, and logs out so devices
-// don't accumulate. First ever send also joins the room and sets the
-// display name, stamped in the state directory. If the homeserver is down,
-// alerts can't send — accepted; meta-monitoring needs an off-host watcher,
-// which this deliberately is not.
+// The bot's credentials arrive by environment. Every alert logs in, sends
+// and logs out so devices do not accumulate; the first send also joins the
+// room and sets the display name, stamped in the state directory. If the
+// homeserver is down nothing sends, and there is no off-host watcher.
 //
 // usage: ship-alert [--summarize] [--throttle-minutes N] [message...]
 //        (message on stdin when no positional arguments are given)
