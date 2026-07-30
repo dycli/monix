@@ -328,8 +328,12 @@
           # Group-enterable so the primary user can reach the seat's files.
           homeMode = "750";
           openssh.authorizedKeys.keys = self.keys-admin;
-          # Journal read access; mutations still require root.
-          extraGroups = singleton "systemd-journal";
+          # Journal read access; mutations still require root. users for
+          # write access to the model directory.
+          extraGroups = [
+            "systemd-journal"
+            "users"
+          ];
         };
         users.groups.bridge.gid = seatUid;
 

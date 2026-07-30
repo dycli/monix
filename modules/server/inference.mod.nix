@@ -163,9 +163,9 @@
           "ttm.page_pool_size=25165824"
         ];
 
-        # Downloads happen as the primary user; world-readable so the
-        # DynamicUser service can read them.
-        systemd.tmpfiles.rules = singleton "d ${cfg.modelsDir} 0755 ${config.primaryUser} users -";
+        # Downloads happen as the primary user or the seat (group users);
+        # world-readable so the DynamicUser service can read them.
+        systemd.tmpfiles.rules = singleton "d ${cfg.modelsDir} 0775 ${config.primaryUser} users -";
 
         # llama-cli, llama-bench and friends, for work outside the service.
         environment.systemPackages = singleton llamaCpp;
