@@ -139,7 +139,7 @@
   ];
   remy.scratchpad.users = [ "@dylan:chat.su.is" ];
   remy.calendar.credentialsFile = config.secrets.remy-caldav-json.path;
-  remy.model = "mistral-small-3.2-24b";
+  remy.model = "qwen3.6-35b-a3b";
   # Mirrors the daily log into the Syncthing vault.
   remy.famlog.path = "/home/${config.primaryUser}/crate/sync/notes/famlog.md";
   remy.famlog.owner = config.primaryUser;
