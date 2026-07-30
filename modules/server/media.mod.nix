@@ -239,37 +239,68 @@
         ];
 
         # Egress fence on every unit; Prowlarr too (indexers + *arrs on loopback).
-        systemd.services.sonarr.serviceConfig = egressFence;
-        systemd.services.radarr.serviceConfig = egressFence;
         systemd.services.prowlarr.serviceConfig = egressFence;
         systemd.services.jellyfin.serviceConfig = egressFence;
         # Widened fence — see LAN EXCEPTION above.
         systemd.services.calibre-web.serviceConfig = calibreWebFence;
 
-        # These two are the stack's heaviest untrusted-input parsers —
-        # SABnzbd unpacks Usenet archives through unrar, Bazarr downloads
-        # and parses subtitle files — and their nixpkgs modules ship no
-        # isolation of their own, while sonarr/radarr's do and
-        # prowlarr's comes free with DynamicUser. Same confinement their
-        # siblings already have, applied downstream where we know the
-        # deployment. ReadWritePaths is the load-bearing part: under
-        # ProtectSystem=strict both must still write the media tree
-        # (downloads land there; subtitles are saved next to the video).
-        systemd.services.bazarr.serviceConfig =
-          egressFence
-          // hardened.vendor
-          // {
-            ReadWritePaths = [
-              mediaRoot
-              "/var/lib/bazarr" # its dataDir; the module declares no StateDirectory
-            ];
-          };
+        # The `media` group exists so imports can be hardlinks, which means
+        # every service can write every path under mediaRoot — one shared
+        # failure domain, where a malicious archive handled by SABnzbd could
+        # rewrite what Jellyfin serves. The group stays (hardlinks need it)
+        # and each unit gets only the paths its job requires instead. Under
+        # ProtectSystem=strict the rest of the filesystem is read-only, so a
+        # wrong path here looks like a service that starts and then silently
+        # cannot save: verify functionally, not with `is-active`.
+        #
+        # SABnzbd and Bazarr additionally take the whole `vendor` preset,
+        # because their nixpkgs modules ship no isolation at all. Sonarr and
+        # Radarr already carry the full set EXCEPT the filesystem part — no
+        # general-purpose module can set that, since it cannot know where the
+        # library lives — and Prowlarr gets the equivalent free from
+        # DynamicUser.
         systemd.services.sabnzbd.serviceConfig =
           egressFence
           // hardened.vendor
           // {
-            ReadWritePaths = [ mediaRoot ];
+            # Fetches and unpacks; never touches the library.
+            ReadWritePaths = [ "${mediaRoot}/downloads" ];
           };
+        systemd.services.bazarr.serviceConfig =
+          egressFence
+          // hardened.vendor
+          // {
+            # Writes subtitles beside the videos; no business in downloads.
+            ReadWritePaths = [
+              "${mediaRoot}/library"
+              "/var/lib/bazarr" # its dataDir; the module declares no StateDirectory
+            ];
+          };
+        # Each imports out of downloads (cleaning up after itself) into its
+        # own half of the library, and has no reason to touch the other's.
+        systemd.services.sonarr.serviceConfig = egressFence // {
+          ProtectSystem = "strict";
+          ReadWritePaths = [
+            "${mediaRoot}/downloads"
+            "${mediaRoot}/library/tv"
+          ];
+        };
+        systemd.services.radarr.serviceConfig = egressFence // {
+          ProtectSystem = "strict";
+          ReadWritePaths = [
+            "${mediaRoot}/downloads"
+            "${mediaRoot}/library/movies"
+            # Radarr's module declares no StateDirectory (sonarr's does), so
+            # its own dataDir has to be named or strict mode makes it
+            # read-only and Radarr cannot save a thing.
+            "/var/lib/radarr"
+          ];
+        };
+        # Jellyfin only READS the library, so read-only is the obvious next
+        # step — deliberately NOT taken here: its "save artwork into media
+        # folders" library setting is web-UI state this flake cannot see, and
+        # if it is on, read-only breaks artwork silently. Check that setting,
+        # then this becomes ProtectSystem=strict + ReadOnlyPaths=[mediaRoot].
       };
     };
 }
