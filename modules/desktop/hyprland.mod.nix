@@ -16,24 +16,19 @@
       config = mkIf config.isDesktop {
         programs.hyprland.enable = true;
 
-        # UWSM owns the systemd session lifecycle; the home-manager Hyprland
-        # module's own hook is disabled (see homeModules.hyprland below). In
-        # this nixpkgs pin, `withUWSM` alone only flips `programs.uwsm.enable`
-        # — it does not register Hyprland with UWSM or add a session entry.
+        # UWSM owns the systemd session lifecycle. In this nixpkgs pin
+        # withUWSM only flips programs.uwsm.enable; it neither registers
+        # Hyprland with UWSM nor adds a session entry.
         programs.hyprland.withUWSM = true;
 
-        # nixpkgs' `waylandCompositors` desktop entry (via `uwsm start -F --
-        # start-hyprland`) gives no way to pass `-D`/`--desktop-names` before
-        # `--`, so uwsm seeds XDG_CURRENT_DESKTOP from the binary name
-        # ("start-hyprland") and its quirk plugin appends ":Hyprland" instead
-        # of replacing it, producing "start-hyprland:Hyprland". Hyprland's
-        # startup check does an exact-string match against "Hyprland", so
-        # that trips the "managed externally" notification every session.
-        # Bypassed here by writing the wayland-sessions entry directly with
-        # `-D Hyprland` passed to `uwsm start`, seeding XDG_CURRENT_DESKTOP
-        # correctly up front. mkForce below replaces (not supplements) the
-        # plain non-UWSM entry `programs.hyprland.enable` installs, so the
-        # greeter offers exactly one Hyprland session.
+        # nixpkgs' waylandCompositors entry cannot pass -D before --, so
+        # uwsm seeds XDG_CURRENT_DESKTOP from the binary name and its quirk
+        # plugin appends rather than replaces, yielding
+        # "start-hyprland:Hyprland". Hyprland matches that exactly against
+        # "Hyprland" and otherwise warns about external management every
+        # session. Writing the session entry here passes -D Hyprland up
+        # front; mkForce replaces the plain entry rather than adding to it,
+        # so the greeter offers one Hyprland session.
         services.displayManager.sessionPackages = lib.mkForce [
           (pkgs.writeTextFile {
             name = "hyprland-uwsm";
@@ -44,17 +39,15 @@
               Exec=${lib.getExe pkgs.uwsm} start -F -D Hyprland -- ${lib.getExe' pkgs.hyprland "start-hyprland"}
               Type=Application
             '';
-            # Must launch start-hyprland, not the raw binary: Hyprland's
-            # "started without start-hyprland" warning only clears with a
-            # valid --watchdog-fd, a pipe only start-hyprland creates when it
-            # forks+execs Hyprland — no env var can substitute. start-hyprland
-            # itself does no systemd/target manipulation (just a crash-restart
-            # watchdog), so nesting it in the uwsm-managed unit is safe.
+            # Must launch start-hyprland rather than the raw binary: the
+            # "started without start-hyprland" warning clears only with a
+            # valid --watchdog-fd, a pipe start-hyprland creates when it
+            # forks. It does no systemd manipulation itself, so nesting it
+            # inside the uwsm-managed unit is safe.
             destination = "/share/wayland-sessions/hyprland-uwsm.desktop";
             derivationArgs = {
-              # Mirrors nixpkgs' own `mk_uwsm_desktop_entry` passthru so
-              # `services.displayManager.sessionPackages` can find the
-              # session id this package provides.
+              # Mirrors nixpkgs' mk_uwsm_desktop_entry passthru so
+              # sessionPackages can find the session id.
               passthru.providedSessions = [ "hyprland-uwsm" ];
             };
           })
@@ -65,14 +58,13 @@
         xdg.portal.enable = true;
         xdg.portal.extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
 
-        # The flatpak document portal fails at session start (fusermount3 not
-        # on PATH) since flatpak isn't installed, degrading the user service
-        # manager. Mask it; hyprland/gtk portals don't depend on it.
+        # Without flatpak installed its document portal fails at session
+        # start and degrades the user service manager; the hyprland and gtk
+        # portals do not depend on it.
         systemd.user.units."xdg-document-portal.service".enable = false;
 
-        # greetd itself, and the session launch command (start-hyprland when
-        # present, see the dms-greeter asset script), are configured by the
-        # DankMaterialShell greeter module (see dank.mod.nix).
+        # greetd and the session launch command are configured by the
+        # greeter module in dank.mod.nix.
 
         # Secret storage for desktop applications, unlocked at greetd login.
         services.gnome.gnome-keyring.enable = true;
@@ -80,13 +72,12 @@
       };
     };
 
-  # configType is pinned explicitly to "lua" (Hyprland deprecated hyprlang;
-  # home-manager infers it from home.stateVersion otherwise) so an unrelated
-  # future stateVersion bump can't silently switch config generation.
+  # configType is pinned to "lua" because home-manager otherwise infers it
+  # from home.stateVersion, so a future bump could silently switch config
+  # generation.
   #
-  # Every bind carries a `description`: the DMS keybinds overlay (SUPER+K)
-  # reads these back via `hyprctl binds -j` at runtime, since Lua is
-  # executed, not parsed. Keep descriptions and behavior in sync.
+  # Every bind carries a description: the keybinds overlay reads them back
+  # via `hyprctl binds -j`, since Lua is executed rather than parsed.
   flake.homeModules.hyprland =
     {
       lib,
@@ -101,9 +92,8 @@
       inherit (lib.attrsets) recursiveUpdate;
       inherit (lib.meta) getExe getExe';
 
-      # One `hl.bind(keys, dispatcher, opts)` call per list element.
-      # `opts` merges over `{ description = ...; }`, so callers only need to
-      # add flags (`locked`, `repeating`, `mouse`) that differ from none.
+      # One hl.bind call per element; opts merges over the description, so
+      # callers add only the flags that differ.
       mkBind = keys: dispatcherLua: description: opts: {
         _args = [
           keys
@@ -122,14 +112,12 @@
     in
     {
       config = mkIf osConfig.isDesktop {
-        # DMS writes the monitor layout it manages (Settings → Displays) to
-        # ~/.config/hypr/dms/outputs.lua at runtime, so it must be a real
-        # user-writable file, not a home.file store symlink — seeded empty by
-        # a tmpfiles rule (`f` never touches an existing file).
+        # DMS writes the monitor layout here at runtime, so it must be a
+        # real user-writable file rather than a store symlink; `f` seeds it
+        # without touching an existing one.
         systemd.user.tmpfiles.rules = [
           "f %h/.config/hypr/dms/outputs.lua 0644 - - -"
-          # Cursor theme/size are DMS-owned the same way (Settings → cursor);
-          # the theme package itself is installed by packages.mod.nix.
+          # Cursor theme and size are DMS-owned the same way.
           "f %h/.config/hypr/dms/cursor.lua 0644 - - -"
         ];
 
@@ -137,24 +125,19 @@
           enable = true;
           configType = "lua";
 
-          # Deferred to the NixOS-level `programs.hyprland.enable`, which
-          # installs the compositor and portal system-wide; null avoids a
-          # second HM-managed copy of each package.
+          # The NixOS-level programs.hyprland.enable installs these
+          # system-wide; null avoids a second home-manager copy.
           package = null;
           portalPackage = null;
 
-          # UWSM owns the systemd session via the custom display-manager
-          # entry (nixosModules.hyprland above), running `uwsm start -F -D
-          # Hyprland -- start-hyprland` which brings up the graphical-session
-          # targets itself; this module's own hook would race it. Session env
-          # export is done instead by `uwsm finalize` in the first autostart
-          # line below.
+          # UWSM brings up the graphical-session targets itself, so this
+          # module's own hook would race it; `uwsm finalize` in the first
+          # autostart line exports the session environment instead.
           systemd.enable = false;
 
-          # DMS-owned monitor config (see the tmpfiles rule above). pcall, not
-          # a bare require: if the seed file is missing (first login racing
-          # tmpfiles), a bare require would abort the whole Lua config and
-          # take the session down with it.
+          # pcall rather than a bare require: if the seed file is missing,
+          # a first login racing tmpfiles would otherwise abort the whole
+          # Lua config and take the session down.
           extraConfig = ''
             pcall(require, "dms.outputs")
             pcall(require, "dms.cursor")
@@ -163,27 +146,25 @@
           settings = {
             env = [
               (mkEnv "GDK_SCALE" "2")
-              # Cursor theme/size env comes from DMS's dms/cursor.lua (see
-              # the tmpfiles rule above), not static config.
+              # Cursor env comes from DMS's cursor.lua, not static config.
               (mkEnv "GDK_BACKEND" "wayland")
               (mkEnv "QT_QPA_PLATFORM" "wayland")
-              # qt6ct(-kde) so DMS's "Apply Qt Themes" colors reach Qt apps
-              # (see dank.mod.nix). Widget style itself is picked in qt6ct.
+              # qt6ct-kde so DMS's Qt colours reach Qt apps; the widget
+              # style itself is picked in qt6ct.
               (mkEnv "QT_QPA_PLATFORMTHEME" "qt6ct")
               (mkEnv "SDL_VIDEODRIVER" "wayland")
               (mkEnv "MOZ_ENABLE_WAYLAND" "1")
               (mkEnv "ELECTRON_OZONE_PLATFORM_HINT" "wayland")
               (mkEnv "OZONE_PLATFORM" "wayland")
-              # Statically expanded: Hyprland's `env` does no shell expansion,
-              # so a literal `$VAR` would propagate into the session and break
-              # nvim's runtimepath expansion (E79) under non-POSIX shells.
+              # Expanded statically: Hyprland's env does no shell expansion,
+              # so a literal $VAR would propagate into the session and break
+              # nvim's runtimepath expansion under non-POSIX shells.
               (mkEnv "XDG_DATA_DIRS" "/etc/profiles/per-user/${osConfig.primaryUser}/share:/run/current-system/sw/share")
               (mkEnv "EDITOR" "nvim")
-              # adw-gtk3: the theme DMS's generated gtk.css is written against.
+              # The theme DMS's generated gtk.css is written against.
               (mkEnv "GTK_THEME" "adw-gtk3-dark")
             ];
 
-            # CORE CONFIG — one `hl.config({...})` call covering every category.
             config = {
               general = {
                 gaps_in = 0;
@@ -246,7 +227,6 @@
               ecosystem.no_update_news = true;
             };
 
-            # GESTURES — one `hl.gesture({...})` call per list element.
             gesture = [
               {
                 fingers = 3;
@@ -290,7 +270,6 @@
               }
             ];
 
-            # WINDOW RULES — one `hl.window_rule({...})` call per element.
             window_rule = [
               {
                 match.class = ".*";
@@ -317,7 +296,7 @@
                 opacity = "1 1";
               }
               {
-                # Fix some dragging issues with XWayland.
+                # Fixes dragging issues under XWayland.
                 match = {
                   class = "^$";
                   title = "^$";
@@ -330,7 +309,6 @@
               }
             ];
 
-            # LAYER RULES.
             layer_rule = [
               {
                 match.namespace = "^(dms)$";
@@ -338,14 +316,11 @@
               }
             ];
 
-            # AUTOSTART — runs once at compositor startup. dms and ghostty
-            # start via their own units' WantedBy = graphical-session.target
-            # (see ghostty.mod.nix, dank.mod.nix), brought up by UWSM.
-            # `uwsm finalize` must run first: it exports session vars and
-            # signals `wayland-wm@Hyprland.service` ready, unblocking
-            # graphical-session.target. Long-running autostarts are wrapped in
-            # `uwsm app --` so they run as their own systemd scopes; keybind
-            # execs stay unwrapped since they're one-shot, not long-lived.
+            # `uwsm finalize` must run first: it exports the session
+            # variables and signals wayland-wm@Hyprland ready, unblocking
+            # graphical-session.target. Long-running autostarts are wrapped
+            # in `uwsm app --` to get their own scopes; one-shot keybind
+            # execs are not.
             on = {
               _args = [
                 "hyprland.start"
@@ -359,7 +334,6 @@
               ];
             };
 
-            # BINDINGS
             bind = [
               (mkBind "SUPER + RETURN" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty}")'' "Open terminal" { })
               (mkBind "SUPER + BACKSPACE" ''hl.dsp.exec_cmd("dms ipc call powermenu toggle")'' "Power menu" { })
@@ -443,7 +417,7 @@
               (mkBind "SUPER + mouse_down" ''hl.dsp.focus({ workspace = "e+1" })'' "Next open workspace" { })
               (mkBind "SUPER + mouse_up" ''hl.dsp.focus({ workspace = "e-1" })'' "Previous open workspace" { })
 
-              # SUPER+U, not SUPER+S: S is taken by the messenger bind.
+              # S is taken by the messenger bind.
               (mkBind "SUPER + U" ''hl.dsp.workspace.toggle_special("magic")'' "Toggle special workspace" { })
               (mkBind "SUPER + SHIFT + U" ''hl.dsp.window.move({ workspace = "special:magic" })''
                 "Move window to special workspace"
@@ -519,7 +493,6 @@
                 locked = true;
               })
             ]
-            # Switch to / move to workspaces 1-9.
             ++ (concatMap (
               i:
               let

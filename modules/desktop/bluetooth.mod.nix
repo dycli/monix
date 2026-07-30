@@ -1,6 +1,4 @@
-# Bluetooth on desktops. Pairing/connect UI is DankMaterialShell's control
-# center (see dank.mod.nix); use `bluetoothctl` for anything it doesn't
-# cover.
+# Pairing UI is DMS's control centre; bluetoothctl covers the rest.
 {
   flake.nixosModules.bluetooth =
     { config, lib, ... }:
