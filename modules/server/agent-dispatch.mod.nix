@@ -65,7 +65,6 @@
             pkgs.systemd
           ];
           serviceConfig = {
-            Slice = "agents.slice";
             ExecStart = getExe agentDispatcher;
             Restart = "always";
             RestartSec = 2;

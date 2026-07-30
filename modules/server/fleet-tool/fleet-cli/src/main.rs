@@ -1266,12 +1266,29 @@ fn cmd_health(config: &Config) -> Result<i32> {
     )?
     .lines()
     .count();
-    let memory = command_stdout(
-        Command::new(SYSTEMCTL).args(["show", "agents.slice", "-p", "MemoryCurrent", "--value"]),
-        "systemctl show",
-    )
-    .map(|value| value.trim().to_string())
-    .unwrap_or_else(|_| "unknown".into());
+    // Summed from the worker units themselves. This used to read a custom
+    // agents.slice, which existed for no other purpose than this line —
+    // and the slice also folded in squid and the drainers, so the number
+    // is now closer to what its name claims. A stopped worker reports no
+    // value and contributes nothing, which is correct.
+    let mut show: Vec<String> = ["show", "-p", "MemoryCurrent", "--value"]
+        .iter()
+        .map(|argument| (*argument).to_string())
+        .collect();
+    show.extend(
+        config
+            .workers
+            .iter()
+            .map(|worker| format!("microvm@{worker}.service")),
+    );
+    let memory: u64 = command_stdout(Command::new(SYSTEMCTL).args(&show), "systemctl show")
+        .map(|output| {
+            output
+                .lines()
+                .filter_map(|line| line.trim().parse::<u64>().ok())
+                .sum()
+        })
+        .unwrap_or(0);
 
     println!(
         "tasks queued={queued} running={running} done={done} failed={failed} questions-pending={}",

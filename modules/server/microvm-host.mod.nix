@@ -179,7 +179,6 @@
           # read-only filesystem except logs/cache/pidfile, no new privileges,
           # only the capabilities needed to drop from root at startup.
           systemd.services.squid.serviceConfig = {
-            Slice = "agents.slice";
 
             NoNewPrivileges = true;
             ProtectSystem = "strict";

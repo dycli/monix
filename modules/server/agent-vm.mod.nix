@@ -531,10 +531,9 @@
           map (
             w:
             # microvm.nix has no slice option; unit override so every worker
-            # counts against agents.slice, which `fleet health` reports.
+            # is what `fleet health` sums for its memory figure.
             (nameValuePair "microvm@${w.name}" {
               serviceConfig = {
-                Slice = "agents.slice";
                 # The drainer owns worker lifecycle; upstream's Restart=always would fight its stop/start.
                 Restart = mkForce "no";
                 # Guest volumes are wiped on next start, so a graceful
