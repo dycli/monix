@@ -26,19 +26,16 @@
   fleetLogStream.credentialsEnvFile = config.secrets.matrix-alertbot-env.path;
   fleetLogStream.inviteUsers = [ "@dylan:chat.su.is" ];
 
-  # Append-only memory CLI; the store is mutable state under
-  # ~/cockpit/memory, created once by hand.
+  # Append-only memory CLI; the store is mutable state under the SEAT's
+  # ~/cockpit/memory, created once by hand. Baked in as memo's default so
+  # nothing has to set MEMORY_DIR at runtime.
   memo.enable = true;
-  memo.memoryDir = "/home/${config.primaryUser}/cockpit/memory/log";
+  memo.memoryDir = "/home/bridge/cockpit/memory/log";
 
-  # Usage/cost ledger CLI. OpenRouter section bootstrap-gated until its
-  # read-only management key is provisioned.
+  # Usage/cost ledger CLI. No OpenRouter section: that needs a read-only
+  # management key which has never been provisioned. Provision it, then
+  # set shipCosts.openrouterKeyFile and add the secret below.
   shipCosts.enable = true;
-  shipCosts.openrouterKeyFile =
-    if lib.pathExists ./secrets/openrouter-management-key.age then
-      config.secrets.openrouter-management-key.path
-    else
-      null;
 
   # Plain-language line atop failure alerts, from the ship-local model
   # (degrades to the raw alert if inference is down).
@@ -169,8 +166,8 @@
   # Flip to "qwen3.6-27b" or "qwen3.6-35b-a3b" to A/B.
   remy.model = "mistral-small-3.2-24b";
   # Mirror the daily log into the Syncthing/Obsidian vault.
-  remy.famlog.path = "/home/max/crate/sync/notes/famlog.md";
-  remy.famlog.owner = "max";
+  remy.famlog.path = "/home/${config.primaryUser}/crate/sync/notes/famlog.md";
+  remy.famlog.owner = config.primaryUser;
   remy.famlog.group = "syncthing";
 
   # Curtis, the work-Discord bot: staff requests (wholesale commands parked).
@@ -209,13 +206,6 @@
       file = ./secrets/sabnzbd-secrets.ini.age;
       owner = "sabnzbd";
     };
-  }
-  // lib.optionalAttrs (lib.pathExists ./secrets/openrouter-management-key.age) {
-    # Still bootstrap-gated: this key hasn't been provisioned yet.
-    openrouter-management-key = {
-      file = ./secrets/openrouter-management-key.age;
-      owner = config.primaryUser;
-    };
   };
 
   # agenix in this input has no restartUnits option; make each encrypted
@@ -240,7 +230,7 @@
   };
 
   # Keep more workers than typical demand so incoming tasks get an already
-  # warm VM instead of waiting for boot. Fleet-wide resources are slice-capped.
+  # warm VM instead of waiting for boot.
   agentFleet.workers = lib.lists.imap1 (index: name: { inherit name index; }) [
     "astrapia"
     "cicinnurus"

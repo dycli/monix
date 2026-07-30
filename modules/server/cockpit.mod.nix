@@ -399,9 +399,6 @@
             HTTP_PROXY = seatProxy;
             HTTPS_PROXY = seatProxy;
             NO_PROXY = "127.0.0.1,localhost";
-            # memo's compile-time default store points at the primary user's
-            # memory (memo.mod.nix); the env var wins for the seat.
-            MEMORY_DIR = "/home/bridge/cockpit/memory/log";
           };
         };
 
