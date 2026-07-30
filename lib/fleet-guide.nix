@@ -42,10 +42,9 @@
     - Long-term memory lives at `~/cockpit/memory/` — plain markdown any model can read
       and write. `MEMORY.md` is the index (one terse line per memory); the memory
       files hold STATE. Chronological memory is the memo log (next section). Memory
-      files hold session-learned, non-derivable facts only; the monix repo and its
-      docs are canonical. A memory file that stops being true is edited or deleted —
+      files hold session-learned, non-derivable facts only; the monix repo is
+      canonical. A memory file that stops being true is edited or deleted —
       its story is already in the log.
-    - Deeper fleet docs: `~/ark/monix/docs/agent-fleet.md`.
 
     ## Memory — wake, note, nap
 
