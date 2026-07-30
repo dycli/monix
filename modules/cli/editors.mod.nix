@@ -1,11 +1,9 @@
-# Editors. Neovim is NvChad via nix4nvchad's home-manager module: the starter
-# config is provisioned declaratively, and runtime tools (compiler, lazygit,
-# future LSP servers) are injected into the nvim wrapper only — not the global
-# PATH. Plain pkgs.neovim must NOT be installed alongside it (the wrapper
-# collides); the system list (packages.mod.nix) carries only vim.
+# Neovim is NvChad via nix4nvchad's home-manager module, with runtime
+# tools injected into the nvim wrapper rather than the global PATH. Plain
+# pkgs.neovim collides with that wrapper and must not be installed.
 #
-# Both editors pin 'shell' to /bin/sh: nushell is the login shell, and the
-# editors' POSIX `-c` shell-outs die under it ("E79: Cannot expand wildcards").
+# Both editors pin shell to /bin/sh, since their POSIX `-c` shell-outs
+# fail under nushell with "E79: Cannot expand wildcards".
 { inputs, ... }:
 {
   flake.homeModules.editors =

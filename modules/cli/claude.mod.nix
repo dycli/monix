@@ -1,9 +1,6 @@
-# Claude Code global instructions (~/.claude/CLAUDE.md), versioned here
-# instead of hand-edited in place. Only this config file is managed —
-# everything else under ~/.claude (memory, transcripts, credentials) is
-# mutable state Claude writes to live and must stay unmanaged. Gated to
-# match where claude-code is installed (packages-dev-extras): desktops and
-# the cockpit host.
+# Claude Code's global instructions, versioned rather than hand-edited.
+# Only this file is managed; the rest of ~/.claude is live mutable state.
+# Gated to match where claude-code is installed.
 {
   flake.homeModules.claude =
     { lib, osConfig, ... }:
@@ -13,7 +10,7 @@
     {
       config = mkIf (osConfig.isDesktop || osConfig.cockpit.enable) {
         home.file.".claude/CLAUDE.md" = {
-          # Adopt the pre-existing hand-written file on first switch.
+          # Adopts a pre-existing hand-written file on first switch.
           force = true;
           text = ''
             # Global instructions

@@ -1,8 +1,6 @@
-# lf file manager. `open` (Enter/l on a file) picks by mime type: text-like
-# files open in $EDITOR (nvim) in the same terminal; everything else is
-# dispatched async to xdg-open, which resolves the desktop's mime handlers
-# (browser, libreoffice, obsidian, ...). On the server there is no xdg-open,
-# so non-text files simply don't open — fine for a headless host.
+# `open` picks by mime type: text-like files go to $EDITOR in the same
+# terminal, everything else is dispatched async to xdg-open. A headless
+# host has no xdg-open, so non-text files do not open there.
 {
   flake.homeModules.lf =
     { pkgs, ... }:
@@ -10,8 +8,7 @@
       programs.lf = {
         enable = true;
 
-        # `w` spawns $SHELL by default, which is deliberately bash (POSIX
-        # login shell). The interactive shell is nushell, so point w there.
+        # `w` spawns $SHELL, which is bash; the interactive shell is nu.
         keybindings.w = "$" + "${pkgs.nushell}/bin/nu";
 
         commands.open = ''
