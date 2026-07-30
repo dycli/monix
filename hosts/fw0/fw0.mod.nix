@@ -1,7 +1,9 @@
 # fw0 — Framework Desktop (Strix Halo, 128GB unified LPDDR5X), headless
 # always-on AI server. Roles: agent-fleet microVM host, cockpit session,
-# local inference. All admin/service access is tailnet-only — zero inbound
-# ports on the home IP.
+# local inference. Admin and service access is tailnet-only, with exactly
+# ONE inbound port on the home LAN: calibre-web :8083, opened for the OPDS
+# e-reader that cannot join the tailnet (media.calibreWebLan — see the LAN
+# EXCEPTION note in media.mod.nix). Nothing is exposed to the internet.
 #
 # BIOS (one-time, manual): enable AMD SVM and "restore on AC power loss" so
 # the host auto-boots after an outage.

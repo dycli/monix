@@ -28,9 +28,10 @@
         ];
 
         services.immich = {
+          # Bind wide so the tailnet reaches :2283 directly, not only through
+          # the nginx vhost. port/openFirewall restate upstream defaults and
+          # are left to it.
           host = mkDefault "0.0.0.0";
-          port = mkDefault 2283;
-          openFirewall = mkDefault false; # tailnet-only
           mediaLocation = mkDefault "/srv/photos";
         };
 
