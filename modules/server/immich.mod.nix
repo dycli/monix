@@ -1,16 +1,9 @@
-# Immich aspect — self-hosted family photo library (phone auto-backup,
-# timeline, albums, on-server ML for faces and search). Inert until a host
-# sets `services.immich.enable`.
+# Immich — photo library with on-server ML, reached over tailscale0 at
+# :2283 with no open firewall ports.
 #
-# Same reachability posture as the media stack: binds everywhere, zero open
-# firewall ports, reached over the trusted tailscale0 interface (:2283).
-#
-# STORAGE. /srv/photos — its own tree, NOT the media tree: photos are
-# irreplaceable family state, while /srv/media is redownloadable.
-#
-# The NixOS module brings up PostgreSQL (with pgvector) and Redis itself;
-# machine-learning defaults on — models download from Hugging Face on first
-# use, which the fence's public-internet fall-through permits.
+# Photos live in /srv/photos, separate from the media tree. The upstream
+# module brings up PostgreSQL (pgvector) and Redis; ML models download
+# from Hugging Face on first use.
 {
   flake.nixosModules.immich =
     { config, lib, ... }:
@@ -20,28 +13,22 @@
     in
     {
       config = mkIf config.services.immich.enable {
-        # The upstream module only auto-creates its default /var/lib
-        # location; a custom mediaLocation needs this. 0750 — the tree is
-        # immich's alone.
+        # Upstream only auto-creates its default /var/lib location, not a
+        # custom mediaLocation.
         systemd.tmpfiles.rules = [
           "d ${config.services.immich.mediaLocation} 0750 immich immich -"
         ];
 
         services.immich = {
-          # Bind wide so the tailnet reaches :2283 directly, not only through
-          # the nginx vhost. port/openFirewall restate upstream defaults and
-          # are left to it.
+          # Bind wide so the tailnet reaches :2283 directly, not only via
+          # the nginx vhost.
           host = mkDefault "0.0.0.0";
           mediaLocation = mkDefault "/srv/photos";
         };
 
-        # Anti-pivot fence, media-stack shape: tailnet + loopback allowed,
-        # every private range denied, public internet falls through (ML
-        # model downloads, reverse geocoding). No Slice override — upstream
-        # already confines both units to system-immich.slice. Loopback is
-        # networkFences.loopback (the seat plane is outside it), and 127/8
-        # must be named in the DENY too: these denies are not "any", so
-        # unmatched traffic would fall through allowed.
+        # Public internet falls through allowed (ML model downloads,
+        # reverse geocoding). 127.0.0.0/8 is named in the deny because
+        # these denies are not "any", so anything unmatched is allowed.
         systemd.services.immich-server.serviceConfig = {
           IPAddressAllow = networkFences.loopback ++ [ "100.64.0.0/10" ];
           IPAddressDeny = networkFences.privateRanges ++ [ "127.0.0.0/8" ];

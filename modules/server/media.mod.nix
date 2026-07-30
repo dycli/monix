@@ -1,16 +1,9 @@
-# Media stack aspect: Jellyfin plus the Usenet automation chain (Sonarr,
-# Radarr, Bazarr, Prowlarr, SABnzbd), tailnet-only, plus Calibre-Web which
-# may additionally open to the home LAN (see LAN EXCEPTION below). Inert
-# until `media.enable`.
+# Jellyfin and the Usenet automation chain (Sonarr, Radarr, Bazarr,
+# Prowlarr, SABnzbd), tailnet-only, plus Calibre-Web which may also open
+# to the LAN.
 #
-# Threat model: each service parses untrusted remote content, so all run
-# unprivileged with openFirewall = false (tailnet-only via tailscale0), share
-# only the `media` group, and are fenced off the home LAN and the agent-fleet
-# bridge by a shared systemd IP allow/deny list.
-#
-# Storage: downloads/ and library/ share one filesystem (MEDIAROOT) so *arr
-# imports are hardlinks, not copies. App-level wiring (Prowlarr↔*arr,
-# credentials) is web-UI state, not Nix.
+# downloads/ and library/ share one filesystem so *arr imports are
+# hardlinks. Prowlarr/*arr wiring and credentials are web-UI state.
 {
   flake.nixosModules.media =
     {
@@ -29,29 +22,23 @@
       networkFences = import ../../lib/network-fences.nix;
       hardened = import ../../lib/hardened.nix;
 
-      # downloads/ (SABnzbd) and library/ (*arr, read by Jellyfin) share this
-      # root for hardlink imports.
       mediaRoot = "/srv/media";
 
-      # systemd checks IPAddressAllow BEFORE IPAddressDeny; unmatched traffic
-      # is allowed. So: explicitly allow tailnet + loopback, deny every
-      # private/link-local range (LAN, fleet bridge), and let the public
-      # internet fall through allowed.
+      # The public internet is in neither list and so falls through
+      # allowed; the LAN and fleet bridge are denied.
       egressFence = {
         IPAddressAllow = networkFences.loopback ++ [
           "100.64.0.0/10" # tailnet (CGNAT range)
         ];
-        # Loopback must ALSO be denied: this fence's deny is not "any", so
-        # anything absent from both lists falls through allowed. The seat
-        # plane (127.0.1.x) is outside networkFences.loopback and lands here.
+        # 127.0.0.0/8 must be denied explicitly: this deny is not "any",
+        # so the seat plane outside networkFences.loopback would otherwise
+        # be allowed.
         IPAddressDeny = networkFences.privateRanges ++ [ "127.0.0.0/8" ];
       };
 
-      # LAN EXCEPTION: the OPDS e-reader (ESP32) can't join the tailnet, so
-      # calibreWebLan adds its LAN subnet to the allow list — which also lets
-      # a compromised calibre-web reach the LAN (accepted trade; IP filters
-      # are direction-blind). Every other private range, incl. the fleet
-      # bridge, stays denied.
+      # The OPDS e-reader cannot join the tailnet, so calibreWebLan adds
+      # its subnet. IP filters are direction-blind, so this also lets
+      # calibre-web reach the LAN.
       calibreWebFence = egressFence // {
         IPAddressAllow =
           egressFence.IPAddressAllow
@@ -107,9 +94,8 @@
         # group. Prowlarr is excluded: it only brokers indexer searches.
         users.groups.media = { };
 
-        # Setgid (2…) so created files inherit the media group. `d` rules
-        # create-if-missing and never touch existing content — safe across
-        # a future RAID re-mount.
+        # Setgid so created files inherit the media group. `d` rules
+        # create-if-missing and never touch existing content.
         systemd.tmpfiles.rules = [
           "d ${mediaRoot} 2775 root media -"
           "d ${mediaRoot}/downloads 2775 sabnzbd media -"
@@ -121,7 +107,6 @@
           "d ${mediaRoot}/books 2775 calibre-web media -"
         ];
 
-        # --- The librarians: decide WHAT to fetch, manage the library ---
         services.sonarr = {
           enable = true;
           group = "media";
@@ -133,15 +118,14 @@
           openFirewall = false; # tailnet-only (UI on :7878)
         };
 
-        # Subtitles: watches Sonarr/Radarr libraries, fetches matching subs.
         services.bazarr = {
           enable = true;
           group = "media";
           openFirewall = false; # tailnet-only (UI on :6767)
         };
 
-        # Indexer broker: holds the indexer accounts, fans searches out to
-        # them, returns scored candidates to the *arrs (Newznab API).
+        # Indexer broker: holds the indexer accounts and answers the *arrs
+        # over Newznab.
         services.prowlarr = {
           enable = true;
           openFirewall = false; # tailnet-only (UI on :9696)
@@ -230,34 +214,26 @@
           group = "media";
           openFirewall = false; # tailnet-only (web/API on :8096)
         };
-        # VAAPI hw transcode: select in Jellyfin Dashboard → Playback →
-        # VAAPI, /dev/dri/renderD128.
+        # VAAPI transcode must also be selected in Jellyfin's dashboard
+        # under Playback, with /dev/dri/renderD128.
         users.users.jellyfin.extraGroups = [
           "render"
           "video"
         ];
 
-        # Egress fence on every unit; Prowlarr too (indexers + *arrs on loopback).
         systemd.services.prowlarr.serviceConfig = egressFence;
         systemd.services.jellyfin.serviceConfig = egressFence;
-        # Widened fence — see LAN EXCEPTION above.
         systemd.services.calibre-web.serviceConfig = calibreWebFence;
 
-        # The `media` group exists so imports can be hardlinks, which means
-        # every service can write every path under mediaRoot — one shared
-        # failure domain, where a malicious archive handled by SABnzbd could
-        # rewrite what Jellyfin serves. The group stays (hardlinks need it)
-        # and each unit gets only the paths its job requires instead. Under
-        # ProtectSystem=strict the rest of the filesystem is read-only, so a
-        # wrong path here looks like a service that starts and then silently
-        # cannot save: verify functionally, not with `is-active`.
+        # The media group lets every service write the whole tree, so each
+        # unit is narrowed to the paths its job needs. Under
+        # ProtectSystem=strict a wrong path here gives a unit that starts
+        # and then cannot save.
         #
-        # SABnzbd and Bazarr additionally take the whole `vendor` preset,
-        # because their nixpkgs modules ship no isolation at all. Sonarr and
-        # Radarr already carry the full set EXCEPT the filesystem part — no
-        # general-purpose module can set that, since it cannot know where the
-        # library lives — and Prowlarr gets the equivalent free from
-        # DynamicUser.
+        # SABnzbd and Bazarr also take the vendor preset; their nixpkgs
+        # modules ship no isolation. Sonarr and Radarr already carry it
+        # apart from the filesystem part, which no general module can set,
+        # and Prowlarr gets the equivalent from DynamicUser.
         systemd.services.sabnzbd.serviceConfig =
           egressFence
           // hardened.vendor
@@ -275,8 +251,7 @@
               "/var/lib/bazarr" # its dataDir; the module declares no StateDirectory
             ];
           };
-        # Each imports out of downloads (cleaning up after itself) into its
-        # own half of the library, and has no reason to touch the other's.
+        # Each imports from downloads into its own half of the library.
         systemd.services.sonarr.serviceConfig = egressFence // {
           ProtectSystem = "strict";
           ReadWritePaths = [

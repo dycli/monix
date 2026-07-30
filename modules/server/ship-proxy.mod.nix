@@ -1,11 +1,9 @@
-# Ship proxy aspect — pretty names for the ship's web UIs, tailnet-only.
-# nginx terminates TLS for <service>.su.is and proxies to local ports; names
-# resolve publicly (grey-cloud A records → fw0's tailnet IP) but only route
-# inside the tailnet, so reachability is network-level, not auth-level.
+# nginx terminates TLS for <service>.su.is and proxies to local ports.
+# Names resolve publicly (grey-cloud A records → fw0's tailnet IP) but
+# only route inside the tailnet; there is no application auth.
 #
-# TLS is a single wildcard *.su.is cert via DNS-01 (the host isn't publicly
-# reachable, so HTTP-01 can't work), using a Cloudflare DNS-edit token via
-# shipProxy.acmeTokenFile. Ports 80/443 never open on the public firewall.
+# One wildcard *.su.is cert via DNS-01, since the host is not publicly
+# reachable and HTTP-01 cannot work. Ports 80/443 never open publicly.
 {
   flake.nixosModules.ship-proxy =
     { config, lib, ... }:
@@ -101,20 +99,14 @@
             // optionalAttrs config.services.home-assistant.enable {
               "ha.${cfg.domain}" = proxy 8123 { };
             }
-            # The opencode web cockpit seat (cockpit.mod.nix). Shell-capable:
-            # its whole access control is tailnet membership — but unlike
-            # every other name here, that is enforced in nginx too: without
-            # the source gate, any local service allowed 127.0.0.1 (or the
-            # host's own tailnet address) could reach this vhost by Host
-            # header and drive the seat, bypassing the parser fences that
-            # keep the seat's own listener out of reach. Its upstream is the
-            # seat's own loopback address, not 127.0.0.1 (fleet-topology.nix).
+            # The web seat is shell-capable, so the tailnet gate is enforced
+            # here as well: without the source rules below, any local
+            # service allowed 127.0.0.1 could reach it by Host header.
             // optionalAttrs config.cockpit.webEnable {
               "ai.${cfg.domain}" = proxyTo "http://${topology.seatWebAddr}:${toString topology.seatWebPort}" {
-                # SSE/streaming responses must not be buffered. Only real
-                # tailnet peers may talk to the seat: loopback and the
-                # host's own tailnet address (homepage.mod.nix hardcodes
-                # the same one) are local pivots, not clients.
+                # SSE responses must not be buffered. The denied addresses
+                # are local pivots rather than tailnet peers; the host's
+                # own tailnet IP is hardcoded in homepage.mod.nix too.
                 extraConfig = ''
                   proxy_buffering off;
                   deny 127.0.0.0/8;
@@ -122,10 +114,8 @@
                   deny 100.102.113.74;
                   allow 100.64.0.0/10;
                   deny all;
-                  # Wear a dedicated source address on the upstream leg so
-                  # the seat's own fence can allow nginx WITHOUT allowing
-                  # 127.0.0.1 — which would hand it every other local
-                  # service (fleet-topology.nix, cockpit.mod.nix).
+                  # Dedicated source address so the seat's fence can admit
+                  # nginx without admitting all of 127.0.0.1.
                   proxy_bind ${topology.seatIngressAddr};
                 '';
               };

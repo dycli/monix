@@ -1,30 +1,13 @@
-# Matrix homeserver aspect — the family chat rail (rooms are the UI; bots
-# are just other accounts). tuwunel: a single Rust binary on RocksDB.
-# Inert until a host sets `matrix.enable`.
+# tuwunel Matrix homeserver, a single Rust binary on RocksDB in
+# /var/lib/tuwunel. Federation is off and registration is token-gated.
 #
-# Deliberately not a public Matrix node:
-#   - allow_federation = false — this server speaks to no other
-#     homeserver, removing the federation attack/abuse surface.
-#   - Registration is token-gated, permanently: an account can only be
-#     created with the registration token (agenix env secret).
-#   - E2EE stays allowed but family rooms are intended unencrypted:
-#     transport is TLS into our own hardware, and skipping E2EE avoids
-#     device-verification friction and keeps bot integration simple.
+# No public inbound port: the tailnet reaches the listener directly and
+# the public hostname rides a Cloudflare Tunnel. Do NOT put a Cloudflare
+# Access application on that hostname — Matrix clients speak the
+# client-server API and cannot traverse an SSO wall.
 #
-# No public inbound port; tailnet reaches the listener directly and the
-# public hostname rides a dedicated Cloudflare Tunnel. NO Cloudflare
-# Access application on this hostname — Matrix clients speak the
-# client-server API and cannot traverse an Access SSO wall; auth is
-# Matrix's own password login plus the token-gated registration above.
-#
-# Egress must include the public internet — federation is off, but phone
-# notifications require the homeserver to call each client's push gateway
-# (Element's sygnal at matrix.org); block that and mobile push silently
-# dies. Fence shape: public allowed; loopback pinholes, LAN, and fleet
-# bridge denied.
-#
-# Data: /var/lib/tuwunel (RocksDB), service-private — include it in the
-# off-host backup design.
+# Egress must include the public internet even with federation off, or
+# push notifications to each client's gateway stop working.
 {
   flake.nixosModules.matrix =
     {
@@ -100,37 +83,28 @@
               "0.0.0.0"
               "::"
             ];
-            # The three load-bearing policy switches (see header).
             allow_federation = false;
             allow_registration = true; # token-gated via the env secret
             allow_encryption = true;
-            # tuwunel's default appends "💕" to every new account's display
-            # name; existing accounts keep whatever name they have.
+            # tuwunel otherwise appends "💕" to new display names.
             new_user_displayname_suffix = "";
-            # Federation is off; don't name notary key servers at all.
             trusted_servers = [ ];
-            # URL previews (SSRF-shaped) are off by tuwunel default; the
-            # exact key isn't set explicitly since unrecognized keys are
-            # rejected and it's unverifiable from the stripped binary.
+            # URL previews are off by tuwunel default; the key is not set
+            # explicitly because unrecognized keys are rejected.
           };
         };
 
         systemd.services.tuwunel.serviceConfig = {
-          # Public internet stays reachable (push gateways — notifications
-          # die without it) but LAN and the fleet bridge do not. Loopback
-          # is allowed: cloudflared delivers every public client over
-          # 127.0.0.1, and systemd's IP filter can't distinguish that
-          # inbound hop from outbound loopback use. systemd checks Allow
-          # before Deny; unmatched = allowed (public).
-          # loopback = the cloudflared hop and resolved's stub.
+          # Loopback carries the cloudflared hop and resolved's stub; the
+          # public internet is unmatched and so allowed, which push
+          # gateways require.
           IPAddressAllow = networkFences.loopback ++ [
             "100.64.0.0/10" # tailnet clients (CGNAT range)
           ];
           IPAddressDeny = networkFences.privateRanges;
         };
 
-        # Public web ingress: a dedicated cloudflared connector that dials out
-        # to Cloudflare's edge; no inbound port.
+        # cloudflared dials out to Cloudflare's edge; no inbound port.
         systemd.services.matrix-tunnel = mkIf (cfg.tunnelTokenFile != null) {
           description = "Cloudflare Tunnel for the Matrix homeserver";
           wantedBy = [ "multi-user.target" ];
@@ -150,19 +124,11 @@
             Restart = "always";
             RestartSec = 5;
 
-            # This is the one process on the host that handles traffic from
-            # the public internet, and DynamicUser bounds its filesystem
-            # reach, not its network reach — without this it sits in
-            # system.slice able to dial the LAN, the tailnet and every
-            # loopback service. It needs exactly two things: the internet
-            # (Cloudflare's edge) and loopback (tuwunel on 127.0.0.1, plus
-            # resolved's stub on 127.0.0.53 — /etc/resolv.conf points there,
-            # so cloudflared's Go resolver stays inside the fence).
-            #
-            # 127.0.0.0/8 is named in the deny because the allow above is a
-            # /24: the AI seat's plane lives at 127.0.1.x and this must not
-            # reach it. The public internet is in neither list and so falls
-            # through allowed, which is the point.
+            # DynamicUser bounds filesystem reach, not network reach. This
+            # process needs only Cloudflare's edge and loopback (tuwunel,
+            # plus resolved's stub, which /etc/resolv.conf points at so
+            # cloudflared's Go resolver stays inside the fence).
+            # 127.0.0.0/8 is denied because the allow is a /24.
             IPAddressAllow = networkFences.loopback;
             IPAddressDeny = networkFences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
           };

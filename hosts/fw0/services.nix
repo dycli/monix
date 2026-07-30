@@ -3,62 +3,52 @@
   users.mutableUsers = false;
   users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.max-password.path;
 
-  # Primary interactive agent cockpit: tmux over tailnet SSH and opencode
-  # web at ai.su.is, both tailnet-only.
+  # tmux over tailnet SSH and opencode web at ai.su.is.
   cockpit.enable = true;
 
-  # Infrastructure resolves locally (router DNS), not through the
-  # tailnet's global nameservers: the Mullvad ad-block resolver is for
-  # interactive devices, and a server shouldn't inherit its outages or
-  # filter false-positives (merges with the aspect's --ssh).
+  # Resolve via the router rather than the tailnet's global nameservers,
+  # so the server does not inherit the ad-block resolver's outages or
+  # false positives. Merges with the aspect's --ssh.
   services.tailscale.extraSetFlags = [ "--accept-dns=false" ];
 
-  # Agent-fleet microVM host: host-only bridge + egress proxy + microvm.nix
-  # runner (microvm-host.mod.nix).
+  # Host-only bridge, egress proxy and microvm.nix runner.
   agentFleet.enable = true;
 
-  # Unit failures and the 6-hourly sweep post to the Ship Alerts room.
+  # Unit failures and the 6-hourly sweep post to the alerts room.
   alerts.enable = true;
   alerts.credentialsEnvFile = config.secrets.matrix-alertbot-env.path;
 
-  # Agent-fleet audit log streamed line-for-line into a Fleet Ops room.
+  # Fleet audit log, streamed line for line into its own room.
   fleetLogStream.enable = true;
   fleetLogStream.credentialsEnvFile = config.secrets.matrix-alertbot-env.path;
   fleetLogStream.inviteUsers = [ "@dylan:chat.su.is" ];
 
-  # Append-only memory CLI; the store is mutable state under the SEAT's
-  # ~/cockpit/memory, created once by hand. Baked in as memo's default so
-  # nothing has to set MEMORY_DIR at runtime.
+  # The store is mutable state under the seat's home, created once by
+  # hand; baked in as memo's default so nothing sets MEMORY_DIR at runtime.
   memo.enable = true;
   memo.memoryDir = "/home/bridge/cockpit/memory/log";
 
-  # Plain-language line atop failure alerts, from the ship-local model
-  # (degrades to the raw alert if inference is down).
+  # Summary line atop failure alerts; falls back to the raw alert.
   alerts.summary.enable = true;
   # EcoFlow RIVER 3 Plus over USB HID (usbhid-ups, 3746:ffff).
   alerts.ups.enable = true;
 
-  # Fabric Minecraft server, tailnet-only and egress-fenced.
+  # Fabric server, tailnet-only.
   minecraft.enable = true;
 
-  # Jellyfin + Sonarr/Radarr/Bazarr/Prowlarr/SABnzbd, tailnet-only and
-  # egress-fenced. *arr wiring is web-UI state; SABnzbd is declarative
-  # (read-only ini).
+  # *arr wiring is web-UI state; SABnzbd's ini is read-only.
   media.enable = true;
   media.sabnzbdSecretsFile = config.secrets.sabnzbd-secrets.path;
-  # The Xteink X3 e-reader (ESP32, can't join the tailnet) pulls the OPDS
-  # feed, so its port is additionally opened on the LAN.
+  # The e-reader cannot join the tailnet and pulls the OPDS feed.
   media.calibreWebLan = {
     interface = "enp191s0";
     subnet = "192.168.1.0/24";
   };
 
-  # Smart-home backend, tailnet-only at :8123 / ha.su.is. Device wiring is
-  # UI state.
+  # Device wiring is UI state.
   services.home-assistant.enable = true;
   homeAssistant.lanSubnets = [ "192.168.1.0/24" ];
 
-  # Frigate NVR at frigate.su.is via the ship proxy.
   shipCameras.enable = true;
   shipCameras.reolink = {
     cam1 = "192.168.1.201";
@@ -71,20 +61,17 @@
   shipCameras.lanSubnets = [ "192.168.1.0/24" ];
   shipCameras.envFile = config.secrets.frigate-env.path;
 
-  # Family photo library, tailnet-only at :2283, photos under /srv/photos.
   services.immich.enable = true;
 
-  # Tailnet-only pretty names: <service>.su.is vhosts on nginx with a
-  # wildcard DNS-01 cert.
+  # <service>.su.is vhosts with a wildcard DNS-01 cert.
   shipProxy.enable = true;
   shipProxy.dashboardHost = "in.su.is";
   shipProxy.acmeTokenFile = config.secrets.cloudflare-dns-token.path;
 
-  # Dashboard of links to every web UI at plain http://fw0. Tailnet-only.
+  # Links to every web UI, at plain http://fw0.
   services.homepage-dashboard.enable = true;
 
-  # llama.cpp (Vulkan) behind llama-swap on :8091, tailnet-only, models
-  # loaded on demand.
+  # llama.cpp (Vulkan) behind llama-swap on :8091, loaded on demand.
   inference.enable = true;
   inference.models."qwen3.6-35b-a3b" = {
     file = "Qwen3.6-35B-A3B-UD-Q5_K_XL.gguf";
@@ -108,9 +95,7 @@
     ];
     aliases = [ "gpt-oss" ];
   };
-  # Dense small models for judgment-heavy chat (remy); better instruction
-  # following/routing than the 3B-active MoE. Mistral is remy's brain;
-  # Qwen 27B is on the bench for an A/B via remy.model.
+  # Dense models, for the instruction-following remy needs.
   inference.models."mistral-small-3.2-24b" = {
     file = "Mistral-Small-3.2-24B-Instruct-2506-UD-Q4_K_XL.gguf";
     flags = [
@@ -137,17 +122,14 @@
     aliases = [ "qwen3.6-dense" ];
   };
 
-  # Serves the declaratively managed ~/crate/sync mesh.
   services.syncthing.enable = true;
 
-  # tuwunel without federation, token-gated registration, exposed at
-  # chat.su.is through its own tunnel.
+  # Exposed at chat.su.is through its own tunnel.
   matrix.enable = true;
   matrix.serverName = "chat.su.is";
   matrix.registrationTokenEnvFile = config.secrets.matrix-registration-env.path;
   matrix.tunnelTokenFile = config.secrets.matrix-cloudflare-tunnel-token.path;
 
-  # Household organizer.
   remy.enable = true;
   remy.credentialsEnvFile = config.secrets.matrix-remy-env.path;
   remy.registrationEnvFile = config.secrets.matrix-registration-env.path;
@@ -157,25 +139,21 @@
   ];
   remy.scratchpad.users = [ "@dylan:chat.su.is" ];
   remy.calendar.credentialsFile = config.secrets.remy-caldav-json.path;
-  # Dense 24B: sharper instruction following/routing than the qwen a3b MoE.
-  # Flip to "qwen3.6-27b" or "qwen3.6-35b-a3b" to A/B.
   remy.model = "mistral-small-3.2-24b";
-  # Mirror the daily log into the Syncthing/Obsidian vault.
+  # Mirrors the daily log into the Syncthing vault.
   remy.famlog.path = "/home/${config.primaryUser}/crate/sync/notes/famlog.md";
   remy.famlog.owner = config.primaryUser;
   remy.famlog.group = "syncthing";
 
-  # Curtis, the work-Discord bot: staff requests (wholesale commands parked).
-  # guildId pins slash-command sync to one server for instant availability
-  # (global sync can take Discord up to an hour).
+  # guildId pins slash-command sync to one server; global sync can take
+  # Discord an hour.
   curtisbot.enable = true;
   curtisbot.credentialsEnvFile = config.secrets.curtisbot-env.path;
   curtisbot.guildId = "916523305362685952";
-  # Test server sandbox: same commands, separate test.db.
+  # Same commands against a separate test.db.
   curtisbot.testGuildId = "1529484237210910753";
 
-  # opencode web UI cockpit seat, tailnet-only at ai.su.is via the ship
-  # proxy (grey-cloud A record → fw0's tailnet IP).
+  # The web seat, at ai.su.is through the ship proxy.
   cockpit.webEnable = true;
 
   secrets = {
@@ -203,10 +181,9 @@
     };
   };
 
-  # agenix in this input has no restartUnits option; make each encrypted
-  # source an explicit trigger on its long-running consumer so secret
-  # rotation restarts the daemon (oneshots re-read their env every run and
-  # need none of this).
+  # This agenix pin has no restartUnits, so each encrypted source is an
+  # explicit trigger on its long-running consumer. Oneshots re-read their
+  # env every run and need none.
   systemd.services.matrix-tunnel.restartTriggers = [
     ./secrets/matrix-cloudflare-tunnel-token.age
   ];
@@ -224,8 +201,7 @@
     openrouterKeyFile = config.secrets.agent-openrouter-key.path;
   };
 
-  # Keep more workers than typical demand so incoming tasks get an already
-  # warm VM instead of waiting for boot.
+  # More workers than typical demand, so tasks get an already-warm VM.
   agentFleet.workers = lib.lists.imap1 (index: name: { inherit name index; }) [
     "astrapia"
     "cicinnurus"

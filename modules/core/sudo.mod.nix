@@ -1,7 +1,5 @@
-# sudo is on with a password for @wheel by default; polkit is not, and on a
-# headless host nothing asks it anything (verified: zero authorization events
-# in the journal over a week). So this aspect exists only to turn polkit ON
-# for the desktop, where the session's agents genuinely need it.
+# sudo and its @wheel password are NixOS defaults; polkit is not, and only
+# the desktop session's agents need it.
 {
   flake.nixosModules.sudo =
     { config, lib, ... }:

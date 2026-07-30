@@ -4,24 +4,18 @@
   tasksDir = "/var/lib/agents/tasks";
   readersGroup = "agent-fleet-readers";
 
-  # The bridge seat's egress door: squid's dedicated loopback listener.
-  # The slice fence (cockpit.mod.nix) allows exactly seatProxyAddr; the
-  # listener and proxy env derive from the same pair.
+  # squid's listener for the seat; the slice fence in cockpit.mod.nix
+  # allows exactly this address.
   seatProxyAddr = "127.0.1.9";
   seatProxyPort = 3129;
 
-  # The web seat's listener (opencode-web in cockpit.mod.nix). Its own
-  # loopback address, NOT 127.0.0.1: the untrusted-input parser fences
-  # (media/immich/frigate) allow 127.0.0.1/32 for inter-service APIs, and
-  # keeping the seat off that address is what makes it unreachable from a
-  # compromised parser. nginx (ship-proxy) is the only intended client.
+  # opencode-web listens here rather than on 127.0.0.1, which the parser
+  # fences allow for inter-service APIs.
   seatWebAddr = "127.0.1.10";
   seatWebPort = 4097;
 
-  # The source address nginx wears when it proxies to the web seat
-  # (ship-proxy.mod.nix sets proxy_bind). The seat's own fence allows this
-  # one address for the inbound leg — using nginx's default 127.0.0.1
-  # source would mean allowing 127.0.0.1 outright, which hands the seat
-  # every other loopback service on the box.
+  # Source address nginx proxies from (ship-proxy.mod.nix sets
+  # proxy_bind), so the seat's fence can admit nginx without admitting
+  # everything else on 127.0.0.1.
   seatIngressAddr = "127.0.1.11";
 }

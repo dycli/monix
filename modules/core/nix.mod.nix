@@ -14,21 +14,11 @@
           "nix-command"
         ];
 
-        # Trusted Nix users are passwordless root-equivalent via the daemon:
-        # a trusted user can disable the build sandbox and execute as root.
-        # So the list is root and nothing else — not @wheel, and not the
-        # primary user either. The primary user was here until the fourth
-        # audit pointed out that Syncthing runs AS that user
-        # (syncthing.mod.nix) and listens on the tailnet, which made a
-        # file-sync daemon a root-equivalent process.
-        #
-        # Nothing normal is lost: substituters below are daemon-side config
-        # and apply to every user, unprivileged builds work (the AI seat
-        # builds and runs `nix flake check` all day and has never been
-        # trusted), and administration goes through sudo, where root is
-        # trusted. What a non-trusted user gives up is overriding restricted
-        # settings from the CLI — `--option substituters …`, disabling the
-        # sandbox, nominating remote builders.
+        # A trusted user can disable the build sandbox and execute as root,
+        # so this excludes the primary user: syncthing.mod.nix runs
+        # Syncthing as that user, listening on the tailnet. Substituters
+        # below are daemon-side and still apply to everyone; a non-trusted
+        # user only loses CLI overrides of restricted settings.
         trusted-users = [ "root" ];
 
         substituters = [

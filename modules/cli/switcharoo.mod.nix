@@ -1,18 +1,9 @@
-# switcharoo — sync this machine's flake clone from wherever its updates
-# come from, then switch. One word, any machine.
+# switcharoo — pull this machine's flake clone, then switch.
 #
-# On fw0 the seat's clone (/home/bridge/ark/monix) is the repo of record:
-# the seat commits there and cannot switch (no wheel); the captain
-# switches from his own clone. Where the seat clone exists it is pulled
-# ff-only first — a failure there is real divergence and stops the switch
-# for a human decision. Elsewhere (fw3) the best source is origin, and a
-# failed pull only warns: being offline shouldn't block switching to what
-# is already on disk.
-#
-# The commits it pulls are printed before the switch. This is the one
-# place where code the AI seat wrote becomes code that runs as root, and
-# a one-word command should not make that step invisible — the whole
-# containment story assumes the human sees what he is activating.
+# Where the seat's clone (/home/bridge/ark/monix) exists it is the source
+# and a failed ff-only pull aborts, since that means divergence. Elsewhere
+# the source is origin and a failed pull only warns, so being offline
+# still switches what is on disk.
 {
   flake.homeModules.switcharoo =
     { pkgs, ... }:
@@ -42,7 +33,6 @@
                 }
               }
 
-              # What this switch is about to activate, in one line each.
               let after = (^git -C $repo rev-parse HEAD | str trim)
               if $before != $after {
                 print $"switcharoo: activating ($before | str substring 0..6)..($after | str substring 0..6)"

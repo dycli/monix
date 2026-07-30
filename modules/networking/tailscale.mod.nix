@@ -13,26 +13,11 @@
         (mkIf config.services.tailscale.enable {
           services.tailscale.useRoutingFeatures = mkDefault "client";
 
-          # Tailscale SSH: tailscaled answers SSH over the tailnet itself,
-          # authenticating by tailnet identity — no per-device authorized
-          # keys. Who may SSH where is governed by the tailnet policy's
-          # `ssh` section, not here. Plain sshd still runs as a
-          # belt-and-suspenders path (and for non-tailnet desktop access).
-          # `set` flags (unlike `up` flags) apply on every activation, with
-          # or without an auth key.
-          #
-          # DO NOT DISABLE THIS. It was turned off on the cockpit host on
-          # 2026-07-30 because a Tailscale SSH session runs under
-          # tailscaled's cgroup and so escapes the seat's slice fence. That
-          # reasoning was wrong twice over: the escape it prevents is a
-          # seat-reach question, which this ship's security doctrine
-          # explicitly ACCEPTS as inherent, and Tailscale SSH is how the
-          # captain reaches every machine. With it enabled tailscaled
-          # answers port 22 for tailnet peers, so `ssh max@fw0` was never
-          # touching sshd — disabling it locked him out of his own server
-          # mid-activation, from the very session running the switch.
-          # If bridge-specific SSH ever needs restricting, do it in the
-          # tailnet ACL, not by removing the mechanism.
+          # tailscaled answers port 22 for tailnet peers, authenticating by
+          # tailnet identity; who may connect is governed by the tailnet
+          # policy's `ssh` section. Disabling this removes SSH access for
+          # anyone without a key in authorized_keys — restrict via the ACL
+          # instead. `set` flags apply on every activation, unlike `up`.
           services.tailscale.extraSetFlags = [ "--ssh" ];
 
           # Trust the tailnet interface so services bound on it are
