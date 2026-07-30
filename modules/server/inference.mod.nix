@@ -1,24 +1,16 @@
-# Local-inference aspect — llama.cpp served through llama-swap on
-# `inference.port`. Inert until a host sets `inference.enable`.
+# llama.cpp served through llama-swap, which spawns and kills one
+# llama-server per model on demand and unloads after `ttl` seconds idle,
+# so an idle host holds no model RAM and only one model runs at a time.
 #
-# llama-swap spawns/kills a llama-server per model on demand from
-# `inference.models` and unloads after `ttl` seconds idle, so an idle box
-# holds ~0 model RAM; only one model is active at a time. The fleet-wide
-# ceiling is llama-swap's own budget below; the host sets no cgroup cap.
+# Built with Vulkan, since RADV is the mature path on gfx1151, and models
+# fully offload with -ngl 999. The iGPU maps weights from system RAM via
+# GTT, whose kernel default of about half of RAM caps models near 60G on
+# this box; the ttm and amdgpu parameters below raise it and take effect
+# on the next reboot.
 #
-# Tuned for fw0's Strix Halo iGPU: built with Vulkan (RADV is the mature
-# path on gfx1151; ROCm support there is younger), models fully offload
-# via -ngl 999. The iGPU maps weights out of system RAM via GTT, whose
-# kernel default (~half of RAM) caps models at ~60G on a 128G box; the
-# ttm/amdgpu kernel params below raise it to match the slice fence and
-# take effect only on the next reboot.
-#
-# The server parses untrusted prompts (tailnet, and fleet guests if
-# wired), so assume compromise: upstream's sandbox is tightened with a
-# GPU device grant and an egress fence
-# allowing only loopback + tailnet — no public internet, no LAN, no fleet
-# bridge. This also blocks llama-server's own -hf downloading; models are
-# fetched by the operator into `inference.modelsDir`.
+# The egress fence allows only loopback and the tailnet, which also blocks
+# llama-server's own -hf downloads; models are fetched by hand into
+# `inference.modelsDir`.
 {
   flake.nixosModules.inference =
     {
@@ -109,20 +101,19 @@
       config = mkIf cfg.enable {
         services.llama-swap = {
           enable = true;
-          # Bind everywhere; reachability is the firewall's job — tailnet-
-          # only until a bridge pinhole is opened for the guests.
+          # The firewall handles reachability.
           listenAddress = "0.0.0.0";
           inherit (cfg) port;
           openFirewall = false;
 
           settings = {
-            # A cold 60G model is minutes of NVMe -> GTT load; don't let
-            # the health check give up mid-load (default 120s).
+            # A cold 60G model takes minutes to load from NVMe into GTT,
+            # longer than the 120s default health check allows.
             healthCheckTimeout = 600;
 
             models = mapAttrs (name: m: {
-              # ''${PORT} is llama-swap's macro (a fresh port per spawn),
-              # escaped so Nix passes it through verbatim.
+              # llama-swap's macro for a fresh port per spawn, escaped so
+              # Nix passes it through verbatim.
               cmd = concatStringsSep " " (
                 [
                   llamaServer
@@ -140,11 +131,9 @@
         };
 
         systemd.services.llama-swap.serviceConfig = {
-          # Count model RAM against the host's inference fence, not the
-          # default system slice.
 
-          # Upstream leaves PrivateDevices=false but grants no device
-          # class; open exactly the DRM render path Vulkan needs.
+          # Upstream leaves PrivateDevices false but grants no device
+          # class; this opens the DRM render path Vulkan needs.
           SupplementaryGroups = [
             "render"
             "video"
@@ -152,10 +141,8 @@
           DevicePolicy = "closed";
           DeviceAllow = [ "char-drm rw" ];
 
-          # No public internet. Loopback (llama-swap -> spawned
-          # llama-servers), the tailnet, and (if this host also runs the
-          # agent fleet) the guest bridge subnet, so drones can reach local
-          # models via the br-agents pinhole. Deny everything else.
+          # Loopback for the spawned llama-servers, the tailnet, and the
+          # guest bridge when the fleet runs here. No public internet.
           IPAddressAllow =
             networkFences.loopback
             ++ [
@@ -167,22 +154,20 @@
           IPAddressDeny = "any";
         };
 
-        # GTT is a limit, not a reservation — an idle box pays nothing.
-        # 96G of the host's 128G left for models: 98304 MiB / 25165824
-        # 4K pages. page_pool_size caps TTM's cached-page reuse pool at the
-        # same bound.
+        # GTT is a limit rather than a reservation, so an idle host pays
+        # nothing. 96G expressed as 98304 MiB and 25165824 4K pages;
+        # page_pool_size bounds TTM's cached-page reuse pool to match.
         boot.kernelParams = [
           "amdgpu.gttsize=98304"
           "ttm.pages_limit=25165824"
           "ttm.page_pool_size=25165824"
         ];
 
-        # Operator-owned (downloads happen as the primary user), world-
-        # readable for the DynamicUser service.
+        # Downloads happen as the primary user; world-readable so the
+        # DynamicUser service can read them.
         systemd.tmpfiles.rules = singleton "d ${cfg.modelsDir} 0755 ${config.primaryUser} users -";
 
-        # llama-cli / llama-bench / llama-gguf etc. for pulling, inspecting,
-        # and benchmarking models outside the service sandbox.
+        # llama-cli, llama-bench and friends, for work outside the service.
         environment.systemPackages = singleton llamaCpp;
       };
     };

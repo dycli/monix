@@ -1,28 +1,21 @@
-# Ship alerting — every alarm on the host reaches the Matrix alert room
-# through one Rust mouth (alerts/ship-alert), and every sensor is a
-# borrowed specialist with a thin hook:
+# Every alarm reaches the Matrix alert room through alerts/ship-alert.
+# Four sensors feed it:
 #
-#   1. systemd: a global drop-in (service.d/, shipped via systemd.packages
-#      — environment.etc can't nest under the generated
-#      /etc/systemd/system) attaches OnFailure=alert-unit-failure@%n to
-#      every service, so any failure posts the unit name and a journal
-#      tail within seconds.
-#   2. The 6-hourly sweep: still-failed units, filesystems over the disk
-#      threshold, hwmon temperatures over the heat threshold, and a
-#      pending kernel (what OnFailure can't see).
-#   3. smartd (disks): SMART health/attribute/self-test events fire a -M
-#      exec hook; scheduled short/long self-tests keep attributes honest.
-#   4. upsmon (power, optional): NOTIFYCMD spools events as the
-#      unprivileged nutmon user; a path unit relays them as root.
+#   1. A global service.d drop-in attaching OnFailure to every unit.
+#      Shipped via systemd.packages because environment.etc cannot nest
+#      under the generated /etc/systemd/system.
+#   2. A 6-hourly sweep for still-failed units, full filesystems, hwmon
+#      temperatures and a pending kernel, none of which OnFailure sees.
+#   3. smartd, whose -M exec hook fires on SMART events.
+#   4. upsmon, whose NOTIFYCMD spools events as the unprivileged nutmon
+#      user for a path unit to relay as root.
 #
-# ship-alert owns delivery: password login -> send -> logout on the
-# loopback tuwunel, one-time room join stamped in /var/lib/alerts,
-# optional local-LLM enrichment, repeat throttling. If the homeserver is
-# down alerts can't send — meta-monitoring would need an off-host
-# watcher, which this is not.
+# ship-alert logs in, sends and logs out against the loopback homeserver,
+# stamping its one-time room join in /var/lib/alerts. If the homeserver
+# is down, nothing sends; there is no off-host watcher.
 #
-# The env secret carries MATRIX_USER, MATRIX_PASSWORD, and ALERT_ROOM_ID —
-# room id included so nothing about the room lives in the repo.
+# The env secret carries MATRIX_USER, MATRIX_PASSWORD and ALERT_ROOM_ID,
+# so the room id stays out of the repo.
 {
   flake.nixosModules.alerts =
     {
@@ -42,8 +35,7 @@
       cfg = config.alerts;
       hostname = config.networking.hostName;
 
-      # Shared preset + the loopback-only egress every alert unit shares
-      # (delivery is loopback tuwunel; enrichment is loopback llama-swap).
+      # Delivery and enrichment are both loopback, so egress is too.
       sensorHardening = (import ../../lib/hardened.nix).rootSensor // {
         IPAddressAllow = networkFences.loopback;
         IPAddressDeny = "any";
@@ -67,9 +59,8 @@
         meta.mainProgram = "ship-alert";
       };
 
-      # Hooks run by daemons that don't carry the Matrix credentials in their
-      # own environment (smartd, the UPS relay) source the agenix env file
-      # themselves; both run as root.
+      # smartd and the UPS relay do not carry the Matrix credentials in
+      # their own environment, so these hooks source the env file as root.
       withCredentials = ''
         set -a
         # shellcheck disable=SC1091
@@ -89,8 +80,7 @@
         '';
       };
 
-      # upsmon runs NOTIFYCMD unprivileged, so it only spools; the path unit
-      # below relays as root with the credentials.
+      # NOTIFYCMD runs unprivileged and only spools; the path unit relays.
       upsSpool = "/var/lib/nut-alerts";
       upsNotify = pkgs.writeShellApplication {
         name = "ship-alert-ups-spool";
@@ -100,9 +90,8 @@
         '';
       };
 
-      # The zz- drop-in sorts after 99- within the alert unit's own drop-in
-      # set and clears OnFailure there, so a broken alert path can't
-      # recurse; the script guard below is the second line of defense.
+      # The zz- drop-in sorts after 99- inside the alert unit's own drop-in
+      # set and clears OnFailure, so a broken alert path cannot recurse.
       onFailureDropins = pkgs.runCommand "alert-onfailure-dropins" { } ''
         mkdir -p $out/etc/systemd/system/service.d
         mkdir -p "$out/etc/systemd/system/alert-unit-failure@.service.d"
@@ -177,8 +166,7 @@
 
           systemd.services."alert-unit-failure@" = {
             description = "Post %i failure to the Matrix alert room";
-            # rootSensor preset: journal reads and D-Bus need uid 0, all
-            # delivery is loopback (tuwunel + llama-swap).
+            # Journal reads and D-Bus need uid 0.
             serviceConfig = sensorHardening // {
               Type = "oneshot";
               EnvironmentFile = cfg.credentialsEnvFile;
@@ -241,9 +229,8 @@
                 problems=$(printf '%s\n🌡️ over ${toString cfg.tempCelsiusThreshold}°C:%s' "$problems" "$hot")
               fi
 
-              # A switch that brought a new kernel (or initrd/kernel params)
-              # only takes effect on reboot; scheduled reboots were considered
-              # and rejected (2026-07-13) in favor of this deliberate signal.
+              # A new kernel, initrd or kernel parameter only takes effect
+              # on reboot, which is left to a human.
               booted=$(readlink -f /run/booted-system/kernel)
               current=$(readlink -f /run/current-system/kernel)
               if [ "$booted" != "$current" ]; then
@@ -266,9 +253,9 @@
         }
 
         (mkIf cfg.smart.enable {
-          # smartd is the disk monitor; we only give it a mouth. -a monitors
-          # everything, self-tests run short/Saturday-early and long/first-
-          # Sunday-monthly, -n standby avoids spinning up sleeping disks.
+          # -a monitors everything; self-tests run short on Saturdays and
+          # long on the first Sunday; -n standby avoids spinning up
+          # sleeping disks.
           services.smartd = {
             enable = true;
             autodetect = true;
@@ -279,9 +266,8 @@
         })
 
         (mkIf cfg.ups.enable {
-          # The EcoFlow speaks USB HID PDC (probed before enabling). upsmon's
-          # default LOWBATT behavior — clean shutdown — is exactly what the
-          # un-backed-up family state wants.
+          # The EcoFlow speaks USB HID PDC. upsmon's default LOWBATT
+          # behaviour is a clean shutdown.
           power.ups = {
             enable = true;
             mode = "standalone";
@@ -318,8 +304,7 @@
                 ];
           };
 
-          # A local-only secret guarding a loopback socket: generated once,
-          # root-owned; never leaves the machine.
+          # Guards a loopback socket; generated once and root-owned.
           system.activationScripts.nut-upsmon-password = ''
             mkdir -p /var/lib/nut
             if [ ! -s /var/lib/nut/upsmon.password ]; then
@@ -328,9 +313,8 @@
             fi
           '';
 
-          # upsmon's group, derived (it's nutmon, NOT nut — a nut group
-          # doesn't exist, tmpfiles silently skipped this rule, and no UPS
-          # event ever spooled until this was fixed).
+          # The group is nutmon, not nut; there is no nut group, and
+          # tmpfiles silently skips a rule naming one.
           systemd.tmpfiles.rules = [
             "d ${upsSpool} 0770 root ${config.power.ups.upsmon.group} -"
           ];
@@ -350,8 +334,7 @@
               Type = "oneshot";
               EnvironmentFile = cfg.credentialsEnvFile;
               StateDirectory = "alerts";
-              # The spool is outside the state directory (written by the
-              # unprivileged nutmon user) and gets consumed here.
+              # The spool sits outside the state directory, written by nutmon.
               ReadWritePaths = [ upsSpool ];
             };
             path = [
@@ -359,11 +342,10 @@
               shipAlert
             ];
             script = ''
-              # An event is deleted only after successful delivery: a power
-              # event must survive a homeserver outage. On failure, back off
-              # briefly and exit 0 — the spool keeps the path condition
-              # true, so the unit retries rather than hot-looping or paging
-              # the (probably equally unreachable) alert room recursively.
+              # An event is deleted only after delivery, so it survives a
+              # homeserver outage. On failure this backs off and exits 0,
+              # leaving the path condition true so the unit retries instead
+              # of hot-looping.
               for event in ${upsSpool}/[0-9]*; do
                 [ -f "$event" ] || continue
                 if printf '🔋 %s: UPS %s' ${hostname} "$(cat "$event")" | ship-alert; then

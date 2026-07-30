@@ -1,22 +1,15 @@
-# Frigate aspect — NVR with on-host object detection for the ship's
-# cameras (Reolink RLC-520A PoE pair; Tapo C225s can join the same way).
-# Inert until a host sets `shipCameras.enable`.
+# NVR with on-host object detection for Reolink and Tapo cameras.
 #
-# go2rtc (separate unit, loopback-only) connects to each camera once and
-# restreams; Frigate consumes the restreams: full-res stream is recorded,
-# the small sub-stream feeds detection. Detection runs on CPU (two
-# cameras is light); VAAPI handles decode. Recordings live in
-# /var/lib/frigate (StateDirectory) — camera footage is transient bulk,
-# not the precious tier.
+# go2rtc connects to each camera once and restreams on loopback; Frigate
+# records the full-res stream and detects on the sub-stream, on CPU with
+# VAAPI decode. Recordings live in /var/lib/frigate.
 #
-# The web UI rides the ship proxy: the upstream module creates the nginx
-# vhost for `hostname`, we layer the wildcard cert on it. Frigate + go2rtc
-# are fenced to LAN (cameras) + loopback — an NVR needs zero internet.
+# Both units are fenced to the camera LAN and loopback; an NVR needs no
+# internet. The upstream module creates the nginx vhost, which gets the
+# wildcard cert layered on below.
 #
-# Camera credentials come from envFile (agenix): FRIGATE_RTSP_PASSWORD=...
-# — one `frigate` account with the same password on every camera (Reolink
-# users and Tapo "camera accounts" alike). go2rtc expands ${VARS};
-# Frigate expands {FRIGATE_*}.
+# One `frigate` camera account, its password from envFile. go2rtc expands
+# ${VARS} while Frigate expands {FRIGATE_*}.
 {
   flake.nixosModules.frigate =
     {
@@ -38,9 +31,8 @@
         IPAddressDeny = networkFences.privateRanges ++ [ "any" ];
       };
 
-      # Shared by go2rtc (which does the connecting; ''${VAR} env syntax)
-      # and Frigate's own config (which only needs to know the restreams
-      # exist so its UI offers MSE/WebRTC; {VAR} env syntax).
+      # Shared by go2rtc, which connects, and by Frigate, which only needs
+      # to know the restreams exist. Note the differing env syntax.
       streamsWith =
         pass:
         concatMapAttrs (name: ip: {
@@ -52,8 +44,7 @@
           "${name}_sub" = [ "rtsp://frigate:${pass}@${ip}:554/stream2" ];
         }) cfg.tapo;
 
-      # One Frigate camera definition per entry: record the go2rtc main
-      # restream, detect on the sub restream.
+      # Record the main restream, detect on the sub restream.
       frigateCamera = detect: name: _: {
         ffmpeg.inputs = [
           {
@@ -110,47 +101,42 @@
           }
         ];
 
-        # --- go2rtc: one connection per camera, restreamed on loopback ---
         services.go2rtc = {
           enable = true;
           settings = {
-            # origin "*": HA's dashboard reaches these websockets through
-            # its own proxy, so the browser Origin (ha.<domain>) never
-            # matches go2rtc's host and is rejected without this.
+            # HA's dashboard proxies these websockets, so the browser
+            # Origin never matches go2rtc's host and is rejected without
+            # this.
             api = {
               listen = "127.0.0.1:1984";
               origin = "*";
             };
             rtsp.listen = "127.0.0.1:8554";
-            # WebRTC negotiates directly between browser and go2rtc (it
-            # can't ride the nginx proxy) — bind wide, reachability is the
-            # firewall's job.
+            # WebRTC negotiates browser-to-go2rtc directly and cannot ride
+            # the nginx proxy; the firewall handles reachability.
             webrtc.listen = ":8555";
             streams = streamsWith "\${FRIGATE_RTSP_PASSWORD}";
           };
         };
         systemd.services.go2rtc.serviceConfig = lanFence // {
           EnvironmentFile = cfg.envFile;
-          # …plus the tailnet: browsers negotiate WebRTC with go2rtc
-          # directly (:8555), unlike everything else which rides nginx.
+          # Plus the tailnet, for the direct WebRTC negotiation above.
           IPAddressAllow = lanFence.IPAddressAllow ++ [ "100.64.0.0/10" ];
         };
 
-        # --- Frigate ---
         services.frigate = {
           enable = true;
           hostname = "frigate.${config.shipProxy.domain}";
           vaapiDriver = "radeonsi";
 
-          # The build-time validator can't expand {FRIGATE_*} env
-          # references (the onvif password) — secrets only exist at
-          # runtime. Config errors surface in the unit log instead.
+          # The build-time validator cannot expand {FRIGATE_*}, since
+          # those secrets exist only at runtime; config errors surface in
+          # the unit log instead.
           checkConfig = false;
 
           settings = {
-            # See streamsWith: frigate must know the external go2rtc's
-            # streams or its UI never offers MSE/WebRTC (endless spinner
-            # on fullscreen).
+            # Frigate must know the external go2rtc's streams or its UI
+            # never offers MSE/WebRTC and spins on fullscreen.
             go2rtc.streams = streamsWith "{FRIGATE_RTSP_PASSWORD}";
 
             mqtt = {
@@ -190,8 +176,7 @@
                 width = 640;
                 height = 480;
               }) cfg.reolink
-              # C225 sub-stream is 640x360; pan/tilt via ONVIF (port 2020),
-              # same frigate account.
+              # C225 sub-stream is 640x360; pan/tilt over ONVIF on 2020.
               // mapAttrs (
                 name: ip:
                 frigateCamera {
@@ -212,18 +197,18 @@
         };
         systemd.services.frigate.serviceConfig = lanFence // {
           EnvironmentFile = cfg.envFile;
-          # Frigate assumes this cache subdir exists (container tmpfs
-          # provides it); without it review previews fail to render.
+          # Frigate assumes this cache subdirectory exists, as its
+          # container tmpfs provides; review previews fail without it.
           CacheDirectory = [ "frigate/preview_frames" ];
         };
 
-        # Wildcard cert + TLS on the vhost the upstream module created.
+        # TLS on the vhost the upstream module created.
         services.nginx.virtualHosts.${config.services.frigate.hostname} = {
           useACMEHost = config.shipProxy.domain;
           forceSSL = true;
         };
 
-        # --- MQTT broker (loopback-only) for Frigate→HA events ---
+        # Loopback MQTT broker carrying Frigate events to Home Assistant.
         services.mosquitto = {
           enable = true;
           listeners = [
