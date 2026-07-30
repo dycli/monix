@@ -38,7 +38,6 @@
         "modules/server/agent-vm"
         "modules/server/fleet-tool/fleet-cli"
         "modules/server/memo/memo-cli"
-        "modules/server/ship-costs/ship-costs-cli"
         "modules/server/alerts/ship-alert"
       ];
 
@@ -68,7 +67,6 @@
         };
         fleet-cli = crate "modules/server/fleet-tool/fleet-cli" { };
         memo = crate "modules/server/memo/memo-cli" { };
-        ship-costs = crate "modules/server/ship-costs/ship-costs-cli" { };
         ship-alert = crate "modules/server/alerts/ship-alert" { };
 
         rustfmt =

@@ -127,8 +127,7 @@
     it. Routing: small/fast = mechanical fully-specified work; mid-tier = routine
     implementation from a clear spec; codex + gpt-5.6-sol = substantial standalone
     coding and second opinions (ChatGPT pool); local/ = bulk low-stakes volume; the
-    top Claude tier = judgment-dense work needing session context. `ship-costs`
-    shows month-to-date burn per pool.
+    top Claude tier = judgment-dense work needing session context.
 
     ## Dispatching
 

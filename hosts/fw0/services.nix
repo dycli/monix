@@ -32,11 +32,6 @@
   memo.enable = true;
   memo.memoryDir = "/home/bridge/cockpit/memory/log";
 
-  # Usage/cost ledger CLI. No OpenRouter section: that needs a read-only
-  # management key which has never been provisioned. Provision it, then
-  # set shipCosts.openrouterKeyFile and add the secret below.
-  shipCosts.enable = true;
-
   # Plain-language line atop failure alerts, from the ship-local model
   # (degrades to the raw alert if inference is down).
   alerts.summary.enable = true;

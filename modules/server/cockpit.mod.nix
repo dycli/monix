@@ -62,8 +62,6 @@
       claudeBashPermissions = [
         "sudo -n -u fleet-operator fleet *"
         "fleet dispatch *"
-        "ship-costs"
-        "ship-costs *"
         # memo (memo.mod.nix) must never prompt, or in-the-moment notes die.
         "memo"
         "memo *"
