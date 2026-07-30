@@ -6,19 +6,11 @@
 # classes. Home lists gate themselves on isDesktop / cockpit.enable — that
 # gating, not module naming, is how hosts differ (every module is imported
 # into every host).
-{ inputs, ... }:
+{ ... }:
 {
   flake.nixosModules.packages =
     { pkgs, ... }:
     {
-      # Codex releases move faster than nixos-unstable; take only this
-      # package from master (see flake.nix).
-      nixpkgs.overlays = [
-        (_final: _prev: {
-          codex = inputs.nixpkgs-master.legacyPackages.${pkgs.stdenv.hostPlatform.system}.codex;
-        })
-      ];
-
       # Unfree grants for this file's home lists: obsidian rides the desktop
       # list, claude-code the dev-extras list.
       unfreePackages = [
