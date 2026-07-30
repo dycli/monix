@@ -84,37 +84,10 @@
     ];
     aliases = [ "qwen3.6" ];
   };
-  inference.models."gpt-oss-120b" = {
-    file = "gpt-oss-120b-mxfp4-00001-of-00003.gguf";
-    flags = [
-      "-c"
-      "131072"
-      "--flash-attn"
-      "on"
-      "--jinja"
-    ];
-    aliases = [ "gpt-oss" ];
-  };
-  # Dense models, for the instruction-following remy needs.
-  inference.models."mistral-small-3.2-24b" = {
-    file = "Mistral-Small-3.2-24B-Instruct-2506-UD-Q4_K_XL.gguf";
-    flags = [
-      "-c"
-      "32768"
-      "--flash-attn"
-      "on"
-      "--jinja"
-    ];
-    aliases = [
-      "mistral"
-      "mistral-small"
-    ];
-  };
-  # MTP speculative decoding: the module ships as a separate small GGUF
-  # loaded as the draft model, with --spec-type selecting the MTP path
-  # rather than a generic draft. n-max 3 is llama-server's default and the
-  # usual sweet spot for a single-layer MTP head; higher drafts more
-  # tokens per step but wastes more on rejection.
+  # MTP speculative decoding: unsloth embeds the MTP tensors in the main
+  # GGUF, so --spec-type selects the MTP path with no separate draft
+  # model. n-max 2 per unsloth's llama-server guide; -np > 1 is not yet
+  # supported with MTP.
   inference.models."qwen3.6-27b" = {
     file = "Qwen3.6-27B-Q6_K.gguf";
     flags = [
@@ -123,14 +96,12 @@
       "--flash-attn"
       "on"
       "--jinja"
-      "--spec-draft-model"
-      "/var/lib/models/Qwen3.6-27B-MTP-Q6_K.gguf"
       "--spec-type"
       "draft-mtp"
-      "--spec-draft-ngl"
-      "999"
       "--spec-draft-n-max"
-      "3"
+      "2"
+      "-np"
+      "1"
     ];
     aliases = [ "qwen3.6-dense" ];
   };

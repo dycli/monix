@@ -61,8 +61,8 @@
           default = { };
           description = ''
             The served catalog: attr name = the model id clients request
-            (e.g. `local/gpt-oss-120b` from opencode would name this
-            "gpt-oss-120b"). Each entry becomes a llama-swap model with a
+            (e.g. `local/qwen3.6-27b` from opencode would name this
+            "qwen3.6-27b"). Each entry becomes a llama-swap model with a
             generated llama-server cmd. Adding a model = drop the GGUF in
             modelsDir, add an entry, switch.
           '';

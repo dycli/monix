@@ -180,7 +180,7 @@
                               #   openrouter/<vendor>/<model> (any OpenRouter model,
                               #   metered) or local/<name> from the ship's llama-swap
                               #   catalog (free; currently local/qwen3.6-35b-a3b and
-                              #   local/gpt-oss-120b).
+                              #   local/qwen3.6-27b).
         guidance: cockpit     # optional; `cockpit` (the only value) routes
                               #   escalations to YOU: they surface in `fleet health`
                               #   and `fleet peek`, answer with `fleet answer` (drone

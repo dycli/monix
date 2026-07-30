@@ -227,7 +227,7 @@
               };
               models = {
                 "qwen3.6-35b-a3b" = { };
-                "gpt-oss-120b" = { };
+                "qwen3.6-27b" = { };
               };
             };
             permission = opencodePermissions;
