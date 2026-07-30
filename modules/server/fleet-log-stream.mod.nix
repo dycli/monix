@@ -1,19 +1,13 @@
-# Fleet ops feed — streams the agent-fleet audit log into a Matrix room,
-# line for line, no AI involved. A resident service tails
-# /var/lib/agents/tasks/log and posts each new batch of lines to a
-# dedicated room, so dispatches, escalations, and completions are visible
-# live from any Matrix client.
+# Streams the agent-fleet audit log into a Matrix room, line for line. A
+# resident service tails /var/lib/agents/tasks/log and posts each new
+# batch, so dispatches and completions are visible from any client.
 #
-# The bot reuses the alertbot account (same credentials env file as
-# alerts.mod.nix) but posts to its own room, which it creates on first
-# start and remembers in its state directory. Nothing about the room
-# lives in the repo or a secret.
+# Reuses the alertbot account but posts to its own room, created on first
+# start and remembered in the state directory, so nothing about the room
+# lives in the repo.
 #
-# Lines arriving within a 2s window are batched into one message so a
-# task fan-out doesn't become a message flood. Send failures are logged
-# and dropped — the on-disk log remains canonical; this is a feed, not a
-# store. Only lines written after service start are streamed (tail -n 0),
-# so restarts never replay history into the room.
+# Lines arriving within 2s are batched into one message. Send failures are
+# logged and dropped; the on-disk log stays canonical.
 {
   flake.nixosModules.fleet-log-stream =
     {

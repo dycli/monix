@@ -1,7 +1,5 @@
-# Agent-fleet dispatcher. See docs/agent-fleet.md. Turns the fleet into a
-# drop-a-file service: a task is a markdown prompt placed in the queue
-# directory; a worker runs it on a pristine VM and the report comes back —
-# no SSH into guests, no forge in the loop.
+# Agent-fleet dispatcher. A task is a markdown prompt placed in the queue
+# directory; a worker runs it on a fresh VM and the report comes back.
 #
 #   /var/lib/agents/tasks/queue/<name>.md   <- tasks land here, enqueued by
 #                                              the `fleet` tool run as the
@@ -11,10 +9,10 @@
 #   /var/lib/agents/tasks/failed/<id>/      <- same, for nonzero exit or timeout
 #   /var/lib/agents/tasks/rejected/         <- quarantined non-regular queue entries
 #
-# Scheduling: one resident drainer per roster worker maintains a fresh warm
-# VM, atomically claims queued tasks, and delivers each prompt into an
-# already-live guest. After one task it stops the VM, archives bounded
-# output, wipes the writable volumes, and boots a fresh idle replacement.
+# One resident drainer per worker keeps a warm VM, atomically claims
+# queued tasks and delivers each prompt into the live guest. After a task
+# it stops the VM, archives bounded output, wipes the writable volumes
+# and boots a replacement.
 {
   flake.nixosModules.agent-dispatch =
     {
@@ -69,12 +67,10 @@
             Restart = "always";
             RestartSec = 2;
 
-            # Root on purpose (cross-user chown, VM lifecycle over D-Bus),
-            # so no PrivateUsers/capability clamp — but everything else is
-            # fenced: the write universe is exactly the task tree and the
-            # credential staging area, the only sockets are unix (D-Bus;
-            # connect works on read-only mounts), and the syscall surface is
-            # @system-service. Verified by a live dispatch probe.
+            # Root for cross-user chown and VM lifecycle over D-Bus, so
+            # PrivateUsers and a capability clamp are out. Writes are
+            # limited to the task tree and credential staging, sockets to
+            # AF_UNIX, and syscalls to @system-service.
             LockPersonality = true;
             NoNewPrivileges = true;
             PrivateDevices = true;
@@ -166,9 +162,8 @@
           "d ${tasksDir}/steer 0770 root ${op} -"
           "d ${tasksDir}/answers 0770 root ${op} -"
           "d ${tasksDir}/cancel 0770 root ${op} -"
-          # Group op writes (fleet submit appends SUBMIT lines); the readers
-          # group gets read via ACL; the world gets nothing — task ids,
-          # models, and usernames are not public.
+          # The operator group writes, the readers group reads via ACL, and
+          # the world gets nothing: task ids, models and usernames.
           "f ${tasksDir}/log 0660 root ${op} -"
           "a+ ${tasksDir}/log - - - - group:${readers}:r"
         ];

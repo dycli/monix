@@ -1,26 +1,14 @@
 # The `fleet` dispatch tool and its unprivileged operator identity.
 #
-# The cockpit needs to dispatch tasks to the worker fleet and read results
-# without a human approving every step — but that standing capability must
-# not be a general privilege. So the security boundary is structural, not
-# a permission rule:
-#
-#   - A dedicated non-wheel system user (`agentFleet.operatorUser`, default
-#     `fleet-operator`) owns the task queue; wheel cannot write it.
-#   - The cockpit reaches the queue only by running this one `fleet` tool
-#     as that operator, via a sudo rule scoped to exactly this binary. The
-#     tool lives in the read-only nix store, so the agent it constrains
-#     cannot rewrite it (a script in a user-writable dir would be no
-#     boundary at all).
-#   - `submit` takes the prompt on stdin, never a path. The redirect that
-#     feeds it (`fleet submit < prompt.md`) is opened by the caller's shell
-#     with the caller's privileges, so the tool never opens a
-#     caller-supplied path and the root drainer never dereferences a
+#   - A non-wheel system user owns the task queue; wheel cannot write it.
+#   - The queue is reachable only by running this one binary as that
+#     operator through a sudo rule scoped to it. The tool lives in the
+#     read-only store, so the agent it constrains cannot rewrite it.
+#   - `submit` takes the prompt on stdin, never a path, so the caller's
+#     own shell opens the file and the root drainer never dereferences a
 #     caller-supplied symlink.
 #
-# The cockpit-side Claude allow-rules (which sudo/fleet subcommands run
-# without a prompt) are ergonomics layered on top of this boundary, not
-# the boundary itself.
+# The cockpit's allow-rules sit on top of this boundary; they are not it.
 {
   flake.nixosModules.fleet-tool =
     {
@@ -47,15 +35,13 @@
       op = cfg.operatorUser;
       readers = topology.readersGroup;
 
-      # Stable profile path (not the store path): sudo matches the command
-      # as invoked, and this symlink is what the cockpit calls. It survives
-      # rebuilds; `environment.systemPackages` below guarantees it resolves
-      # to this exact derivation.
+      # sudo matches the command as invoked, so the rule names this stable
+      # profile path; systemPackages below makes it resolve to this
+      # derivation.
       fleetPath = "/run/current-system/sw/bin/fleet";
 
-      # Deployment configuration is baked into the binary at build time
-      # (option_env!): caller environment must not repoint the queue or the
-      # helper binaries across the sudo boundary.
+      # Baked in at build time with option_env!, so a caller's environment
+      # cannot repoint the queue or the helpers across the sudo boundary.
       fleet = pkgs.rustPlatform.buildRustPackage {
         pname = "fleet";
         version = "0.1.0";
@@ -102,14 +88,13 @@
           description = "agent-fleet dispatch operator";
         };
         users.users.${config.primaryUser}.extraGroups = [ readers ];
-        # The bridge seat account (cockpit.mod.nix) reads results the same way.
+        # The seat account reads results the same way.
         users.users.bridge = mkIf config.cockpit.enable { extraGroups = [ readers ]; };
 
         environment.systemPackages = [ fleet ];
 
-        # The only path from the cockpit account into the queue: run the
-        # fleet tool as the operator. Scoped to this one binary, NOPASSWD
-        # so the cockpit's non-interactive `sudo -n` never blocks.
+        # The only path into the queue. NOPASSWD so a non-interactive
+        # `sudo -n` never blocks.
         security.sudo.extraRules = [
           {
             users = [ config.primaryUser ] ++ optionals config.cockpit.enable [ "bridge" ];
@@ -123,8 +108,8 @@
           }
         ];
 
-        # Operator-owned staging for the atomic submit (same filesystem as the
-        # queue so the publishing rename is atomic).
+        # Staging for submit, on the same filesystem as the queue so the
+        # publishing rename is atomic.
         systemd.tmpfiles.rules = [
           "d ${tasksDir}/staging 0700 ${op} ${op} -"
         ];
