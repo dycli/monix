@@ -1,12 +1,10 @@
-# Agent-fleet microVM host (docs/agent-fleet.md). Provides the microvm.nix
-# host runner, a HOST-ONLY bridge `br-agents` (10.100.0.1/24, no NAT/routing/
-# DNS for guests), and `squid` as the sole egress path (CONNECT allowlist +
-# audit log). Guests have no default route or DNS, so squid is structurally
-# the only way out — default-deny by construction, not just policy.
+# Agent-fleet microVM host: the microvm.nix runner, a host-only bridge
+# br-agents (10.100.0.1/24, with no NAT, routing or DNS for guests), and
+# squid as the only egress. Guests have no default route or DNS, so squid
+# is the sole exit by construction.
 #
-# The whole host runs systemd-networkd (no scripted dhcpcd mixed in): networkd
-# owns br-agents, the vm-* taps, and the onboard uplink (DHCP on `en*`);
-# tailscale0 stays with tailscaled.
+# networkd owns br-agents, the vm-* taps and the onboard uplink; scripted
+# dhcpcd is not mixed in. tailscale0 stays with tailscaled.
 { inputs, ... }:
 {
   flake.nixosModules.microvm-host =
@@ -25,10 +23,9 @@
       topology = import ../../lib/fleet-topology.nix;
       inherit (topology) bridge hostAddr;
 
-      # The ONLY destinations a guest can reach; widen only by reviewed
-      # commit. A leading-dot dstdomain matches the domain and all
-      # subdomains, so don't also list specific hosts (squid rejects the
-      # redundancy).
+      # The only destinations a guest can reach. A leading-dot dstdomain
+      # covers the domain and its subdomains; squid rejects listing a
+      # specific host as well.
       allowedDomains = [
         ".anthropic.com" # Claude API + Claude Code auth/telemetry
         ".openai.com" # Codex: OpenAI API + auth
@@ -38,12 +35,10 @@
         "cache.nixos.org" # exact trusted binary cache; not user-content *.nixos.org
       ];
 
-      # The bridge seat account's egress allowlist — wider than the workers'
-      # (it develops and researches, they execute), still default-deny. Served
-      # on a dedicated loopback address so the seat's slice fence
-      # (cockpit.mod.nix) can allow exactly this listener by IP without
-      # opening 127.0.0.1 services. Same leading-dot rule as above. ("seat",
-      # not "bridge", in names here: `bridge` is br-agents in this file.)
+      # Wider than the workers' list, on a dedicated loopback address so
+      # the seat's fence can admit this listener without admitting the
+      # services on 127.0.0.1. Named "seat" here because `bridge` already
+      # means br-agents in this file.
       seatDomains = allowedDomains ++ [
         ".claude.ai" # Claude Code session sync/artifacts
         ".claude.com" # Claude Code OAuth (claude.com + platform.claude.com)
@@ -60,25 +55,24 @@
       options.agentFleet.enable = mkEnableOption "the agent-fleet microVM host role";
 
       config = mkMerge [
-        # microvm.nix's host runner defaults ON once its module is imported,
-        # and this aspect loads on every host, so gate it explicitly.
+        # The host runner defaults on once the module is imported, and this
+        # aspect loads everywhere, so it is gated explicitly.
         { microvm.host.enable = cfg.enable; }
 
         (mkIf cfg.enable {
-          # Guest state on the dedicated @agents dataset, not the root subvol.
+          # Guest state lives on the @agents subvolume.
           microvm.stateDir = "/var/lib/agents/microvms";
 
-          # If install-microvm is interrupted before chowning a worker's state
-          # dir, it's left root-owned and microvm-set-booted fails with EACCES,
-          # aborting the whole activation (broke the jump 2->12). This tmpfiles
-          # `d` rule sets/repairs ownership early, before the microvm units.
+          # An interrupted install-microvm leaves a state dir root-owned,
+          # and microvm-set-booted then fails with EACCES and aborts the
+          # activation. This repairs ownership before the microvm units run.
           systemd.tmpfiles.rules = map (
             w: "d ${config.microvm.stateDir}/${w.name} 0755 microvm kvm -"
           ) cfg.workers;
 
-          # Full systemd-networkd, not mixed with scripted dhcpcd (NixOS warns
-          # this can drop networking): networkd becomes authoritative for all
-          # interfaces, so the onboard uplink is configured explicitly too.
+          # networkd is authoritative for every interface, so the onboard
+          # uplink is configured here too; mixing in scripted dhcpcd can
+          # drop networking.
           networking.useNetworkd = true;
 
           boot.kernel.sysctl = {
@@ -93,15 +87,15 @@
             }
           ];
 
-          # tailscale0 is left to tailscaled (no match here); lo is networkd's default.
+          # tailscale0 is left to tailscaled; lo is networkd's default.
           systemd.network.networks."10-uplink" = {
             matchConfig.Name = "en*";
             networkConfig.DHCP = "yes";
             linkConfig.RequiredForOnline = "routable";
           };
 
-          # No uplink port is ever enslaved to this bridge, so it can't route
-          # anywhere; RequiredForOnline=no so a carrier-less bridge never blocks boot.
+          # No uplink port is enslaved to this bridge, so it cannot route.
+          # RequiredForOnline=no keeps a carrier-less bridge from blocking boot.
           systemd.network.netdevs."30-${bridge}".netdevConfig = {
             Name = bridge;
             Kind = "bridge";
@@ -118,23 +112,21 @@
             matchConfig.Name = "vm-*";
             networkConfig.Bridge = bridge;
             linkConfig.RequiredForOnline = "no";
-            # Isolated ports cannot forward to other isolated ports at L2, but
-            # can still deliver to the bridge master (the host). This drops
-            # guest↔guest traffic while leaving guest→host:3128 (squid) intact.
+            # Isolated ports cannot forward to each other at L2 but still
+            # reach the bridge master, so guest-to-guest traffic is dropped
+            # while guest-to-squid still works.
             bridgeConfig.Isolated = true;
           };
 
-          # From the bridge, guests may reach only squid, plus (when serving
-          # local inference) llama-swap — a deliberate pinhole, sandboxed like
-          # squid since it also parses untrusted guest bytes (inference.mod.nix).
-          # br-agents is NOT a trusted interface, so default DROP covers
-          # everything else; belt-and-braces since IP forwarding is off anyway.
+          # Guests may reach squid and, when local inference is served,
+          # llama-swap. br-agents is not a trusted interface, so everything
+          # else is dropped by default.
           networking.firewall.interfaces.${bridge}.allowedTCPPorts = [
             3128
           ]
           ++ lib.lists.optionals config.inference.enable [ config.inference.port ];
 
-          # The single audited egress point, bound to the bridge IP only.
+          # Bound to the bridge IP only.
           services.squid = {
             enable = true;
             configText = ''
@@ -142,8 +134,8 @@
               ${optionalString config.cockpit.enable "http_port ${seatProxy}"}
               pid_filename /run/squid/squid.pid
 
-              # Run as the squid user (owns /var/log/squid + /var/cache/squid);
-              # without this squid drops to 'nobody' and can't write its logs.
+              # Without this squid drops to 'nobody' and cannot write its
+              # own logs or cache.
               cache_effective_user squid
 
               acl fleet_port localport 3128
@@ -151,14 +143,12 @@
               acl SSL_ports port 443
               acl CONNECT method CONNECT
 
-              # HTTPS CONNECT only. Plain HTTP would expose payloads and is not
-              # needed by any sealed-worker provider or binary-cache endpoint.
+              # HTTPS CONNECT only; nothing here needs plain HTTP.
               http_access deny !CONNECT
               http_access deny CONNECT !SSL_ports
               http_access allow allowed_domains fleet_port
               ${optionalString config.cockpit.enable ''
-                # The seat's wider list is valid only on its own listener; the
-                # workers' port cannot reach it.
+                # Valid only on the seat's own listener, not the workers' port.
                 acl seat_port localport ${toString topology.seatProxyPort}
                 acl seat_domains dstdomain ${concatStringsSep " " seatDomains}
                 http_access allow seat_domains seat_port
@@ -168,24 +158,23 @@
               # Proxy, not cache.
               cache deny all
 
-              # THIS is the egress audit trail: one line per request.
+              # The egress audit trail: one line per request.
               access_log stdio:/var/log/squid/access.log
               cache_log stdio:/var/log/squid/cache.log
               coredump_dir /var/cache/squid
             '';
           };
-          # squid parses bytes from untrusted guests — the one crack in the
-          # otherwise-clean KVM boundary — so it's sandboxed to an empty room:
-          # read-only filesystem except logs/cache/pidfile, no new privileges,
-          # only the capabilities needed to drop from root at startup.
+          # squid parses bytes from untrusted guests, so it keeps only the
+          # capabilities needed to drop from root and a filesystem that is
+          # read-only apart from its logs, cache and pidfile.
           systemd.services.squid.serviceConfig = {
 
             NoNewPrivileges = true;
             ProtectSystem = "strict";
             ProtectHome = true;
             PrivateTmp = true;
-            # ProtectSystem=strict leaves /run read-only, so the pidfile moves
-            # into a RuntimeDirectory (realigned from upstream's /run/squid.pid).
+            # ProtectSystem=strict leaves /run read-only, so the pidfile
+            # moves into a RuntimeDirectory.
             RuntimeDirectory = "squid";
             PIDFile = lib.mkForce "/run/squid/squid.pid";
             ReadWritePaths = [
