@@ -296,7 +296,7 @@
       seatUid = 1001;
 
       topology = import ../../lib/fleet-topology.nix;
-      seatProxy = "http://${topology.seatProxyAddr}:${toString topology.seatProxyPort}";
+      networkFences = import ../../lib/network-fences.nix;
     in
     {
       options.cockpit.enable = mkEnableOption "the persistent cockpit session role on this host";
@@ -335,11 +335,16 @@
 
         # Address filter on every process this user runs, both directions,
         # all interfaces — including the tailnet, which Tailscale ACLs
-        # cannot restrict per-user. The only reachable peer is squid;
-        # domain policy lives in its ACL (microvm-host.mod.nix).
+        # cannot restrict per-user. The public internet is unmatched and so
+        # allowed; the LAN, the tailnet, the fleet bridge and the loopback
+        # services are denied. resolved's stub is allowed for DNS.
+        #
+        # There is deliberately no domain allowlist. The model API has to be
+        # reachable, so anything the seat can read it can also send, and the
+        # Nix daemon fetches arbitrary URLs on its behalf regardless.
         systemd.slices."user-${toString seatUid}".sliceConfig = {
-          IPAddressDeny = "any";
-          IPAddressAllow = singleton "${topology.seatProxyAddr}/32";
+          IPAddressAllow = singleton "127.0.0.53/32";
+          IPAddressDeny = networkFences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
         };
 
         # The same home aspects as the primary user, plus proxy variables
@@ -354,12 +359,6 @@
 
           # Safe only because this account is the fenced one.
           cockpit.bypassPermissions = true;
-
-          home.sessionVariables = {
-            HTTP_PROXY = seatProxy;
-            HTTPS_PROXY = seatProxy;
-            NO_PROXY = "127.0.0.1,localhost";
-          };
         };
 
         users.users.${config.primaryUser}.extraGroups = singleton "bridge";
@@ -399,26 +398,12 @@
           serviceConfig = {
             User = "bridge";
             Group = "bridge";
-            # Denies the internet, LAN, tailnet and fleet bridge, routing
-            # HTTP through squid's allowlist. Note that systemd filters
-            # addresses and not ports, so any service bound to 0.0.0.0
-            # still answers on the addresses allowed here.
-            IPAddressAllow = [
-              "${topology.seatProxyAddr}/32"
-              "${topology.seatIngressAddr}/32"
-            ];
-            IPAddressDeny = "any";
-            # The generated opencode.jsonc above is
-            # the one the seat must run with. The proxy variables are the
-            # other half of the fence: home.sessionVariables only reach
-            # login shells, so without these the web seat would talk to
-            # squid's allowlist not at all.
-            Environment = [
-              "OPENCODE_CONFIG=/home/bridge/.config/opencode/opencode.jsonc"
-              "HTTP_PROXY=${seatProxy}"
-              "HTTPS_PROXY=${seatProxy}"
-              "NO_PROXY=127.0.0.1,localhost"
-            ];
+            # The same reach as an interactive seat, plus the address nginx
+            # proxies from. systemd filters addresses and not ports, so any
+            # service bound to 0.0.0.0 still answers on what is allowed here.
+            IPAddressAllow = singleton "${topology.seatIngressAddr}/32";
+            IPAddressDeny = networkFences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
+            Environment = singleton "OPENCODE_CONFIG=/home/bridge/.config/opencode/opencode.jsonc";
             WorkingDirectory = "/home/bridge/cockpit";
             # The seat's listener is the one socket this service may open;
             # anything else it tries to bind is a bug or a compromise.
