@@ -1,6 +1,5 @@
-# Bound the persistent journal. journald's default cap is 10% of the
-# filesystem (up to 4G), which on a 2TB root means gigabytes of logs
-# surviving forever; 1G is months of history on these machines.
+# journald's default cap is 10% of the filesystem, up to 4G. 1G is months
+# of history here.
 {
   flake.nixosModules.journald =
     { lib, ... }:

@@ -8,10 +8,9 @@
       services.openssh = {
         enable = true;
 
-        # ZERO INBOUND on servers: sshd stays reachable over the tailnet only
-        # (tailscale0 is a trusted interface, see tailscale.mod.nix); port 22
-        # never opens on the public firewall. Desktops keep the default open
-        # port for LAN access.
+        # Servers reach sshd over the tailnet only, since tailscale0 is a
+        # trusted interface; port 22 never opens publicly. Desktops keep
+        # the default open port for the LAN.
         openFirewall = mkIf (!config.isDesktop) (mkDefault false);
 
         settings = {
@@ -21,9 +20,8 @@
         };
       };
 
-      # Root deliberately has NO authorized keys: admin access is the primary
-      # user + sudo; root logins are console-only. PermitRootLogin = "no"
-      # forbids root SSH outright, so even a stray authorized key could not
-      # enable it — belt and suspenders over the no-keys convention.
+      # Root has no authorized keys and PermitRootLogin=no forbids root SSH
+      # outright, so a stray key could not enable it. Admin access is the
+      # primary user plus sudo.
     };
 }

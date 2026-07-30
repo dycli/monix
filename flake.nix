@@ -31,15 +31,14 @@
     inputs.darwin.follows = "";
   };
 
-  # master, not stable: stable predates the fixes for Hyprland 0.55's Lua
-  # command socket needed for DMS workspace clicking.
+  # master: stable predates the Hyprland 0.55 Lua command socket fixes
+  # that DMS workspace clicking needs.
   inputs.dank-material-shell = {
     url = "github:AvengeMedia/DankMaterialShell";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  # The DMS greetd greeter moved out of DankMaterialShell into its own repo
-  # (2026-07); nixpkgs still ships no DMS greeter module.
+  # The greeter lives in its own repo and nixpkgs ships no module for it.
   inputs.dank-greeter = {
     url = "github:AvengeMedia/dank-greeter";
     inputs.nixpkgs.follows = "nixpkgs";
@@ -50,18 +49,15 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  # microvm.nix: hypervisor-backed guests for the agent fleet (see
-  # modules/server/microvm-host.mod.nix, gated on agentFleet.enable).
+  # Hypervisor-backed guests for the agent fleet.
   inputs.microvm = {
     url = "github:microvm-nix/microvm.nix";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  # nix-minecraft: declarative Fabric/vanilla/etc. Minecraft servers as a
-  # NixOS service (see modules/server/minecraft.mod.nix, gated on
-  # minecraft.enable). Does NOT follow our nixpkgs: its server packages are
-  # built and cached against its own pinned nixpkgs, so leaving it pinned
-  # avoids a mass rebuild and keeps the binary cache hits.
+  # Minecraft servers as a NixOS service. Deliberately does not follow our
+  # nixpkgs: its server packages are built and cached against its own pin,
+  # and following ours would forfeit those cache hits.
   inputs.nix-minecraft = {
     url = "github:Infinidoge/nix-minecraft";
   };
@@ -75,9 +71,8 @@
       (
         { lib, ... }:
         {
-          # The Dendritic Pattern: every `*.mod.nix` file in the tree is a
-          # flake-parts module and is imported automatically. There is no
-          # central list of modules to maintain.
+          # Every *.mod.nix in the tree is a flake-parts module, imported
+          # automatically; there is no central list.
           imports = lib.lists.filter (lib.strings.hasSuffix ".mod.nix") (
             lib.filesystem.listFilesRecursive ./.
           );

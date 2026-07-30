@@ -1,14 +1,11 @@
-# Syncthing for the primary user. Inert until a host sets
-# `services.syncthing.enable = true`.
+# Syncthing for the primary user. Device IDs are public keys, not secrets,
+# and are declared here with the one shared folder so every host agrees on
+# the mesh; a host that enables syncthing joins automatically at
+# ~/crate/sync.
 #
-# The device registry (every syncthing peer and its ID — public keys, not
-# secrets) and the one shared folder are declared here so all hosts agree
-# on the mesh. The folder path is ~/crate/sync of the host's primary user
-# on every member — a new host that enables syncthing joins the folder
-# automatically. overrideDevices/overrideFolders default to true in the
-# upstream module, so the flake is the source of truth: peers or folders
-# added through the web UI are removed on the next switch. GUI credentials
-# and the API key stay runtime state.
+# overrideDevices and overrideFolders default true upstream, so peers or
+# folders added through the web UI are removed on the next switch. GUI
+# credentials and the API key stay runtime state.
 {
   flake.nixosModules.syncthing =
     { config, lib, ... }:
@@ -21,11 +18,9 @@
           user = mkDefault config.primaryUser;
           dataDir = mkDefault "/home/${config.primaryUser}";
           configDir = mkDefault "/home/${config.primaryUser}/.config/syncthing";
-          # No global firewall opening: every peer is a tailnet device, and
-          # the trusted tailscale0 interface already passes the sync/discovery
-          # ports. openDefaultPorts=true was the only all-interface inbound
-          # on the servers, contradicting fw0's zero-inbound posture. Peers
-          # find the tailnet addresses via global discovery.
+          # Every peer is a tailnet device and tailscale0 already passes
+          # the sync and discovery ports, so no global opening is needed.
+          # Peers find the tailnet addresses through global discovery.
           openDefaultPorts = false;
           settings.devices = {
             fw3.id = "G2BLKW7-HEC7IY3-F2NUM4K-4AH57JV-JVJ4SJZ-HHOLW7F-DQEGXGU-2OVC5Q2";

@@ -1,6 +1,5 @@
-# Wires Home Manager in as a NixOS module and applies every `homeModules`
-# aspect to the primary user. Home aspects that are desktop-only gate
-# themselves on `osConfig.isDesktop`.
+# Applies every homeModules aspect to the primary user. Desktop-only
+# aspects gate themselves on osConfig.isDesktop.
 { self, inputs, ... }:
 {
   flake.nixosModules.home-manager =
