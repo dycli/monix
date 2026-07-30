@@ -1,45 +1,38 @@
-# Config-less packages. Tools that carry configuration have their own concern
-# files; Nix-workflow tools (nh, nix-output-monitor) live in nix.mod.nix;
-# fonts in fonts.mod.nix.
+# Packages that carry no configuration; anything with config has its own
+# file.
 #
-# The system list is universal: available to root and every user on both host
-# classes. Home lists gate themselves on isDesktop / cockpit.enable — that
-# gating, not module naming, is how hosts differ (every module is imported
-# into every host).
+# The system list reaches root and every user on both hosts. The home
+# lists gate themselves on isDesktop or cockpit.enable, since every module
+# is imported into every host.
 { ... }:
 {
   flake.nixosModules.packages =
     { pkgs, ... }:
     {
-      # Unfree grants for this file's home lists: obsidian rides the desktop
-      # list, claude-code the dev-extras list.
+      # Unfree grants for the home lists below.
       unfreePackages = [
         "claude-code"
         "obsidian"
       ];
 
-      # vim, not nvim: nvim exists only in the primary user's profile, so a
-      # system-wide EDITOR=nvim dangles for root and service users (e.g.
-      # visudo). The primary user gets nvim back per-user (editors.mod.nix)
-      # and in the graphical session (hyprland.mod.nix env).
+      # nvim exists only in the primary user's profile, so a system-wide
+      # EDITOR=nvim would dangle for root and service users. That user gets
+      # nvim back per-user and in the graphical session.
       environment.variables.EDITOR = "vim";
 
-      # The courtesy layer is off: everything this ship carries above the
-      # NixOS core set is in the one list below. (Stock defaults were perl,
-      # rsync, strace — the two we want rejoin the list on our own terms;
-      # nano rides its own default-enabled module, so it's switched off
-      # here too. vim is the ship's fallback editor.)
+      # With the courtesy layer off, everything above the NixOS core set is
+      # in the list below. nano ships its own default-enabled module and is
+      # switched off separately.
       environment.defaultPackages = [ ];
       programs.nano.enable = false;
 
       environment.systemPackages = [
-        # editors: neovim absent — NvChad's wrapper provides `nvim` per-user
-        # (see editors.mod.nix) and collides with a plain install.
+        # neovim is absent: NvChad's wrapper provides nvim per-user and a
+        # plain install collides with it.
         pkgs.vim
 
-        # interactive CLI quality-of-life. nushell is here (not only a
-        # host's login shell setting) so the binary exists system-wide
-        # wherever a user picks it.
+        # nushell is here rather than only in a host's login-shell setting,
+        # so the binary exists wherever a user picks it.
         pkgs.eza
         pkgs.fd
         pkgs.fzf
@@ -55,8 +48,7 @@
         pkgs.wget
         pkgs.rsync
 
-        # debugging: syscall tracing — what a failing process was actually
-        # doing (invaluable inside tight systemd sandboxes).
+        # syscall tracing, for failures inside tight systemd sandboxes.
         pkgs.strace
 
         # archives
@@ -64,15 +56,14 @@
         pkgs.unzip
         pkgs.zip
 
-        # dev: git is here (not only in the home git concern) because
-        # managing and rebuilding this flake repo requires it in root's PATH.
+        # git is here as well as in the home concern, since rebuilding this
+        # repo needs it in root's PATH.
         pkgs.git
       ];
     };
 
-  # The graphical session's loose utilities and applications (the apps are
-  # wired into the Hyprland quick-app bindings). hyprshot wraps its own
-  # grim/slurp (and notification) dependencies.
+  # The graphical session's utilities and applications. hyprshot wraps its
+  # own grim, slurp and notification dependencies.
   flake.homeModules.packages-desktop =
     {
       lib,
@@ -95,19 +86,16 @@
           pkgs.wl-clip-persist
           pkgs.wl-clipboard
 
-          # Pointer cursor theme only INSTALLED here; selection and wiring
-          # are DMS-owned (its cursor settings write
-          # ~/.config/hypr/dms/cursor.lua — required by the Hyprland config,
-          # see hyprland.mod.nix — set XCURSOR_THEME for launched apps, and
-          # run hyprctl setcursor). home.pointerCursor is deliberately NOT
-          # used: it would generate competing GTK/x11/hyprcursor config.
+          # Installed only; DMS owns selection and wiring, writing
+          # ~/.config/hypr/dms/cursor.lua, setting XCURSOR_THEME and
+          # running hyprctl setcursor. home.pointerCursor is avoided
+          # because it generates competing GTK and hyprcursor config.
           pkgs.bibata-cursors
 
           pkgs.brave
           pkgs.kdePackages.dolphin
-          # Dolphin's Extract/Compress context menu + the archive GUI. Icons:
-          # nothing else installs an icon theme, and breeze-dark tracks the
-          # dark KColorScheme (see kde.mod.nix for both wirings).
+          # Dolphin's archive context menu and GUI. Nothing else installs
+          # an icon theme, and breeze-dark tracks the dark KColorScheme.
           pkgs.kdePackages.ark
           pkgs.kdePackages.breeze-icons
           pkgs.keepassxc
@@ -118,8 +106,7 @@
       };
     };
 
-  # Authoring/build tools for anywhere the user actually works: workstations
-  # and the model-agnostic cockpit host (see cockpit.mod.nix).
+  # Authoring and build tools, for workstations and the cockpit host.
   flake.homeModules.packages-dev-extras =
     {
       lib,
@@ -140,7 +127,7 @@
           pkgs.gcc
           pkgs.opencode
           pkgs.hugo
-          # The codex Claude Code plugin's hooks invoke `node` directly.
+          # The codex plugin's hooks invoke node directly.
           pkgs.nodejs
           pkgs.rust-analyzer
           pkgs.rustc

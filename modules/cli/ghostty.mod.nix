@@ -1,9 +1,9 @@
 # Terminal. font-family is CaskaydiaMono Nerd Font (installed by
 # fonts.mod.nix); ghostty uses its default theme.
 {
-  # Every host carries ghostty's terminfo (tiny), so SSH sessions from a
-  # ghostty terminal (TERM=xterm-ghostty) work on servers too — without it,
-  # tmux/less/etc. fail with "missing or unsuitable terminal".
+  # Every host carries ghostty's terminfo so TERM=xterm-ghostty works over
+  # SSH; without it tmux and less fail with "missing or unsuitable
+  # terminal".
   flake.nixosModules.ghostty-terminfo =
     { pkgs, ... }:
     {
@@ -22,13 +22,11 @@
     in
     {
       config = mkIf osConfig.isDesktop {
-        # Upstream's onChange hook runs `ghostty +validate-config` with no
-        # error tolerance, and ghostty's user unit reloads via SIGUSR2
-        # (Type=notify-reload). During activation that signal can land on the
-        # short-lived validate process instead, killing the whole activation
-        # (exit 140 = 128+SIGUSR2). The config is Nix-generated, so validation
-        # is redundant: replace the hook with a non-fatal reload of the
-        # running daemon (no-op when the user session/daemon isn't up).
+        # Upstream's onChange hook runs ghostty +validate-config, and the
+        # user unit reloads via SIGUSR2. During activation that signal can
+        # land on the short-lived validate process and kill the activation
+        # with exit 140. The config is Nix-generated, so this replaces the
+        # hook with a non-fatal reload.
         xdg.configFile."ghostty/config".onChange = mkForce ''
           ${pkgs.systemd}/bin/systemctl --user try-reload-or-restart app-com.mitchellh.ghostty.service 2>/dev/null || true
         '';
@@ -37,10 +35,8 @@
           enable = true;
 
           settings = {
-            # Interactive shell for terminal windows only. The LOGIN shell
-            # stays POSIX (bash, the NixOS default): tools that shell out via
-            # $SHELL (nvim's wildcard expansion, :!, lf, ...) break under
-            # nushell.
+            # Terminal windows only; the login shell stays bash, since
+            # tools that shell out via $SHELL break under nushell.
             command = lib.meta.getExe pkgs.nushell;
 
             window-padding-x = 14;
@@ -54,12 +50,10 @@
             keybind = [ "ctrl+k=reset" ];
           };
 
-          # Daemon flags (gtk-single-instance, initial-window, etc.) must not
-          # live in the config file: it's also read by every plain `ghostty`
-          # invocation, and initial-window=false there suppressed windows for
-          # normal launches. Those flags belong only on the daemon's
-          # ExecStart, which is why we use upstream's systemd unit instead of
-          # hand-rolling one.
+          # Daemon flags must not live in the config file, which every
+          # plain `ghostty` invocation also reads: initial-window=false
+          # there suppresses windows for normal launches. They belong on
+          # the daemon's ExecStart, hence upstream's unit.
         };
       };
     };
