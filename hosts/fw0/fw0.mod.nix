@@ -130,12 +130,21 @@
             };
           };
 
-          # TENANCY. Per-tenant memory ceilings, intentionally overcommitted
-          # (normal peaks don't coincide); lower these if concurrent
-          # workloads approach physical memory.
-          systemd.slices.agents.sliceConfig.MemoryMax = "48G";
-          systemd.slices.inference.sliceConfig.MemoryMax = "96G";
-          systemd.slices.services.sliceConfig.MemoryMax = "16G";
+          # NO per-tenant memory ceilings, deliberately. They were here and
+          # measurement retired them: over 4.7 days of uptime the agents,
+          # inference and cockpit caps never once fired (memory.events
+          # max=0, and inference peaked at 40G of its 96G), while the 16G
+          # cap on services.slice was hit 87,039 times — so the only limit
+          # doing anything was squeezing the FAMILY services, evicting their
+          # page cache on a host with 37G free. Ceilings that never trigger
+          # are decoration; the one that triggered was a bug.
+          #
+          # The kernel is better at this than a guessed number: if a model
+          # load ever cannot fit, the OOM killer picks the largest consumer,
+          # which is the model loader itself — the failure lands on the
+          # workload that caused it rather than on the family. The slices
+          # remain as GROUPINGS (units still set Slice=), which costs
+          # nothing and keeps systemd-cgtop readable.
 
           system.stateVersion = "26.05";
         }

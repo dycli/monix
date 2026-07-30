@@ -499,12 +499,10 @@
           };
         };
 
-        # A remote session must not consume every byte or PID on the host.
-        systemd.slices.cockpit.sliceConfig = mkIf config.cockpit.webEnable {
-          MemoryHigh = "48G";
-          MemoryMax = "64G";
-          TasksMax = 8192;
-        };
+        # No memory or PID ceiling on the web seat: measured over 4.7 days
+        # it peaked at 0.8G against a 64G cap and used 13 PIDs against 8192,
+        # so neither limit had ever done anything. See fw0.mod.nix for why
+        # the per-tenant ceilings were retired generally.
       };
     };
 }
