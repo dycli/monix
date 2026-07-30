@@ -74,7 +74,7 @@
   # llama.cpp (Vulkan) behind llama-swap on :8091, loaded on demand.
   inference.enable = true;
   inference.models."qwen3.6-35b-a3b" = {
-    file = "Qwen3.6-35B-A3B-UD-Q5_K_XL.gguf";
+    file = "Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf";
     flags = [
       "-c"
       "65536"
@@ -110,14 +110,27 @@
       "mistral-small"
     ];
   };
+  # MTP speculative decoding: the module ships as a separate small GGUF
+  # loaded as the draft model, with --spec-type selecting the MTP path
+  # rather than a generic draft. n-max 3 is llama-server's default and the
+  # usual sweet spot for a single-layer MTP head; higher drafts more
+  # tokens per step but wastes more on rejection.
   inference.models."qwen3.6-27b" = {
-    file = "Qwen3.6-27B-UD-Q4_K_XL.gguf";
+    file = "Qwen3.6-27B-Q6_K.gguf";
     flags = [
       "-c"
       "65536"
       "--flash-attn"
       "on"
       "--jinja"
+      "--spec-draft-model"
+      "/var/lib/models/Qwen3.6-27B-MTP-Q6_K.gguf"
+      "--spec-type"
+      "draft-mtp"
+      "--spec-draft-ngl"
+      "999"
+      "--spec-draft-n-max"
+      "3"
     ];
     aliases = [ "qwen3.6-dense" ];
   };
