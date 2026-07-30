@@ -1,9 +1,5 @@
-# Homepage aspect (gethomepage.dev) — one dashboard with a tile per web UI.
-# Inert until a host sets `services.homepage-dashboard.enable`.
-#
-# Serves on loopback :8082 behind the ship proxy (ship-proxy.mod.nix), whose
-# default catch-all vhost keeps plain http://fw0 working. Zero open firewall
-# ports; the trusted tailscale0 interface is the only way in.
+# One dashboard tile per web UI, served on loopback :8082 behind the ship
+# proxy, whose catch-all vhost keeps plain http://fw0 working.
 {
   flake.nixosModules.homepage =
     {
@@ -17,8 +13,7 @@
 
       networkFences = import ../../lib/network-fences.nix;
 
-      # Tile links: ship-proxy pretty names when the front door is up,
-      # otherwise the tailnet short name + port.
+      # Proxy names when the front door is up, else host and port.
       url =
         sub: port:
         if config.shipProxy.enable then
@@ -29,8 +24,7 @@
     {
       config = mkIf config.services.homepage-dashboard.enable {
         services.homepage-dashboard = {
-          # Loopback behind the ship proxy (nginx owns :80/:443; see
-          # ship-proxy.mod.nix).
+          # nginx owns :80 and :443.
           listenPort = 8082;
           openFirewall = false;
 
@@ -54,15 +48,14 @@
             hideVersion = true;
           };
 
-          # Header info widgets — read directly from the host, no services.
           widgets = [
             {
               resources = {
                 cpu = true;
                 memory = true;
                 cputemp = true;
-                # Only real mountpoints work here; /srv/media is a directory
-                # on / until the RAID array lands.
+                # Only real mountpoints work here, and /srv/media is a
+                # directory on /.
                 disk = [ "/" ];
               };
             }

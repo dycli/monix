@@ -1,13 +1,11 @@
-# memo — the engineer's autobiographical memory (a Rust port of
-# VictorTaelin/OptMem). Append-only LOG.txt of one-line memories plus a
-# TREE/ of LLM-written summaries; `memo wake` prints a fixed-size digest
-# whose detail is proportional to recency. The tool never summarizes itself:
-# it hands compression prompts to the agent and bookkeeps the results.
+# memo — an append-only LOG.txt of one-line memories plus a TREE/ of
+# summaries; `memo wake` prints a fixed-size digest weighted to recency.
+# The tool hands compression prompts to the agent rather than summarizing
+# itself.
 #
-# The store (MEMORY_DIR) is mutable state, NOT managed by Nix; the default
-# path is baked into the binary at build time so no session env plumbing is
-# needed. The directory is never auto-created — making it is a deliberate
-# one-time identity-creation step (mkdir + memo import).
+# The store is mutable state, not managed by Nix, with its default path
+# baked in at build time. It is never auto-created: making it is a
+# deliberate one-time step (mkdir plus `memo import`).
 {
   flake.nixosModules.memo =
     {
@@ -33,8 +31,7 @@
         };
         cargoLock.lockFile = ./memo/memo-cli/Cargo.lock;
         env = {
-          # Compile-time default store; the MEMORY_DIR env var still wins,
-          # so tests and one-off stores keep the upstream contract.
+          # MEMORY_DIR still overrides this at runtime.
           MEMO_MEMORY_DIR = cfg.memoryDir;
         };
         meta.mainProgram = "memo";

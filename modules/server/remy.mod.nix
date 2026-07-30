@@ -1,19 +1,16 @@
-# remy aspect: the family's household chat bot (remy/bot.py). One Python
-# service, two Matrix rooms: "Household" (tasks, morning/evening posts,
-# calendar) and "Scratchpad" (personal notes against a separate scratch.db,
-# calendar read-only, no scheduled posts).
+# The household chat bot (remy/bot.py): one Python service across two
+# Matrix rooms, "Household" and "Scratchpad", the latter against its own
+# scratch.db with the calendar read-only and no scheduled posts.
 #
-# Deliberately NOT a general agent: chat text only ever classifies into a
-# fixed intent schema — no path to shell, SQL text, or the fleet.
+# Chat text only ever classifies into a fixed intent schema; there is no
+# path from it to a shell, to SQL text or to the fleet.
 #
-# Three units share one static user `remy` (DynamicUser can't share /var/lib
-# across units): remy-register bootstraps the account; remy itself is
-# loopback-only (tuwunel, llama-swap, local files); and remy-calendar-sync
-# is the ONLY unit with internet egress, pulling events into calendar.json.
-# The shared UID means the bot COULD read the CalDAV secret — accepted: the
-# Migadu account is calendar-only (a resource the bot already reads and
-# writes by design), and the bot's fence leaves no path to use or exfiltrate
-# a credential beyond posting it into the family's own Matrix room.
+# Three units share one static user, since DynamicUser cannot share
+# /var/lib across units: remy-register bootstraps the account, remy itself
+# is loopback-only, and remy-calendar-sync is the only unit with internet
+# egress. The shared uid means the bot can read the CalDAV secret, which
+# is accepted: that account is calendar-only and the bot's fence offers
+# no way to use the credential elsewhere.
 {
   flake.nixosModules.remy =
     {
@@ -39,8 +36,8 @@
 
       calPython = pkgs.python3.withPackages (ps: [ ps.caldav ]);
 
-      # Try a login with the configured password; on failure walk the
-      # registration-token UIA flow. Idempotent, loud on real failures.
+      # Tries a login first, then walks the registration-token UIA flow.
+      # Idempotent.
       register = pkgs.writeShellApplication {
         name = "remy-register";
         runtimeInputs = [
@@ -82,8 +79,7 @@
         '';
       };
 
-      # Shared hardening preset (lib/hardened.nix) + unit identity; egress
-      # differs per unit, set below.
+      # Egress differs per unit and is set below.
       sandbox = (import ../../lib/hardened.nix).tenant // {
         User = "remy";
         Group = "remy";
@@ -248,8 +244,7 @@
         systemd.services.remy = {
           description = "family household chat bot";
           wantedBy = [ "multi-user.target" ];
-          # The organizer's safety net: every mutation commits a SQL dump
-          # to a git repo in the state dir (see git_snapshot in bot.py).
+          # git_snapshot in bot.py commits a SQL dump on every mutation.
           path = [ pkgs.git ];
           wants = [
             "tuwunel.service"
@@ -262,9 +257,8 @@
           ];
           environment = {
             BOT_HS_URL = "http://127.0.0.1:${toString config.matrix.port}";
-            # Room names are the bot's own defaults (Household/Scratchpad):
-            # an option here would look tunable, but the rooms are created
-            # once and renaming the option renames nothing.
+            # The rooms are created once, so a renamed option would rename
+            # nothing; the names stay the bot's own defaults.
             BOT_INVITE_USERS = lib.concatStringsSep "," cfg.inviteUsers;
             BOT_SCRATCH_USERS = lib.concatStringsSep "," cfg.scratchpad.users;
             BOT_SCRATCH_DB = "/var/lib/remy/scratch.db";
@@ -300,8 +294,8 @@
           serviceConfig = sandbox // {
             Type = "oneshot";
             ExecStart = "${calPython}/bin/python ${./remy/calsync.py}";
-            # The one remy unit allowed out: HTTPS to the CalDAV host plus
-            # loopback. LAN/tailnet/fleet ranges stay denied.
+            # The only remy unit allowed out: CalDAV over HTTPS, plus
+            # loopback.
             IPAddressAllow = networkFences.loopback;
             IPAddressDeny = networkFences.internetOnlyDeny;
           };
@@ -315,17 +309,15 @@
           };
         };
 
-        # The bot touches outbox.flag when chat queues a calendar event;
-        # this fires the sync (= push + re-fetch) within seconds instead of
-        # waiting out the 30-minute timer.
+        # The bot touches outbox.flag when chat queues an event, firing the
+        # sync in seconds rather than waiting out the timer.
         systemd.paths.remy-calendar-sync = mkIf (cfg.calendar.credentialsFile != null) {
           wantedBy = [ "multi-user.target" ];
           pathConfig.PathChanged = "/var/lib/remy/outbox.flag";
         };
 
-        # Mirrors the family log to a vault path. The bot is fenced out of
-        # /home, so this root oneshot — the only piece allowed to reach it —
-        # copies log.md out when it changes, owned by the vault's user.
+        # The bot is fenced out of /home, so this root oneshot copies
+        # log.md to the vault when it changes, owned by the vault's user.
         systemd.services.remy-famlog = mkIf (cfg.famlog.path != null) {
           description = "mirror remy's daily log into the vault";
           serviceConfig = {

@@ -1,14 +1,10 @@
-# Home Assistant aspect — smart-home backend (thermostat, sensors, Frigate
-# cameras). Inert until a host sets `services.home-assistant.enable`.
+# Smart-home backend, tailnet-only on :8123 behind ha.<domain>.
+# Integration wiring is .storage state; Nix owns the service, its
+# components and its reachability.
 #
-# Tailnet-only on :8123, pretty name via the ship proxy (ha.<domain>).
-# Integration wiring (OAuth, device pairing) is web-UI/.storage state like
-# the *arrs — Nix owns the service, components, and reachability only.
-#
-# FENCE EXCEPTION: HA's job is talking to the home LAN (thermostats,
-# cameras, mDNS discovery), so configured LAN subnets are allowed alongside
-# tailnet + loopback; the fleet bridge and every other private range stay
-# denied.
+# The fence allows the configured LAN subnets, since talking to
+# thermostats, cameras and mDNS discovery is the job. The fleet bridge and
+# every other private range stay denied.
 {
   flake.nixosModules.home-assistant =
     {
