@@ -120,7 +120,7 @@ run cancel "$id"                # cancel a queued/running task
 run patch "$id"                 # bounded automatic git diff
 run status                      # recent lifecycle log
 run health                      # current queue, workers, units, memory, disk
-run active                      # one line per running task (ship-status uses it)
+run active                      # one line per running task
 run note "$id" reviewed-output
 run run slug < task.md          # submit + watch + fetch in one call
 ```

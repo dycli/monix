@@ -34,7 +34,6 @@
       cfg = config.shipCameras;
 
       lanFence = {
-        Slice = "services.slice";
         IPAddressAllow = networkFences.loopback ++ cfg.lanSubnets;
         IPAddressDeny = networkFences.privateRanges ++ [ "any" ];
       };
@@ -237,7 +236,6 @@
           ];
         };
         systemd.services.mosquitto.serviceConfig = {
-          Slice = "services.slice";
           IPAddressAllow = networkFences.loopback;
           IPAddressDeny = "any";
         };

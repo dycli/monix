@@ -89,7 +89,6 @@
         Group = "remy";
         StateDirectory = "remy";
         StateDirectoryMode = "0700";
-        Slice = "services.slice";
       };
 
       loopbackOnly = {

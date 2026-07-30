@@ -531,7 +531,7 @@
           map (
             w:
             # microvm.nix has no slice option; unit override so every worker
-            # counts against the fleet's 48G/agents.slice fence.
+            # counts against agents.slice, which `fleet health` reports.
             (nameValuePair "microvm@${w.name}" {
               serviceConfig = {
                 Slice = "agents.slice";

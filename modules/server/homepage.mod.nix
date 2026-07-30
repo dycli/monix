@@ -196,7 +196,6 @@
 
           # Same anti-pivot fence as the media stack: tailnet + loopback in,
           # public internet out (icon CDN), every private range denied.
-          Slice = "services.slice";
           IPAddressAllow = networkFences.loopback ++ [ "100.64.0.0/10" ];
           IPAddressDeny = networkFences.privateRanges;
         };

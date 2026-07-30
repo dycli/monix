@@ -116,9 +116,6 @@
         };
 
         systemd.services.tuwunel.serviceConfig = {
-          # Count chat against the general services fence.
-          Slice = "services.slice";
-
           # Public internet stays reachable (push gateways — notifications
           # die without it) but LAN and the fleet bridge do not. Loopback
           # is allowed: cloudflared delivers every public client over
@@ -166,7 +163,6 @@
             # /24: the AI seat's plane lives at 127.0.1.x and this must not
             # reach it. The public internet is in neither list and so falls
             # through allowed, which is the point.
-            Slice = "services.slice";
             IPAddressAllow = networkFences.loopback;
             IPAddressDeny = networkFences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
           };

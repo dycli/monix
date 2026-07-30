@@ -78,34 +78,6 @@
         meta.mainProgram = "fleet";
       };
 
-      # ship-status — the combined dashboard, in nushell: host, memory
-      # domains, services, the fleet, spend (embeds ship-costs), and
-      # minecraft. Responsive: a wide boxed grid on desktop, stacked
-      # single-column on a phone (nu `term size`; SHIP_COLS overrides).
-      # Installed as both `ship-status` and `ship` (short alias).
-      shipStatus = pkgs.writeScriptBin "ship-status" (
-        replaceStrings
-          [ "@NUSHELL@" "@PATH@" "@WORKERS@" "@OPERATOR@" "@FLEET_PATH@" ]
-          [
-            (lib.getExe pkgs.nushell)
-            (lib.makeBinPath [
-              pkgs.coreutils
-              pkgs.systemd
-              pkgs.mcstatus
-              pkgs.tailscale
-            ])
-            (concatMapStringsSep " " (w: w.name) cfg.workers)
-            op
-            fleetPath
-          ]
-          (fileContents ./fleet-tool/ship-status.nu.in)
-      );
-
-      # `ship` — short alias for `ship-status`.
-      shipAlias = pkgs.runCommand "ship-alias" { } ''
-        mkdir -p $out/bin
-        ln -s ${shipStatus}/bin/ship-status $out/bin/ship
-      '';
     in
     {
       options.agentFleet.operatorUser = mkOption {
@@ -133,11 +105,7 @@
         # The bridge seat account (cockpit.mod.nix) reads results the same way.
         users.users.bridge = mkIf config.cockpit.enable { extraGroups = [ readers ]; };
 
-        environment.systemPackages = [
-          fleet
-          shipStatus
-          shipAlias
-        ];
+        environment.systemPackages = [ fleet ];
 
         # The only path from the cockpit account into the queue: run the
         # fleet tool as the operator. Scoped to this one binary, NOPASSWD

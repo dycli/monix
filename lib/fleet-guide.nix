@@ -84,12 +84,6 @@
     Only the cockpit engineer runs `memo`. Drones and subagents never do — one
     identity, one memory.
 
-    ## Ship status
-
-    When the captain says **ship status** in any AI chat, run `ship-status`
-    (short alias `ship`) and return its complete dashboard verbatim in a
-    fenced text block — never an improvised summary. `ship-costs` still runs
-    standalone for just the spend ledger.
 
     ## Your role as engineer
 

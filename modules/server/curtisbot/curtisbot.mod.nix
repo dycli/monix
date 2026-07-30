@@ -99,7 +99,6 @@
             Group = "curtisbot";
             StateDirectory = "curtisbot";
             StateDirectoryMode = "0700";
-            Slice = "services.slice";
 
             # Internet + loopback; LAN/tailnet/fleet stay denied.
             IPAddressAllow = networkFences.loopback;

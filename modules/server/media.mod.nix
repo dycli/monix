@@ -38,7 +38,6 @@
       # private/link-local range (LAN, fleet bridge), and let the public
       # internet fall through allowed.
       egressFence = {
-        Slice = "services.slice";
         IPAddressAllow = networkFences.loopback ++ [
           "100.64.0.0/10" # tailnet (CGNAT range)
         ];

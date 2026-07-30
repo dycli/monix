@@ -140,7 +140,7 @@
 
             package = serverPackage;
 
-            # Small server: start at 2G, cap at 4G, within the services.slice 16G fence.
+            # Small server: start at 2G, cap at 4G — the JVM bounds itself.
             jvmOpts = "-Xms2G -Xmx4G";
 
             # linkFarmFromDrvs over the pinned jars is nix-minecraft's
@@ -184,7 +184,6 @@
         # Restrict{AddressFamilies,Namespaces,Realtime,SUIDSGID}). We add
         # only the directives it leaves out, plus the egress fence.
         systemd.services.minecraft-server-main.serviceConfig = {
-          Slice = "services.slice";
 
           # ProtectSystem=strict makes the whole filesystem read-only except
           # named paths, so worldDir is the only writable place.

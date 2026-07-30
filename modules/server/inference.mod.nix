@@ -4,7 +4,7 @@
 # llama-swap spawns/kills a llama-server per model on demand from
 # `inference.models` and unloads after `ttl` seconds idle, so an idle box
 # holds ~0 model RAM; only one model is active at a time. The fleet-wide
-# ceiling is the inference.slice fence set by the host (96G on fw0).
+# ceiling is llama-swap's own budget below; the host sets no cgroup cap.
 #
 # Tuned for fw0's Strix Halo iGPU: built with Vulkan (RADV is the mature
 # path on gfx1151; ROCm support there is younger), models fully offload
@@ -15,7 +15,7 @@
 #
 # The server parses untrusted prompts (tailnet, and fleet guests if
 # wired), so assume compromise: upstream's sandbox is tightened with a
-# GPU device grant, the inference.slice fence, and an egress fence
+# GPU device grant and an egress fence
 # allowing only loopback + tailnet — no public internet, no LAN, no fleet
 # bridge. This also blocks llama-server's own -hf downloading; models are
 # fetched by the operator into `inference.modelsDir`.
@@ -142,7 +142,6 @@
         systemd.services.llama-swap.serviceConfig = {
           # Count model RAM against the host's inference fence, not the
           # default system slice.
-          Slice = "inference.slice";
 
           # Upstream leaves PrivateDevices=false but grants no device
           # class; open exactly the DRM render path Vulkan needs.
@@ -169,7 +168,7 @@
         };
 
         # GTT is a limit, not a reservation — an idle box pays nothing.
-        # 96G to match fw0's inference.slice fence: 98304 MiB / 25165824
+        # 96G of the host's 128G left for models: 98304 MiB / 25165824
         # 4K pages. page_pool_size caps TTM's cached-page reuse pool at the
         # same bound.
         boot.kernelParams = [

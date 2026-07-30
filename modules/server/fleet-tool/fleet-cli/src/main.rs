@@ -1171,7 +1171,7 @@ fn cmd_active(config: &Config) -> Result<i32> {
             let id = id.trim_end_matches(".md");
             let header = frontmatter_lines(&prompt).unwrap_or_default();
             // One malformed prompt must not kill the whole listing (or the
-            // ship-status panel that shells out to it).
+            // callers that shell out to it).
             let agent = san(&fm(&header, "agent")).unwrap_or("?").to_string();
             let model = san(&fm(&header, "model")).unwrap_or("?").to_string();
             let started = fs::metadata(&prompt)

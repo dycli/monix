@@ -217,5 +217,5 @@ SUBMIT → DISPATCH → [STEER → STEERED]*
 A pre-pickup stall instead logs a requeue and later a second `DISPATCH`.
 Add `NOTE` for free-text cockpit
 annotations and rejection lines for anything that failed a trust check.
-`fleet status` tails the log; `ship-status` shows the live pool;
+`fleet status` tails the log; `fleet active` shows the live pool;
 `ship-costs` attributes each task's tokens to its subscription pool.

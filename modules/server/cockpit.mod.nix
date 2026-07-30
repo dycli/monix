@@ -62,7 +62,6 @@
       claudeBashPermissions = [
         "sudo -n -u fleet-operator fleet *"
         "fleet dispatch *"
-        "ship-status"
         "ship-costs"
         "ship-costs *"
         # memo (memo.mod.nix) must never prompt, or in-the-moment notes die.
@@ -450,10 +449,9 @@
           serviceConfig = {
             User = "bridge";
             Group = "bridge";
-            Slice = "cockpit.slice";
             # The web seat gets the SAME door as an interactive one. It is
-            # a system service, so it lives in cockpit.slice and the
-            # user-1001.slice fence never covered it — until this, the
+            # a system service, so the user-1001.slice fence — which
+            # covers login sessions — never applied to it. Until this, the
             # squid-only story applied to tmux sessions and not to the seat
             # reachable from a phone. This denies the public internet, the
             # LAN, the tailnet, and the fleet bridge, and routes its HTTP
