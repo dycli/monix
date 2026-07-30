@@ -979,7 +979,6 @@ impl Supervisor {
             .map_err(|error| format!("run executor: {error}"))
     }
 
-
     fn lock_exchange(&self) -> Result<()> {
         // The supervisor always runs as guest root in production; the uid
         // check only lets the mode half of the lockdown be exercised by

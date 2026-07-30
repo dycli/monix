@@ -113,7 +113,6 @@ impl Config {
     }
 }
 
-
 trait IoContext<T> {
     fn context(self, message: &str) -> Result<T>;
     fn with_context<F: FnOnce() -> String>(self, message: F) -> Result<T>;
