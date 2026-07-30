@@ -21,16 +21,19 @@
           # `set` flags (unlike `up` flags) apply on every activation, with
           # or without an auth key.
           #
-          # OFF on the host that runs the caged seat: a Tailscale SSH
-          # session runs under tailscaled's cgroup, so it would bypass the
-          # seat's slice fence entirely (cockpit.mod.nix documents this),
-          # and whether anyone may land as `bridge` would rest on a tailnet
-          # ACL that lives outside this repo. A local boundary should not
-          # depend on remote policy. Plain sshd already serves the tailnet
-          # there, so nothing is lost but the bypass.
-          services.tailscale.extraSetFlags = singleton (
-            if config.cockpit.enable then "--ssh=false" else "--ssh"
-          );
+          # DO NOT DISABLE THIS. It was turned off on the cockpit host on
+          # 2026-07-30 because a Tailscale SSH session runs under
+          # tailscaled's cgroup and so escapes the seat's slice fence. That
+          # reasoning was wrong twice over: the escape it prevents is a
+          # seat-reach question, which this ship's security doctrine
+          # explicitly ACCEPTS as inherent, and Tailscale SSH is how the
+          # captain reaches every machine. With it enabled tailscaled
+          # answers port 22 for tailnet peers, so `ssh max@fw0` was never
+          # touching sshd — disabling it locked him out of his own server
+          # mid-activation, from the very session running the switch.
+          # If bridge-specific SSH ever needs restricting, do it in the
+          # tailnet ACL, not by removing the mechanism.
+          services.tailscale.extraSetFlags = [ "--ssh" ];
 
           # Trust the tailnet interface so services bound on it are
           # reachable without opening the public firewall.
