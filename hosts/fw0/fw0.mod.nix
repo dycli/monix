@@ -93,10 +93,38 @@
                 content = {
                   type = "btrfs";
 
+                  # noatime: on a copy-on-write filesystem every READ
+                  # otherwise causes a metadata WRITE to update the access
+                  # time, which nothing here consults. compress=zstd uses
+                  # btrfs's own heuristics, so it skips data that will not
+                  # compress (the media library is already-compressed video)
+                  # and wins on service state, databases and logs. These are
+                  # MOUNT options: they take effect at the next REBOOT, and
+                  # compression applies only to newly written data.
+                  #
+                  # Per subvolume, not on the parent — disko ignores
+                  # mountOptions at the btrfs content level, silently, which
+                  # is a no-op that looks like a change.
                   # Agent state and model weights get their own subvolumes.
-                  subvolumes."@".mountpoint = "/";
-                  subvolumes."@agents".mountpoint = "/var/lib/agents";
-                  subvolumes."@models".mountpoint = "/var/lib/models";
+                  subvolumes."@" = {
+                    mountpoint = "/";
+                    mountOptions = [
+                      "noatime"
+                      "compress=zstd"
+                    ];
+                  };
+                  subvolumes."@agents" = {
+                    mountpoint = "/var/lib/agents";
+                    mountOptions = [
+                      "noatime"
+                      "compress=zstd"
+                    ];
+                  };
+                  subvolumes."@models" = {
+                    mountpoint = "/var/lib/models";
+                    # Model weights are incompressible; noatime still helps.
+                    mountOptions = [ "noatime" ];
+                  };
                 };
               };
             };
