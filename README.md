@@ -86,7 +86,3 @@ and no memories. The fleet has flown more than a hundred and fifty missions.
 The Kestrel does not fly alone. A private relay net — the **Constellation** — binds
 the ship to the Captain's outposts. From any of them he takes the helm; the ship is
 wherever the Captain is sitting.
-
----
-
-*Technical documents and schematics: [the ship's manual](docs/manual.md).*
