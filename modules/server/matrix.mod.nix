@@ -152,6 +152,23 @@
             ExecStart = "${getExe pkgs.cloudflared} tunnel --no-autoupdate run --token-file %d/token";
             Restart = "always";
             RestartSec = 5;
+
+            # This is the one process on the host that handles traffic from
+            # the public internet, and DynamicUser bounds its filesystem
+            # reach, not its network reach — without this it sits in
+            # system.slice able to dial the LAN, the tailnet and every
+            # loopback service. It needs exactly two things: the internet
+            # (Cloudflare's edge) and loopback (tuwunel on 127.0.0.1, plus
+            # resolved's stub on 127.0.0.53 — /etc/resolv.conf points there,
+            # so cloudflared's Go resolver stays inside the fence).
+            #
+            # 127.0.0.0/8 is named in the deny because the allow above is a
+            # /24: the AI seat's plane lives at 127.0.1.x and this must not
+            # reach it. The public internet is in neither list and so falls
+            # through allowed, which is the point.
+            Slice = "services.slice";
+            IPAddressAllow = networkFences.loopback;
+            IPAddressDeny = networkFences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
           };
           environment = {
             TUNNEL_TRANSPORT_PROTOCOL = "http2";

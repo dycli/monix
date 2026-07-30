@@ -220,10 +220,8 @@
             IPAddressAllow = networkFences.loopback;
             IPAddressDeny = "any";
           };
-          path = [
-            pkgs.gawk
-            pkgs.coreutils
-          ];
+          # awk only; printf/read are bash builtins and upsc is absolute.
+          path = [ pkgs.gawk ];
           script = ''
             read -r _ reqpath _ || true
             while IFS= read -r line; do

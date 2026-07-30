@@ -50,6 +50,13 @@
           IPAddressAllow = networkFences.loopback;
           IPAddressDeny = networkFences.privateRanges ++ [ "127.0.0.0/8" ];
         };
+
+        # Upstream puts both units in system-immich.slice, a SIBLING of
+        # services.slice — so fw0's ceiling on that slice never covered
+        # them and image processing could pressure the whole host. High
+        # rather than Max deliberately: it applies reclaim pressure instead
+        # of OOM-killing the family's photo service.
+        systemd.slices.system-immich.sliceConfig.MemoryHigh = "16G";
       };
     };
 }
