@@ -5,8 +5,9 @@
 # online-mode requires the public Mojang session servers, so the fence
 # below allows the internet while denying loopback, the LAN and the
 # agent-fleet bridge.
-{ inputs, ... }:
+{ self, inputs, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.minecraft;
   flake.nixosModules.minecraft =
     {
       config,

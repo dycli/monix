@@ -4,8 +4,9 @@
 #
 # The module comes from nixpkgs; the dank-material-shell input supplies
 # only a newer package, and the greeter is its own flake.
-{ inputs, ... }:
+{ self, inputs, ... }:
 {
+  flake.nixosModules.hyprland = self.nixosModules.dank;
   flake.nixosModules.dank =
     {
       config,
@@ -14,13 +15,12 @@
       ...
     }:
     let
-      inherit (lib.modules) mkIf;
       inherit (lib.lists) singleton;
     in
     {
       imports = singleton inputs.dank-greeter.nixosModules.default;
 
-      config = mkIf config.isDesktop {
+      config = {
         programs.dms-shell.enable = true;
 
         # nixpkgs' dms-shell 1.4.6 predates Hyprland 0.55's Lua-only

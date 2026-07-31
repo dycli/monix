@@ -1,4 +1,6 @@
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.boot;
   flake.nixosModules.boot =
     { lib, ... }:
     let

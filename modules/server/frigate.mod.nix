@@ -10,7 +10,9 @@
 #
 # One `frigate` camera account, its password from envFile. go2rtc expands
 # ${VARS} while Frigate expands {FRIGATE_*}.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.frigate;
   flake.nixosModules.frigate =
     {
       config,

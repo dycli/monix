@@ -8,7 +8,9 @@
 #
 # Egress must include the public internet even with federation off, or
 # push notifications to each client's gateway stop working.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.matrix;
   flake.nixosModules.matrix =
     {
       config,

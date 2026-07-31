@@ -2,18 +2,19 @@
 # bash. bash's interactive init re-execs into nu, so scripts, `ssh host
 # 'cmd'` and tools that shell out via $SHELL are unaffected.
 #
-# Desktops get the same split from ghostty instead, so this is gated to
-# non-desktops.
+# Desktops get the same split from ghostty instead, so this lives in the
+# headless role bundles (homelab today), never in desktop.
+{ self, ... }:
 {
+  flake.homeModules.homelab = self.homeModules.interactive-shell;
   flake.homeModules.interactive-shell =
     {
       config,
-      lib,
       osConfig,
       ...
     }:
     {
-      config = lib.mkIf (!osConfig.isDesktop) {
+      config = {
         programs.bash = {
           enable = true;
           # Interactive shells only, once only — SHIP_NU is inherited by

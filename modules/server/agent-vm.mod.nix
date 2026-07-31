@@ -15,7 +15,9 @@
 # publishes prompt.md last; the VM is stopped before the share is
 # cleared. Secrets must never go in the nix store, which is
 # world-readable on the host.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.agent-guests;
   flake.nixosModules.agent-guests =
     {
       config,

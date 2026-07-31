@@ -1,6 +1,8 @@
 # Tailscale aspect. Auto-imported into every host and enabled by default.
 # Opt out per host with `services.tailscale.enable = lib.modules.mkForce false;`.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.tailscale;
   flake.nixosModules.tailscale =
     { config, lib, ... }:
     let

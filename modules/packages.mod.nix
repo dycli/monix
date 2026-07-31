@@ -1,11 +1,11 @@
 # Packages that carry no configuration; anything with config has its own
 # file.
 #
-# The system list reaches root and every user on both hosts. The home
-# lists gate themselves on isDesktop or cockpit.enable, since every module
-# is imported into every host.
-{ ... }:
+# The system list reaches root and every user on every host. The home
+# lists are bundle members: hosts that import their bundle get them.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.packages;
   flake.nixosModules.packages =
     { pkgs, ... }:
     {
@@ -62,20 +62,20 @@
       ];
     };
 
+  # Both home lists join the desktop bundle; the dev extras also join the
+  # homelab (one key per file, so the memberships merge here).
+  flake.homeModules.desktop.imports = [
+    self.homeModules.packages-desktop
+    self.homeModules.packages-dev-extras
+  ];
+  flake.homeModules.homelab = self.homeModules.packages-dev-extras;
+
   # The graphical session's utilities and applications. hyprshot wraps its
   # own grim, slurp and notification dependencies.
   flake.homeModules.packages-desktop =
+    { pkgs, ... }:
     {
-      lib,
-      osConfig,
-      pkgs,
-      ...
-    }:
-    let
-      inherit (lib.modules) mkIf;
-    in
-    {
-      config = mkIf osConfig.isDesktop {
+      config = {
         home.packages = [
           pkgs.brightnessctl
           pkgs.cliphist
@@ -106,19 +106,11 @@
       };
     };
 
-  # Authoring and build tools, for workstations and the cockpit host.
+  # Authoring and build tools, for workstations and the homelab.
   flake.homeModules.packages-dev-extras =
+    { pkgs, ... }:
     {
-      lib,
-      osConfig,
-      pkgs,
-      ...
-    }:
-    let
-      inherit (lib.modules) mkIf;
-    in
-    {
-      config = mkIf (osConfig.isDesktop || osConfig.cockpit.enable) {
+      config = {
         home.packages = [
           pkgs.cargo
           pkgs.claude-code

@@ -8,7 +8,9 @@
 #
 # Lines arriving within 2s are batched into one message. Send failures are
 # logged and dropped; the on-disk log stays canonical.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.fleet-log-stream;
   flake.nixosModules.fleet-log-stream =
     {
       config,

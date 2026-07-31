@@ -11,7 +11,9 @@
 # egress. The shared uid means the bot can read the CalDAV secret, which
 # is accepted: that account is calendar-only and the bot's fence offers
 # no way to use the credential elsewhere.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.remy;
   flake.nixosModules.remy =
     {
       config,

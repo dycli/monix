@@ -4,8 +4,9 @@
 #
 # Both editors pin shell to /bin/sh, since their POSIX `-c` shell-outs
 # fail under nushell with "E79: Cannot expand wildcards".
-{ inputs, ... }:
+{ self, inputs, ... }:
 {
+  flake.homeModules.default = self.homeModules.editors;
   flake.homeModules.editors =
     { pkgs, ... }:
     {

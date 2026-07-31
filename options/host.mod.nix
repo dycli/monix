@@ -1,21 +1,13 @@
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.host;
   flake.nixosModules.host =
     { lib, ... }:
     let
       inherit (lib.options) mkOption;
-      inherit (lib.types) bool listOf str;
+      inherit (lib.types) listOf str;
     in
     {
-      options.isDesktop = mkOption {
-        type = bool;
-        default = false;
-        description = ''
-          Whether this host is a desktop/workstation. When false (the default)
-          the host is treated as a server. Desktop-only modules gate their
-          configuration on this option.
-        '';
-      };
-
       options.primaryUser = mkOption {
         type = str;
         description = "Login name of the primary, human, admin user of the host.";

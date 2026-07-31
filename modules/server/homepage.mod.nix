@@ -1,6 +1,8 @@
 # One dashboard tile per web UI, served on loopback :8082 behind the ship
 # proxy, whose catch-all vhost keeps plain http://fw0 working.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.homepage;
   flake.nixosModules.homepage =
     {
       config,

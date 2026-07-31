@@ -6,7 +6,9 @@
 # The store is mutable state, not managed by Nix, with its default path
 # baked in at build time. It is never auto-created: making it is a
 # deliberate one-time step (mkdir plus `memo import`).
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.memo;
   flake.nixosModules.memo =
     {
       config,

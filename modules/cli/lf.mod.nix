@@ -1,7 +1,9 @@
 # `open` picks by mime type: text-like files go to $EDITOR in the same
 # terminal, everything else is dispatched async to xdg-open. A headless
 # host has no xdg-open, so non-text files do not open there.
+{ self, ... }:
 {
+  flake.homeModules.default = self.homeModules.lf;
   flake.homeModules.lf =
     { pkgs, ... }:
     {

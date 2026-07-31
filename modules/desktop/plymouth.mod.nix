@@ -4,22 +4,19 @@
 # watches DRM devices and repaints when the driver takes over.
 #
 # Early KMS is a prerequisite, already provided by nixos-hardware.
+{ self, ... }:
 {
+  flake.nixosModules.desktop = self.nixosModules.plymouth;
   flake.nixosModules.plymouth =
-    { config, lib, ... }:
-    let
-      inherit (lib.modules) mkDefault mkIf;
-    in
+    { lib, ... }:
     {
-      config = mkIf config.isDesktop {
-        boot.plymouth.enable = true;
+      boot.plymouth.enable = true;
 
-        # The console must stop writing over the splash.
-        boot.initrd.verbose = mkDefault false;
-        boot.kernelParams = [
-          "quiet"
-          "udev.log_level=3"
-        ];
-      };
+      # The console must stop writing over the splash.
+      boot.initrd.verbose = lib.modules.mkDefault false;
+      boot.kernelParams = [
+        "quiet"
+        "udev.log_level=3"
+      ];
     };
 }

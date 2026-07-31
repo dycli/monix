@@ -6,7 +6,9 @@
 # overrideDevices and overrideFolders default true upstream, so peers or
 # folders added through the web UI are removed on the next switch. GUI
 # credentials and the API key stay runtime state.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.syncthing;
   flake.nixosModules.syncthing =
     { config, lib, ... }:
     let

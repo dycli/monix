@@ -4,7 +4,9 @@
 # and a failed ff-only pull aborts, since that means divergence. Elsewhere
 # the source is origin and a failed pull only warns, so being offline
 # still switches what is on disk.
+{ self, ... }:
 {
+  flake.homeModules.default = self.homeModules.switcharoo;
   flake.homeModules.switcharoo =
     { pkgs, ... }:
     {

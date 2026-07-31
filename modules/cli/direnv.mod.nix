@@ -1,4 +1,6 @@
+{ self, ... }:
 {
+  flake.homeModules.default = self.homeModules.direnv;
   flake.homeModules.direnv =
     { ... }:
     {

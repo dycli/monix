@@ -10,22 +10,18 @@
 #    DMS already generates a matugen KColorScheme; kdeglobals only needs to
 #    name it. Seeded by tmpfiles (`f`, not `w`) since KDE apps write back to
 #    the file at runtime (file-dialog state, etc.).
+{ self, ... }:
 {
-  flake.nixosModules.kde-integration =
-    { config, lib, ... }:
-    {
-      config = lib.modules.mkIf config.isDesktop {
-        qt.enable = true;
-      };
-    };
+  flake.nixosModules.hyprland = self.nixosModules.kde-integration;
+  flake.nixosModules.kde-integration = {
+    qt.enable = true;
+  };
 
-  flake.homeModules.kde-integration =
-    { lib, osConfig, ... }:
-    {
-      config = lib.modules.mkIf osConfig.isDesktop {
-        systemd.user.tmpfiles.rules = [
-          "f %h/.config/kdeglobals 0644 - - - [General]\\nColorScheme=DankMatugen\\n[Icons]\\nTheme=breeze-dark\\n"
-        ];
-      };
-    };
+  flake.homeModules.hyprland = self.homeModules.kde-integration;
+
+  flake.homeModules.kde-integration = {
+    systemd.user.tmpfiles.rules = [
+      "f %h/.config/kdeglobals 0644 - - - [General]\\nColorScheme=DankMatugen\\n[Icons]\\nTheme=breeze-dark\\n"
+    ];
+  };
 }

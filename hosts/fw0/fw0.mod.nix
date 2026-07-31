@@ -1,5 +1,5 @@
-# fw0 — Framework Desktop (Strix Halo, 128GB), headless server: agent-fleet
-# microVM host, cockpit session, local inference.
+# fw0 — Framework Desktop (Strix Halo, 128GB), headless server carrying
+# the homelab role (modules/server/homelab.mod.nix).
 #
 # Tailnet-only except calibre-web :8083 on the LAN (media.calibreWebLan).
 # BIOS requires AMD SVM and restore-on-AC-power-loss.
@@ -10,109 +10,112 @@
   ...
 }:
 {
-  flake.nixosConfigurations.fw0 = lib.nixosSystem {
-    modules = [
-      (
-        { lib, ... }:
-        let
-          inherit (lib.attrsets) attrValues;
-        in
-        {
-          imports = attrValues self.nixosModules ++ [
-            inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
-            ./services.nix
-          ];
+  imports = lib.lists.singleton (
+    lib.ship.host "fw0" (
+      { ... }:
+      {
+        imports = [
+          self.nixosModules.homelab
+          inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
+          ./credentials.nix
+        ];
 
-          networking.hostName = "fw0";
-          isDesktop = false;
-          primaryUser = "max";
+        primaryUser = "max";
 
-          nixpkgs.hostPlatform = "x86_64-linux";
+        nixpkgs.hostPlatform = "x86_64-linux";
 
-          # CPU, GPU, pstate and microcode come from the nixos-hardware profile.
-          boot.initrd.availableKernelModules = [
-            "nvme"
-            "xhci_pci"
-            "thunderbolt"
-            "usbhid"
-            "usb_storage"
-            "sd_mod"
-          ];
-          boot.kernelModules = [ "kvm-amd" ];
-          hardware.enableRedistributableFirmware = true;
+        # CPU, GPU, pstate and microcode come from the nixos-hardware profile.
+        boot.initrd.availableKernelModules = [
+          "nvme"
+          "xhci_pci"
+          "thunderbolt"
+          "usbhid"
+          "usb_storage"
+          "sd_mod"
+        ];
+        boot.kernelModules = [ "kvm-amd" ];
+        hardware.enableRedistributableFirmware = true;
 
-          # btrfs root inside cryptroot; the key is TPM-sealed so the host
-          # boots headless, with a passphrase slot for recovery.
-          disko.devices.disk.main = {
-            device = "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_with_Heatsink_2TB_S6WRNS0T219958J";
-            type = "disk";
+        # EcoFlow RIVER 3 Plus over USB HID (usbhid-ups, 3746:ffff).
+        alerts.ups.enable = true;
 
-            content.type = "gpt";
+        # The e-reader cannot join the tailnet and pulls the OPDS feed.
+        media.calibreWebLan = {
+          interface = "enp191s0";
+          subnet = "192.168.1.0/24";
+        };
 
-            content.partitions.boot = {
-              priority = 100;
-              size = "1G";
-              type = "EF00";
+        # btrfs root inside cryptroot; the key is TPM-sealed so the host
+        # boots headless, with a passphrase slot for recovery.
+        disko.devices.disk.main = {
+          device = "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_with_Heatsink_2TB_S6WRNS0T219958J";
+          type = "disk";
 
-              content = {
-                type = "filesystem";
-                format = "vfat";
-                mountpoint = "/boot";
-                mountOptions = [
-                  "fmask=0077"
-                  "dmask=0077"
-                ];
-              };
+          content.type = "gpt";
+
+          content.partitions.boot = {
+            priority = 100;
+            size = "1G";
+            type = "EF00";
+
+            content = {
+              type = "filesystem";
+              format = "vfat";
+              mountpoint = "/boot";
+              mountOptions = [
+                "fmask=0077"
+                "dmask=0077"
+              ];
             };
+          };
 
-            content.partitions.luks = {
-              priority = 200;
-              size = "100%";
+          content.partitions.luks = {
+            priority = 200;
+            size = "100%";
+
+            content = {
+              type = "luks";
+              name = "cryptroot";
+
+              # Read at format time only; TPM enrollment replaces it.
+              passwordFile = "/tmp/luks.key";
+
+              settings = {
+                allowDiscards = true;
+                crypttabExtraOpts = [ "tpm2-device=auto" ];
+              };
 
               content = {
-                type = "luks";
-                name = "cryptroot";
+                type = "btrfs";
 
-                # Read at format time only; TPM enrollment replaces it.
-                passwordFile = "/tmp/luks.key";
-
-                settings = {
-                  allowDiscards = true;
-                  crypttabExtraOpts = [ "tpm2-device=auto" ];
+                # disko ignores mountOptions set on the btrfs content
+                # level; they must go on each subvolume.
+                subvolumes."@" = {
+                  mountpoint = "/";
+                  mountOptions = [
+                    "noatime"
+                    "compress=zstd"
+                  ];
                 };
-
-                content = {
-                  type = "btrfs";
-
-                  # disko ignores mountOptions set on the btrfs content
-                  # level; they must go on each subvolume.
-                  subvolumes."@" = {
-                    mountpoint = "/";
-                    mountOptions = [
-                      "noatime"
-                      "compress=zstd"
-                    ];
-                  };
-                  subvolumes."@agents" = {
-                    mountpoint = "/var/lib/agents";
-                    mountOptions = [
-                      "noatime"
-                      "compress=zstd"
-                    ];
-                  };
-                  subvolumes."@models" = {
-                    mountpoint = "/var/lib/models";
-                    # Model weights do not compress.
-                    mountOptions = [ "noatime" ];
-                  };
+                subvolumes."@agents" = {
+                  mountpoint = "/var/lib/agents";
+                  mountOptions = [
+                    "noatime"
+                    "compress=zstd"
+                  ];
+                };
+                subvolumes."@models" = {
+                  mountpoint = "/var/lib/models";
+                  # Model weights do not compress.
+                  mountOptions = [ "noatime" ];
                 };
               };
             };
           };
+        };
 
-          system.stateVersion = "26.05";
-        }
-      )
-    ];
-  };
+        system.stateVersion = "26.05";
+      }
+    )
+  );
 }

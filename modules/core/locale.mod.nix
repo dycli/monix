@@ -1,4 +1,6 @@
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.locale;
   flake.nixosModules.locale =
     { lib, ... }:
     let

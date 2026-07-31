@@ -4,7 +4,9 @@
 #
 # downloads/ and library/ share one filesystem so *arr imports are
 # hardlinks. Prowlarr/*arr wiring and credentials are web-UI state.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.media;
   flake.nixosModules.media =
     {
       config,

@@ -1,16 +1,17 @@
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.networking;
   flake.nixosModules.networking =
-    { config, lib, ... }:
-    let
-      inherit (lib.modules) mkDefault mkIf;
-    in
+    { lib, ... }:
     {
       # firewall.enable is left to its NixOS default (true); nftables is
       # NOT the default backend, so that one is a real setting.
-      networking.nftables.enable = mkDefault true;
-
-      # Servers configure their uplink in their host module.
-      networking.networkmanager.enable = mkIf config.isDesktop true;
-      services.resolved.enable = mkIf config.isDesktop true;
+      networking.nftables.enable = lib.modules.mkDefault true;
     };
+
+  # Servers configure their uplink in their host module.
+  flake.nixosModules.desktop = {
+    networking.networkmanager.enable = true;
+    services.resolved.enable = true;
+  };
 }

@@ -1,6 +1,8 @@
 # CUPS printing with mDNS discovery. Inert until a host sets
 # `services.printing.enable = true`.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.printing;
   flake.nixosModules.printing =
     {
       config,

@@ -1,14 +1,14 @@
 # Claude Code's global instructions, versioned rather than hand-edited.
 # Only this file is managed; the rest of ~/.claude is live mutable state.
-# Gated to match where claude-code is installed.
+# Bundled to match where claude-code is installed.
+{ self, ... }:
 {
+  flake.homeModules.desktop = self.homeModules.claude;
+  flake.homeModules.homelab = self.homeModules.claude;
   flake.homeModules.claude =
-    { lib, osConfig, ... }:
-    let
-      inherit (lib.modules) mkIf;
-    in
+    { ... }:
     {
-      config = mkIf (osConfig.isDesktop || osConfig.cockpit.enable) {
+      config = {
         home.file.".claude/CLAUDE.md" = {
           # Adopts a pre-existing hand-written file on first switch.
           force = true;

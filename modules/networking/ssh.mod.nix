@@ -1,17 +1,17 @@
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.ssh;
   flake.nixosModules.ssh =
-    { config, lib, ... }:
+    { lib, ... }:
     let
-      inherit (lib.modules) mkDefault mkIf;
+      inherit (lib.modules) mkDefault;
     in
     {
       services.openssh = {
         enable = true;
 
-        # Servers reach sshd over the tailnet only, since tailscale0 is a
-        # trusted interface; port 22 never opens publicly. Desktops keep
-        # the default open port for the LAN.
-        openFirewall = mkIf (!config.isDesktop) (mkDefault false);
+        # Desktops keep the default open port for the LAN; the homelab
+        # bundle closes it (tailnet-only, tailscale0 is trusted).
 
         settings = {
           PasswordAuthentication = mkDefault false;

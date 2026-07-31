@@ -1,5 +1,7 @@
 # System monitor. Universal (useful on servers); default theme.
+{ self, ... }:
 {
+  flake.homeModules.default = self.homeModules.btop;
   flake.homeModules.btop = {
     programs.btop = {
       enable = true;

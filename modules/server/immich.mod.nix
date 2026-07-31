@@ -4,7 +4,9 @@
 # Photos live in /srv/photos, separate from the media tree. The upstream
 # module brings up PostgreSQL (pgvector) and Redis; ML models download
 # from Hugging Face on first use.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.immich;
   flake.nixosModules.immich =
     { config, lib, ... }:
     let

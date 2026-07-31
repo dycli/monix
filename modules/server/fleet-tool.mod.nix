@@ -9,7 +9,9 @@
 #     caller-supplied symlink.
 #
 # The cockpit's allow-rules sit on top of this boundary; they are not it.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.fleet-tool;
   flake.nixosModules.fleet-tool =
     {
       config,

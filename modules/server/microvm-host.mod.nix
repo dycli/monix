@@ -5,8 +5,9 @@
 #
 # networkd owns br-agents, the vm-* taps and the onboard uplink; scripted
 # dhcpcd is not mixed in. tailscale0 stays with tailscaled.
-{ inputs, ... }:
+{ self, inputs, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.microvm-host;
   flake.nixosModules.microvm-host =
     {
       config,

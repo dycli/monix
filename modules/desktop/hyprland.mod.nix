@@ -9,11 +9,8 @@
       pkgs,
       ...
     }:
-    let
-      inherit (lib.modules) mkIf;
-    in
     {
-      config = mkIf config.isDesktop {
+      config = {
         programs.hyprland.enable = true;
 
         # UWSM owns the systemd session lifecycle. In this nixpkgs pin
@@ -86,7 +83,6 @@
       ...
     }:
     let
-      inherit (lib.modules) mkIf;
       inherit (lib.generators) mkLuaInline;
       inherit (lib.lists) concatMap range;
       inherit (lib.attrsets) recursiveUpdate;
@@ -111,7 +107,7 @@
       };
     in
     {
-      config = mkIf osConfig.isDesktop {
+      config = {
         # DMS writes the monitor layout here at runtime, so it must be a
         # real user-writable file rather than a store symlink; `f` seeds it
         # without touching an existing one.

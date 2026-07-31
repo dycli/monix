@@ -16,7 +16,9 @@
 #
 # The env secret carries MATRIX_USER, MATRIX_PASSWORD and ALERT_ROOM_ID,
 # so the room id stays out of the repo.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.alerts;
   flake.nixosModules.alerts =
     {
       config,

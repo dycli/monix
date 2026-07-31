@@ -4,7 +4,9 @@
 #
 # One wildcard *.su.is cert via DNS-01, since the host is not publicly
 # reachable and HTTP-01 cannot work. Ports 80/443 never open publicly.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.ship-proxy;
   flake.nixosModules.ship-proxy =
     { config, lib, ... }:
     let

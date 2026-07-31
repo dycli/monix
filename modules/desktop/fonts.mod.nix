@@ -1,7 +1,9 @@
 # Fonts: CaskaydiaMono Nerd Font is what the ghostty/DMS configs reference.
 # `noto-fonts-color-emoji` is the current attribute name (noto-fonts-emoji is
 # a deprecated alias).
+{ self, ... }:
 {
+  flake.nixosModules.desktop = self.nixosModules.fonts;
   flake.nixosModules.fonts =
     {
       config,
@@ -25,7 +27,7 @@
       hasComicCode = lib.pathExists comicCodeAge;
     in
     {
-      config = mkIf config.isDesktop (mkMerge [
+      config = mkMerge [
         (mkIf hasComicCode {
           secrets.comic-code.file = comicCodeAge;
 
@@ -68,6 +70,6 @@
             emoji = [ "Noto Color Emoji" ];
           };
         }
-      ]);
+      ];
     };
 }

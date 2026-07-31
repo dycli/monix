@@ -1,27 +1,30 @@
 # Terminal. font-family is CaskaydiaMono Nerd Font (installed by
 # fonts.mod.nix); ghostty uses its default theme.
+{ self, ... }:
 {
   # Every host carries ghostty's terminfo so TERM=xterm-ghostty works over
   # SSH; without it tmux and less fail with "missing or unsuitable
   # terminal".
+  flake.nixosModules.default = self.nixosModules.ghostty-terminfo;
   flake.nixosModules.ghostty-terminfo =
     { pkgs, ... }:
     {
       environment.systemPackages = [ pkgs.ghostty.terminfo ];
     };
 
+  flake.homeModules.desktop = self.homeModules.ghostty;
+
   flake.homeModules.ghostty =
     {
       lib,
-      osConfig,
       pkgs,
       ...
     }:
     let
-      inherit (lib.modules) mkIf mkForce;
+      inherit (lib.modules) mkForce;
     in
     {
-      config = mkIf osConfig.isDesktop {
+      config = {
         # Upstream's onChange hook runs ghostty +validate-config, and the
         # user unit reloads via SIGUSR2. During activation that signal can
         # land on the short-lived validate process and kill the activation

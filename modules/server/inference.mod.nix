@@ -11,7 +11,9 @@
 # The egress fence allows only loopback and the tailnet, which also blocks
 # llama-server's own -hf downloads; models are fetched by hand into
 # `inference.modelsDir`.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.inference;
   flake.nixosModules.inference =
     {
       config,

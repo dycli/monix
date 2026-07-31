@@ -1,5 +1,6 @@
-{ inputs, ... }:
+{ self, inputs, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.secrets;
   flake.nixosModules.secrets =
     { lib, ... }:
     let

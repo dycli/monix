@@ -13,7 +13,9 @@
 # queued tasks and delivers each prompt into the live guest. After a task
 # it stops the VM, archives bounded output, wipes the writable volumes
 # and boots a replacement.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.agent-dispatch;
   flake.nixosModules.agent-dispatch =
     {
       config,

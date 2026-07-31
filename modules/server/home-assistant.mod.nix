@@ -5,7 +5,9 @@
 # The fence allows the configured LAN subnets, since talking to
 # thermostats, cameras and mDNS discovery is the job. The fleet bridge and
 # every other private range stay denied.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.home-assistant;
   flake.nixosModules.home-assistant =
     {
       config,

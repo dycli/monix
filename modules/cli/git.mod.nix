@@ -1,5 +1,7 @@
 # git + gh.
+{ self, ... }:
 {
+  flake.homeModules.default = self.homeModules.git;
   flake.homeModules.git =
     { ... }:
     {

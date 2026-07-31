@@ -7,6 +7,7 @@
 # broad.
 { inputs, self, ... }:
 {
+  flake.homeModules.default = self.homeModules.cockpit;
   flake.homeModules.cockpit =
     {
       config,
@@ -292,6 +293,8 @@
       };
     };
 
+  flake.nixosModules.default = self.nixosModules.cockpit;
+
   flake.nixosModules.cockpit =
     {
       config,
@@ -300,7 +303,6 @@
       ...
     }:
     let
-      inherit (lib.attrsets) attrValues;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
@@ -373,12 +375,9 @@
           IPAddressDeny = networkFences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
         };
 
-        # The same home aspects as the primary user, plus proxy variables
-        # so every outbound tool uses the egress door without per-tool
-        # configuration.
+        # Home aspects arrive via home-manager.sharedModules from the
+        # bundles this host imports, same as the primary user.
         home-manager.users.bridge = {
-          imports = attrValues self.homeModules;
-
           home.username = "bridge";
           home.homeDirectory = "/home/bridge";
           home.stateVersion = config.system.stateVersion;

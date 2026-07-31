@@ -6,8 +6,9 @@
 #   nixos-install --flake .#<host>
 #
 # `nixos-rebuild switch` never formats.
-{ inputs, ... }:
+{ self, inputs, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.disko;
   flake.nixosModules.disko = {
     imports = [ inputs.disko.nixosModules.disko ];
 

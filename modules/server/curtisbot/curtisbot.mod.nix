@@ -10,7 +10,9 @@
 # Egress is the Discord API plus loopback for the resolver. The only
 # credential is the bot token, read from an agenix env file. State is
 # SQLite in /var/lib/curtisbot/bot.db.
+{ self, ... }:
 {
+  flake.nixosModules.default = self.nixosModules.curtisbot;
   flake.nixosModules.curtisbot =
     {
       config,
