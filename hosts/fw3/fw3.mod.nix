@@ -8,7 +8,12 @@
 {
   imports = lib.lists.singleton (
     lib.ship.host "fw3" (
-      { config, lib, pkgs, ... }:
+      {
+        config,
+        lib,
+        pkgs,
+        ...
+      }:
       let
         inherit (lib.modules) mkForce;
       in
