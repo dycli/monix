@@ -43,11 +43,9 @@
             window-padding-y = 14;
             # Low enough for the compositor's blur to actually read as
             # frost behind the terminal; at 0.95 it was invisible.
-            # A thin dark tint over the compositor glass. The focused/
-            # unfocused contrast comes from the hyprland window rule that
-            # fades this tint on inactive terminals; at 0 there would be
-            # nothing to fade.
-            background-opacity = 0.4;
+            # Fully transparent: the background is the compositor's blur,
+            # darkened by the blur brightness setting.
+            background-opacity = 0;
             window-decoration = "none";
 
             font-family = "CaskaydiaMono Nerd Font";

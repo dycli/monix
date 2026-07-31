@@ -302,14 +302,6 @@
                 opacity = "1 1";
               }
               {
-                # Deeper fade than the global 0.9: unfocused terminals thin
-                # their dark tint out, so the focused one reads as darker
-                # glass than the rest.
-                # Rule regexes must match the WHOLE class string.
-                match.class = "com.mitchellh.ghostty";
-                opacity = "1 0.4";
-              }
-              {
                 # Fixes dragging issues under XWayland.
                 match = {
                   class = "^$";
