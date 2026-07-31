@@ -43,9 +43,9 @@
             window-padding-y = 14;
             # Low enough for the compositor's blur to actually read as
             # frost behind the terminal; at 0.95 it was invisible.
-            # Fully transparent: the background is the compositor's blur,
-            # darkened by the blur brightness setting.
-            background-opacity = 0;
+            # Mostly-solid dark background with the compositor's blur
+            # showing through the remainder.
+            background-opacity = 0.8;
             window-decoration = "none";
 
             font-family = "CaskaydiaMono Nerd Font";
