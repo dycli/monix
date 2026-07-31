@@ -16,8 +16,15 @@
     }:
     let
       guide = import ../../lib/fleet-guide.nix;
-      inherit (lib.attrsets) genAttrs;
-      inherit (lib.lists) concatMap map;
+      topology = import ../../lib/fleet-topology.nix;
+      inherit (lib.attrsets)
+        genAttrs
+        listToAttrs
+        mapAttrsToList
+        nameValuePair
+        optionalAttrs
+        ;
+      inherit (lib.lists) concatLists concatMap map;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption;
       inherit (lib.strings) toJSON;
@@ -212,28 +219,36 @@
           text = "@AGENTS.md\n";
         };
 
-        # Generated from the Claude allowlist so the two frontends cannot
-        # drift apart, though this file is normally mutable state.
+        # Generated from the Claude allowlist and the served inference
+        # catalog so the frontends cannot drift apart, though this file is
+        # normally mutable state. The baseURL is the seat-plane address:
+        # the seat fences admit that /32, not 127.0.0.1 (see the slice
+        # fence below).
         home.file.".config/opencode/opencode.jsonc" = {
           force = true;
-          text = toJSON {
-            "$schema" = "https://opencode.ai/config.json";
-            provider.local = {
-              npm = "@ai-sdk/openai-compatible";
-              name = "fw0 local inference";
-              options = {
-                baseURL = "http://127.0.0.1:8091/v1";
-                apiKey = "local";
+          text = toJSON (
+            {
+              "$schema" = "https://opencode.ai/config.json";
+              permission = opencodePermissions;
+              agent.plan.permission = opencodePlanPermissions;
+              agent.explore.permission = opencodeExplorePermissions;
+            }
+            // optionalAttrs osConfig.inference.enable {
+              provider.local = {
+                npm = "@ai-sdk/openai-compatible";
+                name = "fw0 local inference";
+                options = {
+                  baseURL = "http://${topology.seatInferenceAddr}:${toString osConfig.inference.port}/v1";
+                  apiKey = "local";
+                };
+                models = listToAttrs (
+                  concatLists (
+                    mapAttrsToList (n: m: map (id: nameValuePair id { }) ([ n ] ++ m.aliases)) osConfig.inference.models
+                  )
+                );
               };
-              models = {
-                "qwen3.6-35b-a3b" = { };
-                "qwen3.6-27b" = { };
-              };
-            };
-            permission = opencodePermissions;
-            agent.plan.permission = opencodePlanPermissions;
-            agent.explore.permission = opencodeExplorePermissions;
-          };
+            }
+          );
         };
 
         # Claude's per-project memory path is a symlink into
@@ -341,13 +356,20 @@
         # all interfaces — including the tailnet, which Tailscale ACLs
         # cannot restrict per-user. The public internet is unmatched and so
         # allowed; the LAN, the tailnet, the fleet bridge and the loopback
-        # services are denied. resolved's stub is allowed for DNS.
+        # services are denied. resolved's stub is allowed for DNS, and
+        # llama-swap through its dedicated seat-plane address — filtering
+        # is port-blind, so admitting 127.0.0.1 itself would open every
+        # loopback service (the cameras and the Minecraft console carry no
+        # auth of their own).
         #
         # There is deliberately no domain allowlist. The model API has to be
         # reachable, so anything the seat can read it can also send, and the
         # Nix daemon fetches arbitrary URLs on its behalf regardless.
         systemd.slices."user-${toString seatUid}".sliceConfig = {
-          IPAddressAllow = singleton "127.0.0.53/32";
+          IPAddressAllow = [
+            "127.0.0.53/32"
+            "${topology.seatInferenceAddr}/32"
+          ];
           IPAddressDeny = networkFences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
         };
 
@@ -405,7 +427,10 @@
             # The same reach as an interactive seat, plus the address nginx
             # proxies from. systemd filters addresses and not ports, so any
             # service bound to 0.0.0.0 still answers on what is allowed here.
-            IPAddressAllow = singleton "${topology.seatIngressAddr}/32";
+            IPAddressAllow = [
+              "${topology.seatIngressAddr}/32"
+              "${topology.seatInferenceAddr}/32"
+            ];
             IPAddressDeny = networkFences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
             Environment = singleton "OPENCODE_CONFIG=/home/bridge/.config/opencode/opencode.jsonc";
             WorkingDirectory = "/home/bridge/cockpit";

@@ -18,4 +18,9 @@
   # proxy_bind), so the seat's fence can admit nginx without admitting
   # everything else on 127.0.0.1.
   seatIngressAddr = "127.0.1.11";
+
+  # Address the seat dials llama-swap on (it binds the wildcard, so this
+  # needs no listener of its own). A dedicated address so the seat fences
+  # can admit inference without admitting everything else on 127.0.0.1.
+  seatInferenceAddr = "127.0.1.12";
 }
