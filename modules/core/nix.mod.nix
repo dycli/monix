@@ -13,6 +13,7 @@
         experimental-features = [
           "flakes"
           "nix-command"
+          "pipe-operators"
         ];
 
         # A trusted user can disable the build sandbox and execute as root,

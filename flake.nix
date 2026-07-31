@@ -1,6 +1,12 @@
 {
   description = "NixOS configuration (Dendritic, single-repo, modular)";
 
+  # Modules use |>, gated behind an experimental feature. The hosts carry
+  # it in nix.settings (nix.mod.nix); this covers other evaluators that
+  # pass --accept-flake-config. flake.nix itself stays pipe-free so a
+  # stock parser can always read at least this file.
+  nixConfig.extra-experimental-features = [ "pipe-operators" ];
+
   inputs.nixpkgs = {
     url = "github:NixOS/nixpkgs/nixos-unstable";
   };

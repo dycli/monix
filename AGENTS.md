@@ -119,7 +119,10 @@ Reference secrets in modules as `config.secrets.<name>.path`.
 
 ## Pipe operators
 
-This repository avoids Nix pipe operators (`|>`, `<|`) so the
-flake evaluates without the `pipe-operators` experimental feature enabled. If
-you adopt them, add `pipe-operators` to `nix.settings.experimental-features` and
-to the flake's `nixConfig`.
+Prefer `x |> f |> g` over nested calls when an expression is a genuine
+pipeline — three or more transformations of one value. Do not decorate
+single applications with `|>` or `<|`; plain application reads better and
+stays familiar. The `pipe-operators` feature is enabled in
+`nix.settings.experimental-features` (nix.mod.nix) and advertised in the
+flake's `nixConfig`; flake.nix itself stays pipe-free so a stock parser
+can always read the file that declares the requirement.
