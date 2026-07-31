@@ -374,12 +374,15 @@
               (mkBind "SUPER + SHIFT + ESCAPE" "hl.dsp.exit()" "Exit Hyprland" { })
               (mkBind "SUPER + CTRL + ESCAPE" ''hl.dsp.exec_cmd("reboot")'' "Reboot" { })
               (mkBind "SUPER + SHIFT + CTRL + ESCAPE" ''hl.dsp.exec_cmd("systemctl poweroff")'' "Power off" { })
-              (mkBind "SUPER + K" ''hl.dsp.exec_cmd("dms ipc call keybinds toggle hyprland")'' "Show keybindings"
+              # SHIFT+SLASH is "?", the conventional help key; K belongs to
+              # the vim focus cluster below.
+              (mkBind "SUPER + SHIFT + SLASH" ''hl.dsp.exec_cmd("dms ipc call keybinds toggle hyprland")''
+                "Show keybindings"
                 { }
               )
               (mkBind "SUPER + I" ''hl.dsp.exec_cmd("dms ipc call inhibit toggle")'' "Toggle idle inhibit" { })
 
-              (mkBind "SUPER + J" ''hl.dsp.layout("togglesplit")'' "Toggle split direction" { })
+              (mkBind "SUPER + T" ''hl.dsp.layout("togglesplit")'' "Toggle split direction" { })
               (mkBind "SUPER + P" "hl.dsp.window.pseudo()" "Toggle pseudotile" { })
               (mkBind "SUPER + SHIFT + F" "hl.dsp.window.float()" "Toggle floating" { })
               (mkBind "SUPER + F" ''hl.dsp.window.fullscreen({ mode = "fullscreen" })'' "Toggle fullscreen" { })
@@ -389,6 +392,11 @@
               (mkBind "SUPER + UP" ''hl.dsp.focus({ direction = "u" })'' "Focus window up" { })
               (mkBind "SUPER + DOWN" ''hl.dsp.focus({ direction = "d" })'' "Focus window down" { })
 
+              (mkBind "SUPER + H" ''hl.dsp.focus({ direction = "l" })'' "Focus window left" { })
+              (mkBind "SUPER + L" ''hl.dsp.focus({ direction = "r" })'' "Focus window right" { })
+              (mkBind "SUPER + K" ''hl.dsp.focus({ direction = "u" })'' "Focus window up" { })
+              (mkBind "SUPER + J" ''hl.dsp.focus({ direction = "d" })'' "Focus window down" { })
+
               (mkBind "SUPER + COMMA" ''hl.dsp.focus({ workspace = "-1" })'' "Previous workspace" { })
               (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
 
@@ -396,6 +404,11 @@
               (mkBind "SUPER + SHIFT + RIGHT" ''hl.dsp.window.swap({ direction = "r" })'' "Swap window right" { })
               (mkBind "SUPER + SHIFT + UP" ''hl.dsp.window.swap({ direction = "u" })'' "Swap window up" { })
               (mkBind "SUPER + SHIFT + DOWN" ''hl.dsp.window.swap({ direction = "d" })'' "Swap window down" { })
+
+              (mkBind "SUPER + SHIFT + H" ''hl.dsp.window.swap({ direction = "l" })'' "Swap window left" { })
+              (mkBind "SUPER + SHIFT + L" ''hl.dsp.window.swap({ direction = "r" })'' "Swap window right" { })
+              (mkBind "SUPER + SHIFT + K" ''hl.dsp.window.swap({ direction = "u" })'' "Swap window up" { })
+              (mkBind "SUPER + SHIFT + J" ''hl.dsp.window.swap({ direction = "d" })'' "Swap window down" { })
 
               (mkBind "SUPER + MINUS" "hl.dsp.window.resize({ x = -100, y = 0, relative = true })"
                 "Shrink window width"
