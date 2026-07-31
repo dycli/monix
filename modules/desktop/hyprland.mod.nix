@@ -109,6 +109,23 @@
           value
         ];
       };
+
+      # dwindle is the resting layout; master is configured center-oriented
+      # below, so switching to it reads as "3 columns". Runtime keywords
+      # survive until the next config reload, which lands back on dwindle.
+      # hyprctl comes from the session PATH so it always matches the
+      # running compositor.
+      layoutToggle = pkgs.writeShellApplication {
+        name = "hypr-layout-toggle";
+        runtimeInputs = [ pkgs.jq ];
+        text = ''
+          if [ "$(hyprctl getoption general:layout -j | jq -r .str)" = "dwindle" ]; then
+            hyprctl keyword general:layout master
+          else
+            hyprctl keyword general:layout dwindle
+          fi
+        '';
+      };
     in
     {
       config = mkIf osConfig.isDesktop {
@@ -211,7 +228,13 @@
                 force_split = 2;
               };
 
-              master.new_status = "master";
+              # Center orientation makes the master layout a 3-column view:
+              # focused master in the middle, side stacks left and right.
+              # Only visible via the SUPER+T layout toggle.
+              master = {
+                new_status = "master";
+                orientation = "center";
+              };
 
               misc = {
                 disable_hyprland_logo = true;
@@ -382,7 +405,8 @@
               )
               (mkBind "SUPER + I" ''hl.dsp.exec_cmd("dms ipc call inhibit toggle")'' "Toggle idle inhibit" { })
 
-              (mkBind "SUPER + T" ''hl.dsp.layout("togglesplit")'' "Toggle split direction" { })
+              (mkBind "SUPER + T" ''hl.dsp.exec_cmd("${getExe layoutToggle}")'' "Toggle 3-column layout" { })
+              (mkBind "SUPER + O" ''hl.dsp.layout("togglesplit")'' "Toggle split direction" { })
               (mkBind "SUPER + P" "hl.dsp.window.pseudo()" "Toggle pseudotile" { })
               (mkBind "SUPER + SHIFT + F" "hl.dsp.window.float()" "Toggle floating" { })
               (mkBind "SUPER + F" ''hl.dsp.window.fullscreen({ mode = "fullscreen" })'' "Toggle fullscreen" { })
