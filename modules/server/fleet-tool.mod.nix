@@ -32,7 +32,7 @@
       inherit (lib) types;
 
       cfg = config.agentFleet;
-      topology = lib.ship.topology;
+      inherit (lib.ship) topology;
       inherit (topology) tasksDir;
       op = cfg.operatorUser;
       readers = topology.readersGroup;

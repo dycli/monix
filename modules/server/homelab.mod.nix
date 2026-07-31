@@ -8,10 +8,8 @@
 # `config.secrets.*`, which the importing host must declare (agenix
 # ciphertext is encrypted to one host's key and cannot travel). Hardware
 # facts (UPS sensor, NIC-bound LAN exposure) stay in the host file too.
-{ self, ... }:
 {
-  flake.nixosModules.homelab = self.nixosModules.homelab-role;
-  flake.nixosModules.homelab-role =
+  flake.nixosModules.homelab =
     { config, lib, ... }:
     {
       # tmux over tailnet SSH and opencode web at ai.su.is.

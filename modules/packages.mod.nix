@@ -75,56 +75,52 @@
   flake.homeModules.packages-desktop =
     { pkgs, ... }:
     {
-      config = {
-        home.packages = [
-          pkgs.brightnessctl
-          pkgs.cliphist
-          pkgs.hyprpicker
-          pkgs.hyprshot
-          pkgs.pavucontrol
-          pkgs.playerctl
-          pkgs.wl-clip-persist
-          pkgs.wl-clipboard
+      home.packages = [
+        pkgs.brightnessctl
+        pkgs.cliphist
+        pkgs.hyprpicker
+        pkgs.hyprshot
+        pkgs.pavucontrol
+        pkgs.playerctl
+        pkgs.wl-clip-persist
+        pkgs.wl-clipboard
 
-          # Installed only; DMS owns selection and wiring, writing
-          # ~/.config/hypr/dms/cursor.lua, setting XCURSOR_THEME and
-          # running hyprctl setcursor. home.pointerCursor is avoided
-          # because it generates competing GTK and hyprcursor config.
-          pkgs.bibata-cursors
+        # Installed only; DMS owns selection and wiring, writing
+        # ~/.config/hypr/dms/cursor.lua, setting XCURSOR_THEME and
+        # running hyprctl setcursor. home.pointerCursor is avoided
+        # because it generates competing GTK and hyprcursor config.
+        pkgs.bibata-cursors
 
-          pkgs.brave
-          pkgs.kdePackages.dolphin
-          # Dolphin's archive context menu and GUI. Nothing else installs
-          # an icon theme, and breeze-dark tracks the dark KColorScheme.
-          pkgs.kdePackages.ark
-          pkgs.kdePackages.breeze-icons
-          pkgs.keepassxc
-          pkgs.libreoffice
-          pkgs.obsidian
-          pkgs.signal-desktop
-        ];
-      };
+        pkgs.brave
+        pkgs.kdePackages.dolphin
+        # Dolphin's archive context menu and GUI. Nothing else installs
+        # an icon theme, and breeze-dark tracks the dark KColorScheme.
+        pkgs.kdePackages.ark
+        pkgs.kdePackages.breeze-icons
+        pkgs.keepassxc
+        pkgs.libreoffice
+        pkgs.obsidian
+        pkgs.signal-desktop
+      ];
     };
 
   # Authoring and build tools, for workstations and the homelab.
   flake.homeModules.packages-dev-extras =
     { pkgs, ... }:
     {
-      config = {
-        home.packages = [
-          pkgs.cargo
-          pkgs.claude-code
-          pkgs.clippy
-          pkgs.codex
-          pkgs.gcc
-          pkgs.opencode
-          pkgs.hugo
-          # The codex plugin's hooks invoke node directly.
-          pkgs.nodejs
-          pkgs.rust-analyzer
-          pkgs.rustc
-          pkgs.rustfmt
-        ];
-      };
+      home.packages = [
+        pkgs.cargo
+        pkgs.claude-code
+        pkgs.clippy
+        pkgs.codex
+        pkgs.gcc
+        pkgs.opencode
+        pkgs.hugo
+        # The codex plugin's hooks invoke node directly.
+        pkgs.nodejs
+        pkgs.rust-analyzer
+        pkgs.rustc
+        pkgs.rustfmt
+      ];
     };
 }

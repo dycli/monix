@@ -11,7 +11,7 @@
     { config, lib, ... }:
     let
       inherit (lib.modules) mkDefault mkIf;
-      networkFences = lib.ship.fences;
+      inherit (lib.ship) fences;
     in
     {
       config = mkIf config.services.immich.enable {
@@ -32,12 +32,12 @@
         # reverse geocoding). 127.0.0.0/8 is named in the deny because
         # these denies are not "any", so anything unmatched is allowed.
         systemd.services.immich-server.serviceConfig = {
-          IPAddressAllow = networkFences.loopback ++ [ "100.64.0.0/10" ];
-          IPAddressDeny = networkFences.privateRanges ++ [ "127.0.0.0/8" ];
+          IPAddressAllow = fences.loopback ++ [ "100.64.0.0/10" ];
+          IPAddressDeny = fences.privateRanges ++ [ "127.0.0.0/8" ];
         };
         systemd.services.immich-machine-learning.serviceConfig = {
-          IPAddressAllow = networkFences.loopback;
-          IPAddressDeny = networkFences.privateRanges ++ [ "127.0.0.0/8" ];
+          IPAddressAllow = fences.loopback;
+          IPAddressDeny = fences.privateRanges ++ [ "127.0.0.0/8" ];
         };
 
       };

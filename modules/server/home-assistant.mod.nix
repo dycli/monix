@@ -17,7 +17,7 @@
     }:
     let
       inherit (lib.modules) mkIf;
-      networkFences = lib.ship.fences;
+      inherit (lib.ship) fences;
       cfg = config.homeAssistant;
     in
     {
@@ -98,8 +98,8 @@
         };
 
         systemd.services.home-assistant.serviceConfig = {
-          IPAddressAllow = networkFences.loopback ++ [ "100.64.0.0/10" ] ++ cfg.lanSubnets;
-          IPAddressDeny = networkFences.privateRanges;
+          IPAddressAllow = fences.loopback ++ [ "100.64.0.0/10" ] ++ cfg.lanSubnets;
+          IPAddressDeny = fences.privateRanges;
         };
       };
     };

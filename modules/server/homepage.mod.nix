@@ -13,7 +13,7 @@
     let
       inherit (lib.modules) mkIf;
 
-      networkFences = lib.ship.fences;
+      inherit (lib.ship) fences;
 
       # Proxy names when the front door is up, else host and port.
       url =
@@ -191,8 +191,8 @@
 
           # Same anti-pivot fence as the media stack: tailnet + loopback in,
           # public internet out (icon CDN), every private range denied.
-          IPAddressAllow = networkFences.loopback ++ [ "100.64.0.0/10" ];
-          IPAddressDeny = networkFences.privateRanges;
+          IPAddressAllow = fences.loopback ++ [ "100.64.0.0/10" ];
+          IPAddressDeny = fences.privateRanges;
         };
 
         # Stats → JSON shim for the UPS tile: socket-activated one-shot on
@@ -211,7 +211,7 @@
             DynamicUser = true;
             StandardInput = "socket";
             StandardOutput = "socket";
-            IPAddressAllow = networkFences.loopback;
+            IPAddressAllow = fences.loopback;
             IPAddressDeny = "any";
           };
           # awk only; printf/read are bash builtins and upsc is absolute.

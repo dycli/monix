@@ -16,8 +16,7 @@
       ...
     }:
     let
-      guide = lib.ship.guide;
-      topology = lib.ship.topology;
+      inherit (lib.ship) guide topology;
       inherit (lib.attrsets)
         genAttrs
         listToAttrs
@@ -312,8 +311,7 @@
       # must name the uid statically.
       seatUid = 1001;
 
-      topology = lib.ship.topology;
-      networkFences = lib.ship.fences;
+      inherit (lib.ship) topology fences;
     in
     {
       options.cockpit.enable = mkEnableOption "the persistent cockpit session role on this host";
@@ -372,7 +370,7 @@
             "127.0.0.53/32"
             "${topology.seatInferenceAddr}/32"
           ];
-          IPAddressDeny = networkFences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
+          IPAddressDeny = fences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
         };
 
         # Home aspects arrive via home-manager.sharedModules from the
@@ -430,7 +428,7 @@
               "${topology.seatIngressAddr}/32"
               "${topology.seatInferenceAddr}/32"
             ];
-            IPAddressDeny = networkFences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
+            IPAddressDeny = fences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
             Environment = singleton "OPENCODE_CONFIG=/home/bridge/.config/opencode/opencode.jsonc";
             WorkingDirectory = "/home/bridge/cockpit";
             # The seat's listener is the one socket this service may open;

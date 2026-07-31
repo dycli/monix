@@ -22,7 +22,7 @@
       inherit (lib.options) mkEnableOption;
 
       cfg = config.minecraft;
-      networkFences = lib.ship.fences;
+      inherit (lib.ship) fences;
 
       # The server pin, every mod hash below and the players' clients move
       # together; pin an exact package, never a floating alias. The jre
@@ -193,7 +193,7 @@
             "127.0.0.0/8" # loopback / other localhost services
             "::1"
           ]
-          ++ networkFences.privateRanges;
+          ++ fences.privateRanges;
         };
       };
     };

@@ -14,40 +14,38 @@
       ...
     }:
     {
-      config = {
-        programs.bash = {
-          enable = true;
-          # Interactive shells only, once only — SHIP_NU is inherited by
-          # nu, so a bash launched from within nu stays bash — and only
-          # when nu exists.
-          initExtra = ''
-            if [[ $- == *i* ]] && [[ -z "''${SHIP_NU:-}" ]] && command -v nu >/dev/null 2>&1; then
-              export SHIP_NU=1
-              exec nu
-            fi
-          '';
-        };
+      programs.bash = {
+        enable = true;
+        # Interactive shells only, once only — SHIP_NU is inherited by
+        # nu, so a bash launched from within nu stays bash — and only
+        # when nu exists.
+        initExtra = ''
+          if [[ $- == *i* ]] && [[ -z "''${SHIP_NU:-}" ]] && command -v nu >/dev/null 2>&1; then
+            export SHIP_NU=1
+            exec nu
+          fi
+        '';
+      };
 
-        programs.nushell = {
-          enable = true;
-          extraConfig = ''
-            $env.config.show_banner = false
-            $env.PROMPT_COMMAND = {||
-              let home = ($nu.home-dir | path expand)
-              let cwd = ($env.PWD | path expand)
-              let display_path = if $cwd == $home {
-                "~"
-              } else if ($cwd | str starts-with $"($home)/") {
-                $cwd | str replace $home "~"
-              } else {
-                $cwd
-              }
-
-              $"(ansi green)${config.home.username}@${osConfig.networking.hostName}(ansi reset) (ansi blue)($display_path)(ansi reset)"
+      programs.nushell = {
+        enable = true;
+        extraConfig = ''
+          $env.config.show_banner = false
+          $env.PROMPT_COMMAND = {||
+            let home = ($nu.home-dir | path expand)
+            let cwd = ($env.PWD | path expand)
+            let display_path = if $cwd == $home {
+              "~"
+            } else if ($cwd | str starts-with $"($home)/") {
+              $cwd | str replace $home "~"
+            } else {
+              $cwd
             }
-            $env.PROMPT_COMMAND_RIGHT = {|| "" }
-          '';
-        };
+
+            $"(ansi green)${config.home.username}@${osConfig.networking.hostName}(ansi reset) (ansi blue)($display_path)(ansi reset)"
+          }
+          $env.PROMPT_COMMAND_RIGHT = {|| "" }
+        '';
       };
     };
 }

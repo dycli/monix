@@ -21,21 +21,20 @@
       inherit (lib.options) mkEnableOption mkOption;
 
       cfg = config.media;
-      networkFences = lib.ship.fences;
-      hardened = lib.ship.hardened;
+      inherit (lib.ship) fences hardened;
 
       mediaRoot = "/srv/media";
 
       # The public internet is in neither list and so falls through
       # allowed; the LAN and fleet bridge are denied.
       egressFence = {
-        IPAddressAllow = networkFences.loopback ++ [
+        IPAddressAllow = fences.loopback ++ [
           "100.64.0.0/10" # tailnet (CGNAT range)
         ];
         # 127.0.0.0/8 must be denied explicitly: this deny is not "any",
-        # so the seat plane outside networkFences.loopback would otherwise
+        # so the seat plane outside fences.loopback would otherwise
         # be allowed.
-        IPAddressDeny = networkFences.privateRanges ++ [ "127.0.0.0/8" ];
+        IPAddressDeny = fences.privateRanges ++ [ "127.0.0.0/8" ];
       };
 
       # The OPDS e-reader cannot join the tailnet, so calibreWebLan adds

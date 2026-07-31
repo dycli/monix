@@ -25,7 +25,7 @@
       inherit (lib) types;
 
       cfg = config.matrix;
-      networkFences = lib.ship.fences;
+      inherit (lib.ship) fences;
     in
     {
       options.matrix = {
@@ -100,10 +100,10 @@
           # Loopback carries the cloudflared hop and resolved's stub; the
           # public internet is unmatched and so allowed, which push
           # gateways require.
-          IPAddressAllow = networkFences.loopback ++ [
+          IPAddressAllow = fences.loopback ++ [
             "100.64.0.0/10" # tailnet clients (CGNAT range)
           ];
-          IPAddressDeny = networkFences.privateRanges;
+          IPAddressDeny = fences.privateRanges;
         };
 
         # cloudflared dials out to Cloudflare's edge; no inbound port.
@@ -131,8 +131,8 @@
             # plus resolved's stub, which /etc/resolv.conf points at so
             # cloudflared's Go resolver stays inside the fence).
             # 127.0.0.0/8 is denied because the allow is a /24.
-            IPAddressAllow = networkFences.loopback;
-            IPAddressDeny = networkFences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
+            IPAddressAllow = fences.loopback;
+            IPAddressDeny = fences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
           };
           environment = {
             TUNNEL_TRANSPORT_PROTOCOL = "http2";

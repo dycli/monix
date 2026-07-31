@@ -15,7 +15,7 @@
       inherit (lib.options) mkEnableOption mkOption;
 
       cfg = config.shipProxy;
-      topology = lib.ship.topology;
+      inherit (lib.ship) topology;
 
       proxyTo = upstream: extra: {
         useACMEHost = cfg.domain;

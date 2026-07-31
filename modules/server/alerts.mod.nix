@@ -32,14 +32,14 @@
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib.strings) hasSuffix optionalString;
       inherit (lib) types;
-      networkFences = lib.ship.fences;
+      inherit (lib.ship) fences;
 
       cfg = config.alerts;
       hostname = config.networking.hostName;
 
       # Delivery and enrichment are both loopback, so egress is too.
-      sensorHardening = (lib.ship.hardened).rootSensor // {
-        IPAddressAllow = networkFences.loopback;
+      sensorHardening = lib.ship.hardened.rootSensor // {
+        IPAddressAllow = fences.loopback;
         IPAddressDeny = "any";
       };
 

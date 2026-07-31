@@ -25,12 +25,12 @@
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption mkOption;
 
-      networkFences = lib.ship.fences;
+      inherit (lib.ship) fences;
       cfg = config.shipCameras;
 
       lanFence = {
-        IPAddressAllow = networkFences.loopback ++ cfg.lanSubnets;
-        IPAddressDeny = networkFences.privateRanges ++ [ "any" ];
+        IPAddressAllow = fences.loopback ++ cfg.lanSubnets;
+        IPAddressDeny = fences.privateRanges ++ [ "any" ];
       };
 
       # Shared by go2rtc, which connects, and by Frigate, which only needs
@@ -223,7 +223,7 @@
           ];
         };
         systemd.services.mosquitto.serviceConfig = {
-          IPAddressAllow = networkFences.loopback;
+          IPAddressAllow = fences.loopback;
           IPAddressDeny = "any";
         };
       };

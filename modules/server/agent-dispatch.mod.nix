@@ -33,7 +33,7 @@
 
       cfg = config.agentFleet;
       op = cfg.operatorUser;
-      topology = lib.ship.topology;
+      inherit (lib.ship) topology;
       inherit (topology) tasksDir;
       readers = topology.readersGroup;
       agentDispatcher = pkgs.rustPlatform.buildRustPackage {

@@ -29,7 +29,7 @@
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib.strings) concatStringsSep;
       inherit (lib) types;
-      networkFences = lib.ship.fences;
+      inherit (lib.ship) fences;
 
       cfg = config.inference;
 
@@ -146,7 +146,7 @@
           # Loopback for the spawned llama-servers, the tailnet, and the
           # guest bridge when the fleet runs here. No public internet.
           IPAddressAllow =
-            networkFences.loopback
+            fences.loopback
             ++ [
               "100.64.0.0/10" # tailnet (CGNAT range)
             ]

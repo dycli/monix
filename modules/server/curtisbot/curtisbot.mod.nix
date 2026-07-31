@@ -26,7 +26,7 @@
       inherit (lib) types;
 
       cfg = config.curtisbot;
-      networkFences = lib.ship.fences;
+      inherit (lib.ship) fences;
 
       python = pkgs.python3.withPackages (ps: [ ps.discordpy ]);
     in
@@ -85,7 +85,7 @@
           // lib.optionalAttrs (cfg.testGuildId != null) {
             DISCORD_TEST_GUILD_ID = cfg.testGuildId;
           };
-          serviceConfig = (lib.ship.hardened).tenant // {
+          serviceConfig = lib.ship.hardened.tenant // {
             ExecStart = "${python}/bin/python ${./bot.py}";
             EnvironmentFile = cfg.credentialsEnvFile;
             Restart = "always";
@@ -97,8 +97,8 @@
             StateDirectoryMode = "0700";
 
             # Internet and loopback only.
-            IPAddressAllow = networkFences.loopback;
-            IPAddressDeny = networkFences.internetOnlyDeny;
+            IPAddressAllow = fences.loopback;
+            IPAddressDeny = fences.internetOnlyDeny;
           };
         };
       };

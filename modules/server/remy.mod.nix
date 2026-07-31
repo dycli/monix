@@ -29,7 +29,7 @@
       inherit (lib) types;
 
       cfg = config.remy;
-      networkFences = lib.ship.fences;
+      inherit (lib.ship) fences;
 
       python = pkgs.python3.withPackages (ps: [
         ps.matrix-nio
@@ -82,7 +82,7 @@
       };
 
       # Egress differs per unit and is set below.
-      sandbox = (lib.ship.hardened).tenant // {
+      sandbox = lib.ship.hardened.tenant // {
         User = "remy";
         Group = "remy";
         StateDirectory = "remy";
@@ -90,7 +90,7 @@
       };
 
       loopbackOnly = {
-        IPAddressAllow = networkFences.loopback;
+        IPAddressAllow = fences.loopback;
         IPAddressDeny = "any";
       };
     in
@@ -298,8 +298,8 @@
             ExecStart = "${calPython}/bin/python ${./remy/calsync.py}";
             # The only remy unit allowed out: CalDAV over HTTPS, plus
             # loopback.
-            IPAddressAllow = networkFences.loopback;
-            IPAddressDeny = networkFences.internetOnlyDeny;
+            IPAddressAllow = fences.loopback;
+            IPAddressDeny = fences.internetOnlyDeny;
           };
         };
 
