@@ -179,6 +179,11 @@
               decoration = {
                 rounding = 2;
 
+                # Keep borders at full alpha: as "part of the window" they
+                # would be faded by the inactive-opacity rules with the
+                # rest of the surface.
+                border_part_of_window = false;
+
                 shadow.enabled = false;
 
                 # Deep gaussian-style frost: three passes over the default
