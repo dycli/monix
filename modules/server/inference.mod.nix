@@ -128,7 +128,7 @@
               # longer than the 120s default health check allows.
               healthCheckTimeout = 600;
 
-              models = mapAttrs (name: m: {
+              models = mapAttrs (_: m: {
                 # llama-swap's macro for a fresh port per spawn, escaped so
                 # Nix passes it through verbatim.
                 cmd = concatStringsSep " " (

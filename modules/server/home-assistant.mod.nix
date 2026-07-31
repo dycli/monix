@@ -64,15 +64,11 @@
           # The Frigate integration is a custom component (HACS-land
           # upstream, packaged in nixpkgs). UI setup: point it at
           # http://127.0.0.1:5000 (frigate's local port).
-          customComponents = lib.lists.optional config.shipCameras.enable (
-            pkgs.home-assistant-custom-components.frigate
-          );
+          customComponents = lib.lists.optional config.shipCameras.enable pkgs.home-assistant-custom-components.frigate;
 
           # Advanced Camera Card (né frigate-hass-card): live WebRTC, PTZ,
           # and clip/event browsing as a dashboard card.
-          customLovelaceModules = lib.lists.optional config.shipCameras.enable (
-            pkgs.home-assistant-custom-lovelace-modules.advanced-camera-card
-          );
+          customLovelaceModules = lib.lists.optional config.shipCameras.enable pkgs.home-assistant-custom-lovelace-modules.advanced-camera-card;
 
           config = {
             # default_config = the standard integration bundle (automations,

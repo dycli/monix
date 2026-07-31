@@ -12,8 +12,7 @@
     }:
     let
       inherit (lib.modules) mkIf;
-
-      inherit (lib.ship) fences;
+      inherit (lib.ship) fences topology;
 
       # Proxy names when the front door is up, else host and port.
       url =
@@ -33,9 +32,9 @@
           # Host-header allowlist (homepage refuses others).
           allowedHosts = lib.strings.concatStringsSep "," (
             [
-              "fw0"
-              "fw0.tailec4748.ts.net"
-              "100.102.113.74" # raw tailnet IP, for browsers without MagicDNS
+              config.networking.hostName
+              topology.hostMagicDnsName
+              topology.hostTailnetAddr # for browsers without MagicDNS
               "localhost"
               "127.0.0.1"
             ]

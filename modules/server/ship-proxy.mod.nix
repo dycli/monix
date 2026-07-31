@@ -107,13 +107,12 @@
             // optionalAttrs config.cockpit.webEnable {
               "ai.${cfg.domain}" = proxyTo "http://${topology.seatWebAddr}:${toString topology.seatWebPort}" {
                 # SSE responses must not be buffered. The denied addresses
-                # are local pivots rather than tailnet peers; the host's
-                # own tailnet IP is hardcoded in homepage.mod.nix too.
+                # are local pivots rather than tailnet peers.
                 extraConfig = ''
                   proxy_buffering off;
                   deny 127.0.0.0/8;
                   deny ::1;
-                  deny 100.102.113.74;
+                  deny ${topology.hostTailnetAddr};
                   allow 100.64.0.0/10;
                   deny all;
                   # Dedicated source address so the seat's fence can admit
@@ -135,11 +134,11 @@
             // optionalAttrs (cfg.dashboardHost != null && config.services.homepage-dashboard.enable) {
               ${cfg.dashboardHost} = proxy config.services.homepage-dashboard.listenPort { };
             }
-            # Default catch-all on :80 keeps plain http://fw0 (and the
+            # Default catch-all on :80 keeps the plain hostname (and the
             # tailnet IP / MagicDNS name) landing on the dashboard.
             // optionalAttrs config.services.homepage-dashboard.enable {
               homepage-catchall = {
-                serverName = "fw0";
+                serverName = config.networking.hostName;
                 default = true;
                 locations."/" = {
                   proxyPass = "http://127.0.0.1:${toString config.services.homepage-dashboard.listenPort}";

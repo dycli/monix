@@ -4,13 +4,17 @@
   tasksDir = "/var/lib/agents/tasks";
   readersGroup = "agent-fleet-readers";
 
+  # The ship's own tailnet identity, for fences and Host-header lists.
+  hostTailnetAddr = "100.102.113.74";
+  hostMagicDnsName = "fw0.tailec4748.ts.net";
+
   # squid's listener for the seat; the slice fence in cockpit.mod.nix
   # allows exactly this address.
   seatProxyAddr = "127.0.1.9";
   seatProxyPort = 3129;
 
-  # opencode-web listens here rather than on 127.0.0.1, which the parser
-  # fences allow for inter-service APIs.
+  # opencode-web listens here rather than on 127.0.0.1, which other
+  # services' fences already admit for inter-service APIs.
   seatWebAddr = "127.0.1.10";
   seatWebPort = 4097;
 

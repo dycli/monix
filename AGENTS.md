@@ -88,11 +88,28 @@ unconditionally; their gate is bundle membership.
 - Never use `rec`.
 - The ship's own library is `lib.ship.*` (fences, hardened, topology, guide),
   threaded through every eval — never import `lib/*.nix` by relative path.
+- One sanctioned broad inherit: `inherit (lib) types;` (and top-level
+  re-exports with no namespaced home, e.g. `baseNameOf`). Everything else
+  names its full path.
 - Prefer `getExe`/`getExe'` over bare command names in scripts and exec lines.
 - Prefer setting individual options with `mkIf` over wrapping whole attrsets:
   `foo.bar = mkIf c v;` not `foo = mkIf c { bar = v; };`.
 - Put a blank line between unrelated options.
 - Section comments are uppercase, no trailing period: `# AI STACK`.
+
+## Comments
+
+Comments state constraints and reasons the code cannot show — never what the
+next line does. Assume a reader fluent in Nix and Linux: if an expression is
+obvious, it gets no comment, or at most a short title. A comment that merely
+narrates its assignment is noise; delete it. Prefer one tight sentence over a
+paragraph, and never let commentary crowd the code it serves.
+
+Comments must stand alone: they describe what is in the code, for a reader
+with no access to any prior discussion. Never reference removed code, past
+designs, or decisions-in-progress — history lives in git, plans live
+elsewhere. A removal criterion is fine when it is concrete and in-code
+("drop this override once the nixpkgs pin carries the fix").
 
 ## Packages
 

@@ -86,8 +86,7 @@
         };
 
         # POWER (amd_pstate and the amdgpu PSR workaround come from
-        # nixos-hardware and are not repeated here). Form-factor tuning
-        # stays host-side until a second laptop makes a bundle of it.
+        # nixos-hardware and are not repeated here)
         boot.kernelPackages = pkgs.linuxPackages_zen;
 
         boot.kernelParams = [

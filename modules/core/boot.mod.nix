@@ -11,7 +11,6 @@
       boot.loader.systemd-boot.configurationLimit = mkDefault 5;
       boot.loader.efi.canTouchEfiVariables = mkDefault true;
 
-      # Use the systemd-based initrd everywhere.
       boot.initrd.systemd.enable = mkDefault true;
     };
 }

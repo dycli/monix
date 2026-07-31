@@ -71,7 +71,7 @@
           # Shared hardening preset: this is the lone credentialed daemon
           # outside the tenant pattern otherwise. Loopback-only egress (the
           # homeserver is loopback tuwunel); the readers group grants the
-          # dynamic user the audit log, which is no longer world-readable.
+          # dynamic user the audit log, which is not world-readable.
           serviceConfig = lib.ship.hardened.tenant // {
             DynamicUser = true;
             SupplementaryGroups = [ topology.readersGroup ];

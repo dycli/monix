@@ -29,21 +29,20 @@
       # The overrideAttrs preloads the spotlight launcher, which upstream
       # keeps in a LazyLoader that only instantiates on first use.
       # --replace-fail fails the build if upstream renames the loader.
-      programs.dms-shell.package = (
+      programs.dms-shell.package =
         inputs.dank-material-shell.packages.${pkgs.stdenv.hostPlatform.system}.dms-shell.overrideAttrs
           (old: {
             postInstall = (old.postInstall or "") + ''
               substituteInPlace $out/share/quickshell/dms/DMSShell.qml \
                 --replace-fail "id: dankLauncherV2ModalLoader" "id: dankLauncherV2ModalLoader; loading: true"
             '';
-          })
-      );
+          });
 
       # Wallpaper-synced app theming. enableDynamicTheming provides
       # matugen; adw-gtk3 is the theme DMS's generated gtk.css targets.
       #
       # KDE apps ignore qt6ct palettes and follow kdeglobals instead,
-      # wired in kde.mod.nix. Non-KDE Qt6 apps read qt6ct, but nixpkgs'
+      # wired in kde-integration.mod.nix. Non-KDE Qt6 apps read qt6ct, but nixpkgs'
       # kdePackages.qt6ct lacks the fork's KColorScheme support (nixpkgs
       # #489021), so Qt theming does nothing for them.
       #

@@ -82,7 +82,6 @@
     Only the cockpit engineer runs `memo`. Drones and subagents never do — one
     identity, one memory.
 
-
     ## Your role as engineer
 
     Plan with the captain, dispatch work to the drones, monitor it, and review/summarize

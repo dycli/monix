@@ -12,9 +12,8 @@
   flake.nixosModules.homelab =
     { config, lib, ... }:
     {
-      # tmux over tailnet SSH and opencode web at ai.su.is.
+      # The seat: tmux over tailnet SSH, opencode web at ai.su.is.
       cockpit.enable = true;
-      # The web seat, at ai.su.is through the ship proxy.
       cockpit.webEnable = true;
 
       # Servers reach sshd over the tailnet only, since tailscale0 is a
@@ -56,7 +55,6 @@
       memo.enable = true;
       memo.memoryDir = "/home/bridge/cockpit/memory/log";
 
-      # Fabric server, tailnet-only.
       minecraft.enable = true;
 
       # *arr wiring is web-UI state; SABnzbd's ini is read-only.
@@ -83,7 +81,6 @@
       shipProxy.enable = true;
       shipProxy.dashboardHost = "in.su.is";
 
-      # Links to every web UI, at plain http://fw0.
       services.homepage-dashboard.enable = true;
 
       # llama.cpp (Vulkan) behind llama-swap on :8091, loaded on demand.

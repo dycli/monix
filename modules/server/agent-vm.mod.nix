@@ -40,7 +40,6 @@
         concatMapStringsSep
         fixedWidthString
         hasSuffix
-        optionalString
         toJSON
         ;
       inherit (lib) types;

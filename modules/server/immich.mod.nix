@@ -39,7 +39,6 @@
           IPAddressAllow = fences.loopback;
           IPAddressDeny = fences.privateRanges ++ [ "127.0.0.0/8" ];
         };
-
       };
     };
 }

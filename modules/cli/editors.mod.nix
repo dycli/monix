@@ -8,9 +8,9 @@
 {
   flake.homeModules.default = self.homeModules.editors;
   flake.homeModules.editors =
-    { pkgs, ... }:
+    { lib, pkgs, ... }:
     {
-      imports = [ inputs.nix4nvchad.homeManagerModules.default ];
+      imports = lib.lists.singleton inputs.nix4nvchad.homeManagerModules.default;
 
       programs.nvchad = {
         enable = true;

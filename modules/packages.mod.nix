@@ -42,7 +42,7 @@
         pkgs.tmux
         pkgs.tree
 
-        # network
+        # NETWORK
         pkgs.dig
         pkgs.traceroute
         pkgs.wget
@@ -51,7 +51,7 @@
         # syscall tracing, for failures inside tight systemd sandboxes.
         pkgs.strace
 
-        # archives
+        # ARCHIVES
         pkgs.p7zip
         pkgs.unzip
         pkgs.zip
