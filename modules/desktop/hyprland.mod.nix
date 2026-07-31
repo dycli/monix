@@ -188,10 +188,9 @@
                 # true, and size/noise/contrast/vibrancy sit at their tuned
                 # defaults.
                 blur = {
-                  passes = 2;
-                  # Default 1; slightly darker keeps content legible over
-                  # the frost.
-                  brightness = 0.8172;
+                  passes = 3;
+                  # Default 1; darkened so text stays legible on the glass.
+                  brightness = 0.7;
                   popups = true;
                 };
               };
