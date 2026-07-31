@@ -181,11 +181,18 @@
 
                 shadow.enabled = false;
 
+                # Deep gaussian-style frost: three passes over the default
+                # size-8 kernel. Only deviations from the pinned v0.56.0
+                # defaults (config/values/ConfigValues.cpp) are stated —
+                # enabled, new_optimizations and ignore_opacity are already
+                # true, and size/noise/contrast/vibrancy sit at their tuned
+                # defaults.
                 blur = {
-                  enabled = true;
-                  size = 3;
-                  passes = 1;
-                  vibrancy = 0.1696;
+                  passes = 3;
+                  # Default 1; slightly darker keeps content legible over
+                  # the frost.
+                  brightness = 0.8172;
+                  popups = true;
                 };
               };
 
