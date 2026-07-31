@@ -46,9 +46,11 @@ Current bundles:
   for a host that runs a different session.
 - `dev`      — the authoring toolchain and agent CLIs, for hosts where a
   human or the seat develops. A desktop is not automatically one.
-- `homelab`  — the ship's whole service role (media, family apps, AI stack,
-  agent fleet, cockpit seat), importable as a unit. Its seat needs `dev`
-  imported alongside it.
+- `homelab`  — the house's services: media, family apps, smart home, their
+  front door and alerting.
+- `ai`       — the agent cluster: cockpit seat, worker fleet, local
+  inference. Needs `dev` imported alongside it. Shares a box with
+  `homelab` today; either can move alone.
 
 Rules of taste: never create a bundle without a real member and a real
 importer (no speculative structure — promote shared host config into a

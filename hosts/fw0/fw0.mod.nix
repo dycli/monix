@@ -1,5 +1,5 @@
 # fw0 — Framework Desktop (Strix Halo, 128GB), headless server carrying
-# the homelab role (modules/server/homelab.mod.nix).
+# the homelab and ai roles (modules/server/{homelab,ai}.mod.nix).
 #
 # Tailnet-only except calibre-web :8083 on the LAN (media.calibreWebLan).
 # BIOS requires AMD SVM and restore-on-AC-power-loss.
@@ -16,6 +16,7 @@
       {
         imports = [
           self.nixosModules.homelab
+          self.nixosModules.ai
           self.nixosModules.dev
           inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
           ./credentials.nix

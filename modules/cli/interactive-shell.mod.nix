@@ -3,10 +3,11 @@
 # 'cmd'` and tools that shell out via $SHELL are unaffected.
 #
 # Desktops get the same split from ghostty instead, so this lives in the
-# headless role bundles (homelab today), never in desktop.
+# headless role bundles, never in desktop.
 { self, ... }:
 {
   flake.homeModules.homelab = self.homeModules.interactive-shell;
+  flake.homeModules.ai = self.homeModules.interactive-shell;
   flake.homeModules.interactive-shell =
     {
       config,
