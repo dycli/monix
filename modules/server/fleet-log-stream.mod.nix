@@ -23,10 +23,10 @@
       inherit (lib.strings) toJSON;
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib) types;
-      networkFences = import ../../lib/network-fences.nix;
+      networkFences = lib.ship.fences;
 
       cfg = config.fleetLogStream;
-      topology = import ../../lib/fleet-topology.nix;
+      topology = lib.ship.topology;
       fleetLog = "${topology.tasksDir}/log";
     in
     {
@@ -72,7 +72,7 @@
           # outside the tenant pattern otherwise. Loopback-only egress (the
           # homeserver is loopback tuwunel); the readers group grants the
           # dynamic user the audit log, which is no longer world-readable.
-          serviceConfig = (import ../../lib/hardened.nix).tenant // {
+          serviceConfig = (lib.ship.hardened).tenant // {
             DynamicUser = true;
             SupplementaryGroups = [ topology.readersGroup ];
             StateDirectory = "fleet-log-stream";

@@ -22,7 +22,7 @@
       inherit (lib.options) mkEnableOption;
 
       cfg = config.minecraft;
-      networkFences = import ../../lib/network-fences.nix;
+      networkFences = lib.ship.fences;
 
       # The server pin, every mod hash below and the players' clients move
       # together; pin an exact package, never a floating alias. The jre

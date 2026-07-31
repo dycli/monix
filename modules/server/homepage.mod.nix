@@ -13,7 +13,7 @@
     let
       inherit (lib.modules) mkIf;
 
-      networkFences = import ../../lib/network-fences.nix;
+      networkFences = lib.ship.fences;
 
       # Proxy names when the front door is up, else host and port.
       url =

@@ -21,7 +21,7 @@
       inherit (lib.strings) concatStringsSep optionalString;
 
       cfg = config.agentFleet;
-      topology = import ../../lib/fleet-topology.nix;
+      topology = lib.ship.topology;
       inherit (topology) bridge hostAddr;
 
       # The only destinations a guest can reach. A leading-dot dstdomain

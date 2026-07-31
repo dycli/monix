@@ -32,13 +32,13 @@
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib.strings) hasSuffix optionalString;
       inherit (lib) types;
-      networkFences = import ../../lib/network-fences.nix;
+      networkFences = lib.ship.fences;
 
       cfg = config.alerts;
       hostname = config.networking.hostName;
 
       # Delivery and enrichment are both loopback, so egress is too.
-      sensorHardening = (import ../../lib/hardened.nix).rootSensor // {
+      sensorHardening = (lib.ship.hardened).rootSensor // {
         IPAddressAllow = networkFences.loopback;
         IPAddressDeny = "any";
       };

@@ -25,7 +25,7 @@
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption mkOption;
 
-      networkFences = import ../../lib/network-fences.nix;
+      networkFences = lib.ship.fences;
       cfg = config.shipCameras;
 
       lanFence = {

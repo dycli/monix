@@ -29,7 +29,7 @@
       inherit (lib) types;
 
       cfg = config.remy;
-      networkFences = import ../../lib/network-fences.nix;
+      networkFences = lib.ship.fences;
 
       python = pkgs.python3.withPackages (ps: [
         ps.matrix-nio
@@ -82,7 +82,7 @@
       };
 
       # Egress differs per unit and is set below.
-      sandbox = (import ../../lib/hardened.nix).tenant // {
+      sandbox = (lib.ship.hardened).tenant // {
         User = "remy";
         Group = "remy";
         StateDirectory = "remy";

@@ -11,7 +11,7 @@
     { config, lib, ... }:
     let
       inherit (lib.modules) mkDefault mkIf;
-      networkFences = import ../../lib/network-fences.nix;
+      networkFences = lib.ship.fences;
     in
     {
       config = mkIf config.services.immich.enable {

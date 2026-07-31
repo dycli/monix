@@ -25,7 +25,7 @@
       inherit (lib) types;
 
       cfg = config.matrix;
-      networkFences = import ../../lib/network-fences.nix;
+      networkFences = lib.ship.fences;
     in
     {
       options.matrix = {

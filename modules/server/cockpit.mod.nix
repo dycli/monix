@@ -16,8 +16,8 @@
       ...
     }:
     let
-      guide = import ../../lib/fleet-guide.nix;
-      topology = import ../../lib/fleet-topology.nix;
+      guide = lib.ship.guide;
+      topology = lib.ship.topology;
       inherit (lib.attrsets)
         genAttrs
         listToAttrs
@@ -312,8 +312,8 @@
       # must name the uid statically.
       seatUid = 1001;
 
-      topology = import ../../lib/fleet-topology.nix;
-      networkFences = import ../../lib/network-fences.nix;
+      topology = lib.ship.topology;
+      networkFences = lib.ship.fences;
     in
     {
       options.cockpit.enable = mkEnableOption "the persistent cockpit session role on this host";

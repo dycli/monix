@@ -17,7 +17,7 @@
     }:
     let
       inherit (lib.modules) mkIf;
-      networkFences = import ../../lib/network-fences.nix;
+      networkFences = lib.ship.fences;
       cfg = config.homeAssistant;
     in
     {

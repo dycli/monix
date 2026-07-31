@@ -45,12 +45,12 @@
         ;
       inherit (lib) types;
 
-      guide = import ../../lib/fleet-guide.nix;
+      guide = lib.ship.guide;
       hintFile = pkgs.writeText "worker-hint.md" (guide.system + guide.worker);
 
       cfg = config.agentFleet;
 
-      topology = import ../../lib/fleet-topology.nix;
+      topology = lib.ship.topology;
       inherit (topology) hostAddr;
       proxyUrl = "http://${hostAddr}:3128";
       # Local inference is plain HTTP to a bridge IP, which a CONNECT

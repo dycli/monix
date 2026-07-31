@@ -29,7 +29,7 @@
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib.strings) concatStringsSep;
       inherit (lib) types;
-      networkFences = import ../../lib/network-fences.nix;
+      networkFences = lib.ship.fences;
 
       cfg = config.inference;
 

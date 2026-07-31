@@ -21,8 +21,8 @@
       inherit (lib.options) mkEnableOption mkOption;
 
       cfg = config.media;
-      networkFences = import ../../lib/network-fences.nix;
-      hardened = import ../../lib/hardened.nix;
+      networkFences = lib.ship.fences;
+      hardened = lib.ship.hardened;
 
       mediaRoot = "/srv/media";
 

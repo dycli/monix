@@ -26,7 +26,7 @@
       inherit (lib) types;
 
       cfg = config.curtisbot;
-      networkFences = import ../../../lib/network-fences.nix;
+      networkFences = lib.ship.fences;
 
       python = pkgs.python3.withPackages (ps: [ ps.discordpy ]);
     in
@@ -85,7 +85,7 @@
           // lib.optionalAttrs (cfg.testGuildId != null) {
             DISCORD_TEST_GUILD_ID = cfg.testGuildId;
           };
-          serviceConfig = (import ../../../lib/hardened.nix).tenant // {
+          serviceConfig = (lib.ship.hardened).tenant // {
             ExecStart = "${python}/bin/python ${./bot.py}";
             EnvironmentFile = cfg.credentialsEnvFile;
             Restart = "always";
