@@ -64,7 +64,27 @@
 
   outputs =
     inputs:
-    inputs.flake-parts.lib.mkFlake
+    let
+      # The ship's lib (nixpkgs.lib + lib.ship), threaded into flake-parts
+      # here and into every nixosSystem by ship.host.
+      lib = import ./lib inputs.nixpkgs.lib;
+
+      inherit (lib.attrsets) filterAttrs mapAttrs' nameValuePair;
+      inherit (lib.strings) hasSuffix removeSuffix;
+
+      # flake-parts' module set, read the way its own flake.nix builds it;
+      # required arguments of its lib.nix entry point.
+      flakePartsModules =
+        directory:
+        mapAttrs' (name: _: nameValuePair (removeSuffix ".nix" name) "${directory}/${name}") (
+          filterAttrs (name: _: hasSuffix ".nix" name) (builtins.readDir directory)
+        );
+    in
+    (import "${inputs.flake-parts}/lib.nix" {
+      inherit lib;
+      builtinModules = flakePartsModules "${inputs.flake-parts}/modules";
+      extraModules = flakePartsModules "${inputs.flake-parts}/extras";
+    }).mkFlake
       {
         inherit inputs;
       }
