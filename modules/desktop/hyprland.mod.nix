@@ -305,8 +305,8 @@
                 # Deeper fade than the global 0.9: unfocused terminals thin
                 # their dark tint out, so the focused one reads as darker
                 # glass than the rest.
-                match.class = "^com\\.mitchellh\\.ghostty$";
-                opacity = "1 0.7";
+                match.class = "ghostty";
+                opacity = "1 0.4";
               }
               {
                 # Fixes dragging issues under XWayland.

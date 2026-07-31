@@ -47,7 +47,7 @@
             # unfocused contrast comes from the hyprland window rule that
             # fades this tint on inactive terminals; at 0 there would be
             # nothing to fade.
-            background-opacity = 0.25;
+            background-opacity = 0.4;
             window-decoration = "none";
 
             font-family = "CaskaydiaMono Nerd Font";
