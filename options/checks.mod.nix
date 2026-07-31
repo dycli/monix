@@ -43,9 +43,10 @@
       # Every tracked .age needs a rule in secrets.nix, and every rule must
       # point at a tracked file.
       ruled = attrNames (import "${self}/secrets.nix");
-      tracked = filter (path: hasSuffix ".age" path) (
-        map (path: removePrefix "${self}/" (toString path)) (lib.filesystem.listFilesRecursive self)
-      );
+      tracked =
+        lib.filesystem.listFilesRecursive self
+        |> map (path: removePrefix "${self}/" (toString path))
+        |> filter (path: hasSuffix ".age" path);
       unruled = filter (path: !elem path ruled) tracked;
       dangling = filter (path: !elem path tracked) ruled;
     in

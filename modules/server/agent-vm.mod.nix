@@ -485,12 +485,22 @@
         assertions = [
           {
             assertion =
-              lib.lists.length cfg.workers == lib.lists.length (lib.lists.unique (map (w: w.name) cfg.workers));
+              lib.lists.length cfg.workers == (
+                cfg.workers
+                |> map (w: w.name)
+                |> lib.lists.unique
+                |> lib.lists.length
+              );
             message = "agentFleet worker names must be unique";
           }
           {
             assertion =
-              lib.lists.length cfg.workers == lib.lists.length (lib.lists.unique (map (w: w.index) cfg.workers));
+              lib.lists.length cfg.workers == (
+                cfg.workers
+                |> map (w: w.index)
+                |> lib.lists.unique
+                |> lib.lists.length
+              );
             message = "agentFleet worker indices must be unique";
           }
         ];
