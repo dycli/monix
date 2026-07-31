@@ -62,16 +62,9 @@
       ];
     };
 
-  # Both home lists join the desktop bundle; the dev extras also join the
-  # homelab (one key per file, so the memberships merge here).
-  flake.homeModules.desktop.imports = [
-    self.homeModules.packages-desktop
-    self.homeModules.packages-dev-extras
-  ];
-  flake.homeModules.homelab = self.homeModules.packages-dev-extras;
-
   # The graphical session's utilities and applications. hyprshot wraps its
   # own grim, slurp and notification dependencies.
+  flake.homeModules.desktop = self.homeModules.packages-desktop;
   flake.homeModules.packages-desktop =
     { pkgs, ... }:
     {
@@ -104,7 +97,8 @@
       ];
     };
 
-  # Authoring and build tools, for workstations and the homelab.
+  # Authoring and build tools.
+  flake.homeModules.dev = self.homeModules.packages-dev-extras;
   flake.homeModules.packages-dev-extras =
     { pkgs, ... }:
     {

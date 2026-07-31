@@ -21,6 +21,7 @@
         imports = [
           self.nixosModules.desktop
           self.nixosModules.hyprland
+          self.nixosModules.dev
           inputs.nixos-hardware.nixosModules.framework-13-7040-amd
         ];
 

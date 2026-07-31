@@ -44,8 +44,11 @@ Current bundles:
 - `desktop`  — a graphical workstation, independent of session choice.
 - `hyprland` — the Hyprland/DMS session. A sibling (e.g. `kde`) is the seam
   for a host that runs a different session.
+- `dev`      — the authoring toolchain and agent CLIs, for hosts where a
+  human or the seat develops. A desktop is not automatically one.
 - `homelab`  — the ship's whole service role (media, family apps, AI stack,
-  agent fleet, cockpit seat), importable as a unit.
+  agent fleet, cockpit seat), importable as a unit. Its seat needs `dev`
+  imported alongside it.
 
 Rules of taste: never create a bundle without a real member and a real
 importer (no speculative structure — promote shared host config into a

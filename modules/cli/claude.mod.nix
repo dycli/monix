@@ -3,8 +3,7 @@
 # Bundled to match where claude-code is installed.
 { self, ... }:
 {
-  flake.homeModules.desktop = self.homeModules.claude;
-  flake.homeModules.homelab = self.homeModules.claude;
+  flake.homeModules.dev = self.homeModules.claude;
   flake.homeModules.claude = {
     home.file.".claude/CLAUDE.md" = {
       # Adopts a pre-existing hand-written file on first switch.
