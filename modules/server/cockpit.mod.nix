@@ -17,14 +17,8 @@
     }:
     let
       inherit (lib.ship) guide topology;
-      inherit (lib.attrsets)
-        genAttrs
-        listToAttrs
-        mapAttrsToList
-        nameValuePair
-        optionalAttrs
-        ;
-      inherit (lib.lists) concatLists concatMap map;
+      inherit (lib.attrsets) genAttrs optionalAttrs;
+      inherit (lib.lists) concatMap map;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption;
       inherit (lib.strings) toJSON;
@@ -241,11 +235,7 @@
                   baseURL = "http://${topology.seatInferenceAddr}:${toString osConfig.inference.port}/v1";
                   apiKey = "local";
                 };
-                models = listToAttrs (
-                  concatLists (
-                    mapAttrsToList (n: m: map (id: nameValuePair id { }) ([ n ] ++ m.aliases)) osConfig.inference.models
-                  )
-                );
+                models = genAttrs osConfig.inference.modelIds (_: { });
               };
             }
           );

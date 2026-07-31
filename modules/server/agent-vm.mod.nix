@@ -27,12 +27,12 @@
     }:
     let
       inherit (lib.attrsets)
+        genAttrs
         listToAttrs
-        mapAttrsToList
         nameValuePair
         optionalAttrs
         ;
-      inherit (lib.lists) concatLists concatMap singleton;
+      inherit (lib.lists) concatMap singleton;
       inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkForce mkIf;
       inherit (lib.options) mkOption;
@@ -73,11 +73,7 @@
                 baseURL = "http://${hostAddr}:${toString config.inference.port}/v1";
                 apiKey = "local";
               };
-              models = listToAttrs (
-                concatLists (
-                  mapAttrsToList (n: m: map (id: nameValuePair id { }) ([ n ] ++ m.aliases)) config.inference.models
-                )
-              );
+              models = genAttrs config.inference.modelIds (_: { });
             };
           }
         )

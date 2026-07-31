@@ -22,10 +22,10 @@
       ...
     }:
     let
-      inherit (lib.attrsets) mapAttrs;
-      inherit (lib.lists) optionals singleton;
+      inherit (lib.attrsets) mapAttrs mapAttrsToList;
+      inherit (lib.lists) concatLists optionals singleton;
       inherit (lib.meta) getExe';
-      inherit (lib.modules) mkIf;
+      inherit (lib.modules) mkIf mkMerge;
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib.strings) concatStringsSep;
       inherit (lib) types;
@@ -98,79 +98,95 @@
             }
           );
         };
+
+        modelIds = mkOption {
+          type = types.listOf types.str;
+          readOnly = true;
+          description = ''
+            Every id the catalog answers to — model names plus aliases.
+            Derived from `models`; consumers generating client
+            configuration read this instead of re-deriving it.
+          '';
+        };
       };
 
-      config = mkIf cfg.enable {
-        services.llama-swap = {
-          enable = true;
-          # The firewall handles reachability.
-          listenAddress = "0.0.0.0";
-          inherit (cfg) port;
-          openFirewall = false;
+      config = mkMerge [
+        {
+          inference.modelIds = concatLists (mapAttrsToList (name: m: [ name ] ++ m.aliases) cfg.models);
+        }
 
-          settings = {
-            # A cold 60G model takes minutes to load from NVMe into GTT,
-            # longer than the 120s default health check allows.
-            healthCheckTimeout = 600;
+        (mkIf cfg.enable {
+          services.llama-swap = {
+            enable = true;
+            # The firewall handles reachability.
+            listenAddress = "0.0.0.0";
+            inherit (cfg) port;
+            openFirewall = false;
 
-            models = mapAttrs (name: m: {
-              # llama-swap's macro for a fresh port per spawn, escaped so
-              # Nix passes it through verbatim.
-              cmd = concatStringsSep " " (
-                [
-                  llamaServer
-                  "--port \${PORT}"
-                  "--host 127.0.0.1" # children speak only to the proxy
-                  "-m ${if lib.strings.hasPrefix "/" m.file then m.file else "${cfg.modelsDir}/${m.file}"}"
-                  "-ngl 999" # full iGPU offload — unified memory, no VRAM cliff
-                  "--no-webui" # llama-swap's own UI serves the humans
-                ]
-                ++ m.flags
-              );
-              inherit (m) ttl aliases;
-            }) cfg.models;
+            settings = {
+              # A cold 60G model takes minutes to load from NVMe into GTT,
+              # longer than the 120s default health check allows.
+              healthCheckTimeout = 600;
+
+              models = mapAttrs (name: m: {
+                # llama-swap's macro for a fresh port per spawn, escaped so
+                # Nix passes it through verbatim.
+                cmd = concatStringsSep " " (
+                  [
+                    llamaServer
+                    "--port \${PORT}"
+                    "--host 127.0.0.1" # children speak only to the proxy
+                    "-m ${if lib.strings.hasPrefix "/" m.file then m.file else "${cfg.modelsDir}/${m.file}"}"
+                    "-ngl 999" # full iGPU offload — unified memory, no VRAM cliff
+                    "--no-webui" # llama-swap's own UI serves the humans
+                  ]
+                  ++ m.flags
+                );
+                inherit (m) ttl aliases;
+              }) cfg.models;
+            };
           };
-        };
 
-        systemd.services.llama-swap.serviceConfig = {
+          systemd.services.llama-swap.serviceConfig = {
 
-          # Upstream leaves PrivateDevices false but grants no device
-          # class; this opens the DRM render path Vulkan needs.
-          SupplementaryGroups = [
-            "render"
-            "video"
-          ];
-          DevicePolicy = "closed";
-          DeviceAllow = [ "char-drm rw" ];
-
-          # Loopback for the spawned llama-servers, the tailnet, and the
-          # guest bridge when the fleet runs here. No public internet.
-          IPAddressAllow =
-            fences.loopback
-            ++ [
-              "100.64.0.0/10" # tailnet (CGNAT range)
-            ]
-            ++ optionals config.agentFleet.enable [
-              "10.100.0.0/24" # the br-agents guest subnet (see microvm-host.mod.nix)
+            # Upstream leaves PrivateDevices false but grants no device
+            # class; this opens the DRM render path Vulkan needs.
+            SupplementaryGroups = [
+              "render"
+              "video"
             ];
-          IPAddressDeny = "any";
-        };
+            DevicePolicy = "closed";
+            DeviceAllow = [ "char-drm rw" ];
 
-        # GTT is a limit rather than a reservation, so an idle host pays
-        # nothing. 96G expressed as 98304 MiB and 25165824 4K pages;
-        # page_pool_size bounds TTM's cached-page reuse pool to match.
-        boot.kernelParams = [
-          "amdgpu.gttsize=98304"
-          "ttm.pages_limit=25165824"
-          "ttm.page_pool_size=25165824"
-        ];
+            # Loopback for the spawned llama-servers, the tailnet, and the
+            # guest bridge when the fleet runs here. No public internet.
+            IPAddressAllow =
+              fences.loopback
+              ++ [
+                "100.64.0.0/10" # tailnet (CGNAT range)
+              ]
+              ++ optionals config.agentFleet.enable [
+                "10.100.0.0/24" # the br-agents guest subnet (see microvm-host.mod.nix)
+              ];
+            IPAddressDeny = "any";
+          };
 
-        # Downloads happen as the primary user or the seat (group users);
-        # world-readable so the DynamicUser service can read them.
-        systemd.tmpfiles.rules = singleton "d ${cfg.modelsDir} 0775 ${config.primaryUser} users -";
+          # GTT is a limit rather than a reservation, so an idle host pays
+          # nothing. 96G expressed as 98304 MiB and 25165824 4K pages;
+          # page_pool_size bounds TTM's cached-page reuse pool to match.
+          boot.kernelParams = [
+            "amdgpu.gttsize=98304"
+            "ttm.pages_limit=25165824"
+            "ttm.page_pool_size=25165824"
+          ];
 
-        # llama-cli, llama-bench and friends, for work outside the service.
-        environment.systemPackages = singleton llamaCpp;
-      };
+          # Downloads happen as the primary user or the seat (group users);
+          # world-readable so the DynamicUser service can read them.
+          systemd.tmpfiles.rules = singleton "d ${cfg.modelsDir} 0775 ${config.primaryUser} users -";
+
+          # llama-cli, llama-bench and friends, for work outside the service.
+          environment.systemPackages = singleton llamaCpp;
+        })
+      ];
     };
 }
