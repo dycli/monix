@@ -41,7 +41,9 @@
 
             window-padding-x = 14;
             window-padding-y = 14;
-            background-opacity = 0.95;
+            # Low enough for the compositor's blur to actually read as
+            # frost behind the terminal; at 0.95 it was invisible.
+            background-opacity = 0.85;
             window-decoration = "none";
 
             font-family = "CaskaydiaMono Nerd Font";
