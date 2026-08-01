@@ -223,6 +223,14 @@
 
             animations.enabled = false;
 
+            # Roughly half the plugin's stock timings; snappy but still
+            # spatial.
+            plugin.gloview = {
+              duration = 200;
+              switch_duration = 180;
+              move_duration = 160;
+            };
+
             input = {
               kb_layout = "us";
               kb_options = "compose:caps";
