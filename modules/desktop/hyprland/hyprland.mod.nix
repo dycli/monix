@@ -282,7 +282,12 @@
             {
               fingers = 3;
               direction = "up";
-              action = mkLuaInline "hl.plugin.gloview.toggle";
+              action = mkLuaInline "hl.plugin.gloview.open";
+            }
+            {
+              fingers = 3;
+              direction = "down";
+              action = mkLuaInline "hl.plugin.gloview.close";
             }
             {
               fingers = 4;
