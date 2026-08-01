@@ -428,9 +428,9 @@
 
             (mkBind "SUPER + COMMA" ''hl.dsp.focus({ workspace = "-1" })'' "Previous workspace" { })
             (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
-            (mkBind "SUPER + TAB" ''hl.dsp.exec_cmd("hyprctl dispatch gloview:toggle")'' "Workspace overview"
-              { }
-            )
+            # Plugin dispatchers have no hl.dsp wrapper; hl.dispatch takes
+            # the raw name.
+            (mkBind "SUPER + TAB" ''hl.dispatch("gloview:toggle")'' "Workspace overview" { })
 
             (mkBind "SUPER + SHIFT + LEFT" ''hl.dsp.window.swap({ direction = "l" })'' "Swap window left" { })
             (mkBind "SUPER + SHIFT + RIGHT" ''hl.dsp.window.swap({ direction = "r" })'' "Swap window right" { })
