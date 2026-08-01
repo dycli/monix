@@ -145,6 +145,7 @@ Prefer `x |> f |> g` over nested calls when an expression is a genuine
 pipeline — three or more transformations of one value. Do not decorate
 single applications with `|>` or `<|`; plain application reads better and
 stays familiar. The `pipe-operators` feature is enabled in
-`nix.settings.experimental-features` (nix.mod.nix) and advertised in the
-flake's `nixConfig`; flake.nix itself stays pipe-free so a stock parser
-can always read the file that declares the requirement.
+`nix.settings.experimental-features` (nix.mod.nix); a machine evaluating
+the flake before its first switch passes it by hand
+(`NIX_CONFIG="extra-experimental-features = pipe-operators"`). flake.nix
+itself stays pipe-free so a stock parser can always read it.
