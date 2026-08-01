@@ -227,9 +227,9 @@
             # spatial. Selection nav on vim keys plus the arrows — the
             # key lists replace the defaults, so both are named.
             plugin.gloview = {
-              duration = 200;
-              switch_duration = 180;
-              move_duration = 160;
+              duration = 120;
+              switch_duration = 100;
+              move_duration = 100;
 
               key_left = "h left";
               key_right = "l right";
