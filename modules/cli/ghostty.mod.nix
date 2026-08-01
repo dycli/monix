@@ -1,4 +1,4 @@
-# Terminal. font-family is CaskaydiaMono Nerd Font (installed by
+# Terminal. font-family is Comic Code (decrypted and installed by
 # fonts.mod.nix); ghostty uses its default theme.
 { self, ... }:
 {
@@ -43,14 +43,13 @@
 
           window-padding-x = 14;
           window-padding-y = 14;
-          # Low enough for the compositor's blur to actually read as
-          # frost behind the terminal; at 0.95 it was invisible.
-          # A dark tint over the compositor's glass; the hyprland rule
-          # thins it on unfocused terminals.
-          background-opacity = 0.4;
+          # A dark tint over the compositor's glass, low enough that the
+          # blur still reads as frost (at 0.95 it was invisible); the
+          # hyprland rule thins it on unfocused terminals.
+          background-opacity = 0.7;
           window-decoration = "none";
 
-          font-family = "CaskaydiaMono Nerd Font";
+          font-family = "ComicCodeLigatures Nerd Font";
           font-size = 10;
 
           keybind = [ "ctrl+k=reset" ];
