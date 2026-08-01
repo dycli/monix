@@ -128,6 +128,11 @@
         package = null;
         portalPackage = null;
 
+        # Workspace overview (Mission Control-style), on the TAB bind
+        # below. hyprexpo is absent from this nixpkgs pin; hyprspace is
+        # the maintained overview compiled against the same hyprland.
+        plugins = [ pkgs.hyprlandPlugins.hyprspace ];
+
         # UWSM brings up the graphical-session targets itself, so this
         # module's own hook would race it; `uwsm finalize` in the first
         # autostart line exports the session environment instead.
@@ -400,6 +405,7 @@
 
             (mkBind "SUPER + COMMA" ''hl.dsp.focus({ workspace = "-1" })'' "Previous workspace" { })
             (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
+            (mkBind "SUPER + TAB" ''hl.dsp.exec_cmd("hyprctl dispatch overview:toggle")'' "Workspace overview" { })
 
             (mkBind "SUPER + SHIFT + LEFT" ''hl.dsp.window.swap({ direction = "l" })'' "Swap window left" { })
             (mkBind "SUPER + SHIFT + RIGHT" ''hl.dsp.window.swap({ direction = "r" })'' "Swap window right" { })
