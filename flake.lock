@@ -172,6 +172,22 @@
         "type": "github"
       }
     },
+    "gloview": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785058365,
+        "narHash": "sha256-9c9OXbz7g9FzV4KV25LPmjuTDSAxNe8Mt4WwaI9XwAk=",
+        "owner": "fedsfarm",
+        "repo": "gloview",
+        "rev": "2cf8f02e41a51e0d8cec74f2c43928f0e709a9d4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "fedsfarm",
+        "repo": "gloview",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -342,6 +358,7 @@
         "dank-material-shell": "dank-material-shell",
         "disko": "disko",
         "flake-parts": "flake-parts",
+        "gloview": "gloview",
         "home-manager": "home-manager",
         "microvm": "microvm",
         "nix-minecraft": "nix-minecraft",

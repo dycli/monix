@@ -44,6 +44,15 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
+  # Mission Control-style overview plugin, taken as source and compiled
+  # against this flake's hyprland (hyprland.mod.nix) — a plugin ABI must
+  # match the running compositor exactly, so its own flake's pin is
+  # useless to us.
+  inputs.gloview = {
+    url = "github:fedsfarm/gloview";
+    flake = false;
+  };
+
   inputs.nix4nvchad = {
     url = "github:nix-community/nix4nvchad";
     inputs.nixpkgs.follows = "nixpkgs";

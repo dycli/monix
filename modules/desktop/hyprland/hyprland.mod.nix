@@ -1,6 +1,7 @@
 # The Hyprland desktop concern: compositor + session at the system level, the
 # user's full Hyprland configuration at the home level. Hyprland comes from
-# nixpkgs; there are no Hyprland-specific flake inputs.
+# nixpkgs; the gloview input is plugin source only.
+{ inputs, ... }:
 {
   flake.nixosModules.hyprland =
     { lib, pkgs, ... }:
@@ -127,6 +128,33 @@
         # system-wide; null avoids a second home-manager copy.
         package = null;
         portalPackage = null;
+
+        # gloview (Mission Control-style overview, on the TAB bind below),
+        # compiled here against this pin's hyprland so the plugin ABI
+        # matches the running compositor by construction.
+        plugins = [
+          (pkgs.hyprlandPlugins.mkHyprlandPlugin {
+            pluginName = "gloview";
+            version = "0.3.0";
+            src = inputs.gloview;
+            nativeBuildInputs = [
+              pkgs.cmake
+              pkgs.pkg-config
+            ];
+            # Lua for the gloview.* config functions; luajit is what
+            # hyprland itself links.
+            buildInputs = [ pkgs.luajit ];
+            # The build emits gloview.so; home-manager's plugins option
+            # loads lib<name>.so.
+            postInstall = ''ln -sf gloview.so "$out/lib/libgloview.so"'';
+
+            meta = {
+              description = "macOS Mission Control-style overview for Hyprland";
+              homepage = "https://github.com/fedsfarm/gloview";
+              license = lib.licenses.gpl3Plus;
+            };
+          })
+        ];
 
         # UWSM brings up the graphical-session targets itself, so this
         # module's own hook would race it; `uwsm finalize` in the first
@@ -400,8 +428,9 @@
 
             (mkBind "SUPER + COMMA" ''hl.dsp.focus({ workspace = "-1" })'' "Previous workspace" { })
             (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
-            # DMS's own workspace overview.
-            (mkBind "SUPER + TAB" ''hl.dsp.exec_cmd("dms ipc call hypr toggleOverview")'' "Workspace overview" { })
+            (mkBind "SUPER + TAB" ''hl.dsp.exec_cmd("hyprctl dispatch gloview:toggle")'' "Workspace overview"
+              { }
+            )
 
             (mkBind "SUPER + SHIFT + LEFT" ''hl.dsp.window.swap({ direction = "l" })'' "Swap window left" { })
             (mkBind "SUPER + SHIFT + RIGHT" ''hl.dsp.window.swap({ direction = "r" })'' "Swap window right" { })
