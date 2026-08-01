@@ -70,6 +70,7 @@
   # via `hyprctl binds -j`, since Lua is executed rather than parsed.
   flake.homeModules.hyprland =
     {
+      config,
       lib,
       osConfig,
       pkgs,
@@ -98,6 +99,15 @@
           value
         ];
       };
+
+      # The session's default applications come from the desktopApps
+      # options (default-apps.mod.nix).
+      terminal = getExe config.desktopApps.terminal;
+      browser = getExe config.desktopApps.browser;
+      messenger = getExe config.desktopApps.messenger;
+      passwordManager = getExe config.desktopApps.passwordManager;
+      email = getExe config.desktopApps.email;
+      inherit (config.desktopApps) editor;
     in
     {
       # DMS writes the monitor layout here at runtime, so it must be a
@@ -148,7 +158,7 @@
             # so a literal $VAR would propagate into the session and break
             # nvim's runtimepath expansion under non-POSIX shells.
             (mkEnv "XDG_DATA_DIRS" "/etc/profiles/per-user/${osConfig.primaryUser}/share:/run/current-system/sw/share")
-            (mkEnv "EDITOR" "nvim")
+            (mkEnv "EDITOR" editor)
             # The theme DMS's generated gtk.css is written against.
             (mkEnv "GTK_THEME" "adw-gtk3-dark")
           ];
@@ -329,21 +339,19 @@
           };
 
           bind = [
-            (mkBind "SUPER + RETURN" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty}")'' "Open terminal" { })
+            (mkBind "SUPER + RETURN" ''hl.dsp.exec_cmd("${terminal}")'' "Open terminal" { })
             (mkBind "SUPER + BACKSPACE" ''hl.dsp.exec_cmd("dms ipc call powermenu toggle")'' "Power menu" { })
-            (mkBind "SUPER + SLASH" ''hl.dsp.exec_cmd("${getExe pkgs.keepassxc}")'' "Open password manager" { })
+            (mkBind "SUPER + SLASH" ''hl.dsp.exec_cmd("${passwordManager}")'' "Open password manager" { })
             (mkBind "SUPER + C" ''hl.dsp.send_shortcut({ mods = "CTRL", key = "Insert" })''
               "Copy (send Ctrl+Insert to focused window)"
               { }
             )
             (mkBind "SUPER + D" ''hl.dsp.exec_cmd("dms ipc call spotlight toggle")'' "App launcher" { })
-            (mkBind "SUPER + N" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e nvim")'' "Open editor" { })
-            (mkBind "SUPER + R" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e lf")'' "Open file manager" { })
-            (mkBind "SUPER + SHIFT + R" ''hl.dsp.exec_cmd("${getExe pkgs.ghostty} -e btop")''
-              "Open system monitor"
-              { }
-            )
-            (mkBind "SUPER + S" ''hl.dsp.exec_cmd("signal-desktop")'' "Open messenger" { })
+            (mkBind "SUPER + E" ''hl.dsp.exec_cmd("${email}")'' "Open email" { })
+            (mkBind "SUPER + N" ''hl.dsp.exec_cmd("${terminal} -e ${editor}")'' "Open editor" { })
+            (mkBind "SUPER + R" ''hl.dsp.exec_cmd("${terminal} -e lf")'' "Open file manager" { })
+            (mkBind "SUPER + SHIFT + R" ''hl.dsp.exec_cmd("${terminal} -e btop")'' "Open system monitor" { })
+            (mkBind "SUPER + S" ''hl.dsp.exec_cmd("${messenger}")'' "Open messenger" { })
             (mkBind "SUPER + V" ''hl.dsp.send_shortcut({ mods = "SHIFT", key = "Insert" })''
               "Paste (send Shift+Insert to focused window)"
               { }
@@ -352,8 +360,7 @@
               "Send Ctrl+X to focused window"
               { }
             )
-            (mkBind "SUPER + W"
-              ''hl.dsp.exec_cmd("${getExe pkgs.brave} --new-window --ozone-platform=wayland")''
+            (mkBind "SUPER + W" ''hl.dsp.exec_cmd("${browser} --new-window --ozone-platform=wayland")''
               "Open browser"
               { }
             )
