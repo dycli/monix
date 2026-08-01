@@ -1,5 +1,5 @@
 # fw0 — Framework Desktop (Strix Halo, 128GB), headless server carrying
-# the homelab and ai roles (modules/server/{homelab,ai}.mod.nix).
+# the homelab and ai roles (modules/{homelab,ai}).
 #
 # Tailnet-only except calibre-web :8083 on the LAN (media.calibreWebLan).
 # BIOS requires AMD SVM and restore-on-AC-power-loss.

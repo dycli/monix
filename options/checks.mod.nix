@@ -33,11 +33,11 @@
         );
 
       cratePaths = [
-        "modules/server/agent-dispatch"
-        "modules/server/agent-vm"
-        "modules/server/fleet-tool/fleet-cli"
-        "modules/server/memo/memo-cli"
-        "modules/server/alerts/ship-alert"
+        "modules/ai/agent-dispatch"
+        "modules/ai/agent-vm"
+        "modules/ai/fleet-tool/fleet-cli"
+        "modules/ai/memo/memo-cli"
+        "modules/homelab/alerts/ship-alert"
       ];
 
       # Every tracked .age needs a rule in secrets.nix, and every rule must
@@ -54,17 +54,17 @@
       formatter = pkgs.nixfmt-rfc-style;
 
       checks = {
-        agent-dispatch = crate "modules/server/agent-dispatch" { };
-        agent-vm = crate "modules/server/agent-vm" {
+        agent-dispatch = crate "modules/ai/agent-dispatch" { };
+        agent-vm = crate "modules/ai/agent-vm" {
           # Fixtures drive the same tools the supervisor uses at runtime.
           nativeCheckInputs = [
             pkgs.jq
             pkgs.sqlite
           ];
         };
-        fleet-cli = crate "modules/server/fleet-tool/fleet-cli" { };
-        memo = crate "modules/server/memo/memo-cli" { };
-        ship-alert = crate "modules/server/alerts/ship-alert" { };
+        fleet-cli = crate "modules/ai/fleet-tool/fleet-cli" { };
+        memo = crate "modules/ai/memo/memo-cli" { };
+        ship-alert = crate "modules/homelab/alerts/ship-alert" { };
 
         rustfmt =
           pkgs.runCommand "rustfmt-check"

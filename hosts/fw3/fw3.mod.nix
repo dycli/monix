@@ -128,9 +128,9 @@
         ];
 
         # Prism (not the stock launcher) to pin the Minecraft client to the
-        # fw0 server's exact version (see modules/server/minecraft.mod.nix).
+        # fw0 server's exact version (see modules/homelab/minecraft.mod.nix).
         # Element for the family Matrix on chat.su.is (see
-        # modules/server/matrix.mod.nix).
+        # modules/homelab/matrix.mod.nix).
         environment.systemPackages = [
           pkgs.prismlauncher
           pkgs.element-desktop
