@@ -178,7 +178,7 @@
               blur = {
                 passes = 3;
                 # Default 1; darkened so text stays legible on the glass.
-                brightness = 0.6;
+                brightness = 0.7;
                 popups = true;
               };
             };
