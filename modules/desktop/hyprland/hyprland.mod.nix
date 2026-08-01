@@ -400,9 +400,8 @@
 
             (mkBind "SUPER + COMMA" ''hl.dsp.focus({ workspace = "-1" })'' "Previous workspace" { })
             (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
-            # DMS's own workspace overview; it files the IPC function
-            # under the keybinds target.
-            (mkBind "SUPER + TAB" ''hl.dsp.exec_cmd("dms ipc call keybinds toggleOverview")'' "Workspace overview" { })
+            # DMS's own workspace overview.
+            (mkBind "SUPER + TAB" ''hl.dsp.exec_cmd("dms ipc call hypr toggleOverview")'' "Workspace overview" { })
 
             (mkBind "SUPER + SHIFT + LEFT" ''hl.dsp.window.swap({ direction = "l" })'' "Swap window left" { })
             (mkBind "SUPER + SHIFT + RIGHT" ''hl.dsp.window.swap({ direction = "r" })'' "Swap window right" { })
