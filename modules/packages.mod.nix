@@ -37,6 +37,7 @@
         pkgs.fd
         pkgs.fzf
         pkgs.htop
+        pkgs.microfetch
         pkgs.nushell
         pkgs.ripgrep
         pkgs.tmux
