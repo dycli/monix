@@ -134,6 +134,7 @@
         environment.systemPackages = [
           pkgs.prismlauncher
           pkgs.element-desktop
+          pkgs.heroic
         ];
 
         # USER: login shell is NixOS's default (bash) — a plain POSIX $SHELL
