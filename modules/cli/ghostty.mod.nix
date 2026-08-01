@@ -50,7 +50,7 @@
           window-decoration = "none";
 
           font-family = "ComicCodeLigatures Nerd Font";
-          font-size = 10;
+          font-size = 8;
 
           keybind = [ "ctrl+k=reset" ];
         };

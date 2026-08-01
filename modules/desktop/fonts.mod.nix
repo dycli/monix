@@ -1,6 +1,7 @@
-# Fonts: CaskaydiaMono Nerd Font is what the ghostty/DMS configs reference.
-# `noto-fonts-color-emoji` is the current attribute name (noto-fonts-emoji is
-# a deprecated alias).
+# Fonts. Comic Code leads the monospace default, with CaskaydiaMono as
+# the fallback for hosts without its ciphertext (the install below is
+# gated on it; this list is not). `noto-fonts-color-emoji` is the current
+# attribute name (noto-fonts-emoji is a deprecated alias).
 { self, ... }:
 {
   flake.nixosModules.desktop = self.nixosModules.fonts;
@@ -64,7 +65,10 @@
           ];
 
           fonts.fontconfig.defaultFonts = {
-            monospace = [ "CaskaydiaMono Nerd Font" ];
+            monospace = [
+              "ComicCodeLigatures Nerd Font"
+              "CaskaydiaMono Nerd Font"
+            ];
             sansSerif = [ "Noto Sans" ];
             serif = [ "Noto Serif" ];
             emoji = [ "Noto Color Emoji" ];
