@@ -224,11 +224,17 @@
             animations.enabled = false;
 
             # Roughly half the plugin's stock timings; snappy but still
-            # spatial.
+            # spatial. Selection nav on vim keys plus the arrows — the
+            # key lists replace the defaults, so both are named.
             plugin.gloview = {
               duration = 200;
               switch_duration = 180;
               move_duration = 160;
+
+              key_left = "h left";
+              key_right = "l right";
+              key_up = "k up";
+              key_down = "j down";
             };
 
             input = {
