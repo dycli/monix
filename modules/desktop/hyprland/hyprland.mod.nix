@@ -280,6 +280,11 @@
               action = "workspace";
             }
             {
+              fingers = 3;
+              direction = "up";
+              action = mkLuaInline "hl.plugin.gloview.toggle";
+            }
+            {
               fingers = 4;
               direction = "swipe";
               action = "resize";
