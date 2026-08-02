@@ -52,6 +52,9 @@
             "met"
             "radio_browser"
             "backup"
+            # AirGradient indoor air-quality sensor, polled over its local
+            # HTTP API on the LAN.
+            "airgradient"
           ]
           # Camera-stack integrations: Frigate events arrive over MQTT, and
           # tplink talks to the Tapo cams directly (privacy mode, LED, ...)
