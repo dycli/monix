@@ -48,9 +48,9 @@
           };
 
           extraComponents = [
-            # Sane onboarding baseline (weather, radio browser, backups).
+            # Onboarding baseline (weather, backups); met also feeds the
+            # dashboard weather card.
             "met"
-            "radio_browser"
             "backup"
             # AirGradient indoor air-quality sensor, polled over its local
             # HTTP API on the LAN.
