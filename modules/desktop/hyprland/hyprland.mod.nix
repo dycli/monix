@@ -479,7 +479,7 @@
               "Cycle column width up"
               { }
             )
-            (mkBind "SUPER + SHIFT + APOSTROPHE" ''hl.dsp.layout("colresize -conf")''
+            (mkBind "SUPER + SEMICOLON" ''hl.dsp.layout("colresize -conf")''
               "Cycle column width down"
               { }
             )
