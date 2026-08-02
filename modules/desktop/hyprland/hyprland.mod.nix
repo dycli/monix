@@ -242,6 +242,7 @@
               # to match.
               key_next_workspace = "o";
               key_prev_workspace = "shift+o";
+              key_activate = "w enter";
             };
 
             input = {
