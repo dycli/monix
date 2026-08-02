@@ -436,6 +436,21 @@
             (mkBind "SUPER + I" ''hl.dsp.exec_cmd("dms ipc call inhibit toggle")'' "Toggle idle inhibit" { })
 
             (mkBind "SUPER + T" ''hl.dsp.layout("togglesplit")'' "Toggle split direction" { })
+            # Live layout switch via hl.config: outside config parsing it
+            # applies immediately and schedules the layout refresh. The
+            # scrolling column behaviour (50:50 columns, a lone window
+            # spanning the screen) is the pinned defaults — column_width
+            # 0.5, fullscreen_on_one_column true — so no scrolling block.
+            (mkBind "SUPER + A" ''
+              function()
+                hl.config({ general = { layout = "scrolling" } })
+              end
+            '' "Switch to scrolling layout" { })
+            (mkBind "SUPER + SHIFT + A" ''
+              function()
+                hl.config({ general = { layout = "dwindle" } })
+              end
+            '' "Switch to dwindle layout" { })
             (mkBind "SUPER + P" "hl.dsp.window.pseudo()" "Toggle pseudotile" { })
             (mkBind "SUPER + SHIFT + F" "hl.dsp.window.float()" "Toggle floating" { })
             (mkBind "SUPER + F" ''hl.dsp.window.fullscreen({ mode = "fullscreen" })'' "Toggle fullscreen" { })
