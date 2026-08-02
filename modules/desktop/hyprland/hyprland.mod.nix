@@ -480,15 +480,18 @@
             # function reference, not a call.
             (mkBind "SUPER + TAB" "hl.plugin.gloview.toggle" "Workspace overview" { })
 
-            (mkBind "SUPER + SHIFT + LEFT" ''hl.dsp.window.swap({ direction = "l" })'' "Swap window left" { })
-            (mkBind "SUPER + SHIFT + RIGHT" ''hl.dsp.window.swap({ direction = "r" })'' "Swap window right" { })
-            (mkBind "SUPER + SHIFT + UP" ''hl.dsp.window.swap({ direction = "u" })'' "Swap window up" { })
-            (mkBind "SUPER + SHIFT + DOWN" ''hl.dsp.window.swap({ direction = "d" })'' "Swap window down" { })
+            # move rather than swap: under the scrolling layout a directional
+            # move merges the window into an adjacent column (the vertical
+            # stack), which swap — a pure in-place exchange — can never do.
+            (mkBind "SUPER + SHIFT + LEFT" ''hl.dsp.window.move({ direction = "l" })'' "Move window left" { })
+            (mkBind "SUPER + SHIFT + RIGHT" ''hl.dsp.window.move({ direction = "r" })'' "Move window right" { })
+            (mkBind "SUPER + SHIFT + UP" ''hl.dsp.window.move({ direction = "u" })'' "Move window up" { })
+            (mkBind "SUPER + SHIFT + DOWN" ''hl.dsp.window.move({ direction = "d" })'' "Move window down" { })
 
-            (mkBind "SUPER + SHIFT + H" ''hl.dsp.window.swap({ direction = "l" })'' "Swap window left" { })
-            (mkBind "SUPER + SHIFT + L" ''hl.dsp.window.swap({ direction = "r" })'' "Swap window right" { })
-            (mkBind "SUPER + SHIFT + K" ''hl.dsp.window.swap({ direction = "u" })'' "Swap window up" { })
-            (mkBind "SUPER + SHIFT + J" ''hl.dsp.window.swap({ direction = "d" })'' "Swap window down" { })
+            (mkBind "SUPER + SHIFT + H" ''hl.dsp.window.move({ direction = "l" })'' "Move window left" { })
+            (mkBind "SUPER + SHIFT + L" ''hl.dsp.window.move({ direction = "r" })'' "Move window right" { })
+            (mkBind "SUPER + SHIFT + K" ''hl.dsp.window.move({ direction = "u" })'' "Move window up" { })
+            (mkBind "SUPER + SHIFT + J" ''hl.dsp.window.move({ direction = "d" })'' "Move window down" { })
 
             (mkBind "SUPER + MINUS" "hl.dsp.window.resize({ x = -100, y = 0, relative = true })"
               "Shrink window width"
