@@ -200,6 +200,7 @@
               resize_on_border = false;
               allow_tearing = false;
               layout = "dwindle";
+              no_focus_fallback = true;
             };
 
             decoration = {
