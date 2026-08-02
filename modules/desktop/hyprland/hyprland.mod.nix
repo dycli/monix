@@ -451,6 +451,15 @@
                 hl.config({ general = { layout = "dwindle" } })
               end
             '' "Switch to dwindle layout" { })
+            # colresize is a scrolling-layout message; no-op under dwindle.
+            (mkBind "SUPER + CTRL + H" ''hl.dsp.layout("colresize all 0.333")''
+              "Set all columns to 1/3 width"
+              { }
+            )
+            (mkBind "SUPER + CTRL + L" ''hl.dsp.layout("colresize all 0.5")''
+              "Set all columns to 1/2 width"
+              { }
+            )
             (mkBind "SUPER + P" "hl.dsp.window.pseudo()" "Toggle pseudotile" { })
             (mkBind "SUPER + SHIFT + F" "hl.dsp.window.float()" "Toggle floating" { })
             (mkBind "SUPER + F" ''hl.dsp.window.fullscreen({ mode = "fullscreen" })'' "Toggle fullscreen" { })
