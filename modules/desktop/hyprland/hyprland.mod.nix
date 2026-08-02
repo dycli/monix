@@ -199,7 +199,7 @@
 
               resize_on_border = false;
               allow_tearing = false;
-              layout = "dwindle";
+              layout = "scrolling";
               no_focus_fallback = true;
             };
 
@@ -275,8 +275,17 @@
           };
 
           gesture = [
+            # Drags the scrolling layout's column tape, niri-style; snaps
+            # to the grid on release. Inert under other layouts, so the
+            # workspace swipe moves to four fingers (displacing the resize
+            # gesture, which SUPER+right-drag still covers).
             {
               fingers = 3;
+              direction = "horizontal";
+              action = "scroll_move";
+            }
+            {
+              fingers = 4;
               direction = "horizontal";
               action = "workspace";
             }
@@ -289,11 +298,6 @@
               fingers = 3;
               direction = "down";
               action = mkLuaInline "hl.plugin.gloview.close";
-            }
-            {
-              fingers = 4;
-              direction = "swipe";
-              action = "resize";
             }
             {
               fingers = 3;
@@ -461,6 +465,25 @@
               "Set all columns to 1/2 width"
               { }
             )
+            # The niri column vocabulary: a lone window merges into the
+            # adjacent column, a stacked one pops out toward that side.
+            (mkBind "SUPER + BRACKETLEFT" ''hl.dsp.layout("consume_or_expel prev")''
+              "Consume or expel window left"
+              { }
+            )
+            (mkBind "SUPER + BRACKETRIGHT" ''hl.dsp.layout("consume_or_expel next")''
+              "Consume or expel window right"
+              { }
+            )
+            (mkBind "SUPER + APOSTROPHE" ''hl.dsp.layout("colresize +conf")''
+              "Cycle column width up"
+              { }
+            )
+            (mkBind "SUPER + SHIFT + APOSTROPHE" ''hl.dsp.layout("colresize -conf")''
+              "Cycle column width down"
+              { }
+            )
+            (mkBind "SUPER + M" ''hl.dsp.layout("colresize 1.0")'' "Maximize column width" { })
             (mkBind "SUPER + P" "hl.dsp.window.pseudo()" "Toggle pseudotile" { })
             (mkBind "SUPER + SHIFT + F" "hl.dsp.window.float()" "Toggle floating" { })
             (mkBind "SUPER + F" ''hl.dsp.window.fullscreen({ mode = "fullscreen" })'' "Toggle fullscreen" { })
