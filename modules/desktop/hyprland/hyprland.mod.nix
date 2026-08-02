@@ -236,6 +236,12 @@
               key_right = "l right";
               key_up = "k up";
               key_down = "j down";
+
+              # O everywhere TAB was: the toggle bind below is SUPER+O and
+              # falls through to close, so these move off the tab defaults
+              # to match.
+              key_next_workspace = "o";
+              key_prev_workspace = "shift+o";
             };
 
             input = {
@@ -502,7 +508,7 @@
             (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
             # The plugin registers hl.plugin.gloview.*; the bind takes the
             # function reference, not a call.
-            (mkBind "SUPER + TAB" "hl.plugin.gloview.toggle" "Workspace overview" { })
+            (mkBind "SUPER + O" "hl.plugin.gloview.toggle" "Workspace overview" { })
 
             # move rather than swap: under the scrolling layout a directional
             # move merges the window into an adjacent column (the vertical
