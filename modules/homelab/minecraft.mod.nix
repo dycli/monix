@@ -1,4 +1,4 @@
-# One declarative Fabric server, tailnet-only, with server-side mods; the
+# Declarative Fabric servers, tailnet-only, with server-side mods; the
 # players run stock clients. Every jar is pinned by URL and sha512 from
 # Modrinth against the pinned game version.
 #
@@ -20,6 +20,7 @@
       inherit (lib.modules) mkIf;
       inherit (lib.strings) toJSON;
       inherit (lib.options) mkEnableOption;
+      inherit (lib.attrsets) attrValues mapAttrs';
 
       cfg = config.minecraft;
       inherit (lib.ship) fences;
@@ -33,7 +34,6 @@
       };
 
       dataDir = config.services.minecraft-servers.dataDir; # /srv/minecraft
-      worldDir = "${dataDir}/main"; # per-server subdir == the server name below
 
       # Pinned by CDN URL and the sha512 Modrinth's API reports.
       mod =
@@ -86,6 +86,47 @@
           sha512 = "cc56984378a27c5bcd56374d6ffbb27a45c6bf3355add2ac6be9817ccac5854362249bf9d0147eb271a70fda2716129204e240d53c9aa876a2a7861f4c7f880f";
         };
       };
+
+      # The shared server definition; each entry below adds its port, motd
+      # and world-specific properties on top.
+      mkServer = serverProperties: {
+        enable = true;
+        autoStart = true;
+
+        package = serverPackage;
+
+        # Small servers: start at 2G, cap at 4G — the JVM bounds itself.
+        jvmOpts = "-Xms2G -Xmx4G";
+
+        # nix-minecraft's documented pattern for a pinned jar set.
+        symlinks.mods = pkgs.linkFarmFromDrvs "mods" (attrValues mods);
+
+        # Chunksmith 3.x otherwise auto-enables an LOD store serving a
+        # companion client mod nobody here runs, costing pregen speed,
+        # disk and a second listener. Files rather than symlinks,
+        # because the mod rewrites this config.
+        files."config/chunksmith.json" = pkgs.writeText "chunksmith.json" (toJSON {
+          lodEnabled = false;
+        });
+
+        # Mojang-authenticated accounts only; needs the session servers.
+        serverProperties = {
+          max-players = 5;
+          difficulty = "normal";
+          # A paused server ignores console input and freezes Chunksmith
+          # pregeneration once the last player leaves.
+          pause-when-empty-seconds = -1;
+          online-mode = true;
+          white-list = false;
+          # simulation-distance stays at the vanilla 10 so ticking is
+          # untouched; ServerCore walks view-distance down under load.
+          # Cost grows with the square of the distance.
+          view-distance = 20;
+          # The firewall, not the bind address, keeps these tailnet-only.
+          server-ip = "";
+        }
+        // serverProperties;
+      };
     in
     {
       # Inert until enabled below, so importing it everywhere is safe.
@@ -114,87 +155,68 @@
           # Tailnet-only; no public port.
           openFirewall = false;
 
-          servers.main = {
-            enable = true;
-            autoStart = true;
+          servers.main = mkServer {
+            server-port = 25565;
+            level-seed = "1133044835122437667"; # only consulted at world creation
+            motd = "fw0 // tailnet survival — stock clients welcome";
+          };
 
-            package = serverPackage;
-
-            # Small server: start at 2G, cap at 4G — the JVM bounds itself.
-            jvmOpts = "-Xms2G -Xmx4G";
-
-            # nix-minecraft's documented pattern for a pinned jar set.
-            symlinks.mods = pkgs.linkFarmFromDrvs "mods" (lib.attrsets.attrValues mods);
-
-            # Chunksmith 3.x otherwise auto-enables an LOD store serving a
-            # companion client mod nobody here runs, costing pregen speed,
-            # disk and a second listener. Files rather than symlinks,
-            # because the mod rewrites this config.
-            files."config/chunksmith.json" = pkgs.writeText "chunksmith.json" (toJSON {
-              lodEnabled = false;
-            });
-
-            # Mojang-authenticated accounts only; needs the session servers.
-            serverProperties = {
-              server-port = 25565;
-              max-players = 5;
-              difficulty = "normal";
-              level-seed = "1133044835122437667"; # only consulted at world creation
-              # A paused server ignores console input and freezes Chunksmith
-              # pregeneration once the last player leaves.
-              pause-when-empty-seconds = -1;
-              online-mode = true;
-              white-list = false;
-              # simulation-distance stays at the vanilla 10 so ticking is
-              # untouched; ServerCore walks view-distance down under load.
-              # Cost grows with the square of the distance.
-              view-distance = 20;
-              motd = "fw0 // tailnet survival — stock clients welcome";
-              # The firewall, not the bind address, keeps this tailnet-only.
-              server-ip = "";
-            };
+          # Runs an imported world: copy the save to
+          # /srv/minecraft/serenity/world (level.dat at its top level,
+          # owner minecraft:minecraft) before the first start, or the
+          # server generates a fresh world in its place.
+          servers.serenity = mkServer {
+            # Not 25566: Chunksmith's LOD listener has been seen squatting
+            # there on main despite lodEnabled = false.
+            server-port = 25567;
+            view-distance = 32;
+            motd = "fw0 // serenity — tailnet survival";
           };
         };
 
-        # nix-minecraft already sandboxes this unit; only the directives it
-        # leaves out are added here.
-        systemd.services.minecraft-server-main.serviceConfig = {
+        # nix-minecraft already sandboxes these units; only the directives
+        # it leaves out are added here, derived from the server list so
+        # every server is fenced by construction.
+        systemd.services = mapAttrs' (name: _: {
+          name = "minecraft-server-${name}";
+          value.serviceConfig = {
 
-          # worldDir is then the only writable path; RuntimeDirectory stays
-          # writable automatically.
-          ProtectSystem = "strict";
-          ReadWritePaths = [ worldDir ];
-          NoNewPrivileges = true;
-          # ProcSubset=pid would hide /proc/mounts, which Java's NIO needs
-          # for file-store lookups; world loading then fails with "Mount
-          # point not found". ProtectProc=invisible still hides other
-          # processes.
-          RemoveIPC = true;
-          UMask = lib.mkForce "0077"; # tighter than upstream's 0007 (no group access)
+            # The world directory is then the only writable path;
+            # RuntimeDirectory stays writable automatically.
+            ProtectSystem = "strict";
+            ReadWritePaths = [ "${dataDir}/${name}" ];
+            NoNewPrivileges = true;
+            # ProcSubset=pid would hide /proc/mounts, which Java's NIO needs
+            # for file-store lookups; world loading then fails with "Mount
+            # point not found". ProtectProc=invisible still hides other
+            # processes.
+            RemoveIPC = true;
+            UMask = lib.mkForce "0077"; # tighter than upstream's 0007 (no group access)
 
-          # MemoryDenyWriteExecute is unset because the JVM JIT needs W+X.
-          #
-          # Spark's async-profiler probes perf_event_open, outside
-          # @system-service. The default seccomp action kills the JVM
-          # mid-startup and can leave a half-written world; EPERM lets the
-          # probe fail and Spark fall back to its Java sampler.
-          SystemCallFilter = [ "@system-service" ];
-          SystemCallErrorNumber = "EPERM";
+            # MemoryDenyWriteExecute is unset because the JVM JIT needs W+X.
+            #
+            # Spark's async-profiler probes perf_event_open, outside
+            # @system-service. The default seccomp action kills the JVM
+            # mid-startup and can leave a half-written world; EPERM lets the
+            # probe fail and Spark fall back to its Java sampler.
+            SystemCallFilter = [ "@system-service" ];
+            SystemCallErrorNumber = "EPERM";
 
-          # The tailnet is allowed and private ranges denied; the public
-          # internet falls through for Mojang session auth.
-          IPAddressAllow = [
-            "100.64.0.0/10" # tailnet (CGNAT range)
-            # resolved's stub, which the loopback deny below would
-            # otherwise block; nothing else binds this address.
-            "127.0.0.53/32"
-          ];
-          IPAddressDeny = [
-            "127.0.0.0/8" # loopback / other localhost services
-            "::1"
-          ]
-          ++ fences.privateRanges;
-        };
+            # The tailnet is allowed and private ranges denied; the public
+            # internet falls through for Mojang session auth.
+            IPAddressAllow = [
+              "100.64.0.0/10" # tailnet (CGNAT range)
+              # resolved's stub, which the loopback deny below would
+              # otherwise block; nothing else binds this address.
+              "127.0.0.53/32"
+            ];
+            IPAddressDeny = [
+              "127.0.0.0/8" # loopback / other localhost services
+              "::1"
+            ]
+            ++ fences.privateRanges;
+          };
+        }) config.services.minecraft-servers.servers;
       };
     };
 }
