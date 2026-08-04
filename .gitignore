@@ -22,6 +22,7 @@
 !*.py
 !*.sql
 !*.nu.in
+!*.qml
 
 # Assets: docs diagrams and the DMS-referenced wallpaper.
 !*.svg
