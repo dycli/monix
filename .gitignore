@@ -27,6 +27,12 @@
 !*.svg
 !*.jpg
 
+# Hardware calibration: ICC display profiles, EasyEffects presets and
+# their convolver impulse responses.
+!*.icc
+!*.json
+!*.irs
+
 # Build artifacts and runtime junk trump the whitelist (later rules win).
 target/
 result

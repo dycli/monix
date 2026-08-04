@@ -15,7 +15,8 @@
         ...
       }:
       let
-        inherit (lib.modules) mkForce;
+        inherit (lib.modules) mkAfter mkForce;
+        inherit (lib.trivial) importJSON;
       in
       {
         imports = [
@@ -115,6 +116,34 @@
 
         # PERIPHERALS
         hardware.keyboard.zsa.enable = true;
+
+        # AUDIO + DISPLAY CALIBRATION — this machine's panel and speakers,
+        # so host-scoped rather than part of the desktop bundle.
+        home-manager.users.${config.primaryUser} = {
+          # Framework's official speaker preset (FrameworkComputer/
+          # linux-docs, easy-effects/fw13-easy-effects.json) — convolver +
+          # EQ tuned for the FW13 drivers. The impulse response ships
+          # beside it; EasyEffects finds both through the XDG data dir.
+          services.easyeffects = {
+            enable = true;
+            preset = "fw13";
+            extraPresets.fw13 = importJSON ./fw13-easy-effects.json;
+          };
+          xdg.dataFile."easyeffects/irs/IR_22ms_27dB_5t_15s_0c.irs".source =
+            ./IR_22ms_27dB_5t_15s_0c.irs;
+
+          # Notebookcheck's i1Pro 2 profile for the 2.8K panel (BOE
+          # NE135A1M-NY1; BOE0CB4 is its EDID id, and the same panel's
+          # profile regardless of which CPU generation was reviewed).
+          # DMS owns dms/outputs.lua but its writer cannot express icc,
+          # so the internal panel's rule is declared here instead;
+          # mkAfter lands it after the dms.outputs require, and the last
+          # rule for an output wins. Scale 2 matches the session's
+          # static GDK_SCALE.
+          wayland.windowManager.hyprland.extraConfig = mkAfter ''
+            hl.monitor({ output = "eDP-1", mode = "2880x1920@120", position = "auto", scale = 2, icc = "${./BOE0CB4.icc}" })
+          '';
+        };
 
         # SERVICES
         services.syncthing.enable = true;
