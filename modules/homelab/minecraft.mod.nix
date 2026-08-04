@@ -1,6 +1,6 @@
-# Declarative Fabric servers, tailnet-only, with server-side mods; the
-# players run stock clients. Every jar is pinned by URL and sha512 from
-# Modrinth against the pinned game version.
+# Declarative game servers, tailnet-only: modern Fabric servers with
+# server-side mods (the players run stock clients), plus a Better than
+# Adventure server. Every jar is pinned by URL and hash.
 #
 # online-mode requires the public Mojang session servers, so the fence
 # below allows the internet while denying loopback, the LAN and the
@@ -17,6 +17,7 @@
     }:
     let
       inherit (lib.lists) singleton;
+      inherit (lib.meta) getExe';
       inherit (lib.modules) mkIf;
       inherit (lib.strings) toJSON;
       inherit (lib.options) mkEnableOption;
@@ -87,8 +88,24 @@
         };
       };
 
-      # The shared server definition; each entry below adds its port, motd
-      # and world-specific properties on top.
+      # Better than Adventure — a community continuation of beta 1.7.3.
+      # One self-contained jar, no Fabric and no mods, so it skips
+      # mkServer; the players run the matching BTA client (the release's
+      # mmc.zip imports into Prism). Compiled for Java 8 but verified to
+      # boot and stop cleanly on the jdk25 the Fabric servers already use.
+      btaServer =
+        let
+          jar = pkgs.fetchurl {
+            url = "https://github.com/Better-than-Adventure/bta-download-repo/releases/download/v7.3_04/bta.v7.3_04.server.jar";
+            hash = "sha256-e8hQm3NejclSo8INGtn7TxEyE3/lBq1Cz7dRsDfcx2c=";
+          };
+        in
+        pkgs.writeShellScriptBin "minecraft-server" ''
+          exec ${getExe' pkgs.jdk25_headless "java"} "$@" -jar ${jar} nogui
+        '';
+
+      # The shared Fabric server definition; each entry below adds its
+      # port, motd and world-specific properties on top.
       mkServer = serverProperties: {
         enable = true;
         autoStart = true;
@@ -171,6 +188,29 @@
             server-port = 25567;
             view-distance = 32;
             motd = "fw0 // serenity — tailnet survival";
+          };
+
+          servers.bta = {
+            enable = true;
+            autoStart = true;
+            package = btaServer;
+
+            # Beta-era chunks and entities are light; half the Fabric heap.
+            jvmOpts = "-Xms512M -Xmx2G";
+
+            # The beta properties format: numeric difficulty (2 = normal),
+            # no view-distance knob, and the file is read as latin-1 — so
+            # the motd stays ASCII. online-mode here means a name-to-UUID
+            # lookup against api.minecraftservices.com, which the fence's
+            # internet allowance covers.
+            serverProperties = {
+              server-port = 25568;
+              max-players = 5;
+              difficulty = 2;
+              online-mode = true;
+              motd = "fw0 // better than adventure -- beta 1.7.3 continued";
+              server-ip = "";
+            };
           };
         };
 
