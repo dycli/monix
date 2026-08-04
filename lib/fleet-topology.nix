@@ -6,7 +6,7 @@
 
   # The ship's own tailnet identity, for fences and Host-header lists.
   hostTailnetAddr = "100.102.113.74";
-  hostMagicDnsName = "fw0.tailec4748.ts.net";
+  hostMagicDnsName = "water.tailec4748.ts.net";
 
   # squid's listener for the seat; the slice fence in cockpit.mod.nix
   # allows exactly this address.

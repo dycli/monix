@@ -1,4 +1,4 @@
-# fw0's credential store: secret declarations and the homelab-role
+# water's credential store: secret declarations and the homelab-role
 # options that consume them. Kept host-side because agenix ciphertext is
 # encrypted to this host's key — a new machine taking over the homelab
 # role declares (and re-encrypts) its own copies of these.

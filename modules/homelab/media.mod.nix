@@ -175,7 +175,7 @@
         };
 
         # --- Ebooks: Calibre-format library, web upload UI, OPDS feed ---
-        # E-reader pulls http://<fw0-lan-ip>:8083/opds (HTTP Basic auth);
+        # E-reader pulls http://<water-lan-ip>:8083/opds (HTTP Basic auth);
         # books are kept as EPUB only, no conversion service.
         services.calibre-web = {
           enable = true;

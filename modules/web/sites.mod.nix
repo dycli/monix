@@ -4,7 +4,7 @@
 # tailnet-only (its host closes sshd's public port).
 #
 # Site content is deliberately not in the store: the site repos
-# (~/hold/sites on fw0) build locally and rsync to /srv/www/<domain> as
+# (~/hold/sites on water) build locally and rsync to /srv/www/<domain> as
 # the unprivileged `deploy` user over Tailscale SSH — the same flow the
 # OpenBSD predecessor used, so the deploy scripts change only their
 # destination. nginx only ever reads.

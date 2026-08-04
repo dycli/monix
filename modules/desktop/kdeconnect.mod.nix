@@ -3,7 +3,7 @@
 # carries real configuration: the NixOS module opens its LAN discovery/transfer
 # ports (1714-1764 TCP+UDP) — acceptable on desktops, whose firewalls already
 # allow LAN service ports, and kept off servers by desktop-bundle membership,
-# so fw0's zero-inbound posture is untouched.
+# so water's zero-inbound posture is untouched.
 { self, ... }:
 {
   flake.nixosModules.desktop = self.nixosModules.kdeconnect;

@@ -1,6 +1,6 @@
 # The ai bundle: the agent cluster — cockpit seat, worker fleet and
-# local inference. Shares fw0 with the homelab role today; a dedicated
-# machine would import this (plus dev) and fw0 would drop it.
+# local inference. Shares water with the homelab role today; a dedicated
+# machine would import this (plus dev) and water would drop it.
 #
 # Only role wiring lives here; credentials stay with the importing host
 # (see homelab.mod.nix's header).

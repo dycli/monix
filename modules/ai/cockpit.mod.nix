@@ -230,7 +230,7 @@
             // optionalAttrs osConfig.inference.enable {
               provider.local = {
                 npm = "@ai-sdk/openai-compatible";
-                name = "fw0 local inference";
+                name = "water local inference";
                 options = {
                   baseURL = "http://${topology.seatInferenceAddr}:${toString osConfig.inference.port}/v1";
                   apiKey = "local";

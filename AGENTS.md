@@ -64,7 +64,7 @@ Hosts in `hosts/<name>/<name>.mod.nix` build their configuration with the
 constructor:
 
 ```nix
-imports = lib.lists.singleton (lib.ship.host "fw3" ({ ... }: {
+imports = lib.lists.singleton (lib.ship.host "earth" ({ ... }: {
   imports = [ self.nixosModules.desktop self.nixosModules.hyprland ];
   # hardware, disk layout, identity, credentials …
 }));

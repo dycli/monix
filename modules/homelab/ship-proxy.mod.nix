@@ -1,5 +1,5 @@
 # nginx terminates TLS for <service>.su.is and proxies to local ports.
-# Names resolve publicly (grey-cloud A records → fw0's tailnet IP) but
+# Names resolve publicly (grey-cloud A records → water's tailnet IP) but
 # only route inside the tailnet; there is no application auth.
 #
 # One wildcard *.su.is cert via DNS-01, since the host is not publicly

@@ -1,5 +1,5 @@
 # One dashboard tile per web UI, served on loopback :8082 behind the ship
-# proxy, whose catch-all vhost keeps plain http://fw0 working.
+# proxy, whose catch-all vhost keeps plain http://water working.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.homepage;
@@ -20,7 +20,7 @@
         if config.shipProxy.enable then
           "https://${sub}.${config.shipProxy.domain}"
         else
-          "http://fw0:${toString port}";
+          "http://water:${toString port}";
     in
     {
       config = mkIf config.services.homepage-dashboard.enable {
@@ -44,7 +44,7 @@
           );
 
           settings = {
-            title = "fw0";
+            title = "water";
             headerStyle = "clean";
             hideVersion = true;
           };

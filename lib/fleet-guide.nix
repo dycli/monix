@@ -4,9 +4,9 @@
 #   system + pilot  -> the seat's ~/cockpit/AGENTS.md (cockpit)
 {
   system = ''
-    # The ship THE KESTREL (fw0)
+    # The ship THE KESTREL (water)
 
-    fw0 is **the KESTREL**. The **captain** (the human) decides; the **engineer**
+    water is **the KESTREL**. The **captain** (the human) decides; the **engineer**
     (the model in the cockpit session) runs the ship and dispatches work to eight
     **drones** — sandboxed worker microVMs named for birds-of-paradise (astrapia,
     cicinnurus, drepanornis, epimachus, lophorina, manucodia, paradisaea,
@@ -26,14 +26,14 @@
   pilot = ''
     ## Your station
 
-    You are the ship's engineer on **fw0** — a headless NixOS server (Framework Desktop,
+    You are the ship's engineer on **water** — a headless NixOS server (Framework Desktop,
     Ryzen AI Max+ 395, 128GB) declared entirely by the **monix** flake at `~/ark/monix`.
     Orient yourself:
 
     - `~/cockpit` is your station — a working directory, not a repo. This file and
       CLAUDE.md are generated from `~/ark/monix/lib/fleet-guide.nix` (home-manager
       symlinks): never hand-edit them; edit fleet-guide.nix instead. Only the captain
-      can activate a rebuild (`sudo nixos-rebuild switch --flake ~/ark/monix#fw0`) —
+      can activate a rebuild (`sudo nixos-rebuild switch --flake ~/ark/monix#water`) —
       verify your change with a build, then hand the switch to the captain.
     - Every package on this host is declarative Nix. Never suggest `npm -g`/`pipx`/`apt`;
       to add or update a tool, change the flake and have the captain rebuild. nixpkgs

@@ -394,8 +394,8 @@ mod tests {
     #[test]
     fn summary_insertion_preserves_the_format() {
         assert_eq!(
-            insert_summary("🔴 fw0: x.service failed\nlog line", "disk was full"),
-            "🔴 fw0: x.service failed\n💡 disk was full\n———\nlog line"
+            insert_summary("🔴 water: x.service failed\nlog line", "disk was full"),
+            "🔴 water: x.service failed\n💡 disk was full\n———\nlog line"
         );
         assert_eq!(
             insert_summary("one-liner", "context"),

@@ -1,4 +1,4 @@
-# fw3 — Framework 13 (7040 AMD), the captain's laptop: Hyprland desktop.
+# earth — Framework 13 (7040 AMD), the captain's laptop: Hyprland desktop.
 {
   self,
   inputs,
@@ -7,7 +7,7 @@
 }:
 {
   imports = lib.lists.singleton (
-    lib.ship.host "fw3" (
+    lib.ship.host "earth" (
       {
         config,
         lib,
@@ -128,7 +128,7 @@
         ];
 
         # Prism (not the stock launcher) to pin the Minecraft client to the
-        # fw0 server's exact version (see modules/homelab/minecraft.mod.nix).
+        # water server's exact version (see modules/homelab/minecraft.mod.nix).
         # Element for the family Matrix on chat.su.is (see
         # modules/homelab/matrix.mod.nix).
         environment.systemPackages = [
@@ -142,7 +142,7 @@
         # nushell, launched by ghostty (see ghostty.mod.nix).
         #
         # Change the password by re-running `mkpasswd -m yescrypt` into
-        # `agenix -e hosts/fw3/dylan-password.age` and switching
+        # `agenix -e hosts/earth/dylan-password.age` and switching
         # (users.mutableUsers = false ships in the users aspect, so `passwd`
         # does not stick; wheel sudo needs a password, SSH keys don't help).
         secrets.dylan-password.file = ./dylan-password.age;

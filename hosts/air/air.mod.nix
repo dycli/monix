@@ -1,10 +1,10 @@
-# vs0 — cloud VPS, the internet-facing web host (modules/web/sites)
+# air — cloud VPS, the internet-facing web host (modules/web/sites)
 # replacing the OpenBSD box: dylanc.com, su.is and cleary.org live,
 # cleary.is parked. Public surface is nginx's 80/443 alone; everything
 # else rides the tailnet.
 #
 # TEMPLATE — evaluates and builds, but three things wait for the real
-# machine at provisioning time (nixos-anywhere --flake .#vs0 against the
+# machine at provisioning time (nixos-anywhere --flake .#air against the
 # provider's rescue/stock image, which runs disko and installs in one
 # pass):
 #
@@ -15,7 +15,7 @@
 #      declares the primary user's hashedPasswordFile — until that
 #      secret exists, sudo has no password to accept and the provider
 #      console is the only root path.
-#   3. `tailscale up`, then the tailnet policy learns vs0: the deploy
+#   3. `tailscale up`, then the tailnet policy learns air: the deploy
 #      login for site rsync and this host in the admin SSH rule.
 #
 # Alerts join once the Matrix credentials are re-encrypted to this
@@ -23,7 +23,7 @@
 { lib, ... }:
 {
   imports = lib.lists.singleton (
-    lib.ship.host "vs0" (
+    lib.ship.host "air" (
       { ... }:
       {
         primaryUser = "dylan";

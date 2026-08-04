@@ -1,4 +1,4 @@
-# fw0 — Framework Desktop (Strix Halo, 128GB), headless server carrying
+# water — Framework Desktop (Strix Halo, 128GB), headless server carrying
 # the homelab and ai roles (modules/{homelab,ai}).
 #
 # Tailnet-only except calibre-web :8083 on the LAN (media.calibreWebLan).
@@ -11,7 +11,7 @@
 }:
 {
   imports = lib.lists.singleton (
-    lib.ship.host "fw0" (
+    lib.ship.host "water" (
       { ... }:
       {
         imports = [

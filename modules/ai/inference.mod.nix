@@ -53,7 +53,7 @@
           type = types.str;
           default = "/var/lib/models";
           description = ''
-            Where GGUF files live (on fw0 the @models btrfs subvolume). The
+            Where GGUF files live (on water the @models btrfs subvolume). The
             operator downloads into it (owned by the primary user); the
             service only ever reads it.
           '';

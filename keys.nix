@@ -10,8 +10,8 @@
 # (which exposes the admin keys as the flake output `keys-admin`).
 {
   hosts = {
-    fw0 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINLRVD/zQrWUetJ3VxVJtZ6Zc6wOck05M9l0opF/Emb8 fw0";
-    fw3 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN0HL6IH1F5hiNKQ58mIPozF4ov20BfZB4lT/cA6B8Ik fw3";
+    water = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINLRVD/zQrWUetJ3VxVJtZ6Zc6wOck05M9l0opF/Emb8 water";
+    earth = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN0HL6IH1F5hiNKQ58mIPozF4ov20BfZB4lT/cA6B8Ik earth";
   };
 
   admin = [

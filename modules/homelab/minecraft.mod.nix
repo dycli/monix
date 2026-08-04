@@ -175,7 +175,7 @@
           servers.main = mkServer {
             server-port = 25565;
             level-seed = "1133044835122437667"; # only consulted at world creation
-            motd = "fw0 // tailnet survival — stock clients welcome";
+            motd = "water // tailnet survival — stock clients welcome";
           };
 
           # Runs an imported world: copy the save to
@@ -187,7 +187,7 @@
             # there on main despite lodEnabled = false.
             server-port = 25567;
             view-distance = 32;
-            motd = "fw0 // serenity — tailnet survival";
+            motd = "water // serenity — tailnet survival";
           };
 
           servers.bta = {
@@ -208,7 +208,7 @@
               max-players = 5;
               difficulty = 2;
               online-mode = true;
-              motd = "fw0 // better than adventure -- beta 1.7.3 continued";
+              motd = "water // better than adventure -- beta 1.7.3 continued";
               server-ip = "";
             };
           };
