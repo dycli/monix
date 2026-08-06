@@ -23,7 +23,11 @@ in
   # Comic Code (paid font; see modules/desktop/fonts.mod.nix). Encrypted to
   # every desktop host that should ship it — rekey (`agenix -r`) after adding
   # a host here.
-  "assets/fonts/comic-code.age".publicKeys = [ earth ] ++ admin;
+  "assets/fonts/comic-code.age".publicKeys = [
+    earth
+    fire
+  ]
+  ++ admin;
 
   "hosts/water/secrets/max-password.age".publicKeys = [ water ] ++ admin;
   "hosts/water/secrets/agent-claude-token.age".publicKeys = [ water ] ++ admin;
