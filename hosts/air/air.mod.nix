@@ -26,7 +26,7 @@
     lib.ship.host "air" (
       { ... }:
       {
-        primaryUser = "dylan";
+        primaryUser = "ang";
 
         nixpkgs.hostPlatform = "x86_64-linux";
 
