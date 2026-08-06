@@ -2,15 +2,12 @@
 # discrete Radeon, so none of the laptop's power tuning or Framework
 # quirks apply.
 #
-# TEMPLATE — evaluates and builds, but the machine-specific facts below
-# are placeholders until the hardware is in hand:
+# TEMPLATE — evaluates and builds; remaining machine-specific facts:
 #
-#   1. The disk device is a stand-in; put the real /dev/disk/by-id path
-#      in before running disko (it formats what it is pointed at).
-#   2. CPU is assumed AMD (kvm-amd, AMD microcode); flip both if it
+#   1. CPU is assumed AMD (kvm-amd, AMD microcode); flip both if it
 #      turns out Intel. The GPU needs nothing named here — amdgpu is
 #      in-kernel and RADV ships in Mesa.
-#   3. After install: host key into keys.nix, then
+#   2. After install: host key into keys.nix, then
 #      `agenix -e hosts/fire/dylan-password.age` (rekeyed in
 #      secrets.nix) — until then sudo has no password to accept.
 #      LUKS below takes a passphrase at the console like earth; TPM
@@ -51,10 +48,11 @@
 
         boot.kernelPackages = pkgs.linuxPackages_zen;
 
-        # DISK — placeholder device (see TEMPLATE note 1). Same shape as
-        # earth: ESP plus btrfs @ inside LUKS.
+        # DISK — Samsung 870 EVO 2TB SATA, the machine's sole drive for
+        # now (full wipe of the old Fedora install). Same shape as earth:
+        # ESP plus btrfs @ inside LUKS.
         disko.devices.disk.main = {
-          device = "/dev/disk/by-id/CHANGE-ME-BEFORE-DISKO";
+          device = "/dev/disk/by-id/ata-Samsung_SSD_870_EVO_2TB_S6PNNS0W206576T";
           type = "disk";
 
           content.type = "gpt";
@@ -82,6 +80,10 @@
             content = {
               type = "luks";
               name = "cryptroot";
+
+              # The drive does deterministic TRIM; without discards an
+              # SSD under LUKS never learns which blocks are free.
+              settings.allowDiscards = true;
 
               content = {
                 type = "btrfs";
