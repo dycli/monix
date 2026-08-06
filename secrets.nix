@@ -13,10 +13,12 @@ let
   keys = import ./keys.nix;
 
   inherit (keys) admin;
-  inherit (keys.hosts) water earth;
+  inherit (keys.hosts) water earth fire;
 in
 {
   "hosts/earth/dylan-password.age".publicKeys = [ earth ] ++ admin;
+
+  "hosts/fire/zuko-password.age".publicKeys = [ fire ] ++ admin;
 
   # Comic Code (paid font; see modules/desktop/fonts.mod.nix). Encrypted to
   # every desktop host that should ship it — rekey (`agenix -r`) after adding

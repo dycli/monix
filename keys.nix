@@ -12,6 +12,7 @@
   hosts = {
     water = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINLRVD/zQrWUetJ3VxVJtZ6Zc6wOck05M9l0opF/Emb8 water";
     earth = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN0HL6IH1F5hiNKQ58mIPozF4ov20BfZB4lT/cA6B8Ik earth";
+    fire = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPmWR7aIiXX7euvuo4K21GL2X5WHhWVEDas5ZqbFHa1f fire";
   };
 
   admin = [
