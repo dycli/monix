@@ -8,7 +8,7 @@
 #      turns out Intel. The GPU needs nothing named here — amdgpu is
 #      in-kernel and RADV ships in Mesa.
 #   2. After install: host key into keys.nix, then
-#      `agenix -e hosts/fire/dylan-password.age` (rekeyed in
+#      `agenix -e hosts/fire/zuko-password.age` (rekeyed in
 #      secrets.nix) — until then sudo has no password to accept.
 #      LUKS below takes a passphrase at the console like earth; TPM
 #      enrollment can replace it later the way water boots.
@@ -29,7 +29,7 @@
           self.nixosModules.dev
         ];
 
-        primaryUser = "dylan";
+        primaryUser = "zuko";
 
         nixpkgs.hostPlatform = "x86_64-linux";
 
