@@ -2,16 +2,10 @@
 # discrete Radeon, so none of the laptop's power tuning or Framework
 # quirks apply.
 #
-# TEMPLATE — evaluates and builds; remaining machine-specific facts:
-#
-#   1. CPU is assumed AMD (kvm-amd, AMD microcode); flip both if it
-#      turns out Intel. The GPU needs nothing named here — amdgpu is
-#      in-kernel and RADV ships in Mesa.
-#   2. After install: host key into keys.nix, then
-#      `agenix -e hosts/fire/zuko-password.age` (rekeyed in
-#      secrets.nix) — until then sudo has no password to accept.
-#      LUKS below takes a passphrase at the console like earth; TPM
-#      enrollment can replace it later the way water boots.
+# CPU is assumed AMD (kvm-amd, AMD microcode); flip both if it turns
+# out Intel. The GPU needs nothing named here — amdgpu is in-kernel and
+# RADV ships in Mesa. LUKS takes a passphrase at the console like
+# earth; TPM enrollment can replace it later the way water boots.
 {
   self,
   inputs,
@@ -21,7 +15,7 @@
 {
   imports = lib.lists.singleton (
     lib.ship.host "fire" (
-      { pkgs, ... }:
+      { config, pkgs, ... }:
       {
         imports = [
           self.nixosModules.desktop
@@ -118,6 +112,14 @@
           pkgs.prismlauncher
           pkgs.heroic
         ];
+
+        # Change the password by re-running `mkpasswd -m yescrypt` into
+        # `agenix -e hosts/fire/zuko-password.age` and switching
+        # (users.mutableUsers = false ships in the users aspect, so
+        # `passwd` does not stick; wheel sudo needs a password, SSH keys
+        # don't help).
+        secrets.zuko-password.file = ./zuko-password.age;
+        users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.zuko-password.path;
 
         system.stateVersion = "26.05";
       }
