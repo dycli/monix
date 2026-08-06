@@ -93,11 +93,13 @@
       # mkServer; the players run the matching BTA client (the release's
       # mmc.zip imports into Prism). Compiled for Java 8 but verified to
       # boot and stop cleanly on the jdk25 the Fabric servers already use.
+      # Releases moved off GitHub (stale at v7.3_04) to the project's own
+      # download server.
       btaServer =
         let
           jar = pkgs.fetchurl {
-            url = "https://github.com/Better-than-Adventure/bta-download-repo/releases/download/v7.3_04/bta.v7.3_04.server.jar";
-            hash = "sha256-e8hQm3NejclSo8INGtn7TxEyE3/lBq1Cz7dRsDfcx2c=";
+            url = "https://downloads.betterthanadventure.net/bta-server/release/v8.0.1/bta.v8.0.1.server.jar";
+            hash = "sha256-ihSLgO5x9UwyiloLnUhZ7W/1MQ0zF0BaFOdDV9qUAQY=";
           };
         in
         pkgs.writeShellScriptBin "minecraft-server" ''
