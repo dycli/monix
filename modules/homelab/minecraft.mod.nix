@@ -204,7 +204,9 @@
             # lookup against api.minecraftservices.com, which the fence's
             # internet allowance covers.
             serverProperties = {
-              server-port = 25568;
+              # Not 25568: that is serenity's port+1, where its Chunksmith
+              # LOD listener lives (same squat that rules out 25566).
+              server-port = 25570;
               max-players = 5;
               difficulty = 2;
               online-mode = true;
