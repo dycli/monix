@@ -137,12 +137,6 @@
           checkConfig = false;
 
           settings = {
-            # TEMPORARY — REMOVE after one switch: the original admin
-            # password print has rotated out of the journal. On restart
-            # Frigate regenerates it and logs the new one; while this is
-            # set, every restart resets it again.
-            auth.reset_admin_password = true;
-
             # Frigate must know the external go2rtc's streams or its UI
             # never offers MSE/WebRTC and spins on fullscreen.
             go2rtc.streams = streamsWith "{FRIGATE_RTSP_PASSWORD}";
