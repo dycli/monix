@@ -145,6 +145,20 @@
                   proxyWebsockets = true;
                 };
               };
+            }
+            # The wildcard DNS record resolves every name, used or not.
+            # Unmatched HTTPS names answer nothing (444 = close without
+            # responding); without an explicit :443 default, nginx would
+            # fall back to the alphabetically first vhost — ai.su.is,
+            # the web seat.
+            // {
+              https-catchall = {
+                serverName = "_";
+                default = true;
+                onlySSL = true;
+                useACMEHost = cfg.domain;
+                extraConfig = "return 444;";
+              };
             };
         };
       };
