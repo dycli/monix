@@ -52,7 +52,16 @@
           font-family = "ComicCodeLigatures Nerd Font";
           font-size = 9;
 
-          keybind = [ "ctrl+k=reset" ];
+          # Hyprland translates Super+C/V into Ctrl+Insert/Shift+Insert
+          # (see hyprland.mod.nix). Ghostty's default for Shift+Insert
+          # pastes the primary selection, which makes Super+V paste
+          # whatever was last mouse-selected instead of what Super+C
+          # copied — both sides pin to the clipboard instead.
+          keybind = [
+            "ctrl+k=reset"
+            "ctrl+insert=copy_to_clipboard"
+            "shift+insert=paste_from_clipboard"
+          ];
         };
 
         # Daemon flags must not live in the config file, which every

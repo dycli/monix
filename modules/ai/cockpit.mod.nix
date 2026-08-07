@@ -383,6 +383,15 @@
         # The binary is already system-wide; this adds the /etc config.
         programs.tmux.enable = true;
         programs.tmux.historyLimit = 50000;
+        # Copies made inside a remote tmux (copy-mode, editors, nu's
+        # ctrl+alt+c) reach the desktop clipboard as OSC 52 through the
+        # SSH terminal: set-clipboard on lets inner applications write
+        # it, terminal-features asserts the capability even when TERM's
+        # terminfo doesn't advertise Ms.
+        programs.tmux.extraConfig = ''
+          set -g set-clipboard on
+          set -as terminal-features ',*:clipboard'
+        '';
 
         # Kept here so routine data munging does not need `nix shell`.
         environment.systemPackages = [
