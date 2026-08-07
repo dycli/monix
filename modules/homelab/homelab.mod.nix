@@ -49,7 +49,7 @@
 
       # <service>.su.is vhosts with a wildcard DNS-01 cert.
       shipProxy.enable = true;
-      shipProxy.dashboardHost = "in.su.is";
+      shipProxy.dashboardHost = "hp.su.is";
 
       services.homepage-dashboard.enable = true;
 
