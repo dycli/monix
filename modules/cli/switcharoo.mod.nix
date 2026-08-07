@@ -4,6 +4,10 @@
 # and hosts converge only on published history — commits sitting in the
 # seat's working clone are invisible until pushed. A failed pull only
 # warns, so being offline still switches what is on disk.
+#
+# `switcharoo <host>` names the flake attribute explicitly, for when it
+# differs from the running hostname — a host's first switch across a
+# rename (fw0 running, attribute now `water`) or a fresh bootstrap.
 { self, ... }:
 {
   flake.homeModules.default = self.homeModules.switcharoo;
@@ -13,7 +17,7 @@
       home.packages = [
         (pkgs.writers.writeNuBin "switcharoo" # nu
           ''
-            def main [] {
+            def main [host?: string] {
               let repo = $env.HOME | path join "ark" "monix"
 
               if not ($repo | path exists) {
@@ -37,7 +41,11 @@
                 ^git -C $repo log --oneline $"($before)..($after)"
               }
 
-              ^nh os switch $repo
+              if $host == null {
+                ^nh os switch $repo
+              } else {
+                ^nh os switch $"($repo)#($host)"
+              }
             }
           ''
         )
