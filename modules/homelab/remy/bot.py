@@ -126,10 +126,11 @@ def home_db(path=DB_PATH, cal=True):
             id INTEGER PRIMARY KEY,
             text TEXT NOT NULL,
             at TEXT NOT NULL,               -- local 'yyyy-mm-dd HH:MM'
+            repeat TEXT NOT NULL DEFAULT '', -- '' one-shot; 'daily' or 'mon,thu'
             assignee TEXT NOT NULL DEFAULT '',  -- '' = whole household
             created_by TEXT NOT NULL,
             created_ts INTEGER NOT NULL,
-            fired_ts INTEGER,               -- NULL = pending
+            fired_ts INTEGER,               -- NULL = pending; recurring: last fired
             deleted INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS processed(event_id TEXT PRIMARY KEY, ts INTEGER);
@@ -154,6 +155,8 @@ def home_db(path=DB_PATH, cal=True):
     # An event is marked 'seen' before its handler runs and 'done' after, so
     # a row stuck at 'seen' is a crash mid-handling, reported rather than
     # replayed on the next start. Rows predating the column were completed.
+    if "repeat" not in [r[1] for r in db.execute("PRAGMA table_info(reminder)")]:
+        db.execute("ALTER TABLE reminder ADD COLUMN repeat TEXT NOT NULL DEFAULT ''")
     processed_cols = [r[1] for r in db.execute("PRAGMA table_info(processed)")]
     if "status" not in processed_cols:
         db.execute("ALTER TABLE processed ADD COLUMN status TEXT NOT NULL DEFAULT 'done'")
@@ -410,6 +413,7 @@ HOME_ACTION = {
         "section": {"type": "string"},
         "due": {"type": "string"},
         "at": {"type": "string"},
+        "repeat": {"type": "string"},
         "rem_id": {"type": "integer"},
         "assignee": {"type": "string"},
         "item_id": {"type": "integer"},
@@ -425,8 +429,9 @@ HOME_ACTION = {
     # Every field is required: a grammar-constrained model never emits
     # optional ones. Unused fields carry "", 0 or [].
     "required": ["intent", "items", "list_name", "new_list_name", "section",
-                 "due", "at", "rem_id", "assignee", "item_id", "new_name",
-                 "new_due", "new_assignee", "scope", "kind", "text", "reply"],
+                 "due", "at", "repeat", "rem_id", "assignee", "item_id",
+                 "new_name", "new_due", "new_assignee", "scope", "kind",
+                 "text", "reply"],
 }
 
 # One message can carry several actions.
@@ -548,9 +553,16 @@ Rules:
   "at 5" after noon = 17:00). assignee like items: ONLY a Family name when the
   reminder is explicitly for a specific NAMED person ("remind dylan to X", "a
   reminder that gab needs to X") — "remind me"/"remind us"/"remind everyone"
-  ALL get assignee "" (no tag). A DAY deadline with no clock
+  ALL get assignee "" (no tag). RECURRING pings ("remind me every day at 10
+  to take my meds", "every tuesday at 10am", "every monday to friday at 8 put
+  the bins out", "daily at 9") => remind_add with repeat = "daily" or a comma
+  list of weekdays ("tue"; "mon,tue,wed,thu,fri") and at = the first upcoming
+  occurrence; one-time reminders get repeat "". Other cadences (monthly, every
+  other week, hourly) are NOT supported — use ask to say so rather than
+  faking one. A DAY deadline with no clock
   time ("by friday") is an item_add to "to-dos", NOT a reminder. Cancelling
-  ("cancel the csa reminder", "never mind that reminder") => remind_cancel with
+  ("cancel the csa reminder", "never mind that reminder", "stop reminding me
+  about the bins" — how a recurring one ends) => remind_cancel with
   text = words from the reminder to match (leave "" only if there is exactly
   one pending). "what reminders are set" / "my reminders today" / "reminders
   this week" => remind_show with scope (today|week|all).
@@ -600,14 +612,77 @@ def valid_assignee(s):
 
 
 def pending_reminders(db):
+    # A recurring reminder is always pending: firing rolls its `at` forward
+    # and stamps fired_ts with the last fire instead of retiring the row.
     return db.execute(
-        "SELECT * FROM reminder WHERE deleted=0 AND fired_ts IS NULL "
-        "ORDER BY at").fetchall()
+        "SELECT * FROM reminder WHERE deleted=0 AND (fired_ts IS NULL "
+        "OR repeat!='') ORDER BY at").fetchall()
+
+
+DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+def valid_repeat(s):
+    """Normalize a recurrence to 'daily' or an ordered weekday list
+    ('tue', 'mon,wed,fri'), else '' (one-shot). Lenient with the parser's
+    phrasing: full day names, ranges ('mon-fri'), weekday(s)/weekend(s)."""
+    days = set()
+    for t in re.split(r"[,\s/&+]+", (s or "").strip().lower()):
+        if not t:
+            continue
+        if t in ("daily", "everyday", "day", "days", "all"):
+            return "daily"
+        if t in ("weekday", "weekdays"):
+            days |= set(range(5))
+            continue
+        if t in ("weekend", "weekends"):
+            days |= {5, 6}
+            continue
+        span = [next((i for i, n in enumerate(DAYS) if p.startswith(n)), None)
+                for p in t.split("-")]
+        if None in span or len(span) > 2:
+            continue
+        a, b = span[0], span[-1]
+        days |= set(range(a, b + 1) if a <= b else
+                    list(range(a, 7)) + list(range(0, b + 1)))
+    if len(days) == 7:
+        return "daily"
+    return ",".join(DAYS[i] for i in sorted(days))
+
+
+def repeat_days(repeat):
+    return list(range(7)) if repeat == "daily" else \
+        [DAYS.index(d) for d in repeat.split(",")]
+
+
+def fmt_repeat(repeat):
+    ds = repeat_days(repeat)
+    if len(ds) == 7:
+        return "every day"
+    labels = [DAYS[i].capitalize() for i in ds]
+    if len(ds) > 2 and ds == list(range(ds[0], ds[-1] + 1)):
+        return f"every {labels[0]}–{labels[-1]}"
+    return "every " + (" & ".join(labels) if len(labels) <= 2 else ", ".join(labels))
+
+
+def next_at(repeat, hhmm, after):
+    """First 'yyyy-mm-dd HH:MM' strictly after datetime `after` that lands
+    on a repeat day at that clock time."""
+    ds = set(repeat_days(repeat))
+    floor = after.strftime("%Y-%m-%d %H:%M")
+    day = after.date()
+    for _ in range(8):
+        cand = f"{day.isoformat()} {hhmm}"
+        if day.weekday() in ds and cand > floor:
+            return cand
+        day += timedelta(days=1)
 
 
 def fmt_reminder(r, with_date=True):
     dt = datetime.strptime(r["at"], "%Y-%m-%d %H:%M")
     who = f" — {r['assignee']}" if r["assignee"] else ""
+    if r["repeat"]:
+        return f"{fmt_repeat(r['repeat'])} {fmt_clock(dt)} - {r['text']}{who}"
     when = f"{dt.strftime('%a %b %-d')} {fmt_clock(dt)}" if with_date else fmt_clock(dt)
     return f"{when} - {r['text']}{who}"
 
@@ -624,18 +699,44 @@ def valid_at(s):
 def do_remind_add(db, act, sender):
     text = (act.get("text") or "").strip()[:120]
     at = valid_at(act.get("at"))
+    repeat = valid_repeat(act.get("repeat"))
     if not text or not at:
         return "Remind who to do what, when? ('remind me thursday at 9 to call the vet')"
-    if at < datetime.now(TZ).strftime("%Y-%m-%d %H:%M"):
+    if repeat:
+        # The parser's `at` is only trusted for its clock time; the date is
+        # recomputed so the first ping is the next matching day.
+        at = next_at(repeat, at[11:], datetime.now(TZ))
+    elif at < datetime.now(TZ).strftime("%Y-%m-%d %H:%M"):
         return f"{at} is already in the past — when should I actually ping?"
     who = valid_assignee(act.get("assignee"))
-    db.execute("INSERT INTO reminder(text,at,assignee,created_by,created_ts)"
-               " VALUES(?,?,?,?,?)", (text, at, who, sender, int(time.time())))
+    db.execute("INSERT INTO reminder(text,at,repeat,assignee,created_by,created_ts)"
+               " VALUES(?,?,?,?,?,?)", (text, at, repeat, who, sender, int(time.time())))
     db.commit()
     r = db.execute("SELECT * FROM reminder ORDER BY id DESC LIMIT 1").fetchone()
     queue_cal(db, "create", rem_uid(r["id"]),
               f"⏰ {text}{' — ' + who if who else ''}", at, sender)
-    return f"⏰ will do — {fmt_reminder(r)}"
+    tail = f" (next: {r['at'][:10]})" if repeat else ""
+    return f"⏰ will do — {fmt_reminder(r)}{tail}"
+
+
+def mark_fired(db, r, now):
+    """Retire a just-fired one-shot; roll a recurring reminder to its next
+    occurrence (fired_ts = last fired) and move its calendar mirror along.
+    Rolling from `now` rather than from `at` means a bot that was down for
+    days fires one late catch-up ping, not a backlog."""
+    if r["repeat"]:
+        nxt = next_at(r["repeat"], r["at"][11:], now)
+        db.execute("UPDATE reminder SET fired_ts=?, at=? WHERE id=?",
+                   (int(time.time()), nxt, r["id"]))
+        db.commit()
+        queue_cal(db, "delete", rem_uid(r["id"]))
+        queue_cal(db, "create", rem_uid(r["id"]),
+                  f"⏰ {r['text']}{' — ' + r['assignee'] if r['assignee'] else ''}",
+                  nxt, r["created_by"])
+    else:
+        db.execute("UPDATE reminder SET fired_ts=? WHERE id=?",
+                   (int(time.time()), r["id"]))
+        db.commit()
 
 
 OUTBOX_FLAG = os.path.join(os.path.dirname(DB_PATH), "outbox.flag")
@@ -1219,6 +1320,7 @@ calendar, and reminders — plus a daily log. Examples:
 • we need to renew the registration by friday / I need dylan to call the plumber thursday
 • what do I still have to do? / what's on gab's plate this week? / got the milk / done 2 on shopping
 • remind me thursday at 9 to defrost the chicken / what reminders are set?
+• remind us every tuesday at 10 to put the bins out — repeats until you cancel it
 • put the dentist on the calendar tuesday at 3 — goes straight to Migadu
 • add to log: Julia had her baby today — I write the day's log each night
 • what's on today? / this week? — morning/evening summaries post at 7:00 and 19:00
@@ -1226,7 +1328,7 @@ If I'm not sure which list something belongs on, I'll ask."""
 
 SCRATCH_HELP = """Your scratchpad — notes, reminders, to-dos, quick lists. Examples:
 • note: the gate code is 4482 / show the notes list
-• remind me at 5 to leave / remind me thursday at 9 to call back / what reminders are set?
+• remind me at 5 to leave / remind me every weekday at 10 to check in / what reminders are set?
 • renew the passport by friday / what do I still have to do? / done 3 on to-dos
 • add batteries to hardware / what lists do we have?
 Summaries show the family calendar, but it's read-only from here —
@@ -1438,9 +1540,7 @@ class Bot:
                     # reminder still notifies (m.text) but pings no one.
                     await self.send(room, msg, notify=True,
                                     mention=r["assignee"] or None)
-                    db.execute("UPDATE reminder SET fired_ts=? WHERE id=?",
-                               (int(time.time()), r["id"]))
-                    db.commit()
+                    mark_fired(db, r, now)
                 except Exception:
                     log.exception("reminder %s failed", r["id"])
 
