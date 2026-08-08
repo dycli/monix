@@ -404,14 +404,14 @@
           ];
 
           # hl.plugin.hyprbars.add_button, right-aligned in declaration
-          # order from the edge inward — reads maximize/close on screen,
-          # so close is declared first. Both in the era's button gray
-          # with black glyphs (no minimize: Hyprland has no real one).
-          # The renderer emits settings after plugin loads, so the
-          # function is registered by the time these run. Actions go
-          # through the exec dispatcher; every field is required (a
-          # missing fg_color is a parse error, not a white default,
-          # unlike the legacy keyword).
+          # order from the edge inward — reads float/fullscreen/close on
+          # screen, so close is declared first. All in the era's button
+          # gray with black glyphs; the float glyph is the Win95 restore
+          # icon, which suits the theme. The renderer emits settings
+          # after plugin loads, so the function is registered by the
+          # time these run. Actions go through the exec dispatcher;
+          # every field is required (a missing fg_color is a parse
+          # error, not a white default, unlike the legacy keyword).
           "plugin.hyprbars.add_button" = [
             {
               _args = [
@@ -431,7 +431,18 @@
                   fg_color = "rgb(000000)";
                   size = 20;
                   icon = "󰖯";
-                  action = "hyprctl dispatch fullscreen 1";
+                  action = "hyprctl dispatch fullscreen 0";
+                }
+              ];
+            }
+            {
+              _args = [
+                {
+                  bg_color = "rgb(c0c0c0)";
+                  fg_color = "rgb(000000)";
+                  size = 20;
+                  icon = "󰖲";
+                  action = "hyprctl dispatch togglefloating";
                 }
               ];
             }
