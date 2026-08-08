@@ -30,16 +30,9 @@
             '';
           });
 
-      # Wallpaper-synced app theming. adw-gtk3 is the theme DMS's generated
-      # gtk.css targets; it owns those files at runtime, so home-manager must
-      # not manage the paths. nixpkgs' kdePackages.qt6ct lacks the fork's
-      # KColorScheme support (nixpkgs #489021), so Qt theming is inert.
-      programs.dms-shell.enableDynamicTheming = true;
-      environment.systemPackages = [
-        pkgs.adw-gtk3
-        pkgs.kdePackages.qt6ct
-        pkgs.libsForQt5.qt5ct
-      ];
+      # Theming belongs to the theme option (theme.mod.nix consumers); DMS
+      # renders only its own shell UI.
+      programs.dms-shell.enableDynamicTheming = false;
 
       programs.dms-greeter = {
         enable = true;
@@ -69,8 +62,5 @@
       systemd.user.services.dms.environment.XDG_DATA_DIRS =
         "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
 
-      # The theming tab errors with "Missing Environment Variables" unless the
-      # shell process sees the Qt platform theme it manages.
-      systemd.user.services.dms.environment.QT_QPA_PLATFORMTHEME = "qt6ct";
     };
 }
