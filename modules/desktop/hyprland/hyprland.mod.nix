@@ -411,7 +411,7 @@
                 {
                   bg_color = "rgb(cc5555)";
                   fg_color = "rgb(ffffff)";
-                  size = 10;
+                  size = 20;
                   icon = "󰖭";
                   action = "hyprctl dispatch killactive";
                 }
@@ -422,7 +422,7 @@
                 {
                   bg_color = "rgb(555555)";
                   fg_color = "rgb(ffffff)";
-                  size = 10;
+                  size = 20;
                   icon = "󰖯";
                   action = "hyprctl dispatch fullscreen 1";
                 }
