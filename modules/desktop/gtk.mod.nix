@@ -9,7 +9,15 @@
     {
       home.packages = [ pkgs.adw-gtk3 ];
 
-      xdg.configFile."gtk-3.0/gtk.css".text = config.theme.adwaitaGtkCss;
-      xdg.configFile."gtk-4.0/gtk.css".text = config.theme.adwaitaGtkCss;
+      # force: DMS wrote these at runtime before the theme owned them, and
+      # stale copies plus their backups otherwise fail activation.
+      xdg.configFile."gtk-3.0/gtk.css" = {
+        text = config.theme.adwaitaGtkCss;
+        force = true;
+      };
+      xdg.configFile."gtk-4.0/gtk.css" = {
+        text = config.theme.adwaitaGtkCss;
+        force = true;
+      };
     };
 }
