@@ -404,9 +404,9 @@
           ];
 
           # hl.plugin.hyprbars.add_button, right-aligned in declaration
-          # order from the edge inward — the Win95 trio reads
-          # minimize/maximize/close on screen, so close is declared
-          # first. All three in the era's button gray with black glyphs.
+          # order from the edge inward — reads maximize/close on screen,
+          # so close is declared first. Both in the era's button gray
+          # with black glyphs (no minimize: Hyprland has no real one).
           # The renderer emits settings after plugin loads, so the
           # function is registered by the time these run. Actions go
           # through the exec dispatcher; every field is required (a
@@ -432,19 +432,6 @@
                   size = 20;
                   icon = "󰖯";
                   action = "hyprctl dispatch fullscreen 1";
-                }
-              ];
-            }
-            # Hyprland has no minimize; the special workspace (SUPER+U
-            # to bring back) is the closest stand-in.
-            {
-              _args = [
-                {
-                  bg_color = "rgb(c0c0c0)";
-                  fg_color = "rgb(000000)";
-                  size = 20;
-                  icon = "󰖰";
-                  action = "hyprctl dispatch movetoworkspacesilent special:magic";
                 }
               ];
             }
