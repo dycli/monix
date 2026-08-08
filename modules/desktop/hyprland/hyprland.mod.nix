@@ -156,15 +156,8 @@
           })
           # Titlebars. Safe from nixpkgs unlike gloview: hyprlandPlugins
           # is built against the same hyprland pin, so the ABI matches by
-          # construction. Button rounding is hardcoded to a full circle
-          # with no config knob (upstream #583), so the Win95 squares
-          # take a patch.
-          (pkgs.hyprlandPlugins.hyprbars.overrideAttrs (old: {
-            postPatch = (old.postPatch or "") + ''
-              substituteInPlace barDeco.cpp \
-                --replace-fail 'std::round(scaledButtonSize / 2.0)' '0'
-            '';
-          }))
+          # construction.
+          pkgs.hyprlandPlugins.hyprbars
         ];
 
         # UWSM brings up the graphical-session targets itself, so this
@@ -437,9 +430,11 @@
 
           # hl.plugin.hyprbars.add_button, right-aligned in declaration
           # order from the edge inward — reads float/maximize/close on
-          # screen, so close is declared first. Platinum widget boxes:
-          # bar-grey fill with the sampled 222222 mark, so the glyphs
-          # sit on the bar the way OS 9's subtle widgets do. The
+          # screen, so close is declared first. Backgroundless: a fully
+          # transparent bg_color draws nothing (hit detection is
+          # size-based, unaffected), leaving bare 222222 glyphs on the
+          # bar the way OS 9's subtle widgets sit. This also makes
+          # button shape moot — the circle-vs-square patch is gone. The
           # renderer emits settings after plugin loads, so the function
           # is registered by the time these run. Every field is required
           # (a missing fg_color is a parse error, not a white default,
@@ -452,7 +447,7 @@
             {
               _args = [
                 {
-                  bg_color = "rgb(cccccc)";
+                  bg_color = "rgba(00000000)";
                   fg_color = "rgb(222222)";
                   size = 20;
                   icon = "󰖭";
@@ -463,7 +458,7 @@
             {
               _args = [
                 {
-                  bg_color = "rgb(cccccc)";
+                  bg_color = "rgba(00000000)";
                   fg_color = "rgb(222222)";
                   size = 20;
                   icon = "󰖯";
@@ -474,7 +469,7 @@
             {
               _args = [
                 {
-                  bg_color = "rgb(cccccc)";
+                  bg_color = "rgba(00000000)";
                   fg_color = "rgb(222222)";
                   size = 20;
                   icon = "󰖲";
