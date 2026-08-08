@@ -208,9 +208,12 @@
               gaps_out = 0;
               border_size = 2;
 
-              # Platinum bar grey, so the border reads as one frame
-              # with the titlebar.
+              # Bar greys, so the border reads as one frame with the
+              # titlebar. With bar_precedence_over_border the top border
+              # segment lies against the bar and vanishes into it —
+              # visible border only on left/right/bottom.
               col.active_border = "rgb(cccccc)";
+              col.inactive_border = "rgb(dddddd)";
 
               resize_on_border = false;
               allow_tearing = false;
@@ -275,6 +278,10 @@
               col.text = "rgb(000000)";
               bar_text_weight = "bold";
               bar_text_font = "Noto Sans";
+              # Border wraps bar+window as one unit; its top segment
+              # lies against the like-colored bar and disappears (the
+              # border colors above track the bar greys).
+              bar_precedence_over_border = true;
             };
 
             input = {
