@@ -208,6 +208,10 @@
               gaps_out = 0;
               border_size = 2;
 
+              # Platinum bar grey, so the border reads as one frame
+              # with the titlebar.
+              col.active_border = "rgb(cccccc)";
+
               resize_on_border = false;
               allow_tearing = false;
               layout = "scrolling";
