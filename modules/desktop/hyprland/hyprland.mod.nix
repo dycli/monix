@@ -429,7 +429,7 @@
           ];
 
           # hl.plugin.hyprbars.add_button, right-aligned in declaration
-          # order from the edge inward — reads float/maximize/close on
+          # order from the edge inward — reads float/full-width/close on
           # screen, so close is declared first. Backgroundless: a fully
           # transparent bg_color draws nothing (hit detection is
           # size-based, unaffected), leaving bare 222222 glyphs on the
@@ -461,8 +461,10 @@
                   bg_color = "rgba(00000000)";
                   fg_color = "rgb(222222)";
                   size = 20;
+                  # colresize is a scrolling-layout message (no-op under
+                  # dwindle), same as the SUPER+M bind.
                   icon = "󰖯";
-                  action = ''hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })' '';
+                  action = ''hyprctl dispatch 'hl.dsp.layout("colresize 1.0")' '';
                 }
               ];
             }
