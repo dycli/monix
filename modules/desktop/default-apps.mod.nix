@@ -37,8 +37,8 @@
         messenger = app pkgs.signal-desktop "chat client on the messenger bind";
         passwordManager = app pkgs.keepassxc "password manager on its bind";
         email = app pkgs.thunderbird "email client; also the mailto handler";
-        pdfViewer = app pkgs.zathura "PDF viewer behind application/pdf";
-        imageViewer = app pkgs.imv "image viewer behind the image/* types";
+        pdfViewer = app pkgs.kdePackages.okular "PDF viewer behind application/pdf";
+        imageViewer = app pkgs.kdePackages.gwenview "image viewer behind the image/* types";
 
         # A command name, not a package: the editor is the NvChad wrapper
         # on the user's PATH (editors.mod.nix). Session-scoped — headless
@@ -68,16 +68,16 @@
 
             "x-scheme-handler/mailto" = "thunderbird.desktop";
 
-            "application/pdf" = "org.pwmt.zathura.desktop";
+            "application/pdf" = "org.kde.okular.desktop";
 
-            "image/avif" = "imv.desktop";
-            "image/bmp" = "imv.desktop";
-            "image/gif" = "imv.desktop";
-            "image/jpeg" = "imv.desktop";
-            "image/png" = "imv.desktop";
-            "image/svg+xml" = "imv.desktop";
-            "image/tiff" = "imv.desktop";
-            "image/webp" = "imv.desktop";
+            "image/avif" = "org.kde.gwenview.desktop";
+            "image/bmp" = "org.kde.gwenview.desktop";
+            "image/gif" = "org.kde.gwenview.desktop";
+            "image/jpeg" = "org.kde.gwenview.desktop";
+            "image/png" = "org.kde.gwenview.desktop";
+            "image/svg+xml" = "org.kde.gwenview.desktop";
+            "image/tiff" = "org.kde.gwenview.desktop";
+            "image/webp" = "org.kde.gwenview.desktop";
           };
         };
       };
