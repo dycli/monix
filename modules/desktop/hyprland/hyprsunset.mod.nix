@@ -14,7 +14,7 @@
         }
         {
           time = "21:00";
-          temperature = 4000;
+          temperature = 5500;
         }
       ];
     };
