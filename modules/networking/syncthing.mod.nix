@@ -26,6 +26,7 @@
           openDefaultPorts = false;
           settings.devices = {
             earth.id = "G2BLKW7-HEC7IY3-F2NUM4K-4AH57JV-JVJ4SJZ-HHOLW7F-DQEGXGU-2OVC5Q2";
+            fire.id = "ZKL7FAC-EPOYTU4-DB3KAQW-KZ4G6CK-JEFSTMY-WWOHDDT-VAOFGW4-UDBSTA5";
             water.id = "35P3LQK-ULGW6UH-SJPXDGG-KY6XBM3-OAHST4N-JTVUEAB-5HU53P2-P2RAUAP";
             # Phone. Its own side is configured on-device, not by the flake.
             px1.id = "76LMPA6-QYQ7PFY-PG7YCZD-GTWX3VO-VXD46RW-SU72IWR-FEATUJX-KNIE2AF";
@@ -35,6 +36,7 @@
             path = "/home/${config.primaryUser}/crate/sync";
             devices = [
               "earth"
+              "fire"
               "water"
               "px1"
             ];
