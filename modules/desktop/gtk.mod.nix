@@ -9,8 +9,8 @@
     {
       home.packages = [ pkgs.adw-gtk3 ];
 
-      # force: DMS wrote these at runtime before the theme owned them, and
-      # stale copies plus their backups otherwise fail activation.
+      # Runtime-written copies and stale .hm-bak backups fail activation
+      # without force.
       xdg.configFile."gtk-3.0/gtk.css" = {
         text = config.theme.adwaitaGtkCss;
         force = true;
