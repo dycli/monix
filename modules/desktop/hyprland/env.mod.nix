@@ -21,7 +21,9 @@
         (mkEnv "GDK_SCALE" "2")
         (mkEnv "GDK_BACKEND" "wayland")
         (mkEnv "QT_QPA_PLATFORM" "wayland")
-        (mkEnv "QT_QPA_PLATFORMTHEME" "qt6ct")
+        # Loads plasma-integration: every Qt app reads kdeglobals
+        # (kde-integration.mod.nix).
+        (mkEnv "QT_QPA_PLATFORMTHEME" "kde")
         (mkEnv "SDL_VIDEODRIVER" "wayland")
         (mkEnv "MOZ_ENABLE_WAYLAND" "1")
         (mkEnv "ELECTRON_OZONE_PLATFORM_HINT" "wayland")
@@ -33,6 +35,11 @@
         (mkEnv "BROWSER" (lib.getExe config.desktopApps.browser))
         # The theme DMS's generated gtk.css is written against.
         (mkEnv "GTK_THEME" "adw-gtk3-dark")
+        # HYPRCURSOR_* for the compositor, XCURSOR_* for clients.
+        (mkEnv "XCURSOR_THEME" "Bibata-Modern-Amber")
+        (mkEnv "XCURSOR_SIZE" "24")
+        (mkEnv "HYPRCURSOR_THEME" "Bibata-Modern-Amber")
+        (mkEnv "HYPRCURSOR_SIZE" "24")
       ];
     };
 }

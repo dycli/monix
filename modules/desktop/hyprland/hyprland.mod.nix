@@ -54,11 +54,10 @@
       inherit (lib.meta) getExe getExe';
     in
     {
-      # DMS rewrites these at runtime, so they must be real user-writable
-      # files rather than store symlinks; `f` seeds without overwriting.
+      # DMS rewrites this at runtime, so it must be a real user-writable
+      # file rather than a store symlink; `f` seeds without overwriting.
       systemd.user.tmpfiles.rules = [
         "f %h/.config/hypr/dms/outputs.lua 0644 - - -"
-        "f %h/.config/hypr/dms/cursor.lua 0644 - - -"
       ];
 
       wayland.windowManager.hyprland = {
@@ -79,7 +78,6 @@
         # the default-order plugin blocks and host-level mkAfter additions.
         extraConfig = mkOrder 900 ''
           pcall(require, "dms.outputs")
-          pcall(require, "dms.cursor")
         '';
 
         settings = {

@@ -75,8 +75,7 @@
         pkgs.wl-clip-persist
         pkgs.wl-clipboard
 
-        # Installed only; DMS owns selection. home.pointerCursor would
-        # generate competing GTK and hyprcursor config.
+        # Selected via the cursor env in hyprland's env.mod.nix.
         pkgs.bibata-cursors
 
         pkgs.brave
