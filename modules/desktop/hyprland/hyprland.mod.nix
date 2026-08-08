@@ -275,6 +275,9 @@
               # lies against the like-colored bar and disappears (the
               # border colors above track the bar greys).
               bar_precedence_over_border = true;
+              # One side for all buttons (no per-button alignment
+              # exists); close-on-left is the authentic OS 9 corner.
+              bar_buttons_alignment = "left";
             };
 
             input = {
@@ -428,18 +431,17 @@
             }
           ];
 
-          # hl.plugin.hyprbars.add_button, right-aligned in declaration
-          # order from the edge inward — reads float/full-width/close on
-          # screen, so close is declared first. Backgroundless: a fully
+          # hl.plugin.hyprbars.add_button — with left alignment,
+          # declaration order reads left-to-right on screen:
+          # close/maximize/float/width-cycle. Backgroundless: a fully
           # transparent bg_color draws nothing (hit detection is
           # size-based, unaffected), leaving bare 222222 glyphs on the
-          # bar the way OS 9's subtle widgets sit. This also makes
-          # button shape moot — the circle-vs-square patch is gone. The
-          # renderer emits settings after plugin loads, so the function
-          # is registered by the time these run. Every field is required
-          # (a missing fg_color is a parse error, not a white default,
-          # unlike the legacy keyword). Actions spawn as shell commands,
-          # and under the Lua config `hyprctl dispatch` is a wrapper for
+          # bar the way OS 9's subtle widgets sit. The renderer emits
+          # settings after plugin loads, so the function is registered
+          # by the time these run. Every field is required (a missing
+          # fg_color is a parse error, not a white default, unlike the
+          # legacy keyword). Actions spawn as shell commands, and under
+          # the Lua config `hyprctl dispatch` is a wrapper for
           # hl.dispatch — it takes these Lua expressions, and legacy
           # syntax like "dispatch killactive" fails (silently, from a
           # spawn).
@@ -461,10 +463,8 @@
                   bg_color = "rgba(00000000)";
                   fg_color = "rgb(222222)";
                   size = 20;
-                  # colresize is a scrolling-layout message (no-op under
-                  # dwindle), same as the SUPER+M bind.
                   icon = "󰖯";
-                  action = ''hyprctl dispatch 'hl.dsp.layout("colresize 1.0")' '';
+                  action = ''hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })' '';
                 }
               ];
             }
@@ -476,6 +476,19 @@
                   size = 20;
                   icon = "󰖲";
                   action = "hyprctl dispatch 'hl.dsp.window.float()'";
+                }
+              ];
+            }
+            # Cycles the scrolling layout's preset widths, same as the
+            # SUPER+APOSTROPHE bind; no-op under dwindle.
+            {
+              _args = [
+                {
+                  bg_color = "rgba(00000000)";
+                  fg_color = "rgb(222222)";
+                  size = 20;
+                  icon = "󰩨";
+                  action = ''hyprctl dispatch 'hl.dsp.layout("colresize +conf")' '';
                 }
               ];
             }
