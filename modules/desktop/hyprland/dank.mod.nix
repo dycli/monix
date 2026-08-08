@@ -1,9 +1,5 @@
-# A quickshell-based desktop shell: bar, notifications, launcher, OSD,
-# control centre, lock screen, wallpaper manager, clipboard history and
-# polkit agent, started by its `dms` user unit under UWSM.
-#
-# The module comes from nixpkgs; the dank-material-shell input supplies
-# only a newer package, and the greeter is its own flake.
+# A quickshell-based desktop shell: bar, notifications, launcher, OSD, control
+# centre, lock screen, wallpaper, clipboard history and polkit agent.
 { self, inputs, ... }:
 {
   flake.nixosModules.hyprland = self.nixosModules.dank;
@@ -22,13 +18,9 @@
 
       programs.dms-shell.enable = true;
 
-      # nixpkgs' dms-shell 1.4.6 predates Hyprland 0.55's Lua-only
-      # command socket and dispatches old-style strings, which the socket
-      # rejects, so workspace clicking silently fails.
-      #
-      # The overrideAttrs preloads the spotlight launcher, which upstream
-      # keeps in a LazyLoader that only instantiates on first use.
-      # --replace-fail fails the build if upstream renames the loader.
+      # nixpkgs' dms-shell 1.4.6 dispatches old-style strings that Hyprland
+      # 0.55's Lua-only command socket rejects. The overrideAttrs preloads the
+      # spotlight launcher out of upstream's LazyLoader.
       programs.dms-shell.package =
         inputs.dank-material-shell.packages.${pkgs.stdenv.hostPlatform.system}.dms-shell.overrideAttrs
           (old: {
@@ -38,16 +30,10 @@
             '';
           });
 
-      # Wallpaper-synced app theming. enableDynamicTheming provides
-      # matugen; adw-gtk3 is the theme DMS's generated gtk.css targets.
-      #
-      # KDE apps ignore qt6ct palettes and follow kdeglobals instead,
-      # wired in kde-integration.mod.nix. Non-KDE Qt6 apps read qt6ct, but nixpkgs'
-      # kdePackages.qt6ct lacks the fork's KColorScheme support (nixpkgs
-      # #489021), so Qt theming does nothing for them.
-      #
-      # DMS owns the generated files at runtime, so home-manager must not
-      # manage those paths.
+      # Wallpaper-synced app theming. adw-gtk3 is the theme DMS's generated
+      # gtk.css targets; it owns those files at runtime, so home-manager must
+      # not manage the paths. nixpkgs' kdePackages.qt6ct lacks the fork's
+      # KColorScheme support (nixpkgs #489021), so Qt theming is inert.
       programs.dms-shell.enableDynamicTheming = true;
       environment.systemPackages = [
         pkgs.adw-gtk3
@@ -59,15 +45,12 @@
         enable = true;
         compositor.name = "hyprland";
 
-        # greetd's preStart copies this home's DMS settings and the
-        # wallpapers they reference into the greeter cache on every start,
-        # so greeter theming follows the last session.
+        # greetd's preStart copies this home's DMS settings and referenced
+        # wallpapers into the greeter cache on every start.
         configHome = "/home/${config.primaryUser}";
 
-        # The greeter's default Hyprland config disables the logo but not
-        # the splash text, which still flashes before the UI renders.
-        # customConfig replaces that default entirely, so it is
-        # reproduced here with disable_splash_rendering added.
+        # customConfig replaces the greeter's default config entirely, so that
+        # default is reproduced here with disable_splash_rendering added.
         compositor.customConfig = ''
           env = DMS_RUN_GREETER,1
 
@@ -78,17 +61,16 @@
         '';
       };
 
-      # Quickshell's battery service reads UPower; without it the bar
-      # always shows AC power.
+      # Quickshell's battery service reads UPower.
       services.upower.enable = true;
 
-      # systemd user units do not inherit the session's XDG_DATA_DIRS on
-      # NixOS, and the launcher then finds no .desktop entries.
+      # systemd user units do not inherit the session's XDG_DATA_DIRS, and the
+      # launcher then finds no .desktop entries.
       systemd.user.services.dms.environment.XDG_DATA_DIRS =
         "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
 
-      # The theming tab errors with "Missing Environment Variables"
-      # unless the shell process sees the Qt platform theme it manages.
+      # The theming tab errors with "Missing Environment Variables" unless the
+      # shell process sees the Qt platform theme it manages.
       systemd.user.services.dms.environment.QT_QPA_PLATFORMTHEME = "qt6ct";
     };
 }

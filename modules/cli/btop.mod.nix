@@ -1,4 +1,4 @@
-# System monitor. Universal (useful on servers); default theme.
+# System monitor.
 { self, ... }:
 {
   flake.homeModules.default = self.homeModules.btop;

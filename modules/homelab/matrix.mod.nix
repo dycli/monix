@@ -2,12 +2,10 @@
 # /var/lib/tuwunel. Federation is off and registration is token-gated.
 #
 # No public inbound port: the tailnet reaches the listener directly and
-# the public hostname rides a Cloudflare Tunnel. Do NOT put a Cloudflare
-# Access application on that hostname — Matrix clients speak the
-# client-server API and cannot traverse an SSO wall.
-#
-# Egress must include the public internet even with federation off, or
-# push notifications to each client's gateway stop working.
+# the public hostname rides a Cloudflare Tunnel. That hostname must carry
+# no Cloudflare Access application — Matrix clients speak the
+# client-server API and cannot traverse an SSO wall. Egress must include
+# the internet even with federation off, or push notifications stop.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.matrix;
@@ -91,22 +89,20 @@
             # tuwunel otherwise appends "💕" to new display names.
             new_user_displayname_suffix = "";
             trusted_servers = [ ];
-            # URL previews are off by tuwunel default; the key is not set
+            # URL previews stay off by default; the key is not set
             # explicitly because unrecognized keys are rejected.
           };
         };
 
         systemd.services.tuwunel.serviceConfig = {
           # Loopback carries the cloudflared hop and resolved's stub; the
-          # public internet is unmatched and so allowed, which push
-          # gateways require.
+          # internet is unmatched and so allowed, which push gateways need.
           IPAddressAllow = fences.loopback ++ [
             "100.64.0.0/10" # tailnet clients (CGNAT range)
           ];
           IPAddressDeny = fences.privateRanges;
         };
 
-        # cloudflared dials out to Cloudflare's edge; no inbound port.
         systemd.services.matrix-tunnel = mkIf (cfg.tunnelTokenFile != null) {
           description = "Cloudflare Tunnel for the Matrix homeserver";
           wantedBy = [ "multi-user.target" ];
@@ -126,11 +122,9 @@
             Restart = "always";
             RestartSec = 5;
 
-            # DynamicUser bounds filesystem reach, not network reach. This
-            # process needs only Cloudflare's edge and loopback (tuwunel,
-            # plus resolved's stub, which /etc/resolv.conf points at so
-            # cloudflared's Go resolver stays inside the fence).
-            # 127.0.0.0/8 is denied because the allow is a /24.
+            # DynamicUser bounds filesystem reach, not network reach. Only
+            # Cloudflare's edge and loopback are needed; 127.0.0.0/8 is
+            # denied because the allow is a /24.
             IPAddressAllow = fences.loopback;
             IPAddressDeny = fences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
           };

@@ -23,10 +23,8 @@
         };
 
         gesture = [
-          # Drags the scrolling layout's column tape, niri-style; snaps
-          # to the grid on release. Inert under other layouts, so the
-          # workspace swipe moves to four fingers (displacing the resize
-          # gesture, which SUPER+right-drag still covers).
+          # scroll_move drags the scrolling layout's column tape and is inert
+          # under other layouts, so the workspace swipe takes four fingers.
           {
             fingers = 3;
             direction = "horizontal";
@@ -37,9 +35,8 @@
             direction = "horizontal";
             action = "workspace";
           }
-          # Closures, not bare references: hl.plugin.gloview is nil
-          # during the first config pass (plugins load after it), so
-          # indexing must wait until the gesture actually fires.
+          # Closures, not bare references: hl.plugin.gloview is nil during the
+          # first config pass, so indexing must wait until the gesture fires.
           {
             fingers = 3;
             direction = "up";

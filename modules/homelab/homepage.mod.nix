@@ -14,7 +14,6 @@
       inherit (lib.modules) mkIf;
       inherit (lib.ship) fences topology;
 
-      # Proxy names when the front door is up, else host and port.
       url =
         sub: port:
         if config.shipProxy.enable then
@@ -25,11 +24,10 @@
     {
       config = mkIf config.services.homepage-dashboard.enable {
         services.homepage-dashboard = {
-          # nginx owns :80 and :443.
           listenPort = 8082;
           openFirewall = false;
 
-          # Host-header allowlist (homepage refuses others).
+          # Host-header allowlist; homepage refuses every other name.
           allowedHosts = lib.strings.concatStringsSep "," (
             [
               config.networking.hostName
@@ -55,14 +53,12 @@
                 cpu = true;
                 memory = true;
                 cputemp = true;
-                # Only real mountpoints work here, and /srv/media is a
-                # directory on /.
+                # Only real mountpoints work here.
                 disk = [ "/" ];
               };
             }
           ];
 
-          # Columns and tiles are alphabetical; list order here is display order.
           services = [
             {
               Arr = [
@@ -150,8 +146,7 @@
                 }
               ];
             }
-            # Status column: UPS, fed by the ship-stats shim below via
-            # homepage's customapi widget (no native NUT widget in homepage).
+            # No native NUT widget, so this reads the shim below.
             {
               Status = lib.lists.optional config.alerts.ups.enable {
                 UPS = {
@@ -185,18 +180,15 @@
         };
 
         systemd.services.homepage-dashboard.serviceConfig = {
-          # Loopback bind — reachability is nginx's job now.
           Environment = [ "HOSTNAME=127.0.0.1" ];
 
-          # Same anti-pivot fence as the media stack: tailnet + loopback in,
-          # public internet out (icon CDN), every private range denied.
+          # The internet is allowed for the icon CDN.
           IPAddressAllow = fences.loopback ++ [ "100.64.0.0/10" ];
           IPAddressDeny = fences.privateRanges;
         };
 
-        # Stats → JSON shim for the UPS tile: socket-activated one-shot on
-        # loopback :3494. GET /ups returns upsc output as JSON; dots in NUT
-        # names become underscores (customapi mappings treat dots as nesting).
+        # GET /ups returns upsc output as JSON with dots in NUT names
+        # replaced by underscores, since customapi reads a dot as nesting.
         systemd.sockets.ship-stats = mkIf config.alerts.ups.enable {
           wantedBy = [ "sockets.target" ];
           socketConfig = {
@@ -213,7 +205,7 @@
             IPAddressAllow = fences.loopback;
             IPAddressDeny = "any";
           };
-          # awk only; printf/read are bash builtins and upsc is absolute.
+          # awk only: printf and read are bash builtins, upsc is absolute.
           path = [ pkgs.gawk ];
           script = ''
             read -r _ reqpath _ || true

@@ -1,10 +1,8 @@
 {
-  # Services listen on 127.0.0.1 and resolved's stubs are 127.0.0.53/.54;
-  # the AI seat listens outside this /24 (fleet-topology.nix).
-  #
-  # Use instead of "127.0.0.0/8": systemd checks IPAddressAllow before
-  # IPAddressDeny and a match in Allow grants outright, so a blanket
-  # loopback allow overrides the deny list.
+  # Services listen on 127.0.0.1 and resolved's stubs are 127.0.0.53/.54; the
+  # AI seat listens outside this /24 (fleet-topology.nix). Not 127.0.0.0/8:
+  # systemd checks IPAddressAllow before IPAddressDeny and a match in Allow
+  # grants outright, so a blanket loopback allow overrides the deny list.
   loopback = [
     "127.0.0.0/24"
     "::1"

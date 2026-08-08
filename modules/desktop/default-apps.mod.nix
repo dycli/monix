@@ -1,13 +1,8 @@
-# The desktop's default applications, declared once as the desktopApps
-# options; everything else references them. The session binds
-# (hyprland.mod.nix) launch them, and the xdg mime pins route file and
-# URL opens to them by declaration, not by whichever app registered
-# itself first at runtime. Hosts override per-app.
-#
-# This module only elects defaults — every desktop application installs
-# in packages.mod.nix (the session-bound ones there reference these
-# options, so a host override changes both the binds and the install).
-# The mime desktop ids below must follow the chosen packages.
+# The desktop's default applications as the desktopApps options, plus xdg mime
+# pins routing file and URL opens by declaration rather than by whichever app
+# registered itself first at runtime. The packages themselves install in
+# packages.mod.nix, and the mime desktop ids below are not derived from the
+# options, so they must be updated alongside any change of package.
 { self, ... }:
 {
   flake.homeModules.desktop = self.homeModules.default-apps;
@@ -35,9 +30,8 @@
         imageViewer = app pkgs.kdePackages.gwenview "image viewer behind the image/* types";
         videoPlayer = app pkgs.haruna "video player behind the video/* and audio/* types";
 
-        # A command name, not a package: the editor is the NvChad wrapper
-        # on the user's PATH (editors.mod.nix). Session-scoped — headless
-        # hosts get their EDITOR from that module directly.
+        # A command name, not a package: the editor is the wrapper on the
+        # user's PATH from editors.mod.nix, which headless hosts use directly.
         editor = mkOption {
           type = types.str;
           default = "nvim";

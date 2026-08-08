@@ -1,6 +1,5 @@
-# Claude Code's global instructions, versioned rather than hand-edited.
-# Only this file is managed; the rest of ~/.claude is live mutable state.
-# Bundled to match where claude-code is installed.
+# Claude Code's global instructions file. Only this file is managed; the rest
+# of ~/.claude is live mutable state.
 { self, ... }:
 {
   flake.homeModules.dev = self.homeModules.claude;

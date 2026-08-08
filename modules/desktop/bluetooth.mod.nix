@@ -1,4 +1,4 @@
-# Pairing UI is DMS's control centre; bluetoothctl covers the rest.
+# Bluetooth stack. Pairing UI comes from the DMS control centre.
 { self, ... }:
 {
   flake.nixosModules.desktop = self.nixosModules.bluetooth;

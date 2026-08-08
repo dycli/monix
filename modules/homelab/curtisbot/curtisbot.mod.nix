@@ -1,15 +1,10 @@
-# A work-Discord bot (./bot.py), self-contained in this folder: removing
-# it means deleting these paths plus the enable and secret lines in the
-# host.
+# A work-Discord bot (./bot.py): slash commands for staff requests,
+# checked off with inline per-row buttons. Rows are never deleted;
+# check-off and clear are timestamps. State is SQLite in
+# /var/lib/curtisbot/bot.db.
 #
-# Slash commands for staff requests, checked off with inline per-row
-# buttons. Rows are never deleted; check-off and clear are timestamps.
-# The wholesale command set is unregistered, though old message buttons
-# still work against the retained orders schema.
-#
-# Egress is the Discord API plus loopback for the resolver. The only
-# credential is the bot token, read from an agenix env file. State is
-# SQLite in /var/lib/curtisbot/bot.db.
+# The wholesale command set is unregistered, but its orders schema is
+# retained because buttons on old messages still act on it.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.curtisbot;
@@ -96,7 +91,7 @@
             StateDirectory = "curtisbot";
             StateDirectoryMode = "0700";
 
-            # Internet and loopback only.
+            # The internet and loopback only.
             IPAddressAllow = fences.loopback;
             IPAddressDeny = fences.internetOnlyDeny;
           };

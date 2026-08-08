@@ -1,10 +1,7 @@
 # Smart-home backend, tailnet-only on :8123 behind ha.<domain>.
 # Integration wiring is .storage state; Nix owns the service, its
-# components and its reachability.
-#
-# The fence allows the configured LAN subnets, since talking to
-# thermostats, cameras and mDNS discovery is the job. The fleet bridge and
-# every other private range stay denied.
+# components and its reachability. The fence allows the configured LAN
+# subnets; the fleet bridge and every other private range stay denied.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.home-assistant;
@@ -32,10 +29,9 @@
         services.home-assistant = {
           openFirewall = false; # tailnet-only (UI/API on :8123)
 
-          # Current Tapo camera firmware (C225 1.x, 2026) rejects plain-RSA
-          # key exchange; python-kasa <=0.10.2 offers only RSA-kx ciphers so
-          # the TLS handshake fails. Upstream added ECDHE after 0.10.2 —
-          # drop this override once the nixpkgs pin carries it.
+          # Tapo C225 1.x firmware rejects plain-RSA key exchange and
+          # python-kasa <= 0.10.2 offers only RSA-kx ciphers, so the TLS
+          # handshake fails. Drop once the nixpkgs pin carries ECDHE.
           package = pkgs.home-assistant.override {
             packageOverrides = _: prev: {
               python-kasa = prev.python-kasa.overridePythonAttrs (old: {
@@ -48,34 +44,24 @@
           };
 
           extraComponents = [
-            # Onboarding baseline (weather, backups); met also feeds the
-            # dashboard weather card.
             "met"
             "backup"
-            # AirGradient indoor air-quality sensor, polled over its local
-            # HTTP API on the LAN.
             "airgradient"
           ]
-          # Camera-stack integrations: Frigate events arrive over MQTT, and
-          # tplink talks to the Tapo cams directly (privacy mode, LED, ...)
-          # using the same in-app "camera account" Frigate's RTSP uses.
+          # Frigate events arrive over MQTT; tplink drives the Tapo cameras
+          # directly with the same camera account Frigate's RTSP uses.
           ++ lib.lists.optionals config.shipCameras.enable [
             "mqtt"
             "tplink"
           ];
 
-          # The Frigate integration is a custom component (HACS-land
-          # upstream, packaged in nixpkgs). UI setup: point it at
-          # http://127.0.0.1:5000 (frigate's local port).
+          # UI setup points this at http://127.0.0.1:5000.
           customComponents = lib.lists.optional config.shipCameras.enable pkgs.home-assistant-custom-components.frigate;
 
-          # Advanced Camera Card (né frigate-hass-card): live WebRTC, PTZ,
-          # and clip/event browsing as a dashboard card.
           customLovelaceModules = lib.lists.optional config.shipCameras.enable pkgs.home-assistant-custom-lovelace-modules.advanced-camera-card;
 
           config = {
-            # default_config = the standard integration bundle (automations,
-            # mobile app API, history, mDNS discovery, ...).
+            # The standard integration bundle.
             default_config = { };
 
             homeassistant = {
@@ -84,8 +70,7 @@
               time_zone = "America/New_York";
             };
 
-            # Behind the ship proxy: trust loopback's X-Forwarded-For so
-            # client IPs (and HA's own rate limiting) work through nginx.
+            # Trust loopback's X-Forwarded-For across the nginx hop.
             http = {
               use_x_forwarded_for = true;
               trusted_proxies = [

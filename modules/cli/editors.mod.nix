@@ -1,9 +1,7 @@
-# Neovim is NvChad via nix4nvchad's home-manager module, with runtime
-# tools injected into the nvim wrapper rather than the global PATH. Plain
-# pkgs.neovim collides with that wrapper and must not be installed.
-#
-# Both editors pin shell to /bin/sh, since their POSIX `-c` shell-outs
-# fail under nushell with "E79: Cannot expand wildcards".
+# Neovim as NvChad, with runtime tools injected into the nvim wrapper rather
+# than the global PATH. Plain pkgs.neovim collides with that wrapper and must
+# not be installed. Both editors pin shell to /bin/sh, since their POSIX `-c`
+# shell-outs fail under nushell with "E79: Cannot expand wildcards".
 { self, inputs, ... }:
 {
   flake.homeModules.default = self.homeModules.editors;
@@ -15,8 +13,7 @@
       programs.nvchad = {
         enable = true;
 
-        # LSP servers/formatters go here as they're adopted (e.g. nil,
-        # lua-language-server) — visible only inside the nvim wrapper.
+        # Visible inside the nvim wrapper only, not on the user's PATH.
         extraPackages = [
           pkgs.lazygit
         ];
@@ -30,10 +27,8 @@
         set shell=/bin/sh
       '';
 
-      # Overrides the system-wide EDITOR=vim (packages.mod.nix): nvim exists
-      # in this user's profile. Reaches interactive logins via the HM bash
-      # init (interactive-shell.mod.nix); the desktop session sets the same
-      # in hyprland.mod.nix's env block.
+      # Overrides the system-wide EDITOR=vim, nvim existing only in this
+      # user's profile.
       home.sessionVariables.EDITOR = "nvim";
     };
 }

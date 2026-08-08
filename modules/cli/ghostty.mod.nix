@@ -1,10 +1,8 @@
-# Terminal. font-family is Comic Code (decrypted and installed by
-# fonts.mod.nix); ghostty uses its default theme.
+# Terminal emulator. The font it names is installed by fonts.mod.nix.
 { self, ... }:
 {
-  # Every host carries ghostty's terminfo so TERM=xterm-ghostty works over
-  # SSH; without it tmux and less fail with "missing or unsuitable
-  # terminal".
+  # Every host carries ghostty's terminfo so TERM=xterm-ghostty works over SSH;
+  # without it tmux and less fail with "missing or unsuitable terminal".
   flake.nixosModules.default = self.nixosModules.ghostty-terminfo;
   flake.nixosModules.ghostty-terminfo =
     { pkgs, ... }:
@@ -24,11 +22,9 @@
       inherit (lib.modules) mkForce;
     in
     {
-      # Upstream's onChange hook runs ghostty +validate-config, and the
-      # user unit reloads via SIGUSR2. During activation that signal can
-      # land on the short-lived validate process and kill the activation
-      # with exit 140. The config is Nix-generated, so this replaces the
-      # hook with a non-fatal reload.
+      # Upstream's onChange hook validates the config while the user unit
+      # reloads via SIGUSR2; during activation that signal can land on the
+      # short-lived validate process and fail activation with exit 140.
       xdg.configFile."ghostty/config".onChange = mkForce ''
         ${pkgs.systemd}/bin/systemctl --user try-reload-or-restart app-com.mitchellh.ghostty.service 2>/dev/null || true
       '';
@@ -37,26 +33,22 @@
         enable = true;
 
         settings = {
-          # Terminal windows only; the login shell stays bash, since
-          # tools that shell out via $SHELL break under nushell.
+          # Terminal windows only: the login shell stays bash, because tools
+          # that shell out via $SHELL break under nushell.
           command = lib.meta.getExe pkgs.nushell;
 
           window-padding-x = 14;
           window-padding-y = 14;
-          # A dark tint over the compositor's glass, low enough that the
-          # blur still reads as frost (at 0.95 it was invisible); the
-          # hyprland rule thins it on unfocused terminals.
+          # Low enough that the compositor's blur still reads as frost; the
+          # hyprland window rule thins it further on unfocused terminals.
           background-opacity = 0.7;
           window-decoration = "none";
 
           font-family = "ComicCodeLigatures Nerd Font";
           font-size = 9;
 
-          # Hyprland translates Super+C/V into Ctrl+Insert/Shift+Insert
-          # (see hyprland.mod.nix). Ghostty's default for Shift+Insert
-          # pastes the primary selection, which makes Super+V paste
-          # whatever was last mouse-selected instead of what Super+C
-          # copied — both sides pin to the clipboard instead.
+          # Hyprland sends Super+C/V as Ctrl+Insert/Shift+Insert, and the
+          # default for Shift+Insert pastes the primary selection instead.
           keybind = [
             "ctrl+k=reset"
             "ctrl+insert=copy_to_clipboard"
@@ -64,10 +56,8 @@
           ];
         };
 
-        # Daemon flags must not live in the config file, which every
-        # plain `ghostty` invocation also reads: initial-window=false
-        # there suppresses windows for normal launches. They belong on
-        # the daemon's ExecStart, hence upstream's unit.
+        # Daemon-only flags such as initial-window=false belong on the daemon
+        # unit's ExecStart; every plain `ghostty` invocation reads settings.
       };
     };
 }

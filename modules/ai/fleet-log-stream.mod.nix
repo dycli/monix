@@ -1,13 +1,5 @@
-# Streams the agent-fleet audit log into a Matrix room, line for line. A
-# resident service tails /var/lib/agents/tasks/log and posts each new
-# batch, so dispatches and completions are visible from any client.
-#
-# Reuses the alertbot account but posts to its own room, created on first
-# start and remembered in the state directory, so nothing about the room
-# lives in the repo.
-#
-# Lines arriving within 2s are batched into one message. Send failures are
-# logged and dropped; the on-disk log stays canonical.
+# Tails the agent-fleet audit log into a Matrix room. The room is created on
+# first start and remembered in the state directory, never in the repo.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.fleet-log-stream;
@@ -64,14 +56,10 @@
         systemd.services.fleet-log-stream = {
           description = "Stream the fleet audit log to Matrix";
           wantedBy = [ "multi-user.target" ];
-          # The log file is created by tmpfiles at boot; no ordering needed
-          # beyond the network-facing homeserver being reachable — and even
-          # that only costs dropped batches, not a crash.
           startLimitIntervalSec = 0;
-          # Shared hardening preset: this is the lone credentialed daemon
-          # outside the tenant pattern otherwise. Loopback-only egress (the
-          # homeserver is loopback tuwunel); the readers group grants the
-          # dynamic user the audit log, which is not world-readable.
+          # The readers group grants the dynamic user the audit log, which is
+          # not world-readable. Egress is loopback-only for the local
+          # homeserver.
           serviceConfig = lib.ship.hardened.tenant // {
             DynamicUser = true;
             SupplementaryGroups = [ topology.readersGroup ];

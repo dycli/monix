@@ -1,7 +1,6 @@
-# water's credential store: secret declarations and the homelab-role
-# options that consume them. Kept host-side because agenix ciphertext is
-# encrypted to this host's key — a new machine taking over the homelab
-# role declares (and re-encrypts) its own copies of these.
+# water's credential store: secret declarations and the role options that
+# consume them. Host-side because the ciphertext is encrypted to this host's
+# key.
 { config, ... }:
 {
   users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.max-password.path;
@@ -57,8 +56,7 @@
   };
 
   # This agenix pin has no restartUnits, so each encrypted source is an
-  # explicit trigger on its long-running consumer. Oneshots re-read their
-  # env every run and need none.
+  # explicit trigger on its long-running consumer; oneshots need none.
   systemd.services.matrix-tunnel.restartTriggers = [
     ./secrets/matrix-cloudflare-tunnel-token.age
   ];

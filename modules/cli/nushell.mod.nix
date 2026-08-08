@@ -1,6 +1,5 @@
-# The ship's interactive shell, one config on every host (see
-# interactive-shell.mod.nix for how hosts enter it). Cribbed in part
-# from rgbcube/ncc.
+# The interactive shell configuration, applied on every host.
+# interactive-shell.mod.nix controls how hosts enter it.
 { self, ... }:
 {
   flake.homeModules.default = self.homeModules.nushell;
@@ -15,25 +14,20 @@
     let
       inherit (lib.meta) getExe;
 
-      # Build-time LS_COLORS; vivid ships many themes if this one wears.
       lsColors = pkgs.runCommand "ls-colors" { } ''
         ${getExe pkgs.vivid} generate gruvbox-dark-hard > $out
       '';
     in
     {
-      # Completer backends for carapace's bridges, not login shells.
+      # Completion backends for the carapace bridges named in
+      # CARAPACE_BRIDGES below, not login shells.
       home.packages = [
         pkgs.fish
         pkgs.zsh
       ];
 
-      # External completions for commands nushell doesn't know, bridging
-      # into other shells' completion machinery when carapace has no
-      # spec of its own (the order CARAPACE_BRIDGES is tried).
       programs.carapace.enable = true;
 
-      # zoxide replaces cd: plain `cd` keeps working, plus frecent
-      # jumps like `cd mon` and interactive `cdi`.
       programs.zoxide = {
         enable = true;
         options = [

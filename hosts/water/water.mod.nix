@@ -1,8 +1,6 @@
-# water — Framework Desktop (Strix Halo, 128GB), headless server carrying
-# the homelab and ai roles (modules/{homelab,ai}).
-#
-# Tailnet-only except calibre-web :8083 on the LAN (media.calibreWebLan).
-# BIOS requires AMD SVM and restore-on-AC-power-loss.
+# water — Framework Desktop (Strix Halo, 128GB), headless server carrying the
+# homelab and ai roles (modules/{homelab,ai}). Tailnet-only except calibre-web
+# :8083 on the LAN. BIOS requires AMD SVM and restore-on-AC-power-loss.
 {
   self,
   inputs,
@@ -41,14 +39,14 @@
         # EcoFlow RIVER 3 Plus over USB HID (usbhid-ups, 3746:ffff).
         alerts.ups.enable = true;
 
-        # The e-reader cannot join the tailnet and pulls the OPDS feed.
+        # The e-reader cannot join the tailnet and pulls OPDS over the LAN.
         media.calibreWebLan = {
           interface = "enp191s0";
           subnet = "192.168.1.0/24";
         };
 
-        # btrfs root inside cryptroot; the key is TPM-sealed so the host
-        # boots headless, with a passphrase slot for recovery.
+        # TPM-sealed key so the host boots headless; a passphrase slot remains
+        # for recovery.
         disko.devices.disk.main = {
           device = "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_with_Heatsink_2TB_S6WRNS0T219958J";
           type = "disk";
@@ -90,8 +88,7 @@
               content = {
                 type = "btrfs";
 
-                # disko ignores mountOptions set on the btrfs content
-                # level; they must go on each subvolume.
+                # disko ignores mountOptions on the btrfs content level.
                 subvolumes."@" = {
                   mountpoint = "/";
                   mountOptions = [

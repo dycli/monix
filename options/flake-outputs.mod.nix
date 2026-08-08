@@ -1,19 +1,11 @@
-# Declares the module-aspect collections used to compose hosts, typed so
-# that several files may define the same attribute and the definitions
-# merge into one module — the bundle mechanism (adapted from rgbcube/ncc):
+# Types the module-aspect collections that compose hosts, so several files may
+# define the same attribute and the definitions merge into one module.
 #
-#   flake.nixosModules.desktop = self.nixosModules.audio;
-#
-# flake-parts types `flake.nixosModules` this way itself, but its wrapper
-# sets no module `key`, so an aspect reached through two bundles would be
-# applied twice and list options would double-concatenate. The
-# re-declaration below wraps every attribute with a key derived from its
-# name, making overlapping bundle membership dedup instead.
-#
-# `flake.homeModules` gets the same typing, and every home attribute is
-# mirrored into the NixOS attribute of the same name via
-# home-manager.sharedModules — importing a bundle brings its home aspects
-# for every managed user on the host.
+# flake-parts types `flake.nixosModules` itself but sets no module `key`, so an
+# aspect reached through two bundles would be applied twice and list options
+# would double-concatenate; keying each attribute by name makes overlapping
+# bundle membership dedup instead. Every `flake.homeModules` attribute is
+# mirrored into the NixOS attribute of the same name.
 {
   config,
   inputs,

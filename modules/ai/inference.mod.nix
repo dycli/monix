@@ -1,16 +1,6 @@
-# llama.cpp served through llama-swap, which spawns and kills one
-# llama-server per model on demand and unloads after `ttl` seconds idle,
-# so an idle host holds no model RAM and only one model runs at a time.
-#
-# Built with Vulkan, since RADV is the mature path on gfx1151, and models
-# fully offload with -ngl 999. The iGPU maps weights from system RAM via
-# GTT, whose kernel default of about half of RAM caps models near 60G on
-# this box; the ttm and amdgpu parameters below raise it and take effect
-# on the next reboot.
-#
-# The egress fence allows only loopback and the tailnet, which also blocks
-# llama-server's own -hf downloads; models are fetched by hand into
-# `inference.modelsDir`.
+# llama.cpp served through llama-swap: one llama-server per model, spawned on
+# demand and unloaded after `ttl` seconds idle, so an idle host holds no model
+# RAM.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.inference;
@@ -33,6 +23,7 @@
 
       cfg = config.inference;
 
+      # Vulkan, not ROCm: RADV is the mature path on gfx1151.
       llamaCpp = pkgs.llama-cpp.override { vulkanSupport = true; };
       llamaServer = getExe' llamaCpp "llama-server";
     in
@@ -129,16 +120,16 @@
               healthCheckTimeout = 600;
 
               models = mapAttrs (_: m: {
-                # llama-swap's macro for a fresh port per spawn, escaped so
-                # Nix passes it through verbatim.
+                # ${PORT} is llama-swap's macro, escaped so Nix passes it
+                # through verbatim.
                 cmd = concatStringsSep " " (
                   [
                     llamaServer
                     "--port \${PORT}"
                     "--host 127.0.0.1" # children speak only to the proxy
                     "-m ${if lib.strings.hasPrefix "/" m.file then m.file else "${cfg.modelsDir}/${m.file}"}"
-                    "-ngl 999" # full iGPU offload — unified memory, no VRAM cliff
-                    "--no-webui" # llama-swap's own UI serves the humans
+                    "-ngl 999" # full offload; unified memory has no VRAM cliff
+                    "--no-webui"
                   ]
                   ++ m.flags
                 );
@@ -149,8 +140,8 @@
 
           systemd.services.llama-swap.serviceConfig = {
 
-            # Upstream leaves PrivateDevices false but grants no device
-            # class; this opens the DRM render path Vulkan needs.
+            # Upstream leaves PrivateDevices false but grants no device class;
+            # this opens the DRM render path Vulkan needs.
             SupplementaryGroups = [
               "render"
               "video"
@@ -166,25 +157,24 @@
                 "100.64.0.0/10" # tailnet (CGNAT range)
               ]
               ++ optionals config.agentFleet.enable [
-                "10.100.0.0/24" # the br-agents guest subnet (see microvm-host.mod.nix)
+                "10.100.0.0/24" # br-agents guest subnet
               ];
             IPAddressDeny = "any";
           };
 
-          # GTT is a limit rather than a reservation, so an idle host pays
-          # nothing. 96G expressed as 98304 MiB and 25165824 4K pages;
-          # page_pool_size bounds TTM's cached-page reuse pool to match.
+          # The iGPU maps weights from system RAM through GTT, whose kernel
+          # default of about half of RAM caps model size. GTT is a limit, not a
+          # reservation, so an idle host pays nothing. 96G as 98304 MiB and
+          # 25165824 4K pages; page_pool_size bounds TTM's reuse pool to match.
           boot.kernelParams = [
             "amdgpu.gttsize=98304"
             "ttm.pages_limit=25165824"
             "ttm.page_pool_size=25165824"
           ];
 
-          # Downloads happen as the primary user or the seat (group users);
-          # world-readable so the DynamicUser service can read them.
+          # World-readable so the DynamicUser service can read the models.
           systemd.tmpfiles.rules = singleton "d ${cfg.modelsDir} 0775 ${config.primaryUser} users -";
 
-          # llama-cli, llama-bench and friends, for work outside the service.
           environment.systemPackages = singleton llamaCpp;
         })
       ];

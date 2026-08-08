@@ -1,10 +1,5 @@
-# Agent-fleet microVM host: the microvm.nix runner, a host-only bridge
-# br-agents (10.100.0.1/24, with no NAT, routing or DNS for guests), and
-# squid as the only egress. Guests have no default route or DNS, so squid
-# is the sole exit by construction.
-#
-# networkd owns br-agents, the vm-* taps and the onboard uplink; scripted
-# dhcpcd is not mixed in. tailscale0 stays with tailscaled.
+# Agent-fleet microVM host: the microvm.nix runner, the host-only br-agents
+# bridge, and squid as the guests' only egress.
 { self, inputs, ... }:
 {
   flake.nixosModules.default = self.nixosModules.microvm-host;
@@ -25,28 +20,25 @@
       inherit (topology) bridge hostAddr;
 
       # The only destinations a guest can reach. A leading-dot dstdomain
-      # covers the domain and its subdomains; squid rejects listing a
-      # specific host as well.
+      # covers the domain and its subdomains.
       allowedDomains = [
-        ".anthropic.com" # Claude API + Claude Code auth/telemetry
-        ".openai.com" # Codex: OpenAI API + auth
-        ".chatgpt.com" # Codex: ChatGPT-subscription backend/auth
-        ".openrouter.ai" # opencode: OpenRouter API (any-model dispatch)
-        ".models.dev" # opencode: provider/model registry it fetches at startup
-        "cache.nixos.org" # exact trusted binary cache; not user-content *.nixos.org
+        ".anthropic.com"
+        ".openai.com"
+        ".chatgpt.com"
+        ".openrouter.ai"
+        ".models.dev" # opencode fetches its provider registry at startup
+        "cache.nixos.org" # exact: *.nixos.org carries user content
       ];
 
-      # Wider than the workers' list, on a dedicated loopback address so
-      # the seat's fence can admit this listener without admitting the
-      # services on 127.0.0.1. Named "seat" here because `bridge` already
-      # means br-agents in this file.
+      # On a dedicated loopback address so the seat's fence can admit this
+      # listener without admitting the services on 127.0.0.1.
       seatDomains = allowedDomains ++ [
-        ".claude.ai" # Claude Code session sync/artifacts
-        ".claude.com" # Claude Code OAuth (claude.com + platform.claude.com)
-        ".github.com" # git remotes + gh api
-        ".githubusercontent.com" # raw files, release assets, flake registry
-        ".crates.io" # cargo index + downloads
-        "channels.nixos.org" # nixpkgs channel/flake metadata
+        ".claude.ai"
+        ".claude.com"
+        ".github.com"
+        ".githubusercontent.com"
+        ".crates.io"
+        "channels.nixos.org"
       ];
       seatProxy = "${topology.seatProxyAddr}:${toString topology.seatProxyPort}";
     in
@@ -56,24 +48,20 @@
       options.agentFleet.enable = mkEnableOption "the agent-fleet microVM host role";
 
       config = mkMerge [
-        # The host runner defaults on once the module is imported, and this
-        # aspect loads everywhere, so it is gated explicitly.
+        # The host runner defaults on once the module is imported.
         { microvm.host.enable = cfg.enable; }
 
         (mkIf cfg.enable {
-          # Guest state lives on the @agents subvolume.
           microvm.stateDir = "/var/lib/agents/microvms";
 
-          # An interrupted install-microvm leaves a state dir root-owned,
-          # and microvm-set-booted then fails with EACCES and aborts the
-          # activation. This repairs ownership before the microvm units run.
+          # An interrupted install-microvm leaves a state dir root-owned, and
+          # microvm-set-booted then fails with EACCES and aborts activation.
           systemd.tmpfiles.rules = map (
             w: "d ${config.microvm.stateDir}/${w.name} 0755 microvm kvm -"
           ) cfg.workers;
 
-          # networkd is authoritative for every interface, so the onboard
-          # uplink is configured here too; mixing in scripted dhcpcd can
-          # drop networking.
+          # networkd is authoritative for every interface here; mixing in
+          # scripted dhcpcd can drop networking.
           networking.useNetworkd = true;
 
           boot.kernel.sysctl = {
@@ -88,7 +76,6 @@
             }
           ];
 
-          # tailscale0 is left to tailscaled; lo is networkd's default.
           systemd.network.networks."10-uplink" = {
             matchConfig.Name = "en*";
             networkConfig.DHCP = "yes";
@@ -96,7 +83,8 @@
           };
 
           # No uplink port is enslaved to this bridge, so it cannot route.
-          # RequiredForOnline=no keeps a carrier-less bridge from blocking boot.
+          # RequiredForOnline=no keeps a carrier-less bridge from blocking
+          # boot.
           systemd.network.netdevs."30-${bridge}".netdevConfig = {
             Name = bridge;
             Kind = "bridge";
@@ -114,20 +102,16 @@
             networkConfig.Bridge = bridge;
             linkConfig.RequiredForOnline = "no";
             # Isolated ports cannot forward to each other at L2 but still
-            # reach the bridge master, so guest-to-guest traffic is dropped
-            # while guest-to-squid still works.
+            # reach the bridge master: guest-to-guest is dropped,
+            # guest-to-squid works.
             bridgeConfig.Isolated = true;
           };
 
-          # Guests may reach squid and, when local inference is served,
-          # llama-swap. br-agents is not a trusted interface, so everything
-          # else is dropped by default.
           networking.firewall.interfaces.${bridge}.allowedTCPPorts = [
             3128
           ]
           ++ lib.lists.optionals config.inference.enable [ config.inference.port ];
 
-          # Bound to the bridge IP only.
           services.squid = {
             enable = true;
             configText = ''
@@ -165,17 +149,16 @@
               coredump_dir /var/cache/squid
             '';
           };
-          # squid parses bytes from untrusted guests, so it keeps only the
-          # capabilities needed to drop from root and a filesystem that is
-          # read-only apart from its logs, cache and pidfile.
+          # squid parses bytes from untrusted guests: only the capabilities
+          # needed to drop from root.
           systemd.services.squid.serviceConfig = {
 
             NoNewPrivileges = true;
             ProtectSystem = "strict";
             ProtectHome = true;
             PrivateTmp = true;
-            # ProtectSystem=strict leaves /run read-only, so the pidfile
-            # moves into a RuntimeDirectory.
+            # ProtectSystem=strict leaves /run read-only, so the pidfile moves
+            # into a RuntimeDirectory.
             RuntimeDirectory = "squid";
             PIDFile = lib.mkForce "/run/squid/squid.pid";
             ReadWritePaths = [

@@ -1,7 +1,6 @@
-# Source for the operating guide. Returns three markdown strings that
-# compose into two documents:
-#   system + worker -> the drone hint injected at dispatch (agent-vm)
-#   system + pilot  -> the seat's ~/cockpit/AGENTS.md (cockpit)
+# Source for the operating guide: three markdown strings composing into two
+# documents — system + worker is the drone hint injected at dispatch
+# (agent-vm), system + pilot is the seat's ~/cockpit/AGENTS.md (cockpit).
 {
   system = ''
     # The ship THE KESTREL (water)

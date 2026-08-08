@@ -1,7 +1,5 @@
-# Hyprland appearance and layout: borders, blur, rounding, layout
-# behaviour, window and layer rules. Plugin-owned looks (the hyprbars
-# Platinum theme) live in plugins.mod.nix — plugin config cannot run on
-# the first config pass.
+# Hyprland appearance and layout: borders, blur, rounding, layout behaviour,
+# window and layer rules. Plugin-owned looks live in plugins.mod.nix.
 {
   flake.homeModules.hyprland = {
     wayland.windowManager.hyprland.settings = {
@@ -11,10 +9,8 @@
           gaps_out = 0;
           border_size = 2;
 
-          # Bar greys, so the border reads as one frame with the
-          # titlebar. With bar_precedence_over_border the top border
-          # segment lies against the bar and vanishes into it —
-          # visible border only on left/right/bottom.
+          # Tracks the hyprbars greys: under bar_precedence_over_border the
+          # top border segment lies against the bar and vanishes into it.
           col.active_border = "rgb(cccccc)";
           col.inactive_border = "rgb(dddddd)";
 
@@ -29,12 +25,6 @@
 
           shadow.enabled = false;
 
-          # Deep gaussian-style frost: three passes over the default
-          # size-8 kernel. Only deviations from the pinned v0.56.0
-          # defaults (config/values/ConfigValues.cpp) are stated —
-          # enabled, new_optimizations and ignore_opacity are already
-          # true, and size/noise/contrast/vibrancy sit at their tuned
-          # defaults.
           blur = {
             passes = 3;
             # Default 1; darkened so text stays legible on the glass.

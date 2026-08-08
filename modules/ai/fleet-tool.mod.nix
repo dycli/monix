@@ -1,14 +1,6 @@
-# The `fleet` dispatch tool and its unprivileged operator identity.
-#
-#   - A non-wheel system user owns the task queue; wheel cannot write it.
-#   - The queue is reachable only by running this one binary as that
-#     operator through a sudo rule scoped to it. The tool lives in the
-#     read-only store, so the agent it constrains cannot rewrite it.
-#   - `submit` takes the prompt on stdin, never a path, so the caller's
-#     own shell opens the file and the root drainer never dereferences a
-#     caller-supplied symlink.
-#
-# The cockpit's allow-rules sit on top of this boundary; they are not it.
+# The `fleet` dispatch tool and its unprivileged operator identity: a
+# non-wheel system user owns the queue, reachable only through a scoped sudo
+# rule naming this one store-resident binary.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.fleet-tool;
@@ -33,8 +25,7 @@
       readers = topology.readersGroup;
 
       # sudo matches the command as invoked, so the rule names this stable
-      # profile path; systemPackages below makes it resolve to this
-      # derivation.
+      # profile path rather than a store path.
       fleetPath = "/run/current-system/sw/bin/fleet";
 
       # Baked in at build time with option_env!, so a caller's environment
@@ -85,7 +76,6 @@
           description = "agent-fleet dispatch operator";
         };
         users.users.${config.primaryUser}.extraGroups = [ readers ];
-        # The seat account reads results the same way.
         users.users.bridge = mkIf config.cockpit.enable { extraGroups = [ readers ]; };
 
         environment.systemPackages = [ fleet ];
@@ -105,8 +95,8 @@
           }
         ];
 
-        # Staging for submit, on the same filesystem as the queue so the
-        # publishing rename is atomic.
+        # On the same filesystem as the queue so the publishing rename is
+        # atomic.
         systemd.tmpfiles.rules = [
           "d ${tasksDir}/staging 0700 ${op} ${op} -"
         ];

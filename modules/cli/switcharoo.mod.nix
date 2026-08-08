@@ -1,9 +1,8 @@
-# switcharoo — pull this machine's flake clone from origin, then switch.
+# switcharoo: pull this machine's flake clone from origin, then switch.
 #
-# Origin is the repo of record: the seat pushes reviewed commits there,
-# and hosts converge only on published history — commits sitting in the
-# seat's working clone are invisible until pushed. A failed pull only
-# warns, so being offline still switches what is on disk.
+# Origin is the repo of record, so hosts converge only on published history;
+# unpushed commits in another clone are invisible here. A failed pull only
+# warns, leaving an offline host able to switch what is on disk.
 { self, ... }:
 {
   flake.homeModules.default = self.homeModules.switcharoo;

@@ -1,10 +1,5 @@
-# The interactive agent seat. Claude Code over tmux/SSH and opencode web
-# are interchangeable frontends to the same account; the tooling itself
-# comes from packages.mod.nix and claude.mod.nix.
-#
-# The seat runs as `bridge`, an account with no wheel, no Nix trust, no
-# secrets and default-deny egress, so tool permissions inside it can be
-# broad.
+# The interactive agent seat: Claude Code over tmux/SSH and opencode web as
+# interchangeable frontends to one fenced `bridge` account.
 { inputs, self, ... }:
 {
   flake.homeModules.default = self.homeModules.cockpit;
@@ -22,10 +17,9 @@
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption;
       inherit (lib.strings) toJSON;
-      # Derive every path from the home this module is applied to, NOT from
-      # primaryUser: the same aspect serves both the primary user's seat and
-      # the bridge account (home-manager.users.bridge below), each seeing its
-      # own repos, working dir, and memory.
+      # Paths derive from the home this module is applied to, not from
+      # primaryUser: the same aspect serves both accounts, each with its own
+      # repos, working dir and memory.
       userHome = config.home.homeDirectory;
       monixDir = "${userHome}/ark/monix";
       holdDir = "${userHome}/hold";
@@ -35,8 +29,6 @@
       # slashes turned into dashes ("/home/max/cockpit" -> -home-max-cockpit).
       projectKey = lib.strings.replaceStrings [ "/" ] [ "-" ] cockpitDir;
       claudeMemoryDir = "${userHome}/.claude/projects/${projectKey}/memory";
-      # Claude's cockpit policy is canonical; rendered into both
-      # frontend-specific formats below.
       gitReadCommands = [
         "status*"
         "diff*"
@@ -59,7 +51,7 @@
       claudeBashPermissions = [
         "sudo -n -u fleet-operator fleet *"
         "fleet dispatch *"
-        # memo must never prompt, or notes are lost mid-thought.
+        # memo must never prompt.
         "memo"
         "memo *"
         "nix build *"
@@ -71,10 +63,9 @@
       ]
       ++ gitReadPermissions
       ++ [
-        # Commit freely, push only on request: no push rule here.
+        # No push rule: pushing is never unattended.
         "git -C ${monixDir} add *"
         "git -C ${monixDir} commit *"
-        # journalctl mutations require root; systemctl gets only read verbs.
         "journalctl*"
         "systemctl status*"
         "systemctl show*"
@@ -95,8 +86,8 @@
         "systemctl --user list-timers*"
       ]
       ++ [
-        # Listed for OpenCode, which has only static globs where Claude has
-        # a read-only classifier.
+        # Listed for OpenCode, which has only static globs where Claude has a
+        # read-only classifier.
         "echo *"
         "grep *"
         "rg *"
@@ -125,7 +116,7 @@
       ];
       claudeAllow =
         map (command: "Bash(${command})") claudeBashPermissions
-        # These paths are absolute; a doubled slash never matches and
+        # These paths are absolute; a doubled slash matches nothing and
         # silently disables the rule.
         ++ concatMap (path: [
           "Read(${path}/**)"
@@ -145,8 +136,8 @@
         "${path}/**"
         "${lib.strings.removePrefix "/" path}/**"
       ]) claudeFilePermissions;
-      # Claude permits reads inside its working directory; OpenCode needs
-      # them listed. Edits stay limited to the canonical paths.
+      # Claude permits reads inside its working directory; OpenCode needs them
+      # listed.
       opencodeReadPermissions = opencodeFilePermissions ++ [
         "${cockpitDir}/**"
         "${lib.strings.removePrefix "/" cockpitDir}/**"
@@ -154,12 +145,10 @@
         "${lib.strings.removePrefix "/" holdDir}/**"
       ];
       opencodePermissions = {
-        # Unmatched commands stay prompt-bound.
         bash = mkOpenCodeRules claudeBashPermissions;
         read = mkOpenCodeRules opencodeReadPermissions;
         edit = mkOpenCodeRules opencodeFilePermissions;
         external_directory = mkOpenCodeRules (map (path: "${path}/**") claudeFilePermissions);
-        # Mirrors Claude's built-in discovery and delegation allowances.
         glob = "allow";
         grep = "allow";
         list = "allow";
@@ -171,8 +160,7 @@
         question = "allow";
         skill = "allow";
       };
-      # Appended after OpenCode's built-in agent rules, restoring the
-      # non-editing Plan and read-only Explore behaviour.
+      # Appended after OpenCode's built-in agent rules.
       opencodePlanPermissions = opencodePermissions // {
         edit = "deny";
         task = {
@@ -195,8 +183,8 @@
       };
     in
     {
-      # Opt-in per home rather than derived from the home's path, so a
-      # rename cannot silently move it to the wrong account.
+      # Opt-in per home rather than derived from the home's path, so a rename
+      # cannot silently move it to the wrong account.
       options.cockpit.bypassPermissions = mkEnableOption ''
         running this seat with Claude tool prompts off. Only ever true for a
         home whose account is fenced at the OS (no wheel, no Nix trust, no
@@ -213,11 +201,8 @@
           text = "@AGENTS.md\n";
         };
 
-        # Generated from the Claude allowlist and the served inference
-        # catalog so the frontends cannot drift apart, though this file is
-        # normally mutable state. The baseURL is the seat-plane address:
-        # the seat fences admit that /32, not 127.0.0.1 (see the slice
-        # fence below).
+        # The baseURL uses the seat-plane address because the slice fence
+        # below admits that /32, not 127.0.0.1.
         home.file.".config/opencode/opencode.jsonc" = {
           force = true;
           text = toJSON (
@@ -241,32 +226,27 @@
           );
         };
 
-        # Claude's per-project memory path is a symlink into
-        # ~/cockpit/memory so every frontend shares one set of files.
+        # Symlinked so every frontend shares one set of memory files.
         home.file.".claude/projects/${projectKey}/memory" = {
           force = true;
           source = config.lib.file.mkOutOfStoreSymlink cockpitMemoryDir;
         };
 
-        # The scoped-sudo fleet hop is allowed as one prefix rather than
-        # per-subcommand; the fleet tool itself is the boundary.
         home.file."cockpit/.claude/settings.json" = {
           force = true;
           text = toJSON {
             permissions = {
               allow = claudeAllow;
               defaultMode = if config.cockpit.bypassPermissions then "bypassPermissions" else "default";
-              # The memory symlink resolves outside the working directory,
-              # so edit rules alone are not enough; it needs
-              # working-directory status.
+              # The memory symlink resolves outside the working directory.
               additionalDirectories = [
                 monixDir
                 holdDir
                 claudeMemoryDir
               ];
             };
-            # `|| true` because a refusal for pending compressions exits 1
-            # while still printing the instruction to surface.
+            # `|| true`: a pending compression exits 1 while still printing
+            # the instruction that must surface.
             hooks.SessionStart = [
               {
                 hooks = [
@@ -297,8 +277,7 @@
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption;
 
-      # Fixed uid: the fence below is a drop-in on user-<uid>.slice, which
-      # must name the uid statically.
+      # Fixed uid: the fence below is a drop-in on user-<uid>.slice.
       seatUid = 1001;
 
       inherit (lib.ship) topology fences;
@@ -311,20 +290,17 @@
       config = mkIf config.cockpit.enable {
         assertions = [
           {
-            # The seat is only reachable as ai.<domain> through the proxy.
             assertion = config.cockpit.webEnable -> config.shipProxy.enable;
             message = "cockpit.webEnable requires shipProxy.enable (the tailnet-only front door)";
           }
           {
-            # squid, the seat's only network door, comes with the fleet.
             assertion = config.agentFleet.enable;
             message = "the cockpit seat's egress proxy rides the fleet squid (microvm-host.mod.nix)";
           }
         ];
 
-        # Not in wheel, not a trusted Nix user, not an agenix recipient, no
-        # push credentials, fenced by the slice below. A Tailscale SSH
-        # session would run under tailscaled's cgroup and bypass that fence.
+        # No wheel, no Nix trust, no secrets. A Tailscale SSH session would
+        # run under tailscaled's cgroup and bypass the slice fence below.
         users.users.bridge = {
           isNormalUser = true;
           uid = seatUid;
@@ -333,8 +309,7 @@
           # Group-enterable so the primary user can reach the seat's files.
           homeMode = "750";
           openssh.authorizedKeys.keys = self.keys-admin;
-          # Journal read access; mutations still require root. users for
-          # write access to the model directory.
+          # journal reads; users grants writes to the model directory.
           extraGroups = [
             "systemd-journal"
             "users"
@@ -342,19 +317,11 @@
         };
         users.groups.bridge.gid = seatUid;
 
-        # Address filter on every process this user runs, both directions,
-        # all interfaces — including the tailnet, which Tailscale ACLs
-        # cannot restrict per-user. The public internet is unmatched and so
-        # allowed; the LAN, the tailnet, the fleet bridge and the loopback
-        # services are denied. resolved's stub is allowed for DNS, and
-        # llama-swap through its dedicated seat-plane address — filtering
-        # is port-blind, so admitting 127.0.0.1 itself would open every
-        # loopback service (the cameras and the Minecraft console carry no
-        # auth of their own).
-        #
-        # There is deliberately no domain allowlist. The model API has to be
-        # reachable, so anything the seat can read it can also send, and the
-        # Nix daemon fetches arbitrary URLs on its behalf regardless.
+        # Address filter on every process this user runs, both directions and
+        # all interfaces, including the tailnet, which Tailscale ACLs cannot
+        # restrict per-user. Filtering is port-blind, so admitting 127.0.0.1
+        # would expose every loopback service; llama-swap gets a dedicated
+        # seat-plane address instead.
         systemd.slices."user-${toString seatUid}".sliceConfig = {
           IPAddressAllow = [
             "127.0.0.53/32"
@@ -363,8 +330,6 @@
           IPAddressDeny = fences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
         };
 
-        # Home aspects arrive via home-manager.sharedModules from the
-        # bundles this host imports, same as the primary user.
         home-manager.users.bridge = {
           home.username = "bridge";
           home.homeDirectory = "/home/bridge";
@@ -376,35 +341,26 @@
 
         users.users.${config.primaryUser}.extraGroups = singleton "bridge";
 
-        # Claude Code keys per-project state to this path, so it must exist
-        # before the first session.
+        # Must exist before the first session keys its project state to it.
         systemd.tmpfiles.rules = singleton "d /home/bridge/cockpit 0750 bridge bridge -";
 
-        # The binary is already system-wide; this adds the /etc config.
         programs.tmux.enable = true;
         programs.tmux.historyLimit = 50000;
-        # Copies made inside a remote tmux (copy-mode, editors, nu's
-        # ctrl+alt+c) reach the desktop clipboard as OSC 52 through the
-        # SSH terminal: set-clipboard on lets inner applications write
-        # it, terminal-features asserts the capability even when TERM's
-        # terminfo doesn't advertise Ms.
+        # terminal-features asserts OSC 52 support even when TERM's terminfo
+        # does not advertise Ms.
         programs.tmux.extraConfig = ''
           set -g set-clipboard on
           set -as terminal-features ',*:clipboard'
         '';
 
-        # Kept here so routine data munging does not need `nix shell`.
         environment.systemPackages = [
           inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
           pkgs.python3
           pkgs.jq
         ];
 
-        # Runs as the seat account for its home and credentials, so it is
-        # not filesystem-sandboxed. Being a system service it sits outside
-        # the seat's user slice and carries its own fence below. It binds
-        # seatWebAddr, which the parser fences do not allow, and nginx
-        # serves it as ai.<domain> with no application auth.
+        # A system service, so it sits outside the seat's user slice and
+        # carries its own fence. nginx serves it with no application auth.
         systemd.services.opencode-web = mkIf config.cockpit.webEnable {
           description = "opencode web UI cockpit seat";
           wantedBy = [ "multi-user.target" ];
@@ -420,9 +376,8 @@
           serviceConfig = {
             User = "bridge";
             Group = "bridge";
-            # The same reach as an interactive seat, plus the address nginx
-            # proxies from. systemd filters addresses and not ports, so any
-            # service bound to 0.0.0.0 still answers on what is allowed here.
+            # systemd filters addresses and not ports, so any service bound to
+            # 0.0.0.0 still answers on whatever is allowed here.
             IPAddressAllow = [
               "${topology.seatIngressAddr}/32"
               "${topology.seatInferenceAddr}/32"
@@ -430,12 +385,9 @@
             IPAddressDeny = fences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
             Environment = singleton "OPENCODE_CONFIG=/home/bridge/.config/opencode/opencode.jsonc";
             WorkingDirectory = "/home/bridge/cockpit";
-            # The seat's listener is the one socket this service may open;
-            # anything else it tries to bind is a bug or a compromise.
+            # The seat listener is the only socket this service may open.
             SocketBindAllow = "tcp:${toString topology.seatWebPort}";
             SocketBindDeny = "any";
-            # CORS origin follows the proxy's zone so a domain change
-            # cannot silently break it.
             ExecStart = "${getExe pkgs.opencode} web --hostname ${topology.seatWebAddr} --port ${toString topology.seatWebPort} --cors https://ai.${config.shipProxy.domain} --print-logs";
             Restart = "always";
             RestartSec = 3;

@@ -1,18 +1,13 @@
-# The public web role: the family's static sites behind nginx, certs
-# via HTTP-01. This is the one internet-facing surface in the fleet —
-# the box carrying it exposes exactly 80/443 and keeps admin access
-# tailnet-only (its host closes sshd's public port).
+# The public web role: static sites behind nginx with HTTP-01 certs. The
+# fleet's one internet-facing surface — the host exposes exactly 80/443 and
+# keeps admin access tailnet-only.
 #
-# Site content is deliberately not in the store: the site repos
-# (~/hold/sites on water) build locally and rsync to /srv/www/<domain> as
-# the unprivileged `deploy` user over Tailscale SSH — the same flow the
-# OpenBSD predecessor used, so the deploy scripts change only their
-# destination. nginx only ever reads.
+# Site content is deliberately not in the store: the site repos build locally
+# and rsync to /srv/www/<domain> as the unprivileged `deploy` user.
 #
-# dylanc.com and su.is sit behind Cloudflare's proxy; HTTP-01 works
-# through it because /.well-known/acme-challenge passes to the origin
-# over plain HTTP. Only the su.is apex lives here — *.su.is subdomains
-# are the tailnet front door (ship-proxy) or their own tunnels.
+# dylanc.com and su.is sit behind Cloudflare's proxy; HTTP-01 still works
+# because /.well-known/acme-challenge passes to the origin over plain HTTP.
+# Only the su.is apex lives here; *.su.is is the tailnet front door.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.sites;
@@ -28,16 +23,13 @@
 
       webRoot = "/srv/www";
 
-      # A live vhost serves its domain's deployed tree whole; su.is
-      # includes /endgrain as a subdirectory of the same tree.
       live = [
         "dylanc.com"
         "su.is"
         "cleary.org"
       ];
 
-      # Parked domains keep their certs warm but answer 503, matching
-      # how the OpenBSD box parked them.
+      # Parked domains keep their certs warm and answer 503.
       parked = [ "cleary.is" ];
     in
     {
@@ -71,10 +63,8 @@
           443
         ];
 
-        # The rsync target for the deploy scripts. Tailscale SSH
-        # authenticates it against the tailnet policy, so no key material
-        # lives here; the policy must authorize the deploy login the same
-        # way it did abra on the old box.
+        # The rsync target for the deploy scripts. Tailscale SSH authenticates
+        # it against the tailnet policy, so no key material lives here.
         users.groups.deploy = { };
         users.users.deploy = {
           isNormalUser = true;

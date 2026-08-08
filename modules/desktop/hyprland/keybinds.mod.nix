@@ -1,6 +1,5 @@
-# Hyprland keybinds. Every bind carries a description: the keybinds
-# overlay reads them back via `hyprctl binds -j`, since Lua is executed
-# rather than parsed.
+# Hyprland keybinds. Every bind carries a description: the keybinds overlay
+# reads them back via `hyprctl binds -j`, Lua being executed rather than parsed.
 {
   flake.homeModules.hyprland =
     {
@@ -15,8 +14,7 @@
       inherit (lib.attrsets) recursiveUpdate;
       inherit (lib.meta) getExe;
 
-      # One hl.bind call per element; opts merges over the description, so
-      # callers add only the flags that differ.
+      # One hl.bind call per element; opts merges over the description.
       mkBind = keys: dispatcherLua: description: opts: {
         _args = [
           keys
@@ -25,8 +23,6 @@
         ];
       };
 
-      # The session's default applications come from the desktopApps
-      # options (default-apps.mod.nix).
       terminal = getExe config.desktopApps.terminal;
       browser = getExe config.desktopApps.browser;
       messenger = getExe config.desktopApps.messenger;
@@ -72,8 +68,6 @@
         (mkBind "SUPER + SHIFT + ESCAPE" "hl.dsp.exit()" "Exit Hyprland" { })
         (mkBind "SUPER + CTRL + ESCAPE" ''hl.dsp.exec_cmd("reboot")'' "Reboot" { })
         (mkBind "SUPER + SHIFT + CTRL + ESCAPE" ''hl.dsp.exec_cmd("systemctl poweroff")'' "Power off" { })
-        # SHIFT+SLASH is "?", the conventional help key; K belongs to
-        # the vim focus cluster below.
         (mkBind "SUPER + SHIFT + SLASH" ''hl.dsp.exec_cmd("dms ipc call keybinds toggle hyprland")''
           "Show keybindings"
           { }
@@ -81,11 +75,8 @@
         (mkBind "SUPER + I" ''hl.dsp.exec_cmd("dms ipc call inhibit toggle")'' "Toggle idle inhibit" { })
 
         (mkBind "SUPER + T" ''hl.dsp.layout("togglesplit")'' "Toggle split direction" { })
-        # Live layout switch via hl.config: outside config parsing it
-        # applies immediately and schedules the layout refresh. The
-        # scrolling column behaviour (50:50 columns, a lone window
-        # spanning the screen) is the pinned defaults — column_width
-        # 0.5, fullscreen_on_one_column true — so no scrolling block.
+        # hl.config called outside config parsing applies immediately and
+        # schedules the layout refresh.
         (mkBind "SUPER + A" ''
           function()
             hl.config({ general = { layout = "scrolling" } })
@@ -105,8 +96,6 @@
           "Set all columns to 1/2 width"
           { }
         )
-        # The niri column vocabulary: a lone window merges into the
-        # adjacent column, a stacked one pops out toward that side.
         (mkBind "SUPER + BRACKETLEFT" ''hl.dsp.layout("consume_or_expel prev")''
           "Consume or expel window left"
           { }
@@ -140,15 +129,12 @@
 
         (mkBind "SUPER + COMMA" ''hl.dsp.focus({ workspace = "-1" })'' "Previous workspace" { })
         (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
-        # A closure, not the bare hl.plugin.gloview.toggle
-        # reference: the plugin is nil during the first config pass
-        # (plugins load after it), so indexing must wait until the
-        # key is pressed.
+        # A closure, not a bare hl.plugin.gloview.toggle reference: the plugin
+        # is nil during the first config pass.
         (mkBind "SUPER + O" "function() hl.plugin.gloview.toggle() end" "Workspace overview" { })
 
-        # move rather than swap: under the scrolling layout a directional
-        # move merges the window into an adjacent column (the vertical
-        # stack), which swap — a pure in-place exchange — can never do.
+        # move rather than swap: under the scrolling layout a directional move
+        # merges the window into an adjacent column, which a swap cannot do.
         (mkBind "SUPER + SHIFT + LEFT" ''hl.dsp.window.move({ direction = "l" })'' "Move window left" { })
         (mkBind "SUPER + SHIFT + RIGHT" ''hl.dsp.window.move({ direction = "r" })'' "Move window right" { })
         (mkBind "SUPER + SHIFT + UP" ''hl.dsp.window.move({ direction = "u" })'' "Move window up" { })
@@ -179,7 +165,6 @@
         (mkBind "SUPER + mouse_down" ''hl.dsp.focus({ workspace = "e+1" })'' "Next open workspace" { })
         (mkBind "SUPER + mouse_up" ''hl.dsp.focus({ workspace = "e-1" })'' "Previous open workspace" { })
 
-        # S is taken by the messenger bind.
         (mkBind "SUPER + U" ''hl.dsp.workspace.toggle_special("magic")'' "Toggle special workspace" { })
         (mkBind "SUPER + SHIFT + U" ''hl.dsp.window.move({ workspace = "special:magic" })''
           "Move window to special workspace"

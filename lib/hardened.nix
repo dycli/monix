@@ -1,20 +1,14 @@
-# Shared systemd hardening presets. Unit specifics (user, state
-# directory, egress fence) stay per-unit.
-#
-# tenant: unprivileged services that parse untrusted input or hold a
-# credential. None binds a port.
-#
-# rootSensor: root oneshots reading the journal/sysfs or querying systemd
-# over D-Bus. Drops PrivateUsers (the system bus authenticates by peer
-# uid, which must stay 0) and allows AF_UNIX for D-Bus.
+# Shared systemd hardening presets. Unit specifics (user, state directory,
+# egress fence) stay per-unit.
 let
+  # tenant: unprivileged services that parse untrusted input or hold a
+  # credential. None binds a port.
   tenant = {
     CapabilityBoundingSet = "";
     # These processes hold credentials in memory.
     LimitCORE = 0;
     LockPersonality = true;
     NoNewPrivileges = true;
-    # Implies DevicePolicy=closed.
     PrivateDevices = true;
     PrivateIPC = true;
     PrivateTmp = true;
@@ -47,6 +41,9 @@ in
 {
   inherit tenant;
 
+  # rootSensor: root oneshots reading the journal or sysfs, or querying
+  # systemd over D-Bus. The system bus authenticates by peer uid, which must
+  # stay 0, so PrivateUsers is dropped; AF_UNIX carries D-Bus.
   rootSensor = builtins.removeAttrs tenant [ "PrivateUsers" ] // {
     RestrictAddressFamilies = [
       "AF_UNIX"
@@ -55,15 +52,12 @@ in
     ];
   };
 
-  # vendor: third-party services whose nixpkgs modules ship little
-  # isolation. Drops from tenant: SocketBindDeny (they listen),
-  # PrivateUsers (a uid map breaks files shared through a common group),
-  # and UMask=0077 (that output must stay group-readable). Keeps AF_UNIX
-  # for glibc NSS and @chown for services that chown what they write.
-  #
-  # Under ProtectSystem=strict each consumer must declare ReadWritePaths
-  # for anything it writes outside its StateDirectory; getting it wrong
-  # gives a unit that starts and then cannot save.
+  # vendor: third-party services whose nixpkgs modules ship little isolation.
+  # Drops SocketBindDeny (they listen), PrivateUsers (a uid map breaks files
+  # shared through a common group) and UMask=0077 (that output stays
+  # group-readable). Under ProtectSystem=strict each consumer must declare
+  # ReadWritePaths for anything it writes outside its StateDirectory, or the
+  # unit starts and then cannot save.
   vendor =
     builtins.removeAttrs tenant [
       "SocketBindDeny"

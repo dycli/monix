@@ -1,20 +1,5 @@
-# Agent-fleet worker guests. Each worker is a minimal NixOS microVM,
-# deliberately not composed from self.nixosModules: workers get no
-# tailnet, no monorepo and no host secrets. The guest has no default
-# route or DNS, so the squid allowlist on the bridge IP is the only exit.
-#
-# Guest root is tmpfs and the nix store is a read-only erofs image opened
-# as a block device. Sharing the host's live store over virtiofs corrupts
-# running guests, since host gc and nix-optimise mutate inodes underneath
-# virtiofsd. Every worker boots the same closure, with per-VM identity
-# arriving on the kernel command line, so one image is built for the
-# fleet. Both volume images are deleted on VM start.
-#
-# Idle guests have an empty read-only credential share. Once a task is
-# claimed the host stages only the selected executor's credential and
-# publishes prompt.md last; the VM is stopped before the share is
-# cleared. Secrets must never go in the nix store, which is
-# world-readable on the host.
+# Agent-fleet worker guests: minimal NixOS microVMs with no tailnet, no
+# monorepo and no host secrets, reachable only through the squid allowlist.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.agent-guests;
@@ -53,12 +38,10 @@
       inherit (topology) hostAddr;
       proxyUrl = "http://${hostAddr}:3128";
       # Local inference is plain HTTP to a bridge IP, which a CONNECT
-      # allowlist cannot express, so it uses the br-agents pinhole.
+      # allowlist cannot express, so it bypasses the proxy.
       noProxy = "127.0.0.1,localhost,${hostAddr}";
 
-      # Generated from the same inference.models the host serves, so guest
-      # model ids cannot drift. The ai-sdk loader requires a non-empty
-      # apiKey, which llama-swap ignores.
+      # The ai-sdk loader requires a non-empty apiKey; llama-swap ignores it.
       opencodeConfig = pkgs.writeText "opencode.json" (
         toJSON (
           {
@@ -81,28 +64,24 @@
       credsDir = name: "/run/agents/creds/${name}";
       guestCredsMount = "/run/host-creds";
 
-      # Task exchange: prompt.md in, report.md/agent.log/exit-code out,
-      # question-N.md/answer-N.md mid-task. virtiofs passes uid/gid
-      # verbatim, so this host directory must be owned by uid 1000.
+      # virtiofs passes uid/gid verbatim, so this must be owned by uid 1000.
       workDir = name: "/var/lib/agents/work/${name}/task";
       guestTaskMount = "/run/task";
 
-      # Per-worker volume images, wiped on every VM start (see ExecStartPre).
+      # Per-worker volume images, wiped on every VM start.
       volumes = [
         {
-          image = "nix-overlay.img"; # writable nix-store overlay
+          image = "nix-overlay.img";
           mountPoint = "/nix/.rw-store";
           size = 8192;
         }
         {
-          image = "workspace.img"; # the agent's scratch checkout/build dir
+          image = "workspace.img";
           mountPoint = "/workspace";
           size = 20480;
         }
       ];
 
-      # `index` derives the bridge address (10.100.0.10+index) and the MAC,
-      # whose last octet is the decimal index; unique for index <= 99.
       mkAgentGuest =
         {
           name,
@@ -116,15 +95,12 @@
           mac = "02:00:00:00:00:${fixedWidthString 2 "0" (toString index)}";
         in
         {
-          # The resident drainer owns lifecycle, not systemd autostart.
+          # The resident drainer owns VM lifecycle.
           autostart = false;
 
           config =
             { pkgs, ... }:
             let
-              # Writes a question into the task share and blocks for an
-              # answer. Only `guidance: cockpit` tasks reach the cockpit;
-              # others get the drainer's stock reply. Five per task.
               askCockpit = pkgs.writeShellApplication {
                 name = "ask-cockpit";
                 text = ''
@@ -172,7 +148,7 @@
                 '';
               };
 
-              # agent-local has no credential to read, so the guard skips it.
+              # agent-local has no credential, so the source is guarded.
               opencodeExecutor = pkgs.writeShellApplication {
                 name = "agent-opencode-exec";
                 text = ''
@@ -182,8 +158,6 @@
                 '';
               };
 
-              # Guest task supervisor: orchestration, validation, lifecycle
-              # and publication, tested in checkPhase.
               guestSupervisor = pkgs.rustPlatform.buildRustPackage {
                 pname = "fleet-guest-supervisor";
                 version = "0.1.0";
@@ -193,7 +167,6 @@
                 };
 
                 cargoLock.lockFile = ./agent-vm/Cargo.lock;
-                # Fixtures drive the same tools the supervisor uses at runtime.
                 nativeCheckInputs = [
                   pkgs.jq
                   pkgs.sqlite
@@ -206,29 +179,29 @@
                 hypervisor = "cloud-hypervisor";
                 inherit vcpu mem;
 
-                # Per-VM vsock context id (u32 >= 3), carrying guest systemd
-                # readiness over a unix socket rather than the network.
+                # vsock context ids must be >= 3.
                 vsock.cid = 100 + index;
 
                 interfaces = singleton {
                   type = "tap";
-                  id = "vm-${name}"; # enslaved to br-agents by the networkd vm-* match
+                  id = "vm-${name}"; # br-agents enslaves taps by a vm-* networkd match
                   inherit mac;
                 };
 
-                # Erofs image of the guest closure as a block device, so host
-                # store deletion cannot affect a running guest.
+                # Not a virtiofs share of the live store: host gc and
+                # nix-optimise mutate inodes underneath virtiofsd and corrupt
+                # running guests.
                 storeOnDisk = true;
 
-                # Per-VM identity travels on the kernel command line, outside
-                # the guest closure, so the fleet shares one store disk.
+                # Identity travels outside the closure so the fleet boots one
+                # store image.
                 kernelParams = [
                   "drone.name=${name}"
                   "drone.addr=${addr}/24"
                 ];
 
                 shares = [
-                  # Empty while idle; the drainer stages one credential.
+                  # Empty while idle; the drainer stages one credential per task.
                   {
                     proto = "virtiofs";
                     tag = "creds";
@@ -237,33 +210,24 @@
                     readOnly = true;
                     cache = "never";
                   }
-                  # Task in, report out (see agent-task below).
                   {
                     proto = "virtiofs";
                     tag = "task";
                     source = workDir name;
                     mountPoint = guestTaskMount;
-                    # prompt.md appears in a running guest, and default
-                    # caching would keep a stale negative dentry so the guest
-                    # never sees the write. cache=never forces revalidation.
+                    # Default caching keeps a stale negative dentry, so a
+                    # running guest never sees prompt.md appear.
                     cache = "never";
                   }
                 ];
 
-                # Writable overlay so `nix build` works inside the guest.
                 writableStoreOverlay = "/nix/.rw-store";
                 inherit volumes;
               };
 
-              # Static address on the host-only bridge, no gateway and no
-              # DNS, so the guest cannot route or resolve; squid resolves on
-              # its behalf. Address and hostname come from the kernel command
-              # line, written into /run by drone-identity before networkd
-              # starts, so the closure stays identical across workers.
-              #
-              # The address is assigned but not enforced — nothing pins a tap
-              # to its MAC — so a guest could spoof toward the host. The
-              # bridge's Isolated flag still blocks guest-to-guest traffic.
+              # No gateway and no DNS: the guest cannot route or resolve.
+              # The address is assigned but not enforced, since nothing pins a
+              # tap to its MAC.
               networking.useNetworkd = true;
               networking.useDHCP = false;
               networking.hostName = "drone"; # overridden at boot from cmdline
@@ -303,7 +267,6 @@
                 HTTP_PROXY = proxyUrl;
                 HTTPS_PROXY = proxyUrl;
                 NO_PROXY = noProxy;
-                # opencode reads its provider catalog from this path.
                 OPENCODE_CONFIG = "${opencodeConfig}";
               };
 
@@ -316,7 +279,7 @@
                 pkgs.ripgrep
                 pkgs.fd
                 pkgs.jq
-                pkgs.sqlite # usage.json extraction reads opencode's SQLite store
+                pkgs.sqlite
                 pkgs.curl
                 pkgs.gnumake
                 pkgs.gcc
@@ -330,41 +293,35 @@
                 "flakes"
                 "nix-command"
               ];
-              # cache.nixos.org is the only cache on the egress allowlist.
+              # cache.nixos.org is the only substituter on the egress allowlist.
 
-              # Waits for a delivered prompt, runs it as the selected agent
-              # user and writes results back. Type=exec rather than oneshot:
-              # the VM unit is Type=notify and expects readiness at boot,
-              # while a oneshot's start job would last the whole task and
-              # hold the host's `systemctl start` to its timeout.
+              # Type=exec rather than oneshot: a oneshot's start job would last
+              # the whole task and hold the host's `systemctl start` to its
+              # timeout.
               systemd.services.agent-task = {
                 description = "Run the dispatched task";
                 wantedBy = [ "multi-user.target" ];
                 unitConfig = {
                   # No ConditionPathExists on prompt.md: the guest boots idle
-                  # and the supervisor blocks for a task, so gating on the
-                  # file would skip a warm boot entirely.
+                  # and the supervisor blocks for a task.
                   RequiresMountsFor = [
                     guestTaskMount
                     guestCredsMount
                   ];
                 };
-                # The agent's shell inherits this PATH and needs the whole
-                # guest toolchain; the supervisor also resolves its helpers
-                # from it.
+                # The agent's shell and the supervisor's helpers resolve here.
                 path = [ "/run/current-system/sw" ];
                 serviceConfig = {
                   Type = "exec";
                   User = "root";
                   Group = "root";
                   WorkingDirectory = "/workspace";
-                  # The guest never reparses executor fields from the
-                  # prompt's front matter; the host stages canonical
-                  # task-meta in the read-only credential share.
+                  # Executor selection comes from task-meta in the read-only
+                  # credential share, never from the prompt.
                   ExecStart = getExe guestSupervisor;
                   # Units do not read /etc/set-environment, so the proxy is
-                  # restated. The Bash timeouts let a blocking ask-cockpit
-                  # call outlive Claude Code's default tool timeout.
+                  # restated. The Bash timeouts let a blocking ask-cockpit call
+                  # outlive the executor's default tool timeout.
                   Environment = [
                     "HTTP_PROXY=${proxyUrl}"
                     "HTTPS_PROXY=${proxyUrl}"
@@ -380,14 +337,12 @@
                     "FLEET_GUEST_EXEC_OPENCODE=${getExe opencodeExecutor}"
                     "FLEET_GUEST_EXEC_LOCAL=${getExe opencodeExecutor}"
                   ];
-                  # No single guest-created file may grow unbounded.
                   LimitFSIZE = cfg.taskExchangeMaxBytes;
                 };
               };
 
-              # Workers have no forge credentials, so a local commit is how
-              # a patch is captured. The author identity is constant because
-              # per-VM values would fork the shared guest closure.
+              # A constant identity: per-VM values would fork the shared
+              # guest closure.
               programs.git = {
                 enable = true;
                 config = {
@@ -396,8 +351,8 @@
                 };
               };
 
-              # Executors share the workspace but keep private 0700 homes
-              # and distinct uids, which blocks ptrace between them.
+              # Executors share the workspace but keep private 0700 homes and
+              # distinct uids, which blocks ptrace between them.
               users.users = {
                 agent-claude = {
                   isNormalUser = true;
@@ -422,8 +377,7 @@
               };
               systemd.tmpfiles.rules = singleton "d /workspace 0770 root users -";
 
-              # Reaching the serial console requires host root, so guest
-              # containment does not rest on in-guest auth.
+              # The serial console requires host root to reach.
               services.getty.autologinUser = "root";
 
               system.stateVersion = "26.05";
@@ -431,7 +385,6 @@
         };
     in
     {
-      # The fleet roster; VM definitions are generated from it.
       options.agentFleet = {
         workers = mkOption {
           description = "agent-fleet worker roster";
@@ -454,7 +407,6 @@
           );
         };
 
-        # The drainer stages only the credential a task selects.
         credentials = {
           claudeTokenFile = mkOption {
             type = types.str;
@@ -473,8 +425,8 @@
       };
 
       config = mkIf cfg.enable {
-        # The guest closure bakes in the Claude executor, so the grant does
-        # not depend on the dev-extras home list.
+        # The guest closure bakes in the Claude executor, so the grant cannot
+        # ride the dev-extras home list.
         unfreePackages = singleton "claude-code";
 
         assertions = [
@@ -502,8 +454,7 @@
 
         microvm.vms = listToAttrs (map (w: nameValuePair w.name (mkAgentGuest w)) cfg.workers);
 
-        # Share sources must exist before virtiofsd starts. The task
-        # exchange is guest-writable; the credential source is root-only.
+        # Share sources must exist before virtiofsd starts.
         systemd.tmpfiles.rules = concatMap (w: [
           "d ${workDir w.name} 0770 root users -"
           "d ${credsDir w.name} 0700 root root -"
@@ -512,24 +463,19 @@
         systemd.services = listToAttrs (
           map (
             w:
-            # These units are what `fleet health` sums for its memory figure.
             (nameValuePair "microvm@${w.name}" {
               serviceConfig = {
                 # The drainer owns lifecycle; Restart=always would fight it.
                 Restart = mkForce "no";
-                # Volumes are wiped on next start, so a graceful poweroff
-                # buys nothing. SIGKILL makes every stop instant and records
-                # success rather than a timeout failure, which would trip the
-                # OnFailure alert. [ "" ] is how a drop-in clears ExecStop
-                # from the shared microvm@ template.
+                # Volumes are wiped on next start, so a graceful poweroff buys
+                # nothing. [ "" ] clears ExecStop from the microvm@ template.
                 ExecStop = mkForce [ "" ];
                 KillSignal = "SIGKILL";
-                # systemd treats only TERM/HUP/INT/PIPE as clean, so this
-                # KillSignal must be declared or the stop records as failure.
+                # systemd treats only TERM/HUP/INT/PIPE as clean, so an
+                # undeclared SIGKILL would record the stop as a failure.
                 SuccessExitStatus = "SIGKILL";
                 TimeoutStopSec = mkForce 3;
-                # The runner's autoCreate recreates these blank, so deleting
-                # them here makes every boot a clean slate.
+                # The runner's autoCreate recreates these blank.
                 ExecStartPre = singleton (
                   "${getExe' pkgs.coreutils "rm"} -f "
                   + concatMapStringsSep " " (v: "${config.microvm.stateDir}/${w.name}/${v.image}") volumes

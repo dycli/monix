@@ -1,16 +1,10 @@
-# The ship's own quickshell-based desktop shell — scaffolding for the
-# DMS replacement (a simple bar; KDE-style settings for live hardware).
-# The QML tree in ./qml is the shell; the stock quickshell binary
-# interprets it, so there is nothing to compile.
+# An in-tree quickshell desktop shell, off unless shipShell.enable is set. The
+# QML tree in ./qml is the shell; the stock quickshell binary interprets it.
 #
-# Inert until enabled, and mutually exclusive with DMS by design (two
-# shells fight over layer-shell and the notification bus): when this
-# graduates, dank.mod.nix leaves the hyprland bundle in the same
-# commit that flips this on.
-#
-# Dev loop: QML hot-reloads from a working checkout —
-# `qs -p modules/desktop/shell/qml` — then land here and switch; the
-# store symlink itself is read-only.
+# Mutually exclusive with DMS, which contends for layer-shell and the
+# notification bus, so enabling this requires removing dank.mod.nix from the
+# hyprland bundle. The store copy is read-only; iterate against a working
+# checkout with `qs -p modules/desktop/shell/qml`, which hot-reloads.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.ship-shell;
@@ -34,9 +28,7 @@
       config = mkIf cfg.enable {
         environment.systemPackages = [ pkgs.quickshell ];
 
-        # Same launch shape as DMS's unit: a user service in the
-        # graphical session, with the XDG_DATA_DIRS that systemd user
-        # units do not inherit on NixOS.
+        # systemd user units do not inherit the session's XDG_DATA_DIRS.
         systemd.user.services.ship-shell = {
           description = "ship quickshell desktop shell";
           partOf = [ "graphical-session.target" ];

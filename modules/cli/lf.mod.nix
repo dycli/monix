@@ -1,6 +1,6 @@
-# `open` picks by mime type: text-like files go to $EDITOR in the same
-# terminal, everything else is dispatched async to xdg-open. A headless
-# host has no xdg-open, so non-text files do not open there.
+# File manager. `open` picks by mime type: text-like files go to $EDITOR in the
+# same terminal, everything else is dispatched async to xdg-open, which a
+# headless host does not have.
 { self, ... }:
 {
   flake.homeModules.default = self.homeModules.lf;
@@ -10,7 +10,7 @@
       programs.lf = {
         enable = true;
 
-        # `w` spawns $SHELL, which is bash; the interactive shell is nu.
+        # `w` would otherwise spawn $SHELL, which is bash.
         keybindings.w = "$" + "${pkgs.nushell}/bin/nu";
 
         commands.open = ''

@@ -1,16 +1,10 @@
 # The household chat bot (remy/bot.py): one Python service across two
-# Matrix rooms, "Household" and "Scratchpad", the latter against its own
-# scratch.db with the calendar read-only and no scheduled posts.
+# Matrix rooms, "Household" and "Scratchpad", the latter on its own
+# scratch.db. Chat text only ever classifies into a fixed intent schema;
+# there is no path from it to a shell, to SQL text or to the fleet.
 #
-# Chat text only ever classifies into a fixed intent schema; there is no
-# path from it to a shell, to SQL text or to the fleet.
-#
-# Three units share one static user, since DynamicUser cannot share
-# /var/lib across units: remy-register bootstraps the account, remy itself
-# is loopback-only, and remy-calendar-sync is the only unit with internet
-# egress. The shared uid means the bot can read the CalDAV secret, which
-# is accepted: that account is calendar-only and the bot's fence offers
-# no way to use the credential elsewhere.
+# The three units share one static user because DynamicUser cannot share
+# /var/lib across units.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.remy;
@@ -38,8 +32,7 @@
 
       calPython = pkgs.python3.withPackages (ps: [ ps.caldav ]);
 
-      # Tries a login first, then walks the registration-token UIA flow.
-      # Idempotent.
+      # Idempotent: logs in first, else walks the registration-token flow.
       register = pkgs.writeShellApplication {
         name = "remy-register";
         runtimeInputs = [
@@ -81,7 +74,6 @@
         '';
       };
 
-      # Egress differs per unit and is set below.
       sandbox = lib.ship.hardened.tenant // {
         User = "remy";
         Group = "remy";
@@ -129,7 +121,7 @@
         scratchpad.users = mkOption {
           type = types.listOf types.str;
           default = [ ];
-          example = [ "@captain:chat.example.com" ];
+          example = [ "@alice:chat.example.com" ];
           description = ''
             Users invited to the bot's personal scratchpad room (notes,
             reminders, quick lists; own database, calendar read-only, no
@@ -259,8 +251,8 @@
           ];
           environment = {
             BOT_HS_URL = "http://127.0.0.1:${toString config.matrix.port}";
-            # The rooms are created once, so a renamed option would rename
-            # nothing; the names stay the bot's own defaults.
+            # The rooms are created once, so a room-name option would
+            # rename nothing.
             BOT_INVITE_USERS = lib.concatStringsSep "," cfg.inviteUsers;
             BOT_SCRATCH_USERS = lib.concatStringsSep "," cfg.scratchpad.users;
             BOT_SCRATCH_DB = "/var/lib/remy/scratch.db";
@@ -296,8 +288,7 @@
           serviceConfig = sandbox // {
             Type = "oneshot";
             ExecStart = "${calPython}/bin/python ${./remy/calsync.py}";
-            # The only remy unit allowed out: CalDAV over HTTPS, plus
-            # loopback.
+            # The only remy unit allowed out: CalDAV over HTTPS.
             IPAddressAllow = fences.loopback;
             IPAddressDeny = fences.internetOnlyDeny;
           };
@@ -311,15 +302,13 @@
           };
         };
 
-        # The bot touches outbox.flag when chat queues an event, firing the
-        # sync in seconds rather than waiting out the timer.
+        # The bot touches outbox.flag when chat queues an event.
         systemd.paths.remy-calendar-sync = mkIf (cfg.calendar.credentialsFile != null) {
           wantedBy = [ "multi-user.target" ];
           pathConfig.PathChanged = "/var/lib/remy/outbox.flag";
         };
 
-        # The bot is fenced out of /home, so this root oneshot copies
-        # log.md to the vault when it changes, owned by the vault's user.
+        # The bot is fenced out of /home, so root writes the vault copy.
         systemd.services.remy-famlog = mkIf (cfg.famlog.path != null) {
           description = "mirror remy's daily log into the vault";
           serviceConfig = {
@@ -344,8 +333,7 @@
 
         systemd.paths.remy-famlog = mkIf (cfg.famlog.path != null) {
           wantedBy = [ "multi-user.target" ];
-          # Watches the log itself: the append is the trigger, so a mirror
-          # can never be silently skipped by a failed flag write.
+          # Watching the log itself makes the append the trigger.
           pathConfig.PathChanged = "/var/lib/remy/log.md";
         };
       };

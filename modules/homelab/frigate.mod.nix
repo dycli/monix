@@ -1,12 +1,6 @@
-# NVR with on-host object detection for Reolink and Tapo cameras.
-#
-# go2rtc connects to each camera once and restreams on loopback; Frigate
-# records the full-res stream and detects on the sub-stream, on CPU with
-# VAAPI decode. Recordings live in /var/lib/frigate.
-#
-# Both units are fenced to the camera LAN and loopback; an NVR needs no
-# internet. The upstream module creates the nginx vhost, which gets the
-# wildcard cert layered on below.
+# NVR with on-host object detection for Reolink and Tapo cameras. go2rtc
+# connects to each camera once and restreams on loopback; Frigate records
+# the full-res stream and detects on the sub-stream.
 #
 # One `frigate` camera account, its password from envFile. go2rtc expands
 # ${VARS} while Frigate expands {FRIGATE_*}.
@@ -33,8 +27,7 @@
         IPAddressDeny = fences.privateRanges ++ [ "any" ];
       };
 
-      # Shared by go2rtc, which connects, and by Frigate, which only needs
-      # to know the restreams exist. Note the differing env syntax.
+      # go2rtc connects; Frigate only needs to know the restreams exist.
       streamsWith =
         pass:
         concatMapAttrs (name: ip: {
@@ -46,7 +39,6 @@
           "${name}_sub" = [ "rtsp://frigate:${pass}@${ip}:554/stream2" ];
         }) cfg.tapo;
 
-      # Record the main restream, detect on the sub restream.
       frigateCamera = detect: name: _: {
         ffmpeg.inputs = [
           {
@@ -107,22 +99,20 @@
           enable = true;
           settings = {
             # HA's dashboard proxies these websockets, so the browser
-            # Origin never matches go2rtc's host and is rejected without
-            # this.
+            # Origin never matches go2rtc's host.
             api = {
               listen = "127.0.0.1:1984";
               origin = "*";
             };
             rtsp.listen = "127.0.0.1:8554";
-            # WebRTC negotiates browser-to-go2rtc directly and cannot ride
-            # the nginx proxy; the firewall handles reachability.
+            # WebRTC negotiates browser-to-go2rtc and cannot ride nginx.
             webrtc.listen = ":8555";
             streams = streamsWith "\${FRIGATE_RTSP_PASSWORD}";
           };
         };
         systemd.services.go2rtc.serviceConfig = lanFence // {
           EnvironmentFile = cfg.envFile;
-          # Plus the tailnet, for the direct WebRTC negotiation above.
+          # Plus the tailnet, for the direct WebRTC negotiation.
           IPAddressAllow = lanFence.IPAddressAllow ++ [ "100.64.0.0/10" ];
         };
 
@@ -131,14 +121,13 @@
           hostname = "frigate.${config.shipProxy.domain}";
           vaapiDriver = "radeonsi";
 
-          # The build-time validator cannot expand {FRIGATE_*}, since
-          # those secrets exist only at runtime; config errors surface in
-          # the unit log instead.
+          # The build-time validator cannot expand {FRIGATE_*}; config
+          # errors surface in the unit log instead.
           checkConfig = false;
 
           settings = {
             # Frigate must know the external go2rtc's streams or its UI
-            # never offers MSE/WebRTC and spins on fullscreen.
+            # never offers MSE/WebRTC.
             go2rtc.streams = streamsWith "{FRIGATE_RTSP_PASSWORD}";
 
             mqtt = {
@@ -199,18 +188,17 @@
         };
         systemd.services.frigate.serviceConfig = lanFence // {
           EnvironmentFile = cfg.envFile;
-          # Frigate assumes this cache subdirectory exists, as its
+          # Frigate assumes this cache subdirectory exists, as its upstream
           # container tmpfs provides; review previews fail without it.
           CacheDirectory = [ "frigate/preview_frames" ];
         };
 
-        # TLS on the vhost the upstream module created.
         services.nginx.virtualHosts.${config.services.frigate.hostname} = {
           useACMEHost = config.shipProxy.domain;
           forceSSL = true;
         };
 
-        # Loopback MQTT broker carrying Frigate events to Home Assistant.
+        # Carries Frigate events to Home Assistant.
         services.mosquitto = {
           enable = true;
           listeners = [

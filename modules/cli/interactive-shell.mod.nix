@@ -1,9 +1,8 @@
-# How hosts enter nushell (the config itself is nushell.mod.nix, on
-# every host via the default bundle). $SHELL stays bash so scripts and
-# tools that shell out are unaffected. Desktops launch nu from ghostty
-# (see ghostty.mod.nix); headless hosts re-exec into it from bash's
-# interactive init, so plain `ssh host` lands in nu but `ssh host 'cmd'`
-# does not.
+# How headless hosts enter nushell; the configuration itself is in
+# nushell.mod.nix and desktops launch nu from ghostty. $SHELL stays bash so
+# scripts and tools that shell out are unaffected: the re-exec happens in
+# bash's interactive init, so `ssh host` lands in nu but `ssh host 'cmd'` does
+# not.
 { self, ... }:
 {
   flake.homeModules.homelab = self.homeModules.interactive-shell;
@@ -13,9 +12,7 @@
     {
       programs.bash = {
         enable = true;
-        # Interactive shells only, once only — SHIP_NU is inherited by
-        # nu, so a bash launched from within nu stays bash — and only
-        # when nu exists.
+        # nu inherits SHIP_NU, so a bash launched from within nu stays bash.
         initExtra = ''
           if [[ $- == *i* ]] && [[ -z "''${SHIP_NU:-}" ]] && command -v nu >/dev/null 2>&1; then
             export SHIP_NU=1

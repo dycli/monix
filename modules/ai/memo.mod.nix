@@ -1,11 +1,5 @@
-# memo — an append-only LOG.txt of one-line memories plus a TREE/ of
-# summaries; `memo wake` prints a fixed-size digest weighted to recency.
-# The tool hands compression prompts to the agent rather than summarizing
-# itself.
-#
-# The store is mutable state, not managed by Nix, with its default path
-# baked in at build time. It is never auto-created: making it is a
-# deliberate one-time step (mkdir plus `memo import`).
+# memo: an append-only LOG.txt of one-line memories plus a TREE/ of
+# summaries. The store is mutable state, never auto-created.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.memo;

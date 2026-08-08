@@ -1,9 +1,7 @@
 # nginx terminates TLS for <service>.su.is and proxies to local ports.
-# Names resolve publicly (grey-cloud A records → water's tailnet IP) but
-# only route inside the tailnet; there is no application auth.
-#
-# One wildcard *.su.is cert via DNS-01, since the host is not publicly
-# reachable and HTTP-01 cannot work. Ports 80/443 never open publicly.
+# Names resolve publicly but only route inside the tailnet, and there is
+# no application auth. One wildcard cert via DNS-01, since the host is not
+# publicly reachable and HTTP-01 cannot work.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.ship-proxy;
@@ -53,8 +51,8 @@
           default = null;
           example = "home.su.is";
           description = ''
-            Full hostname for the homepage dashboard vhost; null = no
-            dashboard vhost (the captain names this one).
+            Full hostname for the homepage dashboard vhost; null disables
+            the vhost.
           '';
         };
       };
@@ -101,13 +99,11 @@
             // optionalAttrs config.services.home-assistant.enable {
               "ha.${cfg.domain}" = proxy 8123 { };
             }
-            # The web seat is shell-capable, so the tailnet gate is enforced
-            # here as well: without the source rules below, any local
-            # service allowed 127.0.0.1 could reach it by Host header.
+            # The web seat is shell-capable: without the source rules
+            # below, any local service reaches it by Host header.
             // optionalAttrs config.cockpit.webEnable {
               "ai.${cfg.domain}" = proxyTo "http://${topology.seatWebAddr}:${toString topology.seatWebPort}" {
-                # SSE responses must not be buffered. The denied addresses
-                # are local pivots rather than tailnet peers.
+                # SSE responses must not be buffered.
                 extraConfig = ''
                   proxy_buffering off;
                   deny 127.0.0.0/8;
@@ -134,8 +130,7 @@
             // optionalAttrs (cfg.dashboardHost != null && config.services.homepage-dashboard.enable) {
               ${cfg.dashboardHost} = proxy config.services.homepage-dashboard.listenPort { };
             }
-            # Default catch-all on :80 keeps the plain hostname (and the
-            # tailnet IP / MagicDNS name) landing on the dashboard.
+            # Plain hostname, tailnet IP and MagicDNS name on :80.
             // optionalAttrs config.services.homepage-dashboard.enable {
               homepage-catchall = {
                 serverName = config.networking.hostName;
@@ -146,11 +141,9 @@
                 };
               };
             }
-            # The wildcard DNS record resolves every name, used or not.
-            # Unmatched HTTPS names answer nothing (444 = close without
-            # responding); without an explicit :443 default, nginx would
-            # fall back to the alphabetically first vhost — ai.su.is,
-            # the web seat.
+            # The wildcard DNS record resolves every name. Without an
+            # explicit :443 default, nginx falls back to the alphabetically
+            # first vhost, the web seat.
             // {
               https-catchall = {
                 serverName = "_";

@@ -1,18 +1,5 @@
-# Agent-fleet dispatcher. A task is a markdown prompt placed in the queue
-# directory; a worker runs it on a fresh VM and the report comes back.
-#
-#   /var/lib/agents/tasks/queue/<name>.md   <- tasks land here, enqueued by
-#                                              the `fleet` tool run as the
-#                                              operator user (see
-#                                              fleet-tool.mod.nix)
-#   /var/lib/agents/tasks/done/<id>/        <- prompt.md + report.md + agent.log
-#   /var/lib/agents/tasks/failed/<id>/      <- same, for nonzero exit or timeout
-#   /var/lib/agents/tasks/rejected/         <- quarantined non-regular queue entries
-#
-# One resident drainer per worker keeps a warm VM, atomically claims
-# queued tasks and delivers each prompt into the live guest. After a task
-# it stops the VM, archives bounded output, wipes the writable volumes
-# and boots a replacement.
+# Agent-fleet dispatcher: one resident drainer per worker keeps a warm VM,
+# claims queued markdown prompts, archives the results and reboots the guest.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.agent-dispatch;
@@ -69,10 +56,8 @@
             Restart = "always";
             RestartSec = 2;
 
-            # Root for cross-user chown and VM lifecycle over D-Bus, so
-            # PrivateUsers and a capability clamp are out. Writes are
-            # limited to the task tree and credential staging, sockets to
-            # AF_UNIX, and syscalls to @system-service.
+            # Root is required for cross-user chown and VM lifecycle over
+            # D-Bus, which rules out PrivateUsers and a capability clamp.
             LockPersonality = true;
             NoNewPrivileges = true;
             PrivateDevices = true;
@@ -164,8 +149,8 @@
           "d ${tasksDir}/steer 0770 root ${op} -"
           "d ${tasksDir}/answers 0770 root ${op} -"
           "d ${tasksDir}/cancel 0770 root ${op} -"
-          # The operator group writes, the readers group reads via ACL, and
-          # the world gets nothing: task ids, models and usernames.
+          # Operator writes, readers read via ACL, world gets nothing: the log
+          # carries task ids, models and usernames.
           "f ${tasksDir}/log 0660 root ${op} -"
           "a+ ${tasksDir}/log - - - - group:${readers}:r"
         ];

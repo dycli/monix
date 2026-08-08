@@ -1,21 +1,8 @@
 # Every alarm reaches the Matrix alert room through alerts/ship-alert.
-# Four sensors feed it:
-#
-#   1. A global service.d drop-in attaching OnFailure to every unit.
-#      Shipped via systemd.packages because environment.etc cannot nest
-#      under the generated /etc/systemd/system.
-#   2. A 6-hourly sweep for still-failed units, full filesystems, hwmon
-#      temperatures and a pending kernel, none of which OnFailure sees.
-#   3. smartd, whose -M exec hook fires on SMART events.
-#   4. upsmon, whose NOTIFYCMD spools events as the unprivileged nutmon
-#      user for a path unit to relay as root.
-#
-# ship-alert logs in, sends and logs out against the loopback homeserver,
-# stamping its one-time room join in /var/lib/alerts. If the homeserver
-# is down, nothing sends; there is no off-host watcher.
-#
-# The env secret carries MATRIX_USER, MATRIX_PASSWORD and ALERT_ROOM_ID,
-# so the room id stays out of the repo.
+# Four sensors feed it: a global OnFailure drop-in, a 6-hourly sweep for
+# conditions OnFailure cannot see, smartd's -M exec hook, and upsmon's
+# NOTIFYCMD spool. Delivery is the loopback homeserver, so nothing sends
+# while it is down.
 { self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.alerts;
@@ -61,8 +48,7 @@
         meta.mainProgram = "ship-alert";
       };
 
-      # smartd and the UPS relay do not carry the Matrix credentials in
-      # their own environment, so these hooks source the env file as root.
+      # smartd and the UPS relay do not inherit the Matrix credentials.
       withCredentials = ''
         set -a
         # shellcheck disable=SC1091
@@ -92,8 +78,9 @@
         '';
       };
 
-      # The zz- drop-in sorts after 99- inside the alert unit's own drop-in
-      # set and clears OnFailure, so a broken alert path cannot recurse.
+      # Shipped via systemd.packages because environment.etc cannot nest
+      # under the generated /etc/systemd/system. The zz- drop-in sorts after
+      # 99- and clears OnFailure, so a broken alert path cannot recurse.
       onFailureDropins = pkgs.runCommand "alert-onfailure-dropins" { } ''
         mkdir -p $out/etc/systemd/system/service.d
         mkdir -p "$out/etc/systemd/system/alert-unit-failure@.service.d"
@@ -255,9 +242,7 @@
         }
 
         (mkIf cfg.smart.enable {
-          # -a monitors everything; self-tests run short on Saturdays and
-          # long on the first Sunday; -n standby avoids spinning up
-          # sleeping disks.
+          # -n standby avoids spinning up sleeping disks.
           services.smartd = {
             enable = true;
             autodetect = true;
@@ -268,8 +253,7 @@
         })
 
         (mkIf cfg.ups.enable {
-          # The EcoFlow speaks USB HID PDC. upsmon's default LOWBATT
-          # behaviour is a clean shutdown.
+          # The EcoFlow speaks USB HID PDC.
           power.ups = {
             enable = true;
             mode = "standalone";
@@ -306,7 +290,6 @@
                 ];
           };
 
-          # Guards a loopback socket; generated once and root-owned.
           system.activationScripts.nut-upsmon-password = ''
             mkdir -p /var/lib/nut
             if [ ! -s /var/lib/nut/upsmon.password ]; then

@@ -1,9 +1,6 @@
 # `nix flake check` builds the crates, runs their tests and verifies the
-# agenix rulebook.
-#
-# These builds omit the deployment environment the service modules bake in
-# — it is all option_env! with defaults — so they are test gates rather
-# than the production binaries.
+# agenix rulebook. These builds omit the deployment environment the service
+# modules bake in, so they are test gates, not the production binaries.
 { self, ... }:
 {
   systems = [ "x86_64-linux" ];
@@ -24,8 +21,7 @@
             version = "0";
             src = "${self}/${path}";
             cargoLock.lockFile = "${self}/${path}/Cargo.lock";
-            # Warnings are errors here, so the production module builds do
-            # not carry the lint gate.
+            # The lint gate lives here, not in the production module builds.
             nativeBuildInputs = [ pkgs.clippy ];
             postCheck = "cargo clippy --all-targets -- -D warnings";
           }
@@ -40,8 +36,7 @@
         "modules/homelab/alerts/ship-alert"
       ];
 
-      # Every tracked .age needs a rule in secrets.nix, and every rule must
-      # point at a tracked file.
+      # Every tracked .age needs a rule, and every rule a tracked file.
       ruled = attrNames (import "${self}/secrets.nix");
       tracked =
         lib.filesystem.listFilesRecursive self
@@ -56,7 +51,6 @@
       checks = {
         agent-dispatch = crate "modules/ai/agent-dispatch" { };
         agent-vm = crate "modules/ai/agent-vm" {
-          # Fixtures drive the same tools the supervisor uses at runtime.
           nativeCheckInputs = [
             pkgs.jq
             pkgs.sqlite
@@ -84,10 +78,7 @@
               touch $out
             '';
 
-        # Keeps the builtins namespace out of modules, where lib
-        # equivalents exist. Files that evaluate without nixpkgs are exempt
-        # by scope. The bracketed pattern keeps the check from matching its
-        # own source.
+        # The bracketed pattern keeps the check from matching its own source.
         nix-style = pkgs.runCommand "nix-style-check" { } ''
           if grep -rn 'builtins[.]' ${self}/modules ${self}/options ${self}/hosts --include='*.nix'; then
             echo 'builtins usage in a module - use the lib equivalent (AGENTS.md, Nix style)' >&2
@@ -101,10 +92,8 @@
           touch $out
         '';
 
-        # A tracked secret without a rule is an error (it can't be rekeyed
-        # and nothing owns it). A rule without its file is only a warning:
-        # the documented workflow adds the rule before creating the secret
-        # (bootstrap-gated secrets sit in that state until provisioned).
+        # A tracked secret without a rule cannot be rekeyed. A rule without
+        # its file is only a warning: the rule precedes the secret.
         secrets-rules =
           if unruled != [ ] then
             throw (

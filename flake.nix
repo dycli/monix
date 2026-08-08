@@ -31,23 +31,20 @@
     inputs.darwin.follows = "";
   };
 
-  # master: stable predates the Hyprland 0.55 Lua command socket fixes
-  # that DMS workspace clicking needs.
+  # master: the stable tag predates the Hyprland 0.55 Lua command socket
+  # fixes DMS workspace clicking requires.
   inputs.dank-material-shell = {
     url = "github:AvengeMedia/DankMaterialShell";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  # The greeter lives in its own repo and nixpkgs ships no module for it.
   inputs.dank-greeter = {
     url = "github:AvengeMedia/dank-greeter";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  # Mission Control-style overview plugin, taken as source and compiled
-  # against this flake's hyprland (hyprland.mod.nix) — a plugin ABI must
-  # match the running compositor exactly, so its own flake's pin is
-  # useless to us.
+  # Built from source against this flake's hyprland: a plugin ABI must match
+  # the running compositor exactly, so upstream's own pin is unusable.
   inputs.gloview = {
     url = "github:fedsfarm/gloview";
     flake = false;
@@ -58,15 +55,13 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  # Hypervisor-backed guests for the agent fleet.
   inputs.microvm = {
     url = "github:microvm-nix/microvm.nix";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  # Minecraft servers as a NixOS service. Deliberately does not follow our
-  # nixpkgs: its server packages are built and cached against its own pin,
-  # and following ours would forfeit those cache hits.
+  # Deliberately does not follow our nixpkgs: its server packages are cached
+  # against its own pin, and following ours forfeits those cache hits.
   inputs.nix-minecraft = {
     url = "github:Infinidoge/nix-minecraft";
   };
@@ -74,15 +69,12 @@
   outputs =
     inputs:
     let
-      # The ship's lib (nixpkgs.lib + lib.ship), threaded into flake-parts
-      # here and into every nixosSystem by ship.host.
       lib = import ./lib inputs.nixpkgs.lib;
 
       inherit (lib.attrsets) filterAttrs mapAttrs' nameValuePair;
       inherit (lib.strings) hasSuffix removeSuffix;
 
-      # flake-parts' module set, read the way its own flake.nix builds it;
-      # required arguments of its lib.nix entry point.
+      # Required arguments of flake-parts' lib.nix entry point.
       flakePartsModules =
         directory:
         mapAttrs' (name: _: nameValuePair (removeSuffix ".nix" name) "${directory}/${name}") (
@@ -100,8 +92,8 @@
       (
         { lib, ... }:
         {
-          # Every *.mod.nix in the tree is a flake-parts module, imported
-          # automatically; there is no central list.
+          # Every *.mod.nix in the tree is a flake-parts module; no central
+          # import list.
           imports = lib.lists.filter (lib.strings.hasSuffix ".mod.nix") (
             lib.filesystem.listFilesRecursive ./.
           );

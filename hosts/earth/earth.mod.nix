@@ -1,4 +1,4 @@
-# earth — Framework 13 (7040 AMD), the captain's laptop: Hyprland desktop.
+# earth — Framework 13 (7040 AMD) laptop: Hyprland desktop.
 {
   self,
   inputs,
@@ -30,8 +30,7 @@
 
         nixpkgs.hostPlatform = "x86_64-linux";
 
-        # HARDWARE (quirks/power tuning come from the nixos-hardware
-        # framework module above)
+        # HARDWARE — quirks and power tuning come from nixos-hardware.
         boot.initrd.availableKernelModules = [
           "nvme"
           "xhci_pci"
@@ -44,9 +43,7 @@
         hardware.enableRedistributableFirmware = true;
         hardware.cpu.amd.updateMicrocode = true;
 
-        # DISK (WD Black SN850X 2TB). Disko derives the mount config: /boot
-        # from the ESP, / from btrfs subvol @ inside LUKS (opened as
-        # /dev/mapper/cryptroot).
+        # DISK
         disko.devices.disk.main = {
           device = "/dev/disk/by-id/nvme-WD_BLACK_SN850X_2000GB_24144X801841";
           type = "disk";
@@ -87,8 +84,8 @@
           };
         };
 
-        # POWER (amd_pstate and the amdgpu PSR workaround come from
-        # nixos-hardware and are not repeated here)
+        # POWER — amd_pstate and the amdgpu PSR workaround come from
+        # nixos-hardware.
         boot.kernelPackages = pkgs.linuxPackages_zen;
 
         boot.kernelParams = [
@@ -117,13 +114,8 @@
         # PERIPHERALS
         hardware.keyboard.zsa.enable = true;
 
-        # AUDIO + DISPLAY CALIBRATION — this machine's panel and speakers,
-        # so host-scoped rather than part of the desktop bundle.
+        # AUDIO + DISPLAY CALIBRATION — this machine's panel and speakers.
         home-manager.users.${config.primaryUser} = {
-          # Framework's official speaker preset (FrameworkComputer/
-          # linux-docs, easy-effects/fw13-easy-effects.json) — convolver +
-          # EQ tuned for the FW13 drivers. The impulse response ships
-          # beside it; EasyEffects finds both through the XDG data dir.
           services.easyeffects = {
             enable = true;
             preset = "fw13";
@@ -132,14 +124,10 @@
           xdg.dataFile."easyeffects/irs/IR_22ms_27dB_5t_15s_0c.irs".source =
             ./IR_22ms_27dB_5t_15s_0c.irs;
 
-          # Notebookcheck's i1Pro 2 profile for the 2.8K panel (BOE
-          # NE135A1M-NY1; BOE0CB4 is its EDID id, and the same panel's
-          # profile regardless of which CPU generation was reviewed).
-          # DMS owns dms/outputs.lua but its writer cannot express icc,
-          # so the internal panel's rule is declared here instead;
-          # mkAfter lands it after the dms.outputs require, and the last
-          # rule for an output wins. Scale 2 matches the session's
-          # static GDK_SCALE.
+          # i1Pro 2 profile for the 2.8K panel (EDID id BOE0CB4). DMS owns
+          # dms/outputs.lua but its writer cannot express icc; mkAfter lands
+          # this after the dms.outputs require, and the last rule for an
+          # output wins. Scale 2 matches the session's static GDK_SCALE.
           wayland.windowManager.hyprland.extraConfig = mkAfter ''
             hl.monitor({ output = "eDP-1", mode = "2880x1920@120", position = "auto", scale = 2, icc = "${./BOE0CB4.icc}" })
           '';
@@ -156,24 +144,15 @@
           "steam-unwrapped"
         ];
 
-        # Prism (not the stock launcher) to pin the Minecraft client to the
-        # water server's exact version (see modules/homelab/minecraft.mod.nix).
-        # Element for the family Matrix on chat.su.is (see
-        # modules/homelab/matrix.mod.nix).
+        # Prism pins the Minecraft client to the water server's version.
         environment.systemPackages = [
           pkgs.prismlauncher
           pkgs.element-desktop
           pkgs.heroic
         ];
 
-        # USER: login shell is NixOS's default (bash) — a plain POSIX $SHELL
-        # for tools that shell out (nvim, lf, tmux). The interactive shell is
-        # nushell, launched by ghostty (see ghostty.mod.nix).
-        #
-        # Change the password by re-running `mkpasswd -m yescrypt` into
-        # `agenix -e hosts/earth/dylan-password.age` and switching
-        # (users.mutableUsers = false ships in the users aspect, so `passwd`
-        # does not stick; wheel sudo needs a password, SSH keys don't help).
+        # Rotate with `mkpasswd -m yescrypt` into the .age file;
+        # users.mutableUsers = false means `passwd` does not stick.
         secrets.dylan-password.file = ./dylan-password.age;
         users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.dylan-password.path;
 

@@ -1,7 +1,5 @@
-# Fonts. Comic Code leads the monospace default, with CaskaydiaMono as
-# the fallback for hosts without its ciphertext (the install below is
-# gated on it; this list is not). `noto-fonts-color-emoji` is the current
-# attribute name (noto-fonts-emoji is a deprecated alias).
+# System fonts. The Comic Code install is gated on its ciphertext existing, so
+# hosts without it fall through to CaskaydiaMono in the monospace list.
 { self, ... }:
 {
   flake.nixosModules.desktop = self.nixosModules.fonts;
@@ -15,15 +13,12 @@
     let
       inherit (lib.modules) mkIf mkMerge;
 
-      # Comic Code is paid, so the repo carries only agenix ciphertext of
-      # a gzipped tar, decrypted at activation and unpacked outside the
-      # world-readable store. To create the secret:
+      # Comic Code is paid, so the repo carries only agenix ciphertext of a
+      # gzipped tar, unpacked at activation outside the world-readable store:
       #
       #   tar czf /tmp/comic-code.tgz -C <dir containing the .otf files> .
       #   cd ~/ark/monix && EDITOR="cp /tmp/comic-code.tgz" agenix -e assets/fonts/comic-code.age
       #   git add assets/fonts/comic-code.age && rm /tmp/comic-code.tgz
-      #
-      # Gated on the ciphertext existing, so clones without it evaluate.
       comicCodeAge = ../../assets/fonts/comic-code.age;
       hasComicCode = lib.pathExists comicCodeAge;
     in
@@ -45,8 +40,8 @@
             '';
           };
 
-          # fonts.packages takes only store paths, so the decrypted
-          # directory goes to fontconfig directly.
+          # fonts.packages takes only store paths, so the decrypted directory
+          # is given to fontconfig directly.
           fonts.fontconfig.localConf = ''
             <?xml version="1.0"?>
             <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
