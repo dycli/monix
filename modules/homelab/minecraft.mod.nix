@@ -165,8 +165,9 @@
             # Beta properties format: numeric difficulty (2 = normal), no
             # view-distance knob, read as latin-1 so the motd stays ASCII.
             serverProperties = {
-              # Not 25568: serenity's port+1, taken by its LOD listener.
-              server-port = 25570;
+              # Continues the scheme: odd ports serve, each even port above
+              # belongs to that server's Chunksmith LOD listener.
+              server-port = 25569;
               max-players = 5;
               difficulty = 2;
               online-mode = true;
