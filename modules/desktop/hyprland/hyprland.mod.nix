@@ -249,15 +249,19 @@
               key_activate = "w enter";
             };
 
-            # Defaults (bar_color 0x88333333, height 15, buttons right)
-            # already sit well on the glass; only the deviations are
-            # stated. Buttons are registered separately below — in Lua
-            # config mode the hyprbars-button keyword does not exist.
+            # Dressed like a Win9x/early-KDE titlebar: solid navy bar,
+            # bold left-aligned title, gray buttons (registered below —
+            # in Lua config mode the hyprbars-button keyword does not
+            # exist). Opaque bar, so no blur to join.
             plugin.hyprbars = {
-              # The bar joins the frost like every other surface.
-              bar_blur = true;
-              # Default is "Sans"; the ship is set in its monospace.
-              bar_text_font = "ComicCodeLigatures Nerd Font";
+              bar_height = 25;
+              # The Win95 title-bar navy.
+              bar_color = "rgb(000080)";
+              bar_text_align = "left";
+              bar_text_weight = "bold";
+              # Noto Sans stands in for MS Sans Serif; the era was bold
+              # sans, not monospace.
+              bar_text_font = "Noto Sans";
             };
 
             input = {
@@ -400,17 +404,20 @@
           ];
 
           # hl.plugin.hyprbars.add_button, right-aligned in declaration
-          # order from the edge inward. The renderer emits settings after
-          # plugin loads, so the function is registered by the time these
-          # run. Actions go through the exec dispatcher; every field is
-          # required (a missing fg_color is a parse error, not a
-          # white default, unlike the legacy keyword).
+          # order from the edge inward — the Win95 trio reads
+          # minimize/maximize/close on screen, so close is declared
+          # first. All three in the era's button gray with black glyphs.
+          # The renderer emits settings after plugin loads, so the
+          # function is registered by the time these run. Actions go
+          # through the exec dispatcher; every field is required (a
+          # missing fg_color is a parse error, not a white default,
+          # unlike the legacy keyword).
           "plugin.hyprbars.add_button" = [
             {
               _args = [
                 {
-                  bg_color = "rgb(cc5555)";
-                  fg_color = "rgb(ffffff)";
+                  bg_color = "rgb(c0c0c0)";
+                  fg_color = "rgb(000000)";
                   size = 20;
                   icon = "󰖭";
                   action = "hyprctl dispatch killactive";
@@ -420,11 +427,24 @@
             {
               _args = [
                 {
-                  bg_color = "rgb(555555)";
-                  fg_color = "rgb(ffffff)";
+                  bg_color = "rgb(c0c0c0)";
+                  fg_color = "rgb(000000)";
                   size = 20;
                   icon = "󰖯";
                   action = "hyprctl dispatch fullscreen 1";
+                }
+              ];
+            }
+            # Hyprland has no minimize; the special workspace (SUPER+U
+            # to bring back) is the closest stand-in.
+            {
+              _args = [
+                {
+                  bg_color = "rgb(c0c0c0)";
+                  fg_color = "rgb(000000)";
+                  size = 20;
+                  icon = "󰖰";
+                  action = "hyprctl dispatch movetoworkspacesilent special:magic";
                 }
               ];
             }
