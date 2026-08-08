@@ -1,7 +1,12 @@
 # Hyprland session environment variables.
 {
   flake.homeModules.hyprland =
-    { config, osConfig, ... }:
+    {
+      config,
+      lib,
+      osConfig,
+      ...
+    }:
     let
       # One `hl.env(key, value)` call per list element.
       mkEnv = key: value: {
@@ -29,6 +34,9 @@
         # nvim's runtimepath expansion under non-POSIX shells.
         (mkEnv "XDG_DATA_DIRS" "/etc/profiles/per-user/${osConfig.primaryUser}/share:/run/current-system/sw/share")
         (mkEnv "EDITOR" (config.desktopApps.editor))
+        # For CLI tools that consult BROWSER before falling back to
+        # xdg-open (whose scheme-handler pin points here anyway).
+        (mkEnv "BROWSER" (lib.getExe config.desktopApps.browser))
         # The theme DMS's generated gtk.css is written against.
         (mkEnv "GTK_THEME" "adw-gtk3-dark")
       ];
