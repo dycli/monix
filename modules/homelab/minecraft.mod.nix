@@ -162,8 +162,8 @@
 
             jvmOpts = "-Xms512M -Xmx2G";
 
-            # Beta properties format: numeric difficulty (2 = normal), no
-            # view-distance knob, read as latin-1 so the motd stays ASCII.
+            # Beta properties format: numeric difficulty (2 = normal), read
+            # as latin-1 so the motd stays ASCII.
             serverProperties = {
               # Continues the scheme: odd ports serve, each even port above
               # belongs to that server's Chunksmith LOD listener.
@@ -171,6 +171,10 @@
               max-players = 5;
               difficulty = 2;
               online-mode = true;
+              # BTA reads this fork-added key (default 10); 32 matches the
+              # client slider's ceiling. Chunk work is on the main thread, so
+              # walk it down if a full wander lags.
+              view-distance = 32;
               motd = "water // better than adventure -- beta 1.7.3 continued";
               server-ip = "";
             };
