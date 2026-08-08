@@ -256,18 +256,20 @@
               key_activate = "w enter";
             };
 
-            # Dressed like a Win9x/early-KDE titlebar: solid navy bar,
-            # bold left-aligned title, gray buttons (registered below —
-            # in Lua config mode the hyprbars-button keyword does not
-            # exist). Opaque bar, so no blur to join.
+            # Dressed like Mac OS 8/9 Platinum. Greys are pixel-sampled
+            # from a pristine OS 9 screenshot (guidebookgallery.org
+            # desktop/full): active bar base CCCCCC (the pinstripes,
+            # FFFFFF/777777, are beyond a solid fill), inactive DDDDDD
+            # with 777777 title — the inactive pair lives in a focus
+            # window rule below. Title centered (the default) and black,
+            # bold Noto Sans standing in for Charcoal. Buttons are
+            # registered below — in Lua config mode the hyprbars-button
+            # keyword does not exist. Opaque bar, so no blur to join.
             plugin.hyprbars = {
               bar_height = 25;
-              # The Win95 title-bar navy.
-              bar_color = "rgb(000080)";
-              bar_text_align = "left";
+              bar_color = "rgb(cccccc)";
+              col.text = "rgb(000000)";
               bar_text_weight = "bold";
-              # Noto Sans stands in for MS Sans Serif; the era was bold
-              # sans, not monospace.
               bar_text_font = "Noto Sans";
             };
 
@@ -402,16 +404,16 @@
               no_focus = true;
             }
             {
-              # Win95 inactive titlebar: gray bar, silver title (the
-              # active navy/white comes from the plugin config above).
-              # focus is a dynamic matcher — both windows re-run rules
-              # on every focus change and hyprbars repaints on rule
-              # updates, so this flips live. Plugin effects resolve
+              # Platinum inactive titlebar: the sampled DDDDDD/777777
+              # pair (active CCCCCC/black comes from the plugin config
+              # above). focus is a dynamic matcher — both windows re-run
+              # rules on every focus change and hyprbars repaints on
+              # rule updates, so this flips live. Plugin effects resolve
               # through the dynamic-effect registry, hence the string
               # keys.
               match.focus = false;
-              "hyprbars:bar_color" = "rgb(808080)";
-              "hyprbars:title_color" = "rgb(c0c0c0)";
+              "hyprbars:bar_color" = "rgb(dddddd)";
+              "hyprbars:title_color" = "rgb(777777)";
             }
           ];
 
@@ -423,23 +425,24 @@
           ];
 
           # hl.plugin.hyprbars.add_button, right-aligned in declaration
-          # order from the edge inward — reads float/fullscreen/close on
-          # screen, so close is declared first. All in the era's button
-          # gray with black glyphs; the float glyph is the Win95 restore
-          # icon, which suits the theme. The renderer emits settings
-          # after plugin loads, so the function is registered by the
-          # time these run. Every field is required (a missing fg_color
-          # is a parse error, not a white default, unlike the legacy
-          # keyword). Actions spawn as shell commands, and under the Lua
-          # config `hyprctl dispatch` is a wrapper for hl.dispatch — it
-          # takes these Lua expressions, and legacy syntax like
-          # "dispatch killactive" fails (silently, from a spawn).
+          # order from the edge inward — reads float/maximize/close on
+          # screen, so close is declared first. Platinum widget boxes:
+          # bar-grey fill with the sampled 222222 mark, so the glyphs
+          # sit on the bar the way OS 9's subtle widgets do. The
+          # renderer emits settings after plugin loads, so the function
+          # is registered by the time these run. Every field is required
+          # (a missing fg_color is a parse error, not a white default,
+          # unlike the legacy keyword). Actions spawn as shell commands,
+          # and under the Lua config `hyprctl dispatch` is a wrapper for
+          # hl.dispatch — it takes these Lua expressions, and legacy
+          # syntax like "dispatch killactive" fails (silently, from a
+          # spawn).
           "plugin.hyprbars.add_button" = [
             {
               _args = [
                 {
-                  bg_color = "rgb(c0c0c0)";
-                  fg_color = "rgb(000000)";
+                  bg_color = "rgb(cccccc)";
+                  fg_color = "rgb(222222)";
                   size = 20;
                   icon = "󰖭";
                   action = "hyprctl dispatch 'hl.dsp.window.close()'";
@@ -449,19 +452,19 @@
             {
               _args = [
                 {
-                  bg_color = "rgb(c0c0c0)";
-                  fg_color = "rgb(000000)";
+                  bg_color = "rgb(cccccc)";
+                  fg_color = "rgb(222222)";
                   size = 20;
                   icon = "󰖯";
-                  action = ''hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "fullscreen" })' '';
+                  action = ''hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })' '';
                 }
               ];
             }
             {
               _args = [
                 {
-                  bg_color = "rgb(c0c0c0)";
-                  fg_color = "rgb(000000)";
+                  bg_color = "rgb(cccccc)";
+                  fg_color = "rgb(222222)";
                   size = 20;
                   icon = "󰖲";
                   action = "hyprctl dispatch 'hl.dsp.window.float()'";
