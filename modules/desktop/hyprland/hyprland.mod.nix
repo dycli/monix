@@ -154,6 +154,10 @@
               license = lib.licenses.gpl3Plus;
             };
           })
+          # Titlebars. Safe from nixpkgs unlike gloview: hyprlandPlugins
+          # is built against the same hyprland pin, so the ABI matches by
+          # construction.
+          pkgs.hyprlandPlugins.hyprbars
         ];
 
         # UWSM brings up the graphical-session targets itself, so this
@@ -243,6 +247,17 @@
               key_next_workspace = "o";
               key_prev_workspace = "shift+o";
               key_activate = "w enter";
+            };
+
+            # Defaults (bar_color 0x88333333, height 15, buttons right)
+            # already sit well on the glass; only the deviations are
+            # stated. Buttons are registered separately below — in Lua
+            # config mode the hyprbars-button keyword does not exist.
+            plugin.hyprbars = {
+              # The bar joins the frost like every other surface.
+              bar_blur = true;
+              # Default is "Sans"; the ship is set in its monospace.
+              bar_text_font = "ComicCodeLigatures Nerd Font";
             };
 
             input = {
@@ -381,6 +396,37 @@
             {
               match.namespace = "^(dms)$";
               no_anim = true;
+            }
+          ];
+
+          # hl.plugin.hyprbars.add_button, right-aligned in declaration
+          # order from the edge inward. The renderer emits settings after
+          # plugin loads, so the function is registered by the time these
+          # run. Actions go through the exec dispatcher; every field is
+          # required (a missing fg_color is a parse error, not a
+          # white default, unlike the legacy keyword).
+          "plugin.hyprbars.add_button" = [
+            {
+              _args = [
+                {
+                  bg_color = "rgb(cc5555)";
+                  fg_color = "rgb(ffffff)";
+                  size = 10;
+                  icon = "󰖭";
+                  action = "hyprctl dispatch killactive";
+                }
+              ];
+            }
+            {
+              _args = [
+                {
+                  bg_color = "rgb(555555)";
+                  fg_color = "rgb(ffffff)";
+                  size = 10;
+                  icon = "󰖯";
+                  action = "hyprctl dispatch fullscreen 1";
+                }
+              ];
             }
           ];
 
