@@ -156,8 +156,15 @@
           })
           # Titlebars. Safe from nixpkgs unlike gloview: hyprlandPlugins
           # is built against the same hyprland pin, so the ABI matches by
-          # construction.
-          pkgs.hyprlandPlugins.hyprbars
+          # construction. Button rounding is hardcoded to a full circle
+          # with no config knob (upstream #583), so the Win95 squares
+          # take a patch.
+          (pkgs.hyprlandPlugins.hyprbars.overrideAttrs (old: {
+            postPatch = (old.postPatch or "") + ''
+              substituteInPlace barDeco.cpp \
+                --replace-fail 'std::round(scaledButtonSize / 2.0)' '0'
+            '';
+          }))
         ];
 
         # UWSM brings up the graphical-session targets itself, so this
@@ -394,6 +401,18 @@
               };
               no_focus = true;
             }
+            {
+              # Win95 inactive titlebar: gray bar, silver title (the
+              # active navy/white comes from the plugin config above).
+              # focus is a dynamic matcher — both windows re-run rules
+              # on every focus change and hyprbars repaints on rule
+              # updates, so this flips live. Plugin effects resolve
+              # through the dynamic-effect registry, hence the string
+              # keys.
+              match.focus = false;
+              "hyprbars:bar_color" = "rgb(808080)";
+              "hyprbars:title_color" = "rgb(c0c0c0)";
+            }
           ];
 
           layer_rule = [
@@ -409,9 +428,12 @@
           # gray with black glyphs; the float glyph is the Win95 restore
           # icon, which suits the theme. The renderer emits settings
           # after plugin loads, so the function is registered by the
-          # time these run. Actions go through the exec dispatcher;
-          # every field is required (a missing fg_color is a parse
-          # error, not a white default, unlike the legacy keyword).
+          # time these run. Every field is required (a missing fg_color
+          # is a parse error, not a white default, unlike the legacy
+          # keyword). Actions spawn as shell commands, and under the Lua
+          # config `hyprctl dispatch` is a wrapper for hl.dispatch — it
+          # takes these Lua expressions, and legacy syntax like
+          # "dispatch killactive" fails (silently, from a spawn).
           "plugin.hyprbars.add_button" = [
             {
               _args = [
@@ -420,7 +442,7 @@
                   fg_color = "rgb(000000)";
                   size = 20;
                   icon = "󰖭";
-                  action = "hyprctl dispatch killactive";
+                  action = "hyprctl dispatch 'hl.dsp.window.close()'";
                 }
               ];
             }
@@ -431,7 +453,7 @@
                   fg_color = "rgb(000000)";
                   size = 20;
                   icon = "󰖯";
-                  action = "hyprctl dispatch fullscreen 0";
+                  action = ''hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "fullscreen" })' '';
                 }
               ];
             }
@@ -442,7 +464,7 @@
                   fg_color = "rgb(000000)";
                   size = 20;
                   icon = "󰖲";
-                  action = "hyprctl dispatch togglefloating";
+                  action = "hyprctl dispatch 'hl.dsp.window.float()'";
                 }
               ];
             }
