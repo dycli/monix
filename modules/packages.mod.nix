@@ -67,9 +67,17 @@
   # own grim, slurp and notification dependencies.
   flake.homeModules.desktop = self.homeModules.packages-desktop;
   flake.homeModules.packages-desktop =
-    { pkgs, ... }:
+    { config, pkgs, ... }:
     {
       home.packages = [
+        # The session's elected applications (default-apps.mod.nix) that
+        # no module below installs; referencing the options keeps a host
+        # override installing its choice.
+        config.desktopApps.email
+        config.desktopApps.pdfViewer
+        config.desktopApps.imageViewer
+        config.desktopApps.videoPlayer
+
         pkgs.brightnessctl
         pkgs.cliphist
         pkgs.hyprpicker

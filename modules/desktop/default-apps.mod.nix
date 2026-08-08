@@ -4,24 +4,18 @@
 # URL opens to them by declaration, not by whichever app registered
 # itself first at runtime. Hosts override per-app.
 #
-# The desktop ids must follow the chosen packages. Installation of the
-# big GUI apps stays in packages.mod.nix — this module elects defaults
-# (and installs the viewers and players nothing else carries).
+# This module only elects defaults — every desktop application installs
+# in packages.mod.nix (the session-bound ones there reference these
+# options, so a host override changes both the binds and the install).
+# The mime desktop ids below must follow the chosen packages.
 { self, ... }:
 {
   flake.homeModules.desktop = self.homeModules.default-apps;
   flake.homeModules.default-apps =
-    {
-      config,
-      lib,
-      pkgs,
-      ...
-    }:
+    { lib, pkgs, ... }:
     let
       inherit (lib.options) mkOption;
       inherit (lib) types;
-
-      cfg = config.desktopApps;
 
       app =
         default: description:
@@ -52,13 +46,6 @@
       };
 
       config = {
-        home.packages = [
-          cfg.email
-          cfg.pdfViewer
-          cfg.imageViewer
-          cfg.videoPlayer
-        ];
-
         xdg.mimeApps = {
           enable = true;
           defaultApplications = {
