@@ -6,7 +6,7 @@
 #
 # The desktop ids must follow the chosen packages. Installation of the
 # big GUI apps stays in packages.mod.nix — this module elects defaults
-# (and installs the two viewers nothing else carries).
+# (and installs the viewers and players nothing else carries).
 { self, ... }:
 {
   flake.homeModules.desktop = self.homeModules.default-apps;
@@ -39,6 +39,7 @@
         email = app pkgs.thunderbird "email client; also the mailto handler";
         pdfViewer = app pkgs.kdePackages.okular "PDF viewer behind application/pdf";
         imageViewer = app pkgs.kdePackages.gwenview "image viewer behind the image/* types";
+        videoPlayer = app pkgs.haruna "video player behind the video/* and audio/* types";
 
         # A command name, not a package: the editor is the NvChad wrapper
         # on the user's PATH (editors.mod.nix). Session-scoped — headless
@@ -55,6 +56,7 @@
           cfg.email
           cfg.pdfViewer
           cfg.imageViewer
+          cfg.videoPlayer
         ];
 
         xdg.mimeApps = {
@@ -78,6 +80,26 @@
             "image/svg+xml" = "org.kde.gwenview.desktop";
             "image/tiff" = "org.kde.gwenview.desktop";
             "image/webp" = "org.kde.gwenview.desktop";
+
+            "audio/aac" = "org.kde.haruna.desktop";
+            "audio/ac3" = "org.kde.haruna.desktop";
+            "audio/flac" = "org.kde.haruna.desktop";
+            "audio/mp4" = "org.kde.haruna.desktop";
+            "audio/mpeg" = "org.kde.haruna.desktop";
+            "audio/ogg" = "org.kde.haruna.desktop";
+            "audio/vnd.wave" = "org.kde.haruna.desktop";
+            "audio/webm" = "org.kde.haruna.desktop";
+            "audio/x-matroska" = "org.kde.haruna.desktop";
+            "audio/x-mpegurl" = "org.kde.haruna.desktop";
+            "video/mp2t" = "org.kde.haruna.desktop";
+            "video/mp4" = "org.kde.haruna.desktop";
+            "video/mpeg" = "org.kde.haruna.desktop";
+            "video/ogg" = "org.kde.haruna.desktop";
+            "video/quicktime" = "org.kde.haruna.desktop";
+            "video/vnd.avi" = "org.kde.haruna.desktop";
+            "video/webm" = "org.kde.haruna.desktop";
+            "video/x-matroska" = "org.kde.haruna.desktop";
+            "video/x-ms-wmv" = "org.kde.haruna.desktop";
           };
         };
       };
