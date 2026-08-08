@@ -82,14 +82,16 @@
 
         settings = {
           # `uwsm finalize` must run first: it exports the session variables
-          # and unblocks graphical-session.target. Long-running autostarts are
-          # wrapped in `uwsm app --` to get their own scopes.
+          # and unblocks graphical-session.target. Cursor and toolkit-theme
+          # vars are listed because systemd-launched services spawn apps from
+          # the user-manager environment, not the session env. Long-running
+          # autostarts are wrapped in `uwsm app --` to get their own scopes.
           on = {
             _args = [
               "hyprland.start"
               (mkLuaInline ''
                 function()
-                  hl.exec_cmd("${getExe pkgs.uwsm} finalize XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_ID")
+                  hl.exec_cmd("${getExe pkgs.uwsm} finalize XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_ID XCURSOR_THEME XCURSOR_SIZE HYPRCURSOR_THEME HYPRCURSOR_SIZE QT_QPA_PLATFORMTHEME GTK_THEME")
                   hl.exec_cmd("${getExe pkgs.uwsm} app -- ${getExe pkgs.wl-clip-persist} --clipboard regular")
                   hl.exec_cmd("${getExe pkgs.uwsm} app -- ${getExe' pkgs.wl-clipboard "wl-paste"} --watch ${getExe pkgs.cliphist} store")
                 end
