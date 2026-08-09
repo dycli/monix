@@ -22,6 +22,14 @@
         # sshd answers on the trusted tailscale0 only.
         services.openssh.openFirewall = false;
 
+        # Vultr instances boot SeaBIOS, so grub carries the BIOS-boot
+        # partition below; /boot lives on the root btrfs.
+        boot.loader.systemd-boot.enable = false;
+        boot.loader.grub.enable = true;
+
+        # 1 GB of RAM and no disk swap; zram keeps nginx honest under load.
+        zramSwap.enable = true;
+
         boot.initrd.availableKernelModules = [
           "virtio_pci"
           "virtio_scsi"
@@ -39,18 +47,8 @@
 
           content.partitions.boot = {
             priority = 100;
-            size = "1G";
-            type = "EF00";
-
-            content = {
-              type = "filesystem";
-              format = "vfat";
-              mountpoint = "/boot";
-              mountOptions = [
-                "fmask=0077"
-                "dmask=0077"
-              ];
-            };
+            size = "1M";
+            type = "EF02";
           };
 
           content.partitions.root = {
