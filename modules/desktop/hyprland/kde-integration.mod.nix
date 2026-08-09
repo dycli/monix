@@ -19,12 +19,19 @@
   flake.homeModules.kde-integration =
     { pkgs, ... }:
     let
-      # Upstream installs to lib/qt-6/{platformthemes,styles}; Qt searches
-      # QT_PLUGIN_PATH entries ending in lib/qt-6/plugins, so the plugin
-      # dirs are linked into that layout.
+      # Two fixes over upstream's package: the KF6 libraries are added so
+      # CMake's optional detection compiles the KColorScheme loader in
+      # (their nix build omits them, silently disabling .colors support),
+      # and the plugin dirs are linked into the lib/qt-6/plugins layout
+      # QT_PLUGIN_PATH searches.
       engine =
         (inputs.hyprqt6engine.packages.${pkgs.stdenv.hostPlatform.system}.hyprqt6engine).overrideAttrs
           (old: {
+            buildInputs = old.buildInputs ++ [
+              pkgs.kdePackages.kconfig
+              pkgs.kdePackages.kcolorscheme
+              pkgs.kdePackages.kiconthemes
+            ];
             postInstall = (old.postInstall or "") + ''
               mkdir -p $out/lib/qt-6/plugins
               ln -s $out/lib/qt-6/platformthemes $out/lib/qt-6/plugins/platformthemes
