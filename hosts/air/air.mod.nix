@@ -19,6 +19,9 @@
 
         sites.enable = true;
 
+        # Static file serving needs no build toolchain; system vim suffices.
+        editors.enable = false;
+
         # sshd answers on the trusted tailscale0 only.
         services.openssh.openFirewall = false;
 
