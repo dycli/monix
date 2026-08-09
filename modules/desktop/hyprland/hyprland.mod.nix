@@ -58,6 +58,12 @@
       # file rather than a store symlink; `f` seeds without overwriting.
       systemd.user.tmpfiles.rules = [
         "f %h/.config/hypr/dms/outputs.lua 0644 - - -"
+        # A blank-password default keyring: autologin types no password, so
+        # PAM cannot unlock a protected one. Plaintext-format contents stay
+        # under LUKS. Seeded only if missing — the daemon writes secrets
+        # into these files.
+        "f %h/.local/share/keyrings/default 0600 - - - Default_keyring\\n"
+        "f %h/.local/share/keyrings/Default_keyring.keyring 0600 - - - [keyring]\\ndisplay-name=Default keyring\\nctime=1\\nmtime=1\\nlock-on-idle=false\\nlock-after=false\\n"
       ];
 
       wayland.windowManager.hyprland = {

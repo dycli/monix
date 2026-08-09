@@ -34,6 +34,12 @@
       # renders only its own shell UI.
       programs.dms-shell.enableDynamicTheming = false;
 
+      # LUKS already gates boot; the greeter only appears after a logout.
+      services.displayManager.autoLogin = {
+        enable = true;
+        user = config.primaryUser;
+      };
+
       programs.dms-greeter = {
         enable = true;
         compositor.name = "hyprland";
