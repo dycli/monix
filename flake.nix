@@ -50,8 +50,6 @@
     flake = false;
   };
 
-  inputs.themes.url = "github:RGBCube/ThemeNix";
-
   inputs.nix4nvchad = {
     url = "github:nix-community/nix4nvchad";
     inputs.nixpkgs.follows = "nixpkgs";

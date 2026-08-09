@@ -33,8 +33,8 @@
         (mkEnv "XDG_DATA_DIRS" "/etc/profiles/per-user/${osConfig.primaryUser}/share:/run/current-system/sw/share")
         (mkEnv "EDITOR" (config.desktopApps.editor))
         (mkEnv "BROWSER" (lib.getExe config.desktopApps.browser))
-        # The GTK3 theme consuming the palette's gtk.css (gtk.mod.nix).
-        (mkEnv "GTK_THEME" (if config.theme.isDark then "adw-gtk3-dark" else "adw-gtk3"))
+        # Matches the Qt side's BreezeDark kdeglobals scheme.
+        (mkEnv "GTK_THEME" "Breeze-Dark")
         # HYPRCURSOR_* for the compositor, XCURSOR_* for clients.
         (mkEnv "XCURSOR_THEME" "Bibata-Modern-Amber")
         (mkEnv "XCURSOR_SIZE" "24")
