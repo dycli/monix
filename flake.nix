@@ -50,6 +50,13 @@
     flake = false;
   };
 
+  # Follows so the platform-theme plugin builds against the same Qt as
+  # the applications loading it.
+  inputs.hyprqt6engine = {
+    url = "github:hyprwm/hyprqt6engine";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
   inputs.nix4nvchad = {
     url = "github:nix-community/nix4nvchad";
     inputs.nixpkgs.follows = "nixpkgs";

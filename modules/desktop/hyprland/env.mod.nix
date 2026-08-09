@@ -21,9 +21,8 @@
         (mkEnv "GDK_SCALE" "2")
         (mkEnv "GDK_BACKEND" "wayland")
         (mkEnv "QT_QPA_PLATFORM" "wayland")
-        # Loads plasma-integration: every Qt app reads kdeglobals
-        # (kde-integration.mod.nix).
-        (mkEnv "QT_QPA_PLATFORMTHEME" "kde")
+        # Loads hyprqt6engine (kde-integration.mod.nix).
+        (mkEnv "QT_QPA_PLATFORMTHEME" "hyprqt6engine")
         (mkEnv "SDL_VIDEODRIVER" "wayland")
         (mkEnv "MOZ_ENABLE_WAYLAND" "1")
         (mkEnv "ELECTRON_OZONE_PLATFORM_HINT" "wayland")
