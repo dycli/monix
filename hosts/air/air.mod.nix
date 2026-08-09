@@ -1,16 +1,19 @@
 # air — cloud VPS carrying the internet-facing web role (modules/web/sites).
 # Public surface is nginx's 80/443 alone; everything else rides the tailnet.
 #
-# Unprovisioned template: the disk device and firmware below are generic-KVM
-# assumptions, and the host key, password secret, tailscale enrollment and
-# alert credentials all land at install time.
+# Vultr cloud instance, installed via nixos-anywhere from the live ISO.
+# Tailscale enrollment and alert credentials still land post-install.
 { lib, ... }:
 {
   imports = lib.lists.singleton (
     lib.ship.host "air" (
-      { ... }:
+      { config, ... }:
       {
         primaryUser = "ang";
+
+        # Rotate with `mkpasswd -m yescrypt` into the .age file.
+        secrets.ang-password.file = ./ang-password.age;
+        users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.ang-password.path;
 
         nixpkgs.hostPlatform = "x86_64-linux";
 

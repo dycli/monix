@@ -5,10 +5,17 @@ let
   keys = import ./keys.nix;
 
   inherit (keys) admin;
-  inherit (keys.hosts) water earth fire;
+  inherit (keys.hosts)
+    water
+    earth
+    fire
+    air
+    ;
 in
 {
   "hosts/earth/dylan-password.age".publicKeys = [ earth ] ++ admin;
+
+  "hosts/air/ang-password.age".publicKeys = [ air ] ++ admin;
 
   "hosts/fire/zuko-password.age".publicKeys = [ fire ] ++ admin;
 
