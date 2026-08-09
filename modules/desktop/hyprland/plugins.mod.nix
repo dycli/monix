@@ -117,12 +117,19 @@
               icon = "󰖲",
               action = "hyprctl dispatch 'hl.dsp.window.float()'",
             })
-            -- Cycles the scrolling layout's preset widths; no-op under dwindle.
+            -- Step the scrolling layout's preset widths; no-ops under dwindle.
             hl.plugin.hyprbars.add_button({
               bg_color = "rgba(00000000)",
               fg_color = "rgb(222222)",
               size = 20,
-              icon = "󰩨",
+              icon = "󰅁",
+              action = [=[hyprctl dispatch 'hl.dsp.layout("colresize -conf")']=],
+            })
+            hl.plugin.hyprbars.add_button({
+              bg_color = "rgba(00000000)",
+              fg_color = "rgb(222222)",
+              size = 20,
+              icon = "󰅂",
               action = [=[hyprctl dispatch 'hl.dsp.layout("colresize +conf")']=],
             })
           end
