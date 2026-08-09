@@ -49,7 +49,8 @@
         pkgs.zip
 
         # Also in the home concern; rebuilds need git in root's PATH.
-        pkgs.git
+        # Minimal build: the perl/python porcelain is dead weight fleet-wide.
+        pkgs.gitMinimal
       ];
     };
 
