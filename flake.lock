@@ -442,7 +442,8 @@
         "nix-minecraft": "nix-minecraft",
         "nix4nvchad": "nix4nvchad",
         "nixos-hardware": "nixos-hardware",
-        "nixpkgs": "nixpkgs_3"
+        "nixpkgs": "nixpkgs_3",
+        "whitesur-kde": "whitesur-kde"
       }
     },
     "spectrum": {
@@ -503,6 +504,22 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
+        "type": "github"
+      }
+    },
+    "whitesur-kde": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1786085916,
+        "narHash": "sha256-Fi2zffRhTPd07jTe3YgGkgFK4wjPv+Vq0iljWxLQDBU=",
+        "owner": "vinceliuice",
+        "repo": "WhiteSur-kde",
+        "rev": "cf4df59ce91004f7ea39358b1b8ff917d5c329f7",
+        "type": "github"
+      },
+      "original": {
+        "owner": "vinceliuice",
+        "repo": "WhiteSur-kde",
         "type": "github"
       }
     }

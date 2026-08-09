@@ -57,6 +57,12 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
+  # KColorScheme source only.
+  inputs.whitesur-kde = {
+    url = "github:vinceliuice/WhiteSur-kde";
+    flake = false;
+  };
+
   inputs.nix4nvchad = {
     url = "github:nix-community/nix4nvchad";
     inputs.nixpkgs.follows = "nixpkgs";

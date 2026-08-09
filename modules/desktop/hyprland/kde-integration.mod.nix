@@ -1,6 +1,6 @@
 # Qt theming outside Plasma via hyprqt6engine: the platform theme
 # (QT_QPA_PLATFORMTHEME in env.mod.nix) hands every Qt6 app the Breeze
-# style and the BreezeDark KColorScheme directly from the store. The
+# style and the WhiteSur Dark KColorScheme directly from the store. The
 # plugin follows this flake's nixpkgs so it links the same Qt as the
 # applications. qt.enable provides QT_PLUGIN_PATH.
 #
@@ -47,7 +47,7 @@
 
       xdg.configFile."hypr/hyprqt6engine.conf".text = ''
         theme {
-            color_scheme = ${pkgs.kdePackages.breeze}/share/color-schemes/BreezeDark.colors
+            color_scheme = ${inputs.whitesur-kde}/color-schemes/WhiteSurDark.colors
             style = Breeze
             icon_theme = breeze-dark
             font = Noto Sans
@@ -58,7 +58,11 @@
       '';
 
       systemd.user.tmpfiles.rules = [
-        "f+ %h/.config/kdeglobals 0644 - - - [General]\\nColorScheme=BreezeDark\\n[KDE]\\nwidgetStyle=Breeze\\n[Icons]\\nTheme=breeze-dark\\n"
+        "f+ %h/.config/kdeglobals 0644 - - - [General]\\nColorScheme=WhiteSurDark\\n[KDE]\\nwidgetStyle=Breeze\\n[Icons]\\nTheme=breeze-dark\\n"
       ];
+
+      # Named lookups (kdeglobals) resolve through the data dirs.
+      xdg.dataFile."color-schemes/WhiteSurDark.colors".source =
+        "${inputs.whitesur-kde}/color-schemes/WhiteSurDark.colors";
     };
 }
