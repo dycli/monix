@@ -27,8 +27,13 @@
         boot.loader.systemd-boot.enable = false;
         boot.loader.grub.enable = true;
 
-        # 1 GB of RAM and no disk swap; zram keeps nginx honest under load.
+        # 1 GB of RAM: zram takes the pressure first, the on-disk file (made
+        # NoCOW by `btrfs filesystem mkswapfile` at install) is the overflow.
         zramSwap.enable = true;
+        swapDevices = lib.lists.singleton {
+          device = "/swap";
+          size = 2048;
+        };
 
         boot.initrd.availableKernelModules = [
           "virtio_pci"
