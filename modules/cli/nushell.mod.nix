@@ -7,17 +7,9 @@
     {
       config,
       osConfig,
-      lib,
       pkgs,
       ...
     }:
-    let
-      inherit (lib.meta) getExe;
-
-      lsColors = pkgs.runCommand "ls-colors" { } ''
-        ${getExe pkgs.vivid} generate gruvbox-dark-hard > $out
-      '';
-    in
     {
       # Completion backends for the carapace bridges named in
       # CARAPACE_BRIDGES below, not login shells.
@@ -54,8 +46,6 @@
           $env.config.completions.algorithm = "substring"
 
           $env.CARAPACE_BRIDGES = "zsh,fish,bash"
-
-          $env.LS_COLORS = (open --raw ${lsColors})
 
           def ship-prompt-path []: nothing -> string {
             let home = ($nu.home-dir | path expand)
