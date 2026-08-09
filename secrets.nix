@@ -15,7 +15,7 @@ in
 {
   "hosts/earth/dylan-password.age".publicKeys = [ earth ] ++ admin;
 
-  "hosts/air/ang-password.age".publicKeys = [ air ] ++ admin;
+  "hosts/air/aang-password.age".publicKeys = [ air ] ++ admin;
 
   "hosts/fire/zuko-password.age".publicKeys = [ fire ] ++ admin;
 

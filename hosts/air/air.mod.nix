@@ -9,11 +9,11 @@
     lib.ship.host "air" (
       { config, ... }:
       {
-        primaryUser = "ang";
+        primaryUser = "aang";
 
         # Rotate with `mkpasswd -m yescrypt` into the .age file.
-        secrets.ang-password.file = ./ang-password.age;
-        users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.ang-password.path;
+        secrets.aang-password.file = ./aang-password.age;
+        users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.aang-password.path;
 
         nixpkgs.hostPlatform = "x86_64-linux";
 
