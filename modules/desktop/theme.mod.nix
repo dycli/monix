@@ -8,7 +8,7 @@
       options.theme = lib.options.mkOption {
         type = lib.types.attrs;
         description = "base16 palette record (ThemeNix custom shape) owning application theming.";
-        default = inputs.themes.custom inputs.themes.raw.grayscale-light;
+        default = inputs.themes.custom inputs.themes.raw.grayscale-dark;
       };
     };
 }
