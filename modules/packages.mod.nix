@@ -76,9 +76,6 @@
         pkgs.wl-clip-persist
         pkgs.wl-clipboard
 
-        # Selected via the cursor env in hyprland's env.mod.nix.
-        pkgs.bibata-cursors
-
         pkgs.brave
         pkgs.kdePackages.dolphin
         # ark is Dolphin's archive context menu; nothing else installs an icon
