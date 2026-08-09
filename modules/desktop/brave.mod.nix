@@ -14,8 +14,42 @@
   flake.nixosModules.brave =
     { lib, ... }:
     {
-      environment.etc."brave/policies/managed/dns.json".text = builtins.toJSON {
+      environment.etc."brave/policies/managed/monix.json".text = builtins.toJSON {
+        # ECH: the built-in client fetches HTTPS/type-65 records; the pin
+        # guards against upstream default changes.
         BuiltInDnsClientEnabled = true;
+        EncryptedClientHelloEnabled = true;
+
+        # Brave surface reduction.
+        BraveRewardsDisabled = true;
+        BraveWalletDisabled = true;
+        BraveVPNDisabled = true;
+        TorDisabled = true;
+        BraveAIChatEnabled = false;
+        BraveLocalAIEnabled = false;
+        BraveNewsDisabled = true;
+        BraveTalkDisabled = true;
+        BravePlaylistEnabled = false;
+        BraveWaybackMachineEnabled = false;
+        EmailAliasesEnabled = false;
+
+        # Telemetry.
+        BraveP3AEnabled = false;
+        BraveStatsPingEnabled = false;
+        BraveWebDiscoveryEnabled = false;
+        MetricsReportingEnabled = false;
+
+        # keepassxc owns credentials and identity data.
+        PasswordManagerEnabled = false;
+        AutofillCreditCardEnabled = false;
+        AutofillAddressEnabled = false;
+
+        # WebRTC must not enumerate tailnet or LAN addresses.
+        WebRtcIPHandling = "default_public_interface_only";
+
+        # 5 = open the new tab page on startup.
+        RestoreOnStartup = 5;
+        DefaultBrowserSettingEnabled = false;
       };
 
       system.nssDatabases.hosts = lib.mkForce [
