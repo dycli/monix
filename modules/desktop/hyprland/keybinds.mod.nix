@@ -88,12 +88,10 @@
           end
         '' "Switch to dwindle layout" { })
         # colresize is a scrolling-layout message; no-op under dwindle.
-        (mkBind "SUPER + CTRL + H" ''hl.dsp.layout("colresize all 0.333")''
-          "Set all columns to 1/3 width"
+        (mkBind "SUPER + CTRL + H" ''hl.dsp.layout("colresize all 0.333")'' "Set all columns to 1/3 width"
           { }
         )
-        (mkBind "SUPER + CTRL + L" ''hl.dsp.layout("colresize all 0.5")''
-          "Set all columns to 1/2 width"
+        (mkBind "SUPER + CTRL + L" ''hl.dsp.layout("colresize all 0.5")'' "Set all columns to 1/2 width"
           { }
         )
         (mkBind "SUPER + BRACKETLEFT" ''hl.dsp.layout("consume_or_expel prev")''
@@ -104,14 +102,8 @@
           "Consume or expel window right"
           { }
         )
-        (mkBind "SUPER + APOSTROPHE" ''hl.dsp.layout("colresize +conf")''
-          "Cycle column width up"
-          { }
-        )
-        (mkBind "SUPER + SEMICOLON" ''hl.dsp.layout("colresize -conf")''
-          "Cycle column width down"
-          { }
-        )
+        (mkBind "SUPER + APOSTROPHE" ''hl.dsp.layout("colresize +conf")'' "Cycle column width up" { })
+        (mkBind "SUPER + SEMICOLON" ''hl.dsp.layout("colresize -conf")'' "Cycle column width down" { })
         (mkBind "SUPER + M" ''hl.dsp.layout("colresize 1.0")'' "Maximize column width" { })
         (mkBind "SUPER + P" "hl.dsp.window.pseudo()" "Toggle pseudotile" { })
         (mkBind "SUPER + SHIFT + F" "hl.dsp.window.float()" "Toggle floating" { })
