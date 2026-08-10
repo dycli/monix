@@ -46,11 +46,9 @@ Current bundles:
   for a host that runs a different session.
 - `dev`      — the authoring toolchain and agent CLIs, for hosts where a
   human or the seat develops. A desktop is not automatically one.
-- `homelab`  — the house's services: media, family apps, smart home, their
-  front door and alerting.
-- `ai`       — the agent cluster: cockpit seat, worker fleet, local
-  inference. Needs `dev` imported alongside it. Shares a box with
-  `homelab` today; either can move alone.
+- `lab`      — the home server's role: the house's services (media, family
+  apps, smart home, their front door and alerting) and the agent lab
+  (cockpit seat, worker fleet, local inference). Needs `dev` alongside it.
 
 Rules of taste: never create a bundle without a real member and a real
 importer (no speculative structure — promote shared host config into a
@@ -128,7 +126,7 @@ unrelated module.
   `nix-output-monitor` are in `nix.mod.nix`, font packages in `fonts.mod.nix`.
 - Config-less tools with no natural home live in `modules/packages.mod.nix`:
   one universal system list, plus home lists that are bundle members
-  (`desktop`, `homelab`). Differentiation comes from bundle membership.
+  (`desktop`, `dev`). Differentiation comes from bundle membership.
 
 Home aspects are expressed with home-manager (`home.packages`,
 `programs.<tool>`).

@@ -1,7 +1,7 @@
-# The ai bundle: cockpit seat, worker fleet and local inference. Role wiring
-# only; credentials stay with the importing host.
+# The agent lab, part of the lab bundle: cockpit seat, worker fleet and local
+# inference. Role wiring only; credentials stay with the importing host.
 {
-  flake.nixosModules.ai =
+  flake.nixosModules.lab =
     { lib, ... }:
     {
       # tmux over tailnet SSH, opencode web at ai.su.is.

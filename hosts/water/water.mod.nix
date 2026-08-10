@@ -11,8 +11,7 @@
   imports = lib.lists.singleton (
     lib.ship.host "water" ({
       imports = [
-        self.nixosModules.homelab
-        self.nixosModules.ai
+        self.nixosModules.lab
         self.nixosModules.dev
         inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
         ./credentials.nix

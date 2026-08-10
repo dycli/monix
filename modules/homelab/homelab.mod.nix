@@ -1,11 +1,12 @@
-# The homelab bundle: the house's services — media automation, family
-# apps, smart home, their shared front door and alerting.
+# The lab bundle: the house's services — media automation, family apps,
+# smart home, their shared front door and alerting — plus the agent lab
+# (cockpit seat, worker fleet, inference; wired in ai/).
 #
 # Only role wiring lives here. agenix ciphertext is encrypted to one
 # host's key and cannot travel, so every `*File` option, along with
 # hardware facts, is set by the importing host.
 {
-  flake.nixosModules.homelab =
+  flake.nixosModules.lab =
     { config, lib, ... }:
     {
       # sshd stays reachable over the tailnet, whose interface is trusted;
