@@ -14,7 +14,8 @@
       inherit (lib.modules) mkIf mkMerge;
 
       # Comic Code is paid, so the repo carries only agenix ciphertext of a
-      # gzipped tar, unpacked at activation outside the world-readable store:
+      # gzipped tar; the store is world-readable and world-copyable, so the
+      # font is decrypted to /var/lib at activation rather than a store path:
       #
       #   tar czf /tmp/comic-code.tgz -C <dir containing the .otf files> .
       #   cd ~/ark/monix && EDITOR="cp /tmp/comic-code.tgz" agenix -e assets/fonts/comic-code.age

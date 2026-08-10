@@ -2,7 +2,8 @@
 # Public surface is nginx's 80/443 alone; everything else rides the tailnet.
 #
 # Vultr cloud instance, installed via nixos-anywhere from the live ISO.
-# Tailscale enrollment and alert credentials still land post-install.
+# Tailscale enrollment and alert credentials are provisioned out of band,
+# not by the flake.
 { lib, ... }:
 {
   imports = lib.lists.singleton (
@@ -30,8 +31,8 @@
         boot.loader.systemd-boot.enable = false;
         boot.loader.grub.enable = true;
 
-        # 1 GB of RAM: zram takes the pressure first, the on-disk file (made
-        # NoCOW by `btrfs filesystem mkswapfile` at install) is the overflow.
+        # 1 GB of RAM: zram takes the pressure first, the on-disk file (NoCOW,
+        # created by the swap unit on btrfs) is the overflow.
         zramSwap.enable = true;
         swapDevices = lib.lists.singleton {
           device = "/swap";

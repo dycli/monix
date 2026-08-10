@@ -30,7 +30,7 @@
 
         nixpkgs.hostPlatform = "x86_64-linux";
 
-        # HARDWARE — quirks and power tuning come from nixos-hardware.
+        # HARDWARE
         boot.initrd.availableKernelModules = [
           "nvme"
           "xhci_pci"
@@ -84,8 +84,7 @@
           };
         };
 
-        # POWER — amd_pstate and the amdgpu PSR workaround come from
-        # nixos-hardware.
+        # POWER
         boot.kernelPackages = pkgs.linuxPackages_zen;
 
         boot.kernelParams = [
@@ -114,15 +113,14 @@
         # PERIPHERALS
         hardware.keyboard.zsa.enable = true;
 
-        # AUDIO + DISPLAY CALIBRATION — this machine's panel and speakers.
+        # AUDIO + DISPLAY CALIBRATION
         home-manager.users.${config.primaryUser} = {
           services.easyeffects = {
             enable = true;
             preset = "fw13";
             extraPresets.fw13 = importJSON ./fw13-easy-effects.json;
           };
-          xdg.dataFile."easyeffects/irs/IR_22ms_27dB_5t_15s_0c.irs".source =
-            ./IR_22ms_27dB_5t_15s_0c.irs;
+          xdg.dataFile."easyeffects/irs/IR_22ms_27dB_5t_15s_0c.irs".source = ./IR_22ms_27dB_5t_15s_0c.irs;
 
           # i1Pro 2 profile for the 2.8K panel (EDID id BOE0CB4). DMS owns
           # dms/outputs.lua but its writer cannot express icc; mkAfter lands

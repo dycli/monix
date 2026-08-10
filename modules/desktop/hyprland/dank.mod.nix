@@ -30,8 +30,8 @@
             '';
           });
 
-      # Theming belongs to the theme option (theme.mod.nix consumers); DMS
-      # renders only its own shell UI.
+      # Qt and GTK theming are owned by kde-integration and gtk; DMS renders
+      # only its own shell UI, so its dynamic theming stays off.
       programs.dms-shell.enableDynamicTheming = false;
 
       # LUKS already gates boot; the greeter only appears after a logout.

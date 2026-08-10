@@ -2,7 +2,6 @@
 # Radeon, so none of the laptop's power tuning or Framework quirks apply.
 {
   self,
-  inputs,
   lib,
   ...
 }:
