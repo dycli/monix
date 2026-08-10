@@ -5,17 +5,20 @@
 {
   flake.homeModules.default = self.homeModules.lf;
   flake.homeModules.lf =
-    { pkgs, ... }:
+    { lib, pkgs, ... }:
+    let
+      inherit (lib.meta) getExe';
+    in
     {
       programs.lf = {
         enable = true;
 
         # `w` would otherwise spawn $SHELL, which is bash.
-        keybindings.w = "$" + "${pkgs.nushell}/bin/nu";
+        keybindings.w = "$" + getExe' pkgs.nushell "nu";
 
         commands.open = ''
           ''${{
-            case $(${pkgs.file}/bin/file --mime-type -Lb "$f") in
+            case $(${getExe' pkgs.file "file"} --mime-type -Lb "$f") in
               text/* | application/json | application/javascript | application/x-shellscript | application/toml | application/yaml | application/xml | inode/x-empty)
                 $EDITOR $fx
                 ;;

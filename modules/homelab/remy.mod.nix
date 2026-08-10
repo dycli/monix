@@ -19,6 +19,7 @@
       inherit (lib) dirOf;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
+      inherit (lib.strings) concatStringsSep escapeShellArg;
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib) types;
 
@@ -253,8 +254,8 @@
             BOT_HS_URL = "http://127.0.0.1:${toString config.matrix.port}";
             # The rooms are created once, so a room-name option would
             # rename nothing.
-            BOT_INVITE_USERS = lib.concatStringsSep "," cfg.inviteUsers;
-            BOT_SCRATCH_USERS = lib.concatStringsSep "," cfg.scratchpad.users;
+            BOT_INVITE_USERS = concatStringsSep "," cfg.inviteUsers;
+            BOT_SCRATCH_USERS = concatStringsSep "," cfg.scratchpad.users;
             BOT_SCRATCH_DB = "/var/lib/remy/scratch.db";
             LLM_URL = "http://127.0.0.1:${toString config.inference.port}/v1/chat/completions";
             LLM_MODEL = cfg.model;
@@ -321,7 +322,7 @@
                   src=/var/lib/remy/log.md
                   [ -f "$src" ] || exit 0
                   install -D -o ${cfg.famlog.owner} -g ${cfg.famlog.group} -m 0644 \
-                    "$src" ${lib.escapeShellArg cfg.famlog.path}
+                    "$src" ${escapeShellArg cfg.famlog.path}
                 '';
               }
             );

@@ -9,8 +9,11 @@
       pkgs,
       ...
     }:
+    let
+      inherit (lib.modules) mkIf;
+    in
     {
-      config = lib.mkIf config.programs.steam.enable {
+      config = mkIf config.programs.steam.enable {
         programs.steam.extraCompatPackages = [ pkgs.proton-ge-bin ];
         unfreePackages = [
           "steam"

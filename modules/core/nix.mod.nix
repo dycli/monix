@@ -8,6 +8,9 @@
       pkgs,
       ...
     }:
+    let
+      inherit (lib.strings) getName;
+    in
     {
       nix.settings = {
         experimental-features = [
@@ -55,7 +58,7 @@
       # Per-package unfree allowlist instead of a blanket allowUnfree. The
       # names live in `unfreePackages`, contributed by the module that
       # installs each package (see options/host.mod.nix).
-      nixpkgs.config.allowUnfreePredicate = pkg: lib.lists.elem (lib.getName pkg) config.unfreePackages;
+      nixpkgs.config.allowUnfreePredicate = pkg: lib.lists.elem (getName pkg) config.unfreePackages;
 
       environment.systemPackages = [
         pkgs.nh

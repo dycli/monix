@@ -8,6 +8,7 @@
       ...
     }:
     let
+      inherit (lib.meta) getExe;
       # One `hl.env(key, value)` call per list element.
       mkEnv = key: value: {
         _args = [
@@ -31,7 +32,7 @@
         # literal $VAR would propagate into the session.
         (mkEnv "XDG_DATA_DIRS" "/etc/profiles/per-user/${osConfig.primaryUser}/share:/run/current-system/sw/share")
         (mkEnv "EDITOR" (config.desktopApps.editor))
-        (mkEnv "BROWSER" (lib.getExe config.desktopApps.browser))
+        (mkEnv "BROWSER" (getExe config.desktopApps.browser))
         # Matches the Qt side's BreezeDark kdeglobals scheme.
         (mkEnv "GTK_THEME" "Breeze-Dark")
         # HYPRCURSOR_* for the compositor, XCURSOR_* for clients.

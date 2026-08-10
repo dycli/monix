@@ -16,6 +16,7 @@
       ...
     }:
     let
+      inherit (lib.attrsets) optionalAttrs;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib) types;
@@ -74,10 +75,10 @@
             CURTISBOT_DB = "/var/lib/curtisbot/bot.db";
             CURTISBOT_TEST_DB = "/var/lib/curtisbot/test.db";
           }
-          // lib.optionalAttrs (cfg.guildId != null) {
+          // optionalAttrs (cfg.guildId != null) {
             DISCORD_GUILD_ID = cfg.guildId;
           }
-          // lib.optionalAttrs (cfg.testGuildId != null) {
+          // optionalAttrs (cfg.testGuildId != null) {
             DISCORD_TEST_GUILD_ID = cfg.testGuildId;
           };
           serviceConfig = lib.ship.hardened.tenant // {

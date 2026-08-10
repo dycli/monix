@@ -19,6 +19,7 @@
       ...
     }:
     let
+      inherit (lib.meta) getExe';
       inherit (lib.modules) mkForce;
     in
     {
@@ -26,7 +27,7 @@
       # reloads via SIGUSR2; during activation that signal can land on the
       # short-lived validate process and fail activation with exit 140.
       xdg.configFile."ghostty/config".onChange = mkForce ''
-        ${pkgs.systemd}/bin/systemctl --user try-reload-or-restart app-com.mitchellh.ghostty.service 2>/dev/null || true
+        ${getExe' pkgs.systemd "systemctl"} --user try-reload-or-restart app-com.mitchellh.ghostty.service 2>/dev/null || true
       '';
 
       programs.ghostty = {

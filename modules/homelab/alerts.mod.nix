@@ -14,7 +14,7 @@
       ...
     }:
     let
-      inherit (lib.meta) getExe;
+      inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib.strings) hasSuffix optionalString;
@@ -43,7 +43,7 @@
           SHIP_ALERT_STATE_DIR = "/var/lib/alerts";
           SHIP_ALERT_SUMMARY_URL = optionalString cfg.summary.enable cfg.summary.url;
           SHIP_ALERT_SUMMARY_MODEL = cfg.summary.model;
-          SHIP_ALERT_CURL = "${pkgs.curl}/bin/curl";
+          SHIP_ALERT_CURL = getExe' pkgs.curl "curl";
         };
         meta.mainProgram = "ship-alert";
       };

@@ -3,6 +3,10 @@
 {
   flake.nixosModules.hyprland =
     { lib, pkgs, ... }:
+    let
+      inherit (lib.modules) mkForce;
+      inherit (lib.meta) getExe getExe';
+    in
     {
       programs.hyprland.enable = true;
 
@@ -13,14 +17,14 @@
       # nixpkgs' waylandCompositors entry cannot pass -D before --, so uwsm
       # derives XDG_CURRENT_DESKTOP from the binary name and Hyprland's exact
       # match fails, warning about external management every session.
-      services.displayManager.sessionPackages = lib.mkForce [
+      services.displayManager.sessionPackages = mkForce [
         (pkgs.writeTextFile {
           name = "hyprland-uwsm";
           text = ''
             [Desktop Entry]
             Name=Hyprland
             Comment=Hyprland compositor managed by UWSM
-            Exec=${lib.getExe pkgs.uwsm} start -F -D Hyprland -- ${lib.getExe' pkgs.hyprland "start-hyprland"}
+            Exec=${getExe pkgs.uwsm} start -F -D Hyprland -- ${getExe' pkgs.hyprland "start-hyprland"}
             Type=Application
           '';
           # start-hyprland forks to create the --watchdog-fd pipe the raw

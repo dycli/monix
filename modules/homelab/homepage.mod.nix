@@ -11,6 +11,7 @@
       ...
     }:
     let
+      inherit (lib.meta) getExe';
       inherit (lib.modules) mkIf;
       inherit (lib.ship) fences topology;
 
@@ -216,7 +217,7 @@
 
             case "$reqpath" in
               /ups)
-                body=$(${pkgs.nut}/bin/upsc house 2>/dev/null | awk -F': ' '
+                body=$(${getExe' pkgs.nut "upsc"} house 2>/dev/null | awk -F': ' '
                   $1 == "battery.charge"  { printf "\"battery_charge\":%s,", $2 }
                   $1 == "battery.runtime" { printf "\"battery_runtime_hours\":%.1f,", $2 / 3600 }
                   $1 == "ups.status"      { printf "\"ups_status\":\"%s\",", $2 }

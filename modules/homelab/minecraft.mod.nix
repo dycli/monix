@@ -16,7 +16,7 @@
     let
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe';
-      inherit (lib.modules) mkIf;
+      inherit (lib.modules) mkForce mkIf;
       inherit (lib.strings) toJSON;
       inherit (lib.options) mkEnableOption;
       inherit (lib.attrsets) attrValues mapAttrs';
@@ -193,7 +193,7 @@
             # ProcSubset=pid is unset: it hides /proc/mounts, which Java's
             # NIO needs for file-store lookups, and world loading fails.
             RemoveIPC = true;
-            UMask = lib.mkForce "0077"; # tighter than upstream's 0007
+            UMask = mkForce "0077"; # tighter than upstream's 0007
 
             # MemoryDenyWriteExecute is unset because the JVM JIT needs W+X.
             # Spark's async-profiler probes perf_event_open, outside

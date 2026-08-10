@@ -15,6 +15,7 @@
     let
       inherit (lib) types;
       inherit (lib.lists) singleton;
+      inherit (lib.meta) getExe';
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption mkOption;
 
@@ -178,7 +179,7 @@
         # calibre-web's pre-start hard-fails without an existing library.
         systemd.services.calibre-web.preStart = ''
           if [ ! -f ${mediaRoot}/books/metadata.db ]; then
-            ${pkgs.sqlite}/bin/sqlite3 ${mediaRoot}/books/metadata.db \
+            ${getExe' pkgs.sqlite "sqlite3"} ${mediaRoot}/books/metadata.db \
               < ${./calibre-library-init.sql}
           fi
         '';
