@@ -1,0 +1,23 @@
+# Gaming: Steam with Proton-GE, gamescope, and the game launchers. A gaming
+# host is a desktop, so this rides alongside the desktop bundle.
+{ self, ... }:
+{
+  flake.nixosModules.gaming =
+    { pkgs, ... }:
+    {
+      programs.steam.enable = true;
+      programs.steam.extraCompatPackages = [ pkgs.proton-ge-bin ];
+      programs.gamescope.enable = true;
+
+      unfreePackages = [
+        "steam"
+        "steam-unwrapped"
+      ];
+
+      # Prism pins the Minecraft client to the water server's version.
+      environment.systemPackages = [
+        pkgs.prismlauncher
+        pkgs.heroic
+      ];
+    };
+}

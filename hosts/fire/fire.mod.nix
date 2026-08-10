@@ -8,12 +8,13 @@
 {
   imports = lib.lists.singleton (
     lib.ship.host "fire" (
-      { config, pkgs, ... }:
+      { config, ... }:
       {
         imports = [
           self.nixosModules.desktop
           self.nixosModules.hyprland
           self.nixosModules.dev
+          self.nixosModules.gaming
         ];
 
         primaryUser = "zuko";
@@ -32,8 +33,6 @@
         boot.kernelModules = [ "kvm-amd" ];
         hardware.enableRedistributableFirmware = true;
         hardware.cpu.amd.updateMicrocode = true;
-
-        boot.kernelPackages = pkgs.linuxPackages_zen;
 
         # DISK
         disko.devices.disk.main = {
@@ -88,14 +87,7 @@
         services.syncthing.enable = true;
 
         # GAMING
-        programs.steam.enable = true;
         programs.gamemode.enable = true;
-
-        # Prism pins the Minecraft client to the water server's version.
-        environment.systemPackages = [
-          pkgs.prismlauncher
-          pkgs.heroic
-        ];
 
         # Rotate with `mkpasswd -m yescrypt` into the .age file;
         # users.mutableUsers = false means `passwd` does not stick.

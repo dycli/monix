@@ -88,6 +88,7 @@
         pkgs.keepassxc
         pkgs.libreoffice
         pkgs.obsidian
+        pkgs.element-desktop
         pkgs.signal-desktop
       ];
     };

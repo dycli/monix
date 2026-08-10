@@ -11,7 +11,6 @@
       {
         config,
         lib,
-        pkgs,
         ...
       }:
       let
@@ -23,6 +22,7 @@
           self.nixosModules.desktop
           self.nixosModules.hyprland
           self.nixosModules.dev
+          self.nixosModules.gaming
           inputs.nixos-hardware.nixosModules.framework-13-7040-amd
         ];
 
@@ -89,8 +89,6 @@
         };
 
         # POWER
-        boot.kernelPackages = pkgs.linuxPackages_zen;
-
         boot.kernelParams = [
           "amdgpu.runpm=1"
           "video.use_native_backlight=1"
@@ -138,16 +136,6 @@
         # SERVICES
         services.syncthing.enable = true;
         services.printing.enable = true;
-
-        # DESKTOP EXTRAS
-        programs.steam.enable = true;
-
-        # Prism pins the Minecraft client to the water server's version.
-        environment.systemPackages = [
-          pkgs.prismlauncher
-          pkgs.element-desktop
-          pkgs.heroic
-        ];
 
         # Rotate with `mkpasswd -m yescrypt` into the .age file;
         # users.mutableUsers = false means `passwd` does not stick.
