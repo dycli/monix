@@ -13,8 +13,12 @@
   flake.nixosModules.desktop = self.nixosModules.brave;
   flake.nixosModules.brave =
     { lib, ... }:
+    let
+      inherit (lib.generators) toJSON;
+      inherit (lib.modules) mkForce;
+    in
     {
-      environment.etc."brave/policies/managed/monix.json".text = builtins.toJSON {
+      environment.etc."brave/policies/managed/monix.json".text = toJSON { } {
         # ECH: the built-in client fetches HTTPS/type-65 records; the pin
         # guards against upstream default changes.
         BuiltInDnsClientEnabled = true;
@@ -52,7 +56,7 @@
         DefaultBrowserSettingEnabled = false;
       };
 
-      system.nssDatabases.hosts = lib.mkForce [
+      system.nssDatabases.hosts = mkForce [
         "mdns4_minimal [NOTFOUND=return]"
         "resolve [!UNAVAIL=return]"
         "files"
