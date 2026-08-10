@@ -5,7 +5,7 @@
   readersGroup = "agent-fleet-readers";
 
   hostTailnetAddr = "100.102.113.74";
-  hostMagicDnsName = "water.tailec4748.ts.net";
+  hostMagicDnsName = "water.olm-hen.ts.net";
 
   # squid's listener for the seat; the cockpit slice fence allows exactly
   # this address.

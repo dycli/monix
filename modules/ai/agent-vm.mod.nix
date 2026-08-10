@@ -426,10 +426,6 @@
       };
 
       config = mkIf cfg.enable {
-        # The guest closure bakes in the Claude executor, so the grant cannot
-        # ride the dev-extras home list.
-        unfreePackages = singleton "claude-code";
-
         assertions = [
           {
             assertion =

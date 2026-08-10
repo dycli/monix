@@ -44,7 +44,6 @@
         {
           description = "Drain the agent task queue on worker ${worker}";
           wantedBy = [ "multi-user.target" ];
-          after = [ "agent-results-permissions.service" ];
           startLimitIntervalSec = 0;
           path = [
             pkgs.coreutils
@@ -155,30 +154,9 @@
           "a+ ${tasksDir}/log - - - - group:${readers}:r"
         ];
 
-        systemd.services = {
-          agent-results-permissions = {
-            description = "Restrict agent result archives to fleet readers";
-            wantedBy = [ "multi-user.target" ];
-            before = map (w: "agent-dispatch-${w.name}.service") cfg.workers;
-            path = [
-              pkgs.coreutils
-              pkgs.findutils
-            ];
-            unitConfig.ConditionPathExists = "!${tasksDir}/.permissions-v1";
-            serviceConfig.Type = "oneshot";
-            script = ''
-              for dir in ${tasksDir}/done ${tasksDir}/failed ${tasksDir}/rejected; do
-                [ -d "$dir" ] || continue
-                chown root:${readers} "$dir"
-                chmod 0750 "$dir"
-                find "$dir" -mindepth 1 -type d -exec chown root:${readers} {} + -exec chmod 0750 {} +
-                find "$dir" -type f -exec chown root:${readers} {} + -exec chmod 0640 {} +
-              done
-              touch ${tasksDir}/.permissions-v1
-            '';
-          };
-        }
-        // listToAttrs (map (w: nameValuePair "agent-dispatch-${w.name}" (drainerFor w.name)) cfg.workers);
+        systemd.services = listToAttrs (
+          map (w: nameValuePair "agent-dispatch-${w.name}" (drainerFor w.name)) cfg.workers
+        );
       };
     };
 }
