@@ -1490,9 +1490,8 @@ fn suffix_token<'a>(path: &'a Path, prefix: &str, suffix: &str) -> Option<&'a st
         .and_then(|name| name.strip_suffix(suffix))
 }
 
-/// Apparent size of everything under `path` (the `du -sb` this replaces
-/// summed directory and symlink sizes too; the exchange cap is a guardrail,
-/// not exact accounting, so entry lengths are summed the same way).
+/// Apparent size of everything under `path`. The exchange cap is a guardrail,
+/// not exact accounting, so entry lengths are summed directly.
 fn directory_apparent_size(path: &Path) -> Result<u64> {
     let mut total = fs::symlink_metadata(path)
         .with_context(|| format!("inspect {}", path.display()))?
@@ -1745,7 +1744,7 @@ mod tests {
         )
         .context("write verifier fixture")?;
         if TaskMetadata::read(&verify_prompt, config.task_timeout).is_ok() {
-            return Err("retired loop-era verify agent was accepted".into());
+            return Err("verify is not a supported agent".into());
         }
 
         if deadline_decision(120, 0, 0, 120, 1000, false) != Some(TaskStatus::Requeue)

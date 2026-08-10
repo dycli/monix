@@ -215,7 +215,7 @@ fn strip_front_matter(prompt: &str) -> String {
     body
 }
 
-// Matches $(cat file), which strips all trailing newlines.
+// Strips all trailing newlines.
 fn trim_trailing_newlines(value: &str) -> &str {
     value.trim_end_matches('\n')
 }
@@ -469,7 +469,7 @@ fn walk_files(directory: &Path, suffix: &str, into: &mut Vec<PathBuf>, depth: us
 
 // External command helpers.
 
-// The exact invocation shape the Bash supervisor used for unprivileged work:
+// Runs a program as an unprivileged executor:
 // runuser -u <user> -- env HOME=<home> <program> <args...>.
 fn runuser_command(user: &str, home: &str) -> Command {
     let mut command = Command::new("runuser");
@@ -578,7 +578,6 @@ fn exit_code_of(status: std::process::ExitStatus) -> i32 {
         .unwrap_or(1)
 }
 
-// Best-effort: None on any failure or empty output.
 fn tool_command(executor: Option<&Executor>, program: &str) -> Command {
     if let Some(executor) = executor {
         let mut command = runuser_command(executor.user, executor.home);
@@ -589,6 +588,7 @@ fn tool_command(executor: Option<&Executor>, program: &str) -> Command {
     }
 }
 
+// Best-effort: None on any failure or empty output.
 fn jq_filter(args: &[&str], stdin_text: &str, executor: Option<&Executor>) -> Option<String> {
     let mut child = tool_command(executor, "jq")
         .args(args)
@@ -1277,8 +1277,8 @@ mod tests {
         // Shell metacharacters.
         assert!(parse_task_meta("agent=claude$(reboot)\nmodel=x\neffort=\n").is_err());
         assert!(parse_task_meta("agent=claude; rm -rf /\nmodel=x\neffort=\n").is_err());
-        // Unknown keys (the retired loop-era `kind` included), duplicates,
-        // malformed lines, oversized values.
+        // Unknown keys (e.g. kind), duplicates, malformed lines, oversized
+        // values.
         assert!(parse_task_meta("agent=claude\nPATH=/tmp\nmodel=x\neffort=\n").is_err());
         assert!(parse_task_meta("agent=claude\nmodel=x\neffort=\nkind=loop-implement\n").is_err());
         assert!(parse_task_meta("agent=claude\nagent=codex\nmodel=x\neffort=\n").is_err());
@@ -1312,7 +1312,7 @@ mod tests {
             ),
             ("opencode", "mystery/model", None),
             ("opencode", "", None),
-            // The loop-era deterministic verifier is retired.
+            // "verify" is not a supported agent.
             ("verify", "fixed", None),
             ("", "", None),
             ("surprise", "sonnet", None),
@@ -1403,7 +1403,7 @@ mod tests {
     // ---- prompt front-matter ---------------------------------------------
 
     #[test]
-    fn strips_front_matter_like_awk() {
+    fn strips_front_matter() {
         assert_eq!(
             strip_front_matter("---\nagent: claude\n---\nbody\nmore\n"),
             "body\nmore\n"
@@ -1413,7 +1413,7 @@ mod tests {
             strip_front_matter("body\n---\nnot a header\n"),
             "body\n---\nnot a header\n"
         );
-        // Unterminated header swallows the whole prompt (awk h stays set).
+        // Unterminated header swallows the whole prompt.
         assert_eq!(strip_front_matter("---\nagent: claude\nbody\n"), "");
         assert_eq!(strip_front_matter(""), "");
         // A later "---" only closes, never reopens.

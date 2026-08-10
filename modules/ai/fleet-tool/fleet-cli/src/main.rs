@@ -1438,7 +1438,7 @@ mod tests {
     }
 
     #[test]
-    fn san_matches_bash() {
+    fn san_sanitizes_model_ids() {
         assert_eq!(
             san("openrouter/deepseek-v3").unwrap(),
             "openrouter/deepseek-v3"

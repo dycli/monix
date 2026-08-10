@@ -7,8 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const N: usize = 2000;
 
-/// 2020-01-01 plus `days`, as `YYYY-MM-DD` — enough calendar to seed dated
-/// entries without a chrono dev-dependency.
+/// 2020-01-01 plus `days`, as `YYYY-MM-DD`, to seed dated entries.
 fn seed_date(mut days: u32) -> String {
     let (mut year, mut month, mut day) = (2020u32, 1u32, 1u32);
     loop {
@@ -144,7 +143,7 @@ fn tree_size(store: &Path) -> u64 {
 }
 
 #[test]
-fn complete_python_cli_suite_port() {
+fn cli_end_to_end() {
     let store = TempDir::new("test");
 
     // Real entry point, argv parsing, and store resolution.
@@ -161,8 +160,8 @@ fn complete_python_cli_suite_port() {
         .unwrap();
     // With no env var the binary falls back to the compile-time default
     // (MEMO_MEMORY_DIR, baked in by the Nix build); only when neither exists
-    // must it die with the upstream "not set" message. The default is a build
-    // env, so the test crate sees the same value the binary was built with.
+    // must it die with the "not set" message. The default is a build env, so
+    // the test crate sees the same value the binary was built with.
     let expected = match option_env!("MEMO_MEMORY_DIR") {
         // The baked default points outside the sandbox; it must be reported
         // missing, never silently created (that would be a second identity).

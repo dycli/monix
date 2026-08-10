@@ -7,8 +7,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 
-/// Today's local date as `YYYY-MM-DD`, via libc (the fleet-cli/agent-dispatch
-/// shape) — the standard-library-only alternative to a chrono dependency.
+/// Today's local date as `YYYY-MM-DD`, via libc's localtime_r.
 fn today() -> String {
     let tm = unsafe {
         let now = libc::time(std::ptr::null_mut());

@@ -64,7 +64,8 @@
       credsDir = name: "/run/agents/creds/${name}";
       guestCredsMount = "/run/host-creds";
 
-      # virtiofs passes uid/gid verbatim, so this must be owned by uid 1000.
+      # virtiofs passes uid/gid verbatim, so the in-guest executor reaches this
+      # share through its `users` group membership (the dir is root:users 0770).
       workDir = name: "/var/lib/agents/work/${name}/task";
       guestTaskMount = "/run/task";
 
