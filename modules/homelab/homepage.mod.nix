@@ -183,7 +183,7 @@
           Environment = [ "HOSTNAME=127.0.0.1" ];
 
           # The internet is allowed for the icon CDN.
-          IPAddressAllow = fences.loopback ++ [ "100.64.0.0/10" ];
+          IPAddressAllow = fences.loopback ++ [ fences.tailnet ];
           IPAddressDeny = fences.privateRanges;
         };
 

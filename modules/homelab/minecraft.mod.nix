@@ -204,7 +204,7 @@
 
             # The internet is unmatched and so allowed, for session auth.
             IPAddressAllow = [
-              "100.64.0.0/10" # tailnet (CGNAT range)
+              fences.tailnet
               "127.0.0.53/32" # resolved's stub, exempt from the deny below
             ];
             IPAddressDeny = [

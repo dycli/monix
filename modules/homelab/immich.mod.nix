@@ -27,7 +27,7 @@
         # The internet falls through allowed, for model downloads. These
         # denies are not "any", so 127.0.0.0/8 must be named.
         systemd.services.immich-server.serviceConfig = {
-          IPAddressAllow = fences.loopback ++ [ "100.64.0.0/10" ];
+          IPAddressAllow = fences.loopback ++ [ fences.tailnet ];
           IPAddressDeny = fences.privateRanges ++ [ "127.0.0.0/8" ];
         };
         systemd.services.immich-machine-learning.serviceConfig = {

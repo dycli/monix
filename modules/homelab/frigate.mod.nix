@@ -112,7 +112,7 @@
         systemd.services.go2rtc.serviceConfig = lanFence // {
           EnvironmentFile = cfg.envFile;
           # Plus the tailnet, for the direct WebRTC negotiation.
-          IPAddressAllow = lanFence.IPAddressAllow ++ [ "100.64.0.0/10" ];
+          IPAddressAllow = lanFence.IPAddressAllow ++ [ fences.tailnet ];
         };
 
         services.frigate = {

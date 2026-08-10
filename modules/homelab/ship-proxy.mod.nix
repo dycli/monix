@@ -13,7 +13,7 @@
       inherit (lib.options) mkEnableOption mkOption;
 
       cfg = config.shipProxy;
-      inherit (lib.ship) topology;
+      inherit (lib.ship) fences topology;
 
       proxyTo = upstream: extra: {
         useACMEHost = cfg.domain;
@@ -101,7 +101,7 @@
                   deny 127.0.0.0/8;
                   deny ::1;
                   deny ${topology.hostTailnetAddr};
-                  allow 100.64.0.0/10;
+                  allow ${fences.tailnet};
                   deny all;
                   # Dedicated source address so the seat's fence can admit
                   # nginx without admitting all of 127.0.0.1.

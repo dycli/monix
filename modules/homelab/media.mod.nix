@@ -26,7 +26,7 @@
       # The internet is in neither list and so falls through allowed.
       egressFence = {
         IPAddressAllow = fences.loopback ++ [
-          "100.64.0.0/10" # tailnet (CGNAT range)
+          fences.tailnet
         ];
         # 127.0.0.0/8 is denied explicitly: this deny is not "any", so the
         # seat plane outside fences.loopback would otherwise be allowed.
@@ -135,7 +135,7 @@
             # The tailnet counts as LOCAL, so the UI answers it while
             # inet_exposure stays "none".
             host = "0.0.0.0";
-            local_ranges = "127.0.0.1, ::1, 100.64.0.0/10";
+            local_ranges = "127.0.0.1, ::1, ${fences.tailnet}";
 
             # SABnzbd rejects Host headers it does not know.
             host_whitelist = lib.strings.concatStringsSep ", " (

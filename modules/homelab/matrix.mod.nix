@@ -98,7 +98,7 @@
           # Loopback carries the cloudflared hop and resolved's stub; the
           # internet is unmatched and so allowed, which push gateways need.
           IPAddressAllow = fences.loopback ++ [
-            "100.64.0.0/10" # tailnet clients (CGNAT range)
+            fences.tailnet
           ];
           IPAddressDeny = fences.privateRanges;
         };

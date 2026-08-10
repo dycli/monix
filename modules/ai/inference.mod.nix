@@ -154,7 +154,7 @@
             IPAddressAllow =
               fences.loopback
               ++ [
-                "100.64.0.0/10" # tailnet (CGNAT range)
+                fences.tailnet
               ]
               ++ optionals config.agentFleet.enable [
                 "10.100.0.0/24" # br-agents guest subnet

@@ -82,7 +82,7 @@
         };
 
         systemd.services.home-assistant.serviceConfig = {
-          IPAddressAllow = fences.loopback ++ [ "100.64.0.0/10" ] ++ cfg.lanSubnets;
+          IPAddressAllow = fences.loopback ++ [ fences.tailnet ] ++ cfg.lanSubnets;
           IPAddressDeny = fences.privateRanges;
         };
       };
