@@ -143,9 +143,8 @@ def home_db(path=DB_PATH, cal=True):
     if "op" not in outbox_cols:
         db.execute("ALTER TABLE cal_outbox ADD COLUMN op TEXT NOT NULL DEFAULT 'create'")
         db.execute("ALTER TABLE cal_outbox ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
-    # A to-do is just a list item that may carry a due date, so the separate
-    # `task` table folds into a list called "to-dos". The old table is kept
-    # for rollback and no longer read.
+    # A to-do is just a list item that may carry a due date, so to-dos live in
+    # a list called "to-dos" rather than a separate table.
     item_cols = [r[1] for r in db.execute("PRAGMA table_info(item)")]
     for col in ("due", "assignee", "section", "done_by"):
         if col not in item_cols:
@@ -1075,8 +1074,7 @@ def do_log_add(db, act, sender):
 
 def week_section(db, start, title="📅 Week ahead:"):
     """From `start` through that week's Sunday (weeks run Monday–Sunday):
-    calendar events by day, then the week's dated to-dos as their own list
-    (captain's preference over inlining them into their due days)."""
+    calendar events by day, then the week's dated to-dos as their own list."""
     end = start + timedelta(days=6 - start.weekday())
     todos = [r for r in dated_open(db)
              if start.isoformat() <= r["due"] <= end.isoformat()]
@@ -1309,8 +1307,8 @@ def write_log(db, day):
         os.chmod(LOG_PATH, 0o644)  # the mirror unit (a different user) reads it
     except OSError:
         pass
-    # The vault mirror's path unit watches log.md itself — the append above
-    # already IS the trigger; no fallible flag indirection.
+    # The vault mirror's path unit watches log.md itself, so the append above
+    # is the trigger.
 
 
 HOME_HELP = """I keep the family organized around three things — lists, the
@@ -1553,7 +1551,7 @@ class Bot:
                 name=ROOM_NAME,
                 topic="Tasks, lists, and the day's plan — talk to me in plain language.",
                 invite=INVITE_USERS,
-                # The first invitee (the captain) gets admin alongside the bot.
+                # The first invitee gets admin alongside the bot.
                 power_level_override={
                     "users": {self.client.user_id: 100,
                               **({INVITE_USERS[0]: 100} if INVITE_USERS else {})}},
@@ -1563,8 +1561,8 @@ class Bot:
             self.home_room = resp.room_id
             meta_set(self.hdb, "room_id", self.home_room)
             log.info("created room %s (%s)", ROOM_NAME, self.home_room)
-        # The scratchpad: captain-only notes/reminders room, created the
-        # same way (its id lives in the household meta table).
+        # The scratchpad: the primary user's private notes/reminders room,
+        # created the same way (its id lives in the household meta table).
         self.scratch_room = meta_get(self.hdb, "scratch_room_id")
         if SCRATCH_USERS and not self.scratch_room:
             resp = await self.client.room_create(

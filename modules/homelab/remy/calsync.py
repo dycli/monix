@@ -89,8 +89,8 @@ def push_outbox(cal_cfg):
                               password=cal_cfg["password"])
     # A principal can expose several collections (Migadu: calendars AND
     # journals — a VEVENT PUT into journals 403s; and more than one
-    # event-capable collection, where "first with VEVENT" landed events in
-    # a side collection the calendar UI never shows — both live findings).
+    # event-capable collection, where "first with VEVENT" lands events in
+    # a side collection the calendar UI never shows).
     # Push to the collection that holds the family's actual events: the
     # VEVENT-capable one with the most events already in it.
     candidates = []

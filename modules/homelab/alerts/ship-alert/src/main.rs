@@ -117,7 +117,7 @@ fn insert_summary(body: &str, summary: &str) -> String {
 }
 
 /// The Qwen template wraps reasoning in <think> blocks even when asked not
-/// to; strip them and blank lines, exactly like the sed pipeline before.
+/// to; strip them and the surrounding blank lines.
 fn clean_summary(raw: &str) -> String {
     let mut kept = Vec::new();
     let mut thinking = false;

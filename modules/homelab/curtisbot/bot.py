@@ -497,11 +497,9 @@ def db_for(interaction) -> sqlite3.Connection:
     return test_db
 
 
-# Wholesale slash commands are parked while the captain rethinks the
-# workflow — the modal, storage, rendering, and ✓ handling all stay
-# live (old order-list buttons keep working); only the /wholesale,
-# /orders, and /clear-wholesale registrations are gone. To bring them
-# back, re-add three thin @bot.tree.command wrappers.
+# The orders table and check-off handling remain so buttons on old order-list
+# messages keep working; there are no /wholesale, /orders, or /clear-wholesale
+# commands.
 
 
 @bot.tree.command(
