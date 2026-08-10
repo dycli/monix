@@ -3,7 +3,7 @@
 # from the media tree. ML models download from Hugging Face on first use.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.immich;
+  flake.nixosModules.lab = self.nixosModules.immich;
   flake.nixosModules.immich =
     { config, lib, ... }:
     let

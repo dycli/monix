@@ -2,7 +2,7 @@
 # claims queued markdown prompts, archives the results and reboots the guest.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.agent-dispatch;
+  flake.nixosModules.lab = self.nixosModules.agent-dispatch;
   flake.nixosModules.agent-dispatch =
     {
       config,

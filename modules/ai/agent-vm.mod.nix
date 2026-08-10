@@ -2,7 +2,7 @@
 # monorepo and no host secrets, reachable only through the squid allowlist.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.agent-guests;
+  flake.nixosModules.lab = self.nixosModules.agent-guests;
   flake.nixosModules.agent-guests =
     {
       config,

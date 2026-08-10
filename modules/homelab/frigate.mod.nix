@@ -6,7 +6,7 @@
 # ${VARS} while Frigate expands {FRIGATE_*}.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.frigate;
+  flake.nixosModules.lab = self.nixosModules.frigate;
   flake.nixosModules.frigate =
     {
       config,

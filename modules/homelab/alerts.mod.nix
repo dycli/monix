@@ -5,7 +5,7 @@
 # while it is down.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.alerts;
+  flake.nixosModules.lab = self.nixosModules.alerts;
   flake.nixosModules.alerts =
     {
       config,

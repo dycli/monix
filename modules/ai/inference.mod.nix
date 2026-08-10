@@ -3,7 +3,7 @@
 # RAM.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.inference;
+  flake.nixosModules.lab = self.nixosModules.inference;
   flake.nixosModules.inference =
     {
       config,

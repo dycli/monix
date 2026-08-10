@@ -4,7 +4,7 @@
 # *arr imports hardlink.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.media;
+  flake.nixosModules.lab = self.nixosModules.media;
   flake.nixosModules.media =
     {
       config,

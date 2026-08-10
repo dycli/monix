@@ -4,7 +4,7 @@
 # subnets; the fleet bridge and every other private range stay denied.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.home-assistant;
+  flake.nixosModules.lab = self.nixosModules.home-assistant;
   flake.nixosModules.home-assistant =
     {
       config,

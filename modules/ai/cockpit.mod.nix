@@ -2,7 +2,7 @@
 # interchangeable frontends to one fenced `bridge` account.
 { inputs, self, ... }:
 {
-  flake.homeModules.default = self.homeModules.cockpit;
+  flake.homeModules.lab = self.homeModules.cockpit;
   flake.homeModules.cockpit =
     {
       config,
@@ -262,7 +262,7 @@
       };
     };
 
-  flake.nixosModules.default = self.nixosModules.cockpit;
+  flake.nixosModules.lab = self.nixosModules.cockpit;
 
   flake.nixosModules.cockpit =
     {

@@ -2,7 +2,7 @@
 # proxy, whose catch-all vhost keeps plain http://water working.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.homepage;
+  flake.nixosModules.lab = self.nixosModules.homepage;
   flake.nixosModules.homepage =
     {
       config,

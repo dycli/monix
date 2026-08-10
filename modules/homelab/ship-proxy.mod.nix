@@ -4,7 +4,7 @@
 # publicly reachable and HTTP-01 cannot work.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.ship-proxy;
+  flake.nixosModules.lab = self.nixosModules.ship-proxy;
   flake.nixosModules.ship-proxy =
     { config, lib, ... }:
     let

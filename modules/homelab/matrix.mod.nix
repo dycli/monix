@@ -8,7 +8,7 @@
 # the internet even with federation off, or push notifications stop.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.matrix;
+  flake.nixosModules.lab = self.nixosModules.matrix;
   flake.nixosModules.matrix =
     {
       config,

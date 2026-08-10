@@ -5,7 +5,7 @@
 # the internet while denying loopback, the LAN and the fleet bridge.
 { self, inputs, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.minecraft;
+  flake.nixosModules.lab = self.nixosModules.minecraft;
   flake.nixosModules.minecraft =
     {
       config,

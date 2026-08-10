@@ -7,7 +7,7 @@
 # /var/lib across units.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.remy;
+  flake.nixosModules.lab = self.nixosModules.remy;
   flake.nixosModules.remy =
     {
       config,

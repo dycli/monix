@@ -7,7 +7,7 @@
 # retained because buttons on old messages still act on it.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.curtisbot;
+  flake.nixosModules.lab = self.nixosModules.curtisbot;
   flake.nixosModules.curtisbot =
     {
       config,

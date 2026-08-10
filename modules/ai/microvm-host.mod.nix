@@ -2,7 +2,7 @@
 # bridge, and squid as the guests' only egress.
 { self, inputs, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.microvm-host;
+  flake.nixosModules.lab = self.nixosModules.microvm-host;
   flake.nixosModules.microvm-host =
     {
       config,

@@ -3,7 +3,7 @@
 # rule naming this one store-resident binary.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.fleet-tool;
+  flake.nixosModules.lab = self.nixosModules.fleet-tool;
   flake.nixosModules.fleet-tool =
     {
       config,

@@ -2,7 +2,7 @@
 # first start and remembered in the state directory, never in the repo.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.fleet-log-stream;
+  flake.nixosModules.lab = self.nixosModules.fleet-log-stream;
   flake.nixosModules.fleet-log-stream =
     {
       config,

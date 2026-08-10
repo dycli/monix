@@ -2,7 +2,7 @@
 # summaries. The store is mutable state, never auto-created.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.memo;
+  flake.nixosModules.lab = self.nixosModules.memo;
   flake.nixosModules.memo =
     {
       config,
