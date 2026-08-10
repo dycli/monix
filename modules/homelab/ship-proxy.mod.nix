@@ -8,7 +8,7 @@
   flake.nixosModules.ship-proxy =
     { config, lib, ... }:
     let
-      inherit (lib.attrsets) optionalAttrs;
+      inherit (lib.attrsets) mapAttrs' nameValuePair optionalAttrs;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption mkOption;
 
@@ -54,6 +54,38 @@
             the vhost.
           '';
         };
+
+        routes = mkOption {
+          type = lib.types.attrsOf (
+            lib.types.submodule (
+              { name, ... }:
+              {
+                options = {
+                  subdomain = mkOption {
+                    type = lib.types.str;
+                    default = name;
+                    description = "Host label under the domain; defaults to the attr name.";
+                  };
+                  port = mkOption {
+                    type = lib.types.port;
+                    description = "Upstream port on 127.0.0.1.";
+                  };
+                  proxyExtra = mkOption {
+                    type = lib.types.lines;
+                    default = "";
+                    description = "Extra nginx directives for this vhost's location.";
+                  };
+                };
+              }
+            )
+          );
+          default = { };
+          description = ''
+            Reverse-proxy routes, one per service, contributed by the owning
+            module. The nginx vhosts here and the homepage tiles both derive
+            from these, so a service's subdomain and port live in one place.
+          '';
+        };
       };
 
       config = mkIf cfg.enable {
@@ -73,24 +105,20 @@
           recommendedProxySettings = true;
           recommendedTlsSettings = true;
 
+          # Per-service routes (subdomain + port) come from each service's
+          # own module via shipProxy.routes; the seat, dashboard and
+          # catch-alls stay here.
           virtualHosts =
-            optionalAttrs config.media.enable {
-              "calibre.${cfg.domain}" = proxy 8083 {
-                # Book uploads.
-                extraConfig = "client_max_body_size 1g;";
-              };
-              "sab.${cfg.domain}" = proxy 8080 { };
-              "radarr.${cfg.domain}" = proxy 7878 { };
-              "sonarr.${cfg.domain}" = proxy 8989 { };
-              "bazarr.${cfg.domain}" = proxy 6767 { };
-              "prowlarr.${cfg.domain}" = proxy 9696 { };
-            }
-            // optionalAttrs config.services.jellyfin.enable {
-              "jellyfin.${cfg.domain}" = proxy 8096 { };
-            }
-            // optionalAttrs config.services.home-assistant.enable {
-              "ha.${cfg.domain}" = proxy 8123 { };
-            }
+            mapAttrs' (
+              _: route:
+              nameValuePair "${route.subdomain}.${cfg.domain}" (
+                proxy route.port (
+                  optionalAttrs (route.proxyExtra != "") {
+                    extraConfig = route.proxyExtra;
+                  }
+                )
+              )
+            ) cfg.routes
             # The web seat is shell-capable: without the source rules
             # below, any local service reaches it by Host header.
             // optionalAttrs config.cockpit.webEnable {
@@ -106,16 +134,6 @@
                   # Dedicated source address so the seat's fence can admit
                   # nginx without admitting all of 127.0.0.1.
                   proxy_bind ${topology.seatIngressAddr};
-                '';
-              };
-            }
-            // optionalAttrs config.services.immich.enable {
-              "immich.${cfg.domain}" = proxy 2283 {
-                # Phone backup ships originals; immich checks size itself.
-                extraConfig = ''
-                  client_max_body_size 0;
-                  proxy_read_timeout 600s;
-                  proxy_send_timeout 600s;
                 '';
               };
             }

@@ -26,6 +26,8 @@
       };
 
       config = mkIf config.services.home-assistant.enable {
+        shipProxy.routes.ha.port = 8123;
+
         services.home-assistant = {
           openFirewall = false; # tailnet-only (UI/API on :8123)
 

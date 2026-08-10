@@ -16,11 +16,14 @@
       inherit (lib.ship) fences topology;
 
       url =
-        sub: port:
+        name:
+        let
+          route = config.shipProxy.routes.${name};
+        in
         if config.shipProxy.enable then
-          "https://${sub}.${config.shipProxy.domain}"
+          "https://${route.subdomain}.${config.shipProxy.domain}"
         else
-          "http://${config.networking.hostName}:${toString port}";
+          "http://${config.networking.hostName}:${toString route.port}";
     in
     {
       config = mkIf config.services.homepage-dashboard.enable {
@@ -65,35 +68,35 @@
               Arr = [
                 {
                   Bazarr = {
-                    href = url "bazarr" 6767;
+                    href = url "bazarr";
                     description = "Subtitles";
                     icon = "bazarr.png";
                   };
                 }
                 {
                   Prowlarr = {
-                    href = url "prowlarr" 9696;
+                    href = url "prowlarr";
                     description = "Indexers";
                     icon = "prowlarr.png";
                   };
                 }
                 {
                   Radarr = {
-                    href = url "radarr" 7878;
+                    href = url "radarr";
                     description = "Movies";
                     icon = "radarr.png";
                   };
                 }
                 {
                   SABnzbd = {
-                    href = url "sab" 8080;
+                    href = url "sab";
                     description = "Downloads";
                     icon = "sabnzbd.png";
                   };
                 }
                 {
                   Sonarr = {
-                    href = url "sonarr" 8989;
+                    href = url "sonarr";
                     description = "TV";
                     icon = "sonarr.png";
                   };
@@ -105,7 +108,7 @@
             Home = [
               {
                 "Home Assistant" = {
-                  href = url "ha" 8123;
+                  href = url "ha";
                   description = "Smart home";
                   icon = "home-assistant.png";
                 };
@@ -124,7 +127,7 @@
               Media = [
                 {
                   Calibre-Web = {
-                    href = url "calibre" 8083;
+                    href = url "calibre";
                     description = "eBooks";
                     icon = "calibre-web.png";
                   };
@@ -132,7 +135,7 @@
               ]
               ++ lib.lists.optional config.services.immich.enable {
                 Immich = {
-                  href = url "immich" 2283;
+                  href = url "immich";
                   description = "Photos";
                   icon = "immich.png";
                 };
@@ -140,7 +143,7 @@
               ++ [
                 {
                   Jellyfin = {
-                    href = url "jellyfin" 8096;
+                    href = url "jellyfin";
                     description = "Movies & TV";
                     icon = "jellyfin.png";
                   };

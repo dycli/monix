@@ -12,6 +12,16 @@
     in
     {
       config = mkIf config.services.immich.enable {
+        shipProxy.routes.immich = {
+          port = 2283;
+          # Phone backup ships originals; immich checks size itself.
+          proxyExtra = ''
+            client_max_body_size 0;
+            proxy_read_timeout 600s;
+            proxy_send_timeout 600s;
+          '';
+        };
+
         # Upstream only auto-creates its default /var/lib location, not a
         # custom mediaLocation.
         systemd.tmpfiles.rules = [

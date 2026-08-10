@@ -84,6 +84,19 @@
       };
 
       config = mkIf cfg.enable {
+        shipProxy.routes = {
+          calibre = {
+            port = 8083;
+            proxyExtra = "client_max_body_size 1g;";
+          };
+          sab.port = 8080;
+          radarr.port = 7878;
+          sonarr.port = 8989;
+          bazarr.port = 6767;
+          prowlarr.port = 9696;
+          jellyfin.port = 8096;
+        };
+
         unfreePackages = singleton "unrar";
 
         # Prowlarr is excluded: it only brokers indexer searches.
