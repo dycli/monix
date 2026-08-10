@@ -1649,7 +1649,6 @@ impl Fixture {
             tasks.join("failed"),
             tasks.join("rejected"),
             tasks.join("cancel"),
-            tasks.join("guidance/worker"),
             tasks.join("live"),
             tasks.join("steer"),
             tasks.join("answers"),

@@ -41,7 +41,7 @@ const USAGE: &str = r#"OptMem: a permanent, append-only memory for AI agents.
   memo forget <lo>-<hi>    drop a bad summary; nap rebuilds it.
   memo import <file>       bulk-load dated memories (bootstrap only).
 
-Everything lives in $MEMORY_DIR. See README.md."#;
+Everything lives in $MEMORY_DIR."#;
 
 #[derive(Clone, Copy)]
 struct Config {
