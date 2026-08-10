@@ -17,7 +17,6 @@
       config = mkIf config.services.printing.enable {
         services.printing.drivers = [
           pkgs.cups-filters
-          pkgs.cups-browsed
           pkgs.hplip
         ];
 

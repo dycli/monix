@@ -67,7 +67,7 @@
             homeassistant = {
               name = "Home";
               unit_system = "us_customary";
-              time_zone = "America/New_York";
+              time_zone = config.time.timeZone;
             };
 
             # Trust loopback's X-Forwarded-For across the nginx hop.

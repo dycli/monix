@@ -19,7 +19,7 @@
         if config.shipProxy.enable then
           "https://${sub}.${config.shipProxy.domain}"
         else
-          "http://water:${toString port}";
+          "http://${config.networking.hostName}:${toString port}";
     in
     {
       config = mkIf config.services.homepage-dashboard.enable {
@@ -42,7 +42,7 @@
           );
 
           settings = {
-            title = "water";
+            title = config.networking.hostName;
             headerStyle = "clean";
             hideVersion = true;
           };

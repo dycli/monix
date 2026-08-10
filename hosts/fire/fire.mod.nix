@@ -90,10 +90,6 @@
         # GAMING
         programs.steam.enable = true;
         programs.gamemode.enable = true;
-        unfreePackages = [
-          "steam"
-          "steam-unwrapped"
-        ];
 
         # Prism pins the Minecraft client to the water server's version.
         environment.systemPackages = [

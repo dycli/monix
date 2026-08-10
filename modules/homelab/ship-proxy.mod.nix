@@ -37,8 +37,7 @@
         };
 
         acmeTokenFile = mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
+          type = lib.types.str;
           description = ''
             agenix-decrypted file containing the Cloudflare API token
             (Zone → DNS → Edit for the zone) as
@@ -58,13 +57,6 @@
       };
 
       config = mkIf cfg.enable {
-        assertions = [
-          {
-            assertion = cfg.acmeTokenFile != null;
-            message = "shipProxy.enable requires shipProxy.acmeTokenFile";
-          }
-        ];
-
         security.acme = {
           acceptTerms = true;
           defaults.email = "dylan@dylandavid.com";

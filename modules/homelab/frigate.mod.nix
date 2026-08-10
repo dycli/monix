@@ -23,7 +23,7 @@
 
       lanFence = {
         IPAddressAllow = fences.loopback ++ cfg.lanSubnets;
-        IPAddressDeny = fences.privateRanges ++ [ "any" ];
+        IPAddressDeny = "any";
       };
 
       # go2rtc connects; Frigate only needs to know the restreams exist.

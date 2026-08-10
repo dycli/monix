@@ -12,6 +12,10 @@
     {
       config = lib.mkIf config.programs.steam.enable {
         programs.steam.extraCompatPackages = [ pkgs.proton-ge-bin ];
+        unfreePackages = [
+          "steam"
+          "steam-unwrapped"
+        ];
       };
     };
 }

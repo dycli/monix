@@ -78,6 +78,10 @@
                 type = "btrfs";
                 subvolumes."@" = {
                   mountpoint = "/";
+                  mountOptions = [
+                    "noatime"
+                    "compress=zstd"
+                  ];
                 };
               };
             };
@@ -137,10 +141,6 @@
 
         # DESKTOP EXTRAS
         programs.steam.enable = true;
-        unfreePackages = [
-          "steam"
-          "steam-unwrapped"
-        ];
 
         # Prism pins the Minecraft client to the water server's version.
         environment.systemPackages = [

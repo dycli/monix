@@ -7,11 +7,6 @@
   flake.nixosModules.packages =
     { pkgs, ... }:
     {
-      unfreePackages = [
-        "claude-code"
-        "obsidian"
-      ];
-
       # nvim exists only in the primary user's profile, so a system-wide
       # EDITOR=nvim would dangle for root and service users.
       environment.variables.EDITOR = "vim";
@@ -53,6 +48,14 @@
         pkgs.gitMinimal
       ];
     };
+
+  # Each unfree name travels with the bundle that installs the package.
+  flake.nixosModules.desktop = {
+    unfreePackages = [ "obsidian" ];
+  };
+  flake.nixosModules.dev = {
+    unfreePackages = [ "claude-code" ];
+  };
 
   # The graphical session's utilities and applications.
   flake.homeModules.desktop = self.homeModules.packages-desktop;

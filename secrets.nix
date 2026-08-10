@@ -30,7 +30,6 @@ in
   "hosts/water/secrets/agent-claude-token.age".publicKeys = [ water ] ++ admin;
   "hosts/water/secrets/agent-codex-auth.age".publicKeys = [ water ] ++ admin;
   "hosts/water/secrets/agent-openrouter-key.age".publicKeys = [ water ] ++ admin;
-  "hosts/water/secrets/openrouter-management-key.age".publicKeys = [ water ] ++ admin;
   "hosts/water/secrets/matrix-registration.env.age".publicKeys = [ water ] ++ admin;
   "hosts/water/secrets/matrix-cloudflare-tunnel-token.age".publicKeys = [ water ] ++ admin;
   "hosts/water/secrets/matrix-remy.env.age".publicKeys = [ water ] ++ admin;
