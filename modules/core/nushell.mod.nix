@@ -1,5 +1,8 @@
-# The interactive shell configuration, applied on every host.
-# interactive-shell.mod.nix controls how hosts enter it.
+# The interactive shell, applied on every host: nushell's configuration and the
+# bash re-exec that lands every interactive login in nu. $SHELL stays bash so
+# scripts and tools that shell out are unaffected — the re-exec runs in bash's
+# interactive init, so `ssh host` lands in nu while `ssh host 'cmd'` does not,
+# and ghostty (which launches the login shell) enters nu the same way.
 { self, ... }:
 {
   flake.homeModules.default = self.homeModules.nushell;
@@ -11,6 +14,17 @@
       ...
     }:
     {
+      programs.bash = {
+        enable = true;
+        # nu inherits SHIP_NU, so a bash launched from within nu stays bash.
+        initExtra = ''
+          if [[ $- == *i* ]] && [[ -z "''${SHIP_NU:-}" ]] && command -v nu >/dev/null 2>&1; then
+            export SHIP_NU=1
+            exec nu
+          fi
+        '';
+      };
+
       # Completion backends for the carapace bridges named in
       # CARAPACE_BRIDGES below, not login shells.
       home.packages = [

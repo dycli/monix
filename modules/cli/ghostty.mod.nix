@@ -34,10 +34,6 @@
         enable = true;
 
         settings = {
-          # Terminal windows only: the login shell stays bash, because tools
-          # that shell out via $SHELL break under nushell.
-          command = lib.meta.getExe pkgs.nushell;
-
           window-padding-x = 14;
           window-padding-y = 14;
           # Low enough that the compositor's blur still reads as frost; the
