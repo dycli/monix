@@ -327,7 +327,7 @@
               }
             );
             ProtectSystem = "strict";
-            ReadWritePaths = [ (dirOf cfg.famlog.path) ];
+            ReadWritePaths = [ "-${dirOf cfg.famlog.path}" ];
             ReadOnlyPaths = [ "/var/lib/remy" ];
           };
         };

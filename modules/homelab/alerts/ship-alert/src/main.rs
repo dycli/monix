@@ -156,7 +156,7 @@ fn throttled(marker: &Path, minutes: u64) -> bool {
         .and_then(|metadata| metadata.modified())
         .ok()
         .and_then(|modified| SystemTime::now().duration_since(modified).ok())
-        .is_some_and(|age| age.as_secs() < minutes * 60)
+        .is_some_and(|age| age.as_secs() < minutes.saturating_mul(60))
 }
 
 // ---- HTTP via curl ---------------------------------------------------------

@@ -38,8 +38,8 @@ HS_URL = os.environ["BOT_HS_URL"]
 USER_ID = os.environ["MATRIX_USER"]
 PASSWORD = os.environ["MATRIX_PASSWORD"]
 INVITE_USERS = [u for u in os.environ.get("BOT_INVITE_USERS", "").split(",") if u]
-ROOM_NAME = os.environ.get("BOT_ROOM_NAME", "Household")
-SCRATCH_ROOM_NAME = os.environ.get("BOT_SCRATCH_ROOM_NAME", "Scratchpad")
+ROOM_NAME = "Household"
+SCRATCH_ROOM_NAME = "Scratchpad"
 SCRATCH_USERS = [u for u in os.environ.get("BOT_SCRATCH_USERS", "").split(",") if u]
 SCRATCH_DB_PATH = os.environ.get("BOT_SCRATCH_DB", "/var/lib/remy/scratch.db")
 LLM_URL = os.environ.get("LLM_URL", "http://127.0.0.1:8091/v1/chat/completions")
@@ -51,7 +51,7 @@ MORNING = os.environ.get("BOT_MORNING", "07:00")
 EVENING = os.environ.get("BOT_EVENING", "19:00")
 # An append-only journal written once a day into the state dir; a separate
 # unit mirrors it into the vault, since this process cannot reach /home.
-LOG_PATH = os.environ.get("BOT_LOG", os.path.join(os.path.dirname(DB_PATH), "log.md"))
+LOG_PATH = os.path.join(os.path.dirname(DB_PATH), "log.md")
 LOG_TIME = os.environ.get("BOT_LOG_TIME", "23:50")
 
 START_MS = int(time.time() * 1000)
@@ -205,8 +205,7 @@ def meta_set(db, k, v):
 # every mutation dumps the database into the git history repo, so a
 # credential there would be a credential in immutable history. run()
 # invalidates any token found in an old database.
-SESSION_PATH = os.environ.get(
-    "BOT_SESSION", os.path.join(os.path.dirname(DB_PATH), "session.json"))
+SESSION_PATH = os.path.join(os.path.dirname(DB_PATH), "session.json")
 
 
 def load_session():

@@ -43,13 +43,13 @@ DAYS_AHEAD = int(os.environ.get("REMY_CAL_DAYS", "30"))
 
 
 def norm(component):
-    """One VEVENT -> {start, end, summary} with ISO strings.
+    """One VEVENT -> {start, summary} with ISO strings.
 
     date values (all-day) stay yyyy-mm-dd; datetimes keep their offset —
     the bot renders in ship-local time.
     """
     out = {}
-    for src, dst in (("dtstart", "start"), ("dtend", "end")):
+    for src, dst in (("dtstart", "start"),):
         v = component.get(src)
         if v is not None:
             out[dst] = v.dt.isoformat()

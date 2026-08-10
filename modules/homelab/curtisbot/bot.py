@@ -136,23 +136,6 @@ def fmt_qty(amount, unit, item) -> str:
 # ---- db operations (plain functions so they can be tested without Discord)
 
 
-def add_order(conn, account, item, who, needed_by=None):
-    cur = conn.execute(
-        "INSERT INTO orders (account, item, amount, unit, entered_by,"
-        " created_at, needed_by) VALUES (?, ?, 1, '', ?, ?, ?)",
-        (account.strip(), item.strip(), who, now(), needed_by),
-    )
-    conn.commit()
-    return cur.lastrowid
-
-
-def open_orders(conn):
-    """Visible = not yet cleared; includes checked-off rows until /clear."""
-    return conn.execute(
-        "SELECT * FROM orders WHERE cleared_at IS NULL ORDER BY id"
-    ).fetchall()
-
-
 def check_order(conn, order_id, who):
     """Returns 'ok', 'missing', or ('done', done_at, done_by) if already checked."""
     row = conn.execute(
@@ -433,29 +416,6 @@ class RequestModal(discord.ui.Modal, title="Request"):
         await interaction.response.send_message(
             f"Request added: **{who}** · {fmt_window(start, end)}"
         )
-
-
-class WholesaleModal(discord.ui.Modal, title="Wholesale orders"):
-    entries = discord.ui.TextInput(
-        label="One order per line",
-        style=discord.TextStyle.paragraph,
-        placeholder="wholesale order",
-        max_length=1500,
-    )
-
-    async def on_submit(self, interaction: discord.Interaction):
-        lines = [l.strip() for l in str(self.entries).splitlines() if l.strip()]
-        if not lines:
-            await interaction.response.send_message(
-                "Nothing entered.", ephemeral=True
-            )
-            return
-        who = interaction.user.display_name
-        d = db_for(interaction)
-        for line in lines:
-            add_order(d, "", line, who)
-        out = [f"Logged by {who}:"] + [f"- {l}" for l in lines]
-        await interaction.response.send_message("\n".join(out))
 
 
 class Bot(discord.Client):
