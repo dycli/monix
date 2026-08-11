@@ -28,17 +28,6 @@
         "cache.nixos.org" # exact: *.nixos.org carries user content
       ];
 
-      # On a dedicated loopback address so the seat's fence can admit this
-      # listener without admitting the services on 127.0.0.1.
-      seatDomains = allowedDomains ++ [
-        ".claude.ai"
-        ".claude.com"
-        ".github.com"
-        ".githubusercontent.com"
-        ".crates.io"
-        "channels.nixos.org"
-      ];
-      seatProxy = "${topology.seatProxyAddr}:${toString topology.seatProxyPort}";
     in
     {
       imports = singleton inputs.microvm.nixosModules.host;
@@ -111,14 +100,12 @@
           enable = true;
           configText = ''
             http_port ${hostAddr}:3128
-            http_port ${seatProxy}
             pid_filename /run/squid/squid.pid
 
             # Without this squid drops to 'nobody' and cannot write its
             # own logs or cache.
             cache_effective_user squid
 
-            acl fleet_port localport 3128
             acl allowed_domains dstdomain ${concatStringsSep " " allowedDomains}
             acl SSL_ports port 443
             acl CONNECT method CONNECT
@@ -126,12 +113,7 @@
             # HTTPS CONNECT only; nothing here needs plain HTTP.
             http_access deny !CONNECT
             http_access deny CONNECT !SSL_ports
-            http_access allow allowed_domains fleet_port
-            # Valid only on the seat's own listener, not the workers' port.
-            acl seat_port localport ${toString topology.seatProxyPort}
-            acl seat_domains dstdomain ${concatStringsSep " " seatDomains}
-            http_access allow seat_domains seat_port
-
+            http_access allow allowed_domains
             http_access deny all
 
             # Proxy, not cache.

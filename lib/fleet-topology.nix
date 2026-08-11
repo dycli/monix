@@ -7,11 +7,6 @@
   hostTailnetAddr = "100.102.113.74";
   hostMagicDnsName = "water.olm-hen.ts.net";
 
-  # squid's listener for the seat; the cockpit slice fence allows exactly
-  # this address.
-  seatProxyAddr = "127.0.1.9";
-  seatProxyPort = 3129;
-
   # Off 127.0.0.1, which other services' fences already admit.
   seatWebAddr = "127.0.1.10";
   seatWebPort = 4097;
