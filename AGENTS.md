@@ -39,8 +39,6 @@ same-named `nixosModules` attribute via `home-manager.sharedModules`.
 Current bundles:
 
 - `default`  — universal aspects; every host gets it from `lib.ship.host`.
-  Self-gated service aspects live here too: their `enable` options exist on
-  every host and default off.
 - `desktop`  — a graphical workstation, independent of session choice.
 - `hyprland` — the Hyprland/DMS session. A sibling (e.g. `kde`) is the seam
   for a host that runs a different session.
@@ -71,16 +69,21 @@ imports = lib.lists.singleton (lib.ship.host "earth" ({ ... }: {
 `lib.ship.host` imports `default` and sets the hostname. The host file keeps
 only what is true of the physical machine (hardware quirks, disk layout,
 `primaryUser`, secret declarations and the options consuming them) plus its
-bundle imports and per-service flips. Do not reintroduce a host-class
-option; class is expressed by which bundles a host imports.
+bundle imports and any genuine per-host config (a hardware toggle like the
+UPS). Do not reintroduce a host-class option; class is expressed by which
+bundles a host imports.
 
-## Optional aspects must self-gate
+## Services live in their role bundle
 
-`default` is imported by every host, so an optional aspect there must be
-inert until switched on: service aspects gate their `config` with `mkIf` on
-their service's `enable` option (e.g. `mkIf config.services.immich.enable`),
-which a host or role bundle turns on. Aspects in the other bundles apply
-unconditionally; their gate is bundle membership.
+A service is an aspect of a role, so it registers into that role's bundle
+(`flake.nixosModules.lab = self.nixosModules.media`) and applies its config
+unconditionally — no per-service `enable` self-gate. A host runs the service
+because it imported the bundle; a host that should not run it imports a
+different composition, so the gate is bundle membership. Genuine per-host or
+per-home variation (does this box have a UPS? which user runs the fenced
+seat?) stays an option set by the host or home, not by the bundle. A truly
+cross-cutting aspect that several unrelated roles opt into (e.g. syncthing)
+may still live in `default` and gate on its own `enable`.
 
 ## Nix style
 
