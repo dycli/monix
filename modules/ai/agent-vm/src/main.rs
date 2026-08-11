@@ -117,8 +117,9 @@ fn valid_token(value: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || "._/-".contains(character))
 }
 
-// The executor selected by agent and model; the users are static guest
-// accounts.
+// Everything an (agent, model) pair implies — executor identity and the
+// one credential the host stages — decided in one place. The users are
+// static guest accounts.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ExecutorKind {
     Claude,
@@ -127,48 +128,83 @@ enum ExecutorKind {
     Local,
 }
 
+// How the staged secret becomes the executor's credential file.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct Executor {
+enum Secret {
+    // `export <variable>=<secret>`, sourced by the exec wrapper.
+    EnvLine(&'static str),
+    // The staged bytes verbatim.
+    Raw,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct Credential {
+    // The one file the host stages in the creds share.
+    name: &'static str,
+    // Where the installed copy lives in the guest.
+    directory: &'static str,
+    file: &'static str,
+    secret: Secret,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct AgentSpec {
     kind: ExecutorKind,
     user: &'static str,
     home: &'static str,
+    credential: Option<Credential>,
 }
 
-fn select_executor(agent: &str, model: &str) -> Option<Executor> {
-    let executor = |kind, user, home| Some(Executor { kind, user, home });
+fn classify(agent: &str, model: &str) -> Option<AgentSpec> {
+    let spec = |kind, user, home, credential| {
+        Some(AgentSpec {
+            kind,
+            user,
+            home,
+            credential,
+        })
+    };
     match agent {
-        "claude" => executor(ExecutorKind::Claude, "agent-claude", "/home/agent-claude"),
-        "codex" => executor(ExecutorKind::Codex, "agent-codex", "/home/agent-codex"),
-        "opencode" if model.starts_with("local/") => {
-            executor(ExecutorKind::Local, "agent-local", "/home/agent-local")
-        }
-        "opencode" if model.starts_with("openrouter/") => executor(
+        "claude" => spec(
+            ExecutorKind::Claude,
+            "agent-claude",
+            "/home/agent-claude",
+            Some(Credential {
+                name: "claude-token",
+                directory: "/run/agent-claude",
+                file: "env",
+                secret: Secret::EnvLine("CLAUDE_CODE_OAUTH_TOKEN"),
+            }),
+        ),
+        "codex" => spec(
+            ExecutorKind::Codex,
+            "agent-codex",
+            "/home/agent-codex",
+            Some(Credential {
+                name: "codex-auth.json",
+                directory: "/home/agent-codex/.codex",
+                file: "auth.json",
+                secret: Secret::Raw,
+            }),
+        ),
+        "opencode" if model.starts_with("local/") => spec(
+            ExecutorKind::Local,
+            "agent-local",
+            "/home/agent-local",
+            None,
+        ),
+        "opencode" if model.starts_with("openrouter/") => spec(
             ExecutorKind::Opencode,
             "agent-opencode",
             "/home/agent-opencode",
+            Some(Credential {
+                name: "openrouter-key",
+                directory: "/run/agent-opencode",
+                file: "env",
+                secret: Secret::EnvLine("OPENROUTER_API_KEY"),
+            }),
         ),
         _ => None,
-    }
-}
-
-// The credential expected for an agent and model pair. The host stages
-// exactly one; anything else is rejected.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CredentialRule {
-    Exactly(&'static str),
-    None,
-    Invalid,
-}
-
-fn credential_rule(agent: &str, model: &str) -> CredentialRule {
-    match (agent, model) {
-        ("claude", _) => CredentialRule::Exactly("claude-token"),
-        ("codex", _) => CredentialRule::Exactly("codex-auth.json"),
-        ("opencode", model) if model.starts_with("openrouter/") => {
-            CredentialRule::Exactly("openrouter-key")
-        }
-        ("opencode", model) if model.starts_with("local/") => CredentialRule::None,
-        _ => CredentialRule::Invalid,
     }
 }
 
@@ -179,14 +215,14 @@ struct CredentialEntry {
     regular: bool,
 }
 
-fn credentials_match(entries: &[CredentialEntry], rule: CredentialRule) -> bool {
+// The host stages exactly the spec's credential; anything else is rejected.
+fn credentials_match(entries: &[CredentialEntry], expected: Option<&'static str>) -> bool {
     if entries.iter().any(|entry| !entry.regular) {
         return false;
     }
-    match rule {
-        CredentialRule::Exactly(name) => entries.len() == 1 && entries[0].name == name,
-        CredentialRule::None => entries.is_empty(),
-        CredentialRule::Invalid => false,
+    match expected {
+        Some(name) => entries.len() == 1 && entries[0].name == name,
+        None => entries.is_empty(),
     }
 }
 
@@ -578,7 +614,7 @@ fn exit_code_of(status: std::process::ExitStatus) -> i32 {
         .unwrap_or(1)
 }
 
-fn tool_command(executor: Option<&Executor>, program: &str) -> Command {
+fn tool_command(executor: Option<&AgentSpec>, program: &str) -> Command {
     if let Some(executor) = executor {
         let mut command = runuser_command(executor.user, executor.home);
         command.arg(program);
@@ -589,7 +625,7 @@ fn tool_command(executor: Option<&Executor>, program: &str) -> Command {
 }
 
 // Best-effort: None on any failure or empty output.
-fn jq_filter(args: &[&str], stdin_text: &str, executor: Option<&Executor>) -> Option<String> {
+fn jq_filter(args: &[&str], stdin_text: &str, executor: Option<&AgentSpec>) -> Option<String> {
     let mut child = tool_command(executor, "jq")
         .args(args)
         .stdin(Stdio::piped())
@@ -672,7 +708,7 @@ const OPENCODE_USAGE_FILTER: &str = r#"
       cache_read_tokens: (map(.tokens.cache.read//0) | add),
       cache_creation_tokens: (map(.tokens.cache.write//0) | add) }"#;
 
-fn claude_usage(home: &Path, executor: Option<&Executor>) -> Option<String> {
+fn claude_usage(home: &Path, executor: Option<&AgentSpec>) -> Option<String> {
     let mut transcripts = Vec::new();
     walk_files(
         &home.join(".claude/projects"),
@@ -689,7 +725,7 @@ fn claude_usage(home: &Path, executor: Option<&Executor>) -> Option<String> {
 
 // total_token_usage is cumulative per session file, so take each file's
 // final value and sum those.
-fn codex_usage(home: &Path, executor: Option<&Executor>) -> Option<String> {
+fn codex_usage(home: &Path, executor: Option<&AgentSpec>) -> Option<String> {
     let mut sessions = Vec::new();
     walk_files(&home.join(".codex/sessions"), ".jsonl", &mut sessions, 0);
     let mut finals = String::new();
@@ -712,7 +748,7 @@ fn codex_usage(home: &Path, executor: Option<&Executor>) -> Option<String> {
     jq_filter(&["-cs", CODEX_COMBINE_FILTER], &finals, executor)
 }
 
-fn opencode_usage(home: &Path, executor: Option<&Executor>) -> Option<String> {
+fn opencode_usage(home: &Path, executor: Option<&AgentSpec>) -> Option<String> {
     let store = home.join(".local/share/opencode");
     let database = matching_files(&store, |name| name.ends_with(".db"))
         .into_iter()
@@ -740,7 +776,7 @@ fn opencode_usage(home: &Path, executor: Option<&Executor>) -> Option<String> {
     )
 }
 
-fn extract_usage(executor: &Executor) -> Option<String> {
+fn extract_usage(executor: &AgentSpec) -> Option<String> {
     let home = Path::new(executor.home);
     match executor.kind {
         ExecutorKind::Claude => claude_usage(home, Some(executor)),
@@ -762,7 +798,7 @@ struct Supervisor {
 }
 
 impl Supervisor {
-    fn prepare_context(&self, executor: &Executor, log: &mut String) -> Result<ContextInfo> {
+    fn prepare_context(&self, executor: &AgentSpec, log: &mut String) -> Result<ContextInfo> {
         let config = &self.config;
         let user = executor.user;
         let owner = format!("{user}:users");
@@ -860,43 +896,38 @@ impl Supervisor {
         chown_name(&destination, owner)
     }
 
-    fn install_credential(&self, rule: CredentialRule) -> Result<()> {
-        let CredentialRule::Exactly(name) = rule else {
+    fn install_credential(&self, spec: &AgentSpec) -> Result<()> {
+        let Some(credential) = spec.credential else {
             return Ok(());
         };
-        let secret = read_bounded(&self.config.creds_dir.join(name), CREDENTIAL_MAX_BYTES)?;
-        let env_line = |variable: &str| {
-            format!(
+        let secret = read_bounded(
+            &self.config.creds_dir.join(credential.name),
+            CREDENTIAL_MAX_BYTES,
+        )?;
+        let contents = match credential.secret {
+            Secret::EnvLine(variable) => format!(
                 "export {variable}={}\n",
                 shell_quote(trim_trailing_newlines(&secret))
-            )
+            ),
+            Secret::Raw => secret,
         };
-        match name {
-            "claude-token" => self.install_secret(
-                Path::new("/run/agent-claude"),
-                "env",
-                "agent-claude:users",
-                env_line("CLAUDE_CODE_OAUTH_TOKEN").as_bytes(),
-            ),
-            "codex-auth.json" => self.install_secret(
-                Path::new("/home/agent-codex/.codex"),
-                "auth.json",
-                "agent-codex:users",
-                secret.as_bytes(),
-            ),
-            "openrouter-key" => self.install_secret(
-                Path::new("/run/agent-opencode"),
-                "env",
-                "agent-opencode:users",
-                env_line("OPENROUTER_API_KEY").as_bytes(),
-            ),
-            other => Err(format!("unknown credential name: {other}")),
-        }
+        self.install_secret(
+            Path::new(credential.directory),
+            credential.file,
+            &format!("{}:users", spec.user),
+            contents.as_bytes(),
+        )
     }
 
     // The VM is the sandbox, so everything is auto-approved.
 
-    fn execute(&self, executor: &Executor, meta: &TaskMeta, body: &str, hint: &str) -> Result<i32> {
+    fn execute(
+        &self,
+        executor: &AgentSpec,
+        meta: &TaskMeta,
+        body: &str,
+        hint: &str,
+    ) -> Result<i32> {
         let config = &self.config;
         let body = trim_trailing_newlines(body);
         let hint = trim_trailing_newlines(hint);
@@ -990,7 +1021,7 @@ impl Supervisor {
         set_mode(&self.config.task_dir, 0o750)
     }
 
-    fn capture_patch(&self, executor: &Executor, baseline: &str) {
+    fn capture_patch(&self, executor: &AgentSpec, baseline: &str) {
         // Best-effort, as the unprivileged user, before the exchange locks.
         let _ = runuser_command(executor.user, executor.home)
             .args(["git", "-C"])
@@ -1024,7 +1055,7 @@ impl Supervisor {
     fn publish_final<F: FnOnce()>(
         &self,
         outcome: &Outcome,
-        executor: Option<&Executor>,
+        executor: Option<&AgentSpec>,
         context: &ContextInfo,
         before_exit_code: F,
     ) -> Result<()> {
@@ -1129,14 +1160,22 @@ impl Supervisor {
             None => (TaskMeta::default(), true),
         };
 
-        let executor = select_executor(&meta.agent, &meta.model);
-        let rule = credential_rule(&meta.agent, &meta.model);
-        if !credentials_match(&self.credential_entries(), rule) {
+        let executor = classify(&meta.agent, &meta.model);
+        // An unknown (agent, model) pair fails the credential check by
+        // definition: nothing could legitimately be staged for it.
+        let staged_ok = match &executor {
+            Some(spec) => {
+                credentials_match(&self.credential_entries(), spec.credential.map(|c| c.name))
+            }
+            None => false,
+        };
+        if !staged_ok {
             credential_error = true;
         }
         if !credential_error
             && !meta.model.is_empty()
-            && let Err(error) = self.install_credential(rule)
+            && let Some(spec) = &executor
+            && let Err(error) = self.install_credential(spec)
         {
             eprintln!("credential installation failed: {error}");
             credential_error = true;
@@ -1318,32 +1357,27 @@ mod tests {
             ("surprise", "sonnet", None),
         ];
         for (agent, model, expected) in cases {
-            let selected = select_executor(agent, model).map(|e| (e.user, e.kind));
+            let selected = classify(agent, model).map(|e| (e.user, e.kind));
             assert_eq!(selected, expected, "agent={agent} model={model}");
         }
     }
 
     #[test]
-    fn credential_rule_matrix() {
+    fn credential_matrix() {
+        let credential = |agent: &str, model: &str| {
+            classify(agent, model).map(|spec| spec.credential.map(|c| c.name))
+        };
+        assert_eq!(credential("claude", "sonnet"), Some(Some("claude-token")));
+        assert_eq!(credential("codex", "gpt-5"), Some(Some("codex-auth.json")));
         assert_eq!(
-            credential_rule("claude", "sonnet"),
-            CredentialRule::Exactly("claude-token")
+            credential("opencode", "openrouter/x/y"),
+            Some(Some("openrouter-key"))
         );
-        assert_eq!(
-            credential_rule("codex", "gpt-5"),
-            CredentialRule::Exactly("codex-auth.json")
-        );
-        assert_eq!(
-            credential_rule("opencode", "openrouter/x/y"),
-            CredentialRule::Exactly("openrouter-key")
-        );
-        assert_eq!(credential_rule("opencode", "local/x"), CredentialRule::None);
-        assert_eq!(credential_rule("verify", "fixed"), CredentialRule::Invalid);
-        assert_eq!(
-            credential_rule("opencode", "other"),
-            CredentialRule::Invalid
-        );
-        assert_eq!(credential_rule("", ""), CredentialRule::Invalid);
+        assert_eq!(credential("opencode", "local/x"), Some(None));
+        // Unknown pairs have no spec at all: nothing could be staged.
+        assert_eq!(credential("verify", "fixed"), None);
+        assert_eq!(credential("opencode", "other"), None);
+        assert_eq!(credential("", ""), None);
     }
 
     #[test]
@@ -1352,7 +1386,7 @@ mod tests {
             name: name.into(),
             regular,
         };
-        let exactly = CredentialRule::Exactly("claude-token");
+        let exactly = Some("claude-token");
         assert!(credentials_match(&[entry("claude-token", true)], exactly));
         // Wrong name, wrong count, extra file, symlink, none at all.
         assert!(!credentials_match(
@@ -1366,16 +1400,8 @@ mod tests {
         ));
         assert!(!credentials_match(&[entry("claude-token", false)], exactly));
 
-        assert!(credentials_match(&[], CredentialRule::None));
-        assert!(!credentials_match(
-            &[entry("claude-token", true)],
-            CredentialRule::None
-        ));
-        assert!(!credentials_match(&[], CredentialRule::Invalid));
-        assert!(!credentials_match(
-            &[entry("claude-token", true)],
-            CredentialRule::Invalid
-        ));
+        assert!(credentials_match(&[], None));
+        assert!(!credentials_match(&[entry("claude-token", true)], None));
     }
 
     #[test]
@@ -1393,10 +1419,7 @@ mod tests {
                 .iter()
                 .any(|entry| entry.name == "claude-token" && !entry.regular)
         );
-        assert!(!credentials_match(
-            &entries,
-            CredentialRule::Exactly("claude-token")
-        ));
+        assert!(!credentials_match(&entries, Some("claude-token")));
         let _ = fs::remove_dir_all(&root);
     }
 
