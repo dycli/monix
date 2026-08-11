@@ -17,6 +17,7 @@
     }:
     let
       inherit (lib) dirOf;
+      inherit (lib.attrsets) optionalAttrs;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
       inherit (lib.strings) concatStringsSep escapeShellArg;
@@ -199,6 +200,18 @@
           default = 30;
           description = "How far ahead the calendar sync fetches events.";
         };
+
+        calendar.collection = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          example = "https://cdav.migadu.com/home/calendars/family/";
+          description = ''
+            URL of the first account's CalDAV collection that queued
+            events are pushed into (the sync logs every candidate URL).
+            null = guess the VEVENT collection holding the most events —
+            right in practice, but a guess; pin it.
+          '';
+        };
       };
 
       config = {
@@ -276,6 +289,9 @@
             BOT_DB = "/var/lib/remy/home.db";
             BOT_TZ = config.time.timeZone;
             REMY_CAL_DAYS = toString cfg.calendar.daysAhead;
+          }
+          // optionalAttrs (cfg.calendar.collection != null) {
+            REMY_CAL_COLLECTION = cfg.calendar.collection;
           };
           serviceConfig = sandbox // {
             Type = "oneshot";

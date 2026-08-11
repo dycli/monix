@@ -5,9 +5,11 @@ bot queues an event), separate from the chat bot on purpose: this is
 the ONLY remy process with network egress, and it holds the only copy
 of the calendar credentials. Each run:
 
-  1. PUSHES the bot's cal_outbox (events created from chat) to the FIRST
-     configured calendar, marking rows pushed; a failed push stays queued
+  1. PUSHES the bot's cal_outbox (events created from chat) to the first
+     configured account, marking rows pushed; a failed push stays queued
      and fails the unit (so it alerts) after the fetch still ran.
+     REMY_CAL_COLLECTION pins which of the account's collections receives
+     them; unset, the busiest VEVENT collection is guessed.
   2. FETCHES upcoming events (recurrences expanded) from each configured
      CalDAV account (Migadu: cdav.migadu.com) and atomically writes a
      normalized calendar.json that the loopback-fenced bot merely reads —
@@ -19,6 +21,7 @@ Config: REMY_CALDAV_CONFIG points at a JSON file (an agenix secret):
     "username": "dylan@...", "password": "..."}, ...]
 """
 
+import contextlib
 import json
 import logging
 import os
@@ -36,6 +39,7 @@ log = logging.getLogger("calsync")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 CONFIG = os.environ["REMY_CALDAV_CONFIG"]
+COLLECTION = os.environ.get("REMY_CAL_COLLECTION", "")
 OUT = os.environ.get("BOT_CALENDAR_JSON", "/var/lib/remy/calendar.json")
 DB_PATH = os.environ.get("BOT_DB", "/var/lib/remy/home.db")
 TZ = ZoneInfo(os.environ.get("BOT_TZ", "America/New_York"))
@@ -74,6 +78,37 @@ def fetch(cal_cfg, start, end):
     return events
 
 
+def pick_collection(client):
+    """The collection outbox events are pushed into.
+
+    A principal can expose several collections (Migadu: calendars AND
+    journals — a VEVENT PUT into journals 403s; and more than one
+    event-capable collection, where a wrong pick lands events in a side
+    collection the calendar UI never shows). REMY_CAL_COLLECTION pins
+    the choice by URL; unset, guess the busiest VEVENT collection.
+    """
+    candidates = []
+    for c in client.principal().calendars():
+        try:
+            if "VEVENT" in (c.get_supported_components() or []):
+                candidates.append(c)
+        except Exception:
+            continue
+    if not candidates:
+        raise RuntimeError("no VEVENT-capable collection found")
+    if COLLECTION:
+        want = COLLECTION.rstrip("/")
+        for c in candidates:
+            if str(c.url).rstrip("/") == want:
+                return c
+        raise RuntimeError("collection %s not offered; candidates: %s" % (
+            COLLECTION, ", ".join(str(c.url) for c in candidates)))
+    counted = [(c, len(c.events())) for c in candidates]
+    for c, n in counted:
+        log.info("candidate collection %s: %d events", c.url, n)
+    return max(counted, key=lambda t: t[1])[0]
+
+
 def push_outbox(cal_cfg):
     """Create the bot's queued events on the CalDAV server.
 
@@ -82,110 +117,76 @@ def push_outbox(cal_cfg):
     """
     if not os.path.exists(DB_PATH):
         return 0
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
-    failed = 0
     client = caldav.DAVClient(url=cal_cfg["url"], username=cal_cfg["username"],
                               password=cal_cfg["password"])
-    # A principal can expose several collections (Migadu: calendars AND
-    # journals — a VEVENT PUT into journals 403s; and more than one
-    # event-capable collection, where "first with VEVENT" lands events in
-    # a side collection the calendar UI never shows).
-    # Push to the collection that holds the family's actual events: the
-    # VEVENT-capable one with the most events already in it.
-    candidates = []
-    for c in client.principal().calendars():
-        try:
-            if "VEVENT" not in (c.get_supported_components() or []):
-                continue
-            candidates.append((c, c.events()))
-        except Exception:
-            continue
-    if not candidates:
-        raise RuntimeError("no VEVENT-capable collection found")
-    for c, evs in candidates:
-        log.info("candidate collection %s: %d events", c.url, len(evs))
-    calendar = max(candidates, key=lambda t: len(t[1]))[0]
+    calendar = pick_collection(client)
     log.info("pushing to %s", calendar.url)
-    # Sweep our strays out of the losing collections (the pre-fix pushes)
-    # and requeue them so this same run re-creates them in the right one.
-    for c, evs in candidates:
-        if c.url == calendar.url:
-            continue
-        for ev in evs:
+    failed = 0
+    with contextlib.closing(sqlite3.connect(DB_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        rows = db.execute(
+            "SELECT * FROM cal_outbox WHERE pushed_ts IS NULL ORDER BY id").fetchall()
+        for r in rows:
             try:
-                uid = str(ev.icalendar_component.get("uid", ""))
-                if uid.startswith("remy-"):
-                    row = db.execute(
-                        "SELECT id,op FROM cal_outbox WHERE uid=? ORDER BY id DESC LIMIT 1",
-                        (uid,),
-                    ).fetchone()
-                    if row is None:
-                        log.warning("leaving unknown remy event in %s: %s", c.url, uid)
-                        continue
-                    ev.delete()
-                    if row["op"] == "create":
-                        db.execute("UPDATE cal_outbox SET pushed_ts=NULL WHERE id=?",
-                                   (row["id"],))
-                        db.commit()
-                    log.info("moved stray remy event out of %s", c.url)
-            except Exception:
-                log.exception("stray cleanup failed in %s", c.url)
-    rows = db.execute(
-        "SELECT * FROM cal_outbox WHERE pushed_ts IS NULL ORDER BY id").fetchall()
-    for r in rows:
-        try:
-            uid = r["uid"] or f"remy-{r['id']}-{r['created_ts']}@remy.local"
-            if r["op"] == "delete":
-                # Removing a mirror whose task/reminder went away; already-
-                # gone is success.
-                try:
-                    calendar.event_by_uid(uid).delete()
-                except caldav.lib.error.NotFoundError:
-                    pass
+                uid = r["uid"] or f"remy-{r['id']}-{r['created_ts']}@remy.local"
+                if r["op"] == "delete":
+                    # Removing a mirror whose task/reminder went away;
+                    # already-gone is success.
+                    try:
+                        calendar.event_by_uid(uid).delete()
+                    except caldav.lib.error.NotFoundError:
+                        pass
+                    db.execute("UPDATE cal_outbox SET pushed_ts=?, error='' WHERE id=?",
+                               (int(time.time()), r["id"]))
+                    db.commit()
+                    log.info("deleted '%s' (%s)", uid, r["summary"] or "-")
+                    continue
+                ev = icalendar.Event()
+                ev.add("uid", uid)
+                ev.add("summary", r["summary"])
+                if len(r["start"]) > 10:
+                    # UTC on the wire: a bare TZID with no VTIMEZONE
+                    # component is legal-ish and servers store it, but
+                    # client UIs can silently not render it. Every client
+                    # renders Z-times.
+                    start = (datetime.strptime(r["start"], "%Y-%m-%d %H:%M")
+                             .replace(tzinfo=TZ).astimezone(timezone.utc))
+                    ev.add("dtstart", start)
+                    ev.add("dtend", start + timedelta(hours=1))
+                else:
+                    day = date.fromisoformat(r["start"])
+                    ev.add("dtstart", day)
+                    ev.add("dtend", day + timedelta(days=1))
+                ev.add("dtstamp", datetime.now(TZ))
+                cal = icalendar.Calendar()
+                cal.add("prodid", "-//remy//household bot//EN")
+                cal.add("version", "2.0")
+                cal.add_component(ev)
+                calendar.save_event(cal.to_ical().decode())
                 db.execute("UPDATE cal_outbox SET pushed_ts=?, error='' WHERE id=?",
                            (int(time.time()), r["id"]))
                 db.commit()
-                log.info("deleted '%s' (%s)", uid, r["summary"] or "-")
-                continue
-            ev = icalendar.Event()
-            ev.add("uid", uid)
-            ev.add("summary", r["summary"])
-            if len(r["start"]) > 10:
-                # UTC on the wire: a bare TZID with no VTIMEZONE component
-                # is legal-ish and servers store it, but client UIs can
-                # silently not render it. Every client renders Z-times.
-                start = (datetime.strptime(r["start"], "%Y-%m-%d %H:%M")
-                         .replace(tzinfo=TZ).astimezone(timezone.utc))
-                ev.add("dtstart", start)
-                ev.add("dtend", start + timedelta(hours=1))
-            else:
-                day = date.fromisoformat(r["start"])
-                ev.add("dtstart", day)
-                ev.add("dtend", day + timedelta(days=1))
-            ev.add("dtstamp", datetime.now(TZ))
-            cal = icalendar.Calendar()
-            cal.add("prodid", "-//remy//household bot//EN")
-            cal.add("version", "2.0")
-            cal.add_component(ev)
-            calendar.save_event(cal.to_ical().decode())
-            db.execute("UPDATE cal_outbox SET pushed_ts=?, error='' WHERE id=?",
-                       (int(time.time()), r["id"]))
-            db.commit()
-            log.info("pushed '%s' (%s)", r["summary"], r["start"])
-        except Exception as e:
-            failed += 1
-            db.execute("UPDATE cal_outbox SET error=? WHERE id=?",
-                       (str(e)[:200], r["id"]))
-            db.commit()
-            log.exception("push failed for '%s'", r["summary"])
-    db.close()
+                log.info("pushed '%s' (%s)", r["summary"], r["start"])
+            except Exception as e:
+                failed += 1
+                db.execute("UPDATE cal_outbox SET error=? WHERE id=?",
+                           (str(e)[:200], r["id"]))
+                db.commit()
+                log.exception("push failed for '%s'", r["summary"])
     return failed
 
 
 def main():
     with open(CONFIG) as f:
         calendars = json.load(f)
+    # A malformed or empty config must not reach the fetch/replace path:
+    # zero accounts would "succeed" and overwrite calendar.json with [].
+    if not (isinstance(calendars, list) and calendars and all(
+            isinstance(c, dict)
+            and {"name", "url", "username", "password"} <= c.keys()
+            for c in calendars)):
+        log.error("%s is not a non-empty list of CalDAV accounts", CONFIG)
+        sys.exit(1)
     push_failures = 0
     try:
         push_failures = push_outbox(calendars[0])
