@@ -101,7 +101,7 @@
 
       config = mkMerge [
         {
-          inference.modelIds = concatLists (mapAttrsToList (name: m: [ name ] ++ m.aliases) cfg.models);
+          inference.modelIds = concatLists (mapAttrsToList (name: m: singleton name ++ m.aliases) cfg.models);
         }
 
         {
@@ -145,7 +145,7 @@
               "video"
             ];
             DevicePolicy = "closed";
-            DeviceAllow = [ "char-drm rw" ];
+            DeviceAllow = singleton "char-drm rw";
 
             # Loopback for the spawned llama-servers, the tailnet, and the
             # guest bridge when the fleet runs here. No public internet.

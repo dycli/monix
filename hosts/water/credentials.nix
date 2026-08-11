@@ -1,7 +1,10 @@
 # water's credential store: secret declarations and the role options that
 # consume them. Host-side because the ciphertext is encrypted to this host's
 # key.
-{ config, ... }:
+{ config, lib, ... }:
+let
+  inherit (lib.lists) singleton;
+in
 {
   users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.max-password.path;
 
@@ -57,14 +60,12 @@
 
   # This agenix pin has no restartUnits, so each encrypted source is an
   # explicit trigger on its long-running consumer; oneshots need none.
-  systemd.services.matrix-tunnel.restartTriggers = [
-    ./secrets/matrix-cloudflare-tunnel-token.age
-  ];
-  systemd.services.sabnzbd.restartTriggers = [ ./secrets/sabnzbd-secrets.ini.age ];
-  systemd.services.tuwunel.restartTriggers = [ ./secrets/matrix-registration.env.age ];
-  systemd.services.remy.restartTriggers = [ ./secrets/matrix-remy.env.age ];
-  systemd.services.curtisbot.restartTriggers = [ ./secrets/curtisbot.env.age ];
-  systemd.services.fleet-log-stream.restartTriggers = [ ./secrets/matrix-alertbot.env.age ];
-  systemd.services.frigate.restartTriggers = [ ./secrets/frigate.env.age ];
-  systemd.services.go2rtc.restartTriggers = [ ./secrets/frigate.env.age ];
+  systemd.services.matrix-tunnel.restartTriggers = singleton ./secrets/matrix-cloudflare-tunnel-token.age;
+  systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
+  systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
+  systemd.services.remy.restartTriggers = singleton ./secrets/matrix-remy.env.age;
+  systemd.services.curtisbot.restartTriggers = singleton ./secrets/curtisbot.env.age;
+  systemd.services.fleet-log-stream.restartTriggers = singleton ./secrets/matrix-alertbot.env.age;
+  systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
+  systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
 }

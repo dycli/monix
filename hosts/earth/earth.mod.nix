@@ -14,6 +14,7 @@
         ...
       }:
       let
+        inherit (lib.lists) singleton;
         inherit (lib.modules) mkAfter mkForce;
         inherit (lib.trivial) importJSON;
       in
@@ -39,7 +40,7 @@
           "uas"
           "sd_mod"
         ];
-        boot.kernelModules = [ "kvm-amd" ];
+        boot.kernelModules = singleton "kvm-amd";
         hardware.enableRedistributableFirmware = true;
         hardware.cpu.amd.updateMicrocode = true;
 

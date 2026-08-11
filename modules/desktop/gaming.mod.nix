@@ -3,10 +3,10 @@
 { self, ... }:
 {
   flake.nixosModules.gaming =
-    { pkgs, ... }:
+    { pkgs, lib, ... }:
     {
       programs.steam.enable = true;
-      programs.steam.extraCompatPackages = [ pkgs.proton-ge-bin ];
+      programs.steam.extraCompatPackages = lib.lists.singleton pkgs.proton-ge-bin;
       programs.gamescope.enable = true;
 
       unfreePackages = [

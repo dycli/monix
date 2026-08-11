@@ -16,6 +16,7 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.modules) mkIf;
       inherit (lib.meta) getExe;
       inherit (lib.options) mkEnableOption;
@@ -26,14 +27,14 @@
       options.shipShell.enable = mkEnableOption "the ship's own quickshell desktop shell";
 
       config = mkIf cfg.enable {
-        environment.systemPackages = [ pkgs.quickshell ];
+        environment.systemPackages = singleton pkgs.quickshell;
 
         # systemd user units do not inherit the session's XDG_DATA_DIRS.
         systemd.user.services.ship-shell = {
           description = "ship quickshell desktop shell";
-          partOf = [ "graphical-session.target" ];
-          after = [ "graphical-session.target" ];
-          wantedBy = [ "graphical-session.target" ];
+          partOf = singleton "graphical-session.target";
+          after = singleton "graphical-session.target";
+          wantedBy = singleton "graphical-session.target";
 
           environment.XDG_DATA_DIRS = "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
 

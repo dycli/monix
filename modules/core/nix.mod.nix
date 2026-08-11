@@ -9,6 +9,7 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.strings) getName;
     in
     {
@@ -24,7 +25,7 @@
         # Syncthing as that user, listening on the tailnet. Substituters
         # below are daemon-side and still apply to everyone; a non-trusted
         # user only loses CLI overrides of restricted settings.
-        trusted-users = [ "root" ];
+        trusted-users = singleton "root";
 
         substituters = [
           "https://cache.nixos.org"
@@ -41,7 +42,7 @@
       # Pin the registry and NIX_PATH to this flake's nixpkgs so `nix run`,
       # `nix shell` and legacy `<nixpkgs>` lookups all resolve consistently.
       nix.registry.nixpkgs.flake = inputs.nixpkgs;
-      nix.nixPath = [ "nixpkgs=${inputs.nixpkgs}" ];
+      nix.nixPath = singleton "nixpkgs=${inputs.nixpkgs}";
 
       nix.channel.enable = false;
 

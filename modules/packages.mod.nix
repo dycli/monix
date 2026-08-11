@@ -50,12 +50,16 @@
     };
 
   # Each unfree name travels with the bundle that installs the package.
-  flake.nixosModules.desktop = {
-    unfreePackages = [ "obsidian" ];
-  };
-  flake.nixosModules.dev = {
-    unfreePackages = [ "claude-code" ];
-  };
+  flake.nixosModules.desktop =
+    { lib, ... }:
+    {
+      unfreePackages = lib.lists.singleton "obsidian";
+    };
+  flake.nixosModules.dev =
+    { lib, ... }:
+    {
+      unfreePackages = lib.lists.singleton "claude-code";
+    };
 
   # The graphical session's utilities and applications.
   flake.homeModules.desktop = self.homeModules.packages-desktop;

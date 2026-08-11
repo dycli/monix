@@ -233,9 +233,9 @@
               networking.hostName = "drone"; # overridden at boot from cmdline
               systemd.services.drone-identity = {
                 description = "Adopt per-VM identity from the kernel command line";
-                wantedBy = [ "sysinit.target" ];
-                before = [ "systemd-networkd.service" ];
-                requiredBy = [ "systemd-networkd.service" ];
+                wantedBy = singleton "sysinit.target";
+                before = singleton "systemd-networkd.service";
+                requiredBy = singleton "systemd-networkd.service";
                 unitConfig.DefaultDependencies = false;
                 serviceConfig.Type = "oneshot";
                 serviceConfig.RemainAfterExit = true;
@@ -300,7 +300,7 @@
               # timeout.
               systemd.services.agent-task = {
                 description = "Run the dispatched task";
-                wantedBy = [ "multi-user.target" ];
+                wantedBy = singleton "multi-user.target";
                 unitConfig = {
                   # No ConditionPathExists on prompt.md: the guest boots idle
                   # and the supervisor blocks for a task.
@@ -310,7 +310,7 @@
                   ];
                 };
                 # The agent's shell and the supervisor's helpers resolve here.
-                path = [ "/run/current-system/sw" ];
+                path = singleton "/run/current-system/sw";
                 serviceConfig = {
                   Type = "exec";
                   User = "root";
@@ -464,8 +464,8 @@
                 # The drainer owns lifecycle; Restart=always would fight it.
                 Restart = mkForce "no";
                 # Volumes are wiped on next start, so a graceful poweroff buys
-                # nothing. [ "" ] clears ExecStop from the microvm@ template.
-                ExecStop = mkForce [ "" ];
+                # nothing. singleton "" clears ExecStop from the microvm@ template.
+                ExecStop = mkForce (singleton "");
                 KillSignal = "SIGKILL";
                 # systemd treats only TERM/HUP/INT/PIPE as clean, so an
                 # undeclared SIGKILL would record the stop as a failure.

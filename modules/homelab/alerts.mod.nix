@@ -14,6 +14,7 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib.options) mkEnableOption mkOption;
@@ -58,7 +59,7 @@
 
       smartdHook = pkgs.writeShellApplication {
         name = "ship-alert-smart";
-        runtimeInputs = [ shipAlert ];
+        runtimeInputs = singleton shipAlert;
         text = ''
           ${withCredentials}
           printf '💽 %s: SMART %s on %s\n%s' \
@@ -146,8 +147,8 @@
 
       config = mkMerge [
         {
-          systemd.packages = [ onFailureDropins ];
-          environment.systemPackages = [ shipAlert ];
+          systemd.packages = singleton onFailureDropins;
+          environment.systemPackages = singleton shipAlert;
 
           systemd.services."alert-unit-failure@" = {
             description = "Post %i failure to the Matrix alert room";
@@ -229,7 +230,7 @@
           };
 
           systemd.timers.alert-sweep = {
-            wantedBy = [ "timers.target" ];
+            wantedBy = singleton "timers.target";
             timerConfig = {
               OnBootSec = "10min";
               OnUnitActiveSec = "6h";
@@ -256,7 +257,7 @@
             ups.house = {
               driver = "usbhid-ups";
               port = "auto";
-              directives = [ "vendorid = 3746" ];
+              directives = singleton "vendorid = 3746";
             };
             users.upsmon = {
               passwordFile = "/var/lib/nut/upsmon.password";
@@ -296,13 +297,11 @@
 
           # The group is nutmon, not nut; there is no nut group, and
           # tmpfiles silently skips a rule naming one.
-          systemd.tmpfiles.rules = [
-            "d ${upsSpool} 0770 root ${config.power.ups.upsmon.group} -"
-          ];
+          systemd.tmpfiles.rules = singleton "d ${upsSpool} 0770 root ${config.power.ups.upsmon.group} -";
 
           systemd.paths.alert-ups = {
             description = "Watch for spooled UPS events";
-            wantedBy = [ "multi-user.target" ];
+            wantedBy = singleton "multi-user.target";
             pathConfig = {
               PathExistsGlob = "${upsSpool}/[0-9]*";
               Unit = "alert-ups.service";
@@ -316,7 +315,7 @@
               EnvironmentFile = cfg.credentialsEnvFile;
               StateDirectory = "alerts";
               # The spool sits outside the state directory, written by nutmon.
-              ReadWritePaths = [ upsSpool ];
+              ReadWritePaths = singleton upsSpool;
             };
             path = [
               pkgs.coreutils

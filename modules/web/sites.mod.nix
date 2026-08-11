@@ -30,7 +30,7 @@
       ];
 
       # Parked domains keep their certs warm and answer 503.
-      parked = [ "cleary.is" ];
+      parked = singleton "cleary.is";
     in
     {
       options.sites.enable = mkEnableOption "the public static-site server";

@@ -64,12 +64,10 @@
           "net.ipv6.conf.all.forwarding" = 0;
         };
 
-        assertions = [
-          {
-            assertion = !(lib.lists.elem bridge config.networking.firewall.trustedInterfaces);
-            message = "br-agents must never be a trusted firewall interface";
-          }
-        ];
+        assertions = singleton {
+          assertion = !(lib.lists.elem bridge config.networking.firewall.trustedInterfaces);
+          message = "br-agents must never be a trusted firewall interface";
+        };
 
         systemd.network.networks."10-uplink" = {
           matchConfig.Name = "en*";

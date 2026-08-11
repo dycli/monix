@@ -17,13 +17,14 @@
     }:
     let
       inherit (lib.attrsets) optionalAttrs;
+      inherit (lib.lists) singleton;
       inherit (lib.options) mkOption;
       inherit (lib) types;
 
       cfg = config.curtisbot;
       inherit (lib.ship) fences;
 
-      python = pkgs.python3.withPackages (ps: [ ps.discordpy ]);
+      python = pkgs.python3.withPackages (ps: singleton ps.discordpy);
     in
     {
       options.curtisbot = {
@@ -65,9 +66,9 @@
 
         systemd.services.curtisbot = {
           description = "Curtis work-Discord orders/requests bot";
-          wantedBy = [ "multi-user.target" ];
-          wants = [ "network-online.target" ];
-          after = [ "network-online.target" ];
+          wantedBy = singleton "multi-user.target";
+          wants = singleton "network-online.target";
+          after = singleton "network-online.target";
           environment = {
             CURTISBOT_DB = "/var/lib/curtisbot/bot.db";
             CURTISBOT_TEST_DB = "/var/lib/curtisbot/test.db";

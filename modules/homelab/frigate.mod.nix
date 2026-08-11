@@ -15,6 +15,7 @@
     }:
     let
       inherit (lib.attrsets) concatMapAttrs mapAttrs;
+      inherit (lib.lists) singleton;
       inherit (lib.options) mkOption;
 
       inherit (lib.ship) fences;
@@ -29,12 +30,12 @@
       streamsWith =
         pass:
         concatMapAttrs (name: ip: {
-          ${name} = [ "rtsp://frigate:${pass}@${ip}:554/h264Preview_01_main" ];
-          "${name}_sub" = [ "rtsp://frigate:${pass}@${ip}:554/h264Preview_01_sub" ];
+          ${name} = singleton "rtsp://frigate:${pass}@${ip}:554/h264Preview_01_main";
+          "${name}_sub" = singleton "rtsp://frigate:${pass}@${ip}:554/h264Preview_01_sub";
         }) cfg.reolink
         // concatMapAttrs (name: ip: {
-          ${name} = [ "rtsp://frigate:${pass}@${ip}:554/stream1" ];
-          "${name}_sub" = [ "rtsp://frigate:${pass}@${ip}:554/stream2" ];
+          ${name} = singleton "rtsp://frigate:${pass}@${ip}:554/stream1";
+          "${name}_sub" = singleton "rtsp://frigate:${pass}@${ip}:554/stream2";
         }) cfg.tapo;
 
       frigateCamera = detect: name: _: {
@@ -42,12 +43,12 @@
           {
             path = "rtsp://127.0.0.1:8554/${name}";
             input_args = "preset-rtsp-restream";
-            roles = [ "record" ];
+            roles = singleton "record";
           }
           {
             path = "rtsp://127.0.0.1:8554/${name}_sub";
             input_args = "preset-rtsp-restream";
-            roles = [ "detect" ];
+            roles = singleton "detect";
           }
         ];
         inherit detect;
@@ -73,7 +74,7 @@
         lanSubnets = mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
-          example = [ "192.168.1.0/24" ];
+          example = singleton "192.168.1.0/24";
           description = "Subnets the cameras live on.";
         };
 
@@ -102,7 +103,7 @@
         systemd.services.go2rtc.serviceConfig = lanFence // {
           EnvironmentFile = cfg.envFile;
           # Plus the tailnet, for the direct WebRTC negotiation.
-          IPAddressAllow = lanFence.IPAddressAllow ++ [ fences.tailnet ];
+          IPAddressAllow = lanFence.IPAddressAllow ++ singleton fences.tailnet;
         };
 
         services.frigate = {
@@ -179,7 +180,7 @@
           EnvironmentFile = cfg.envFile;
           # Frigate assumes this cache subdirectory exists, as its upstream
           # container tmpfs provides; review previews fail without it.
-          CacheDirectory = [ "frigate/preview_frames" ];
+          CacheDirectory = singleton "frigate/preview_frames";
         };
 
         services.nginx.virtualHosts.${config.services.frigate.hostname} = {
@@ -190,14 +191,12 @@
         # Carries Frigate events to Home Assistant.
         services.mosquitto = {
           enable = true;
-          listeners = [
-            {
-              address = "127.0.0.1";
-              port = 1883;
-              settings.allow_anonymous = true;
-              acl = [ "topic readwrite #" ];
-            }
-          ];
+          listeners = singleton {
+            address = "127.0.0.1";
+            port = 1883;
+            settings.allow_anonymous = true;
+            acl = singleton "topic readwrite #";
+          };
         };
         systemd.services.mosquitto.serviceConfig = {
           IPAddressAllow = fences.loopback;

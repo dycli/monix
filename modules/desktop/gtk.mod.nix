@@ -4,8 +4,8 @@
 {
   flake.homeModules.desktop = self.homeModules.gtk;
   flake.homeModules.gtk =
-    { pkgs, ... }:
+    { pkgs, lib, ... }:
     {
-      home.packages = [ pkgs.kdePackages.breeze-gtk ];
+      home.packages = lib.lists.singleton pkgs.kdePackages.breeze-gtk;
     };
 }

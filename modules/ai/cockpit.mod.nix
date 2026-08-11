@@ -13,7 +13,7 @@
     let
       inherit (lib.ship) guide topology;
       inherit (lib.attrsets) genAttrs;
-      inherit (lib.lists) concatMap map;
+      inherit (lib.lists) concatMap map singleton;
       inherit (lib.options) mkEnableOption;
       inherit (lib.strings) toJSON;
       # Paths derive from the home this module is applied to, not from
@@ -26,7 +26,7 @@
       cockpitMemoryDir = "${userHome}/cockpit/memory";
       # Claude Code keys per-project state to the working dir path with
       # slashes turned into dashes ("/home/max/cockpit" -> -home-max-cockpit).
-      projectKey = lib.strings.replaceStrings [ "/" ] [ "-" ] cockpitDir;
+      projectKey = lib.strings.replaceStrings (singleton "/") (singleton "-") cockpitDir;
       claudeMemoryDir = "${userHome}/.claude/projects/${projectKey}/memory";
       gitReadCommands = [
         "status*"
@@ -246,16 +246,12 @@
             };
             # `|| true`: a pending compression exits 1 while still printing
             # the instruction that must surface.
-            hooks.SessionStart = [
-              {
-                hooks = [
-                  {
-                    type = "command";
-                    command = "memo wake 2>&1 || true";
-                  }
-                ];
-              }
-            ];
+            hooks.SessionStart = singleton {
+              hooks = singleton {
+                type = "command";
+                command = "memo wake 2>&1 || true";
+              };
+            };
           };
         };
       };
@@ -309,7 +305,7 @@
             "127.0.0.53/32"
             "${topology.seatInferenceAddr}/32"
           ];
-          IPAddressDeny = fences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
+          IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
         };
 
         home-manager.users.bridge = {
@@ -345,9 +341,9 @@
         # carries its own fence. nginx serves it with no application auth.
         systemd.services.opencode-web = {
           description = "opencode web UI cockpit seat";
-          wantedBy = [ "multi-user.target" ];
-          wants = [ "network-online.target" ];
-          after = [ "network-online.target" ];
+          wantedBy = singleton "multi-user.target";
+          wants = singleton "network-online.target";
+          after = singleton "network-online.target";
           # Privilege wrappers must precede the system profile, or sudo
           # resolves to its non-setuid binary.
           path = [
@@ -364,7 +360,7 @@
               "${topology.seatIngressAddr}/32"
               "${topology.seatInferenceAddr}/32"
             ];
-            IPAddressDeny = fences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
+            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
             Environment = singleton "OPENCODE_CONFIG=/home/bridge/.config/opencode/opencode.jsonc";
             WorkingDirectory = "/home/bridge/cockpit";
             # The seat listener is the only socket this service may open.

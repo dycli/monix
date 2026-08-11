@@ -12,6 +12,7 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
       inherit (lib.strings) concatMapStringsSep hasSuffix;
@@ -71,39 +72,33 @@
         users.users.${op} = {
           isSystemUser = true;
           group = op;
-          extraGroups = [ readers ];
+          extraGroups = singleton readers;
           description = "agent-fleet dispatch operator";
         };
-        users.users.${config.primaryUser}.extraGroups = [ readers ];
+        users.users.${config.primaryUser}.extraGroups = singleton readers;
         users.users.bridge = {
-          extraGroups = [ readers ];
+          extraGroups = singleton readers;
         };
 
-        environment.systemPackages = [ fleet ];
+        environment.systemPackages = singleton fleet;
 
         # The only path into the queue. NOPASSWD so a non-interactive
         # `sudo -n` never blocks.
-        security.sudo.extraRules = [
-          {
-            users = [
-              config.primaryUser
-              "bridge"
-            ];
-            runAs = op;
-            commands = [
-              {
-                command = fleetPath;
-                options = [ "NOPASSWD" ];
-              }
-            ];
-          }
-        ];
+        security.sudo.extraRules = singleton {
+          users = [
+            config.primaryUser
+            "bridge"
+          ];
+          runAs = op;
+          commands = singleton {
+            command = fleetPath;
+            options = singleton "NOPASSWD";
+          };
+        };
 
         # On the same filesystem as the queue so the publishing rename is
         # atomic.
-        systemd.tmpfiles.rules = [
-          "d ${tasksDir}/staging 0700 ${op} ${op} -"
-        ];
+        systemd.tmpfiles.rules = singleton "d ${tasksDir}/staging 0700 ${op} ${op} -";
       };
     };
 }

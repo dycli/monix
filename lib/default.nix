@@ -7,7 +7,7 @@ nixpkgsLib.extend (
   final: prev: {
     ship = {
       fences = import ./network-fences.nix;
-      hardened = import ./hardened.nix;
+      hardened = import ./hardened.nix nixpkgsLib;
       topology = import ./fleet-topology.nix;
       guide = import ./fleet-guide.nix;
 

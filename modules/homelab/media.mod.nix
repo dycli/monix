@@ -26,12 +26,10 @@
 
       # The internet is in neither list and so falls through allowed.
       egressFence = {
-        IPAddressAllow = fences.loopback ++ [
-          fences.tailnet
-        ];
+        IPAddressAllow = fences.loopback ++ singleton fences.tailnet;
         # 127.0.0.0/8 is denied explicitly: this deny is not "any", so the
         # seat plane outside fences.loopback would otherwise be allowed.
-        IPAddressDeny = fences.privateRanges ++ [ "127.0.0.0/8" ];
+        IPAddressDeny = fences.privateRanges ++ singleton "127.0.0.0/8";
       };
 
       # The OPDS e-reader cannot join the tailnet. IP filters are
@@ -150,9 +148,7 @@
             local_ranges = "127.0.0.1, ::1, ${fences.tailnet}";
 
             # SABnzbd rejects Host headers it does not know.
-            host_whitelist = lib.strings.concatStringsSep ", " [
-              "sab.${config.shipProxy.domain}"
-            ];
+            host_whitelist = lib.strings.concatStringsSep ", " (singleton "sab.${config.shipProxy.domain}");
 
             # Group-readable so the *arr importers can hardlink.
             download_dir = "${mediaRoot}/downloads/incomplete";
@@ -196,9 +192,8 @@
         '';
 
         networking.firewall = mkIf (cfg.calibreWebLan != null) {
-          interfaces.${cfg.calibreWebLan.interface}.allowedTCPPorts = [
-            config.services.calibre-web.listen.port
-          ];
+          interfaces.${cfg.calibreWebLan.interface}.allowedTCPPorts =
+            singleton config.services.calibre-web.listen.port;
         };
 
         services.jellyfin = {
@@ -224,7 +219,7 @@
           egressFence
           // hardened.vendor
           // {
-            ReadWritePaths = [ "${mediaRoot}/downloads" ];
+            ReadWritePaths = singleton "${mediaRoot}/downloads";
           };
         systemd.services.bazarr.serviceConfig =
           egressFence

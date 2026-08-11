@@ -5,9 +5,9 @@
   # without it tmux and less fail with "missing or unsuitable terminal".
   flake.nixosModules.default = self.nixosModules.ghostty-terminfo;
   flake.nixosModules.ghostty-terminfo =
-    { pkgs, ... }:
+    { pkgs, lib, ... }:
     {
-      environment.systemPackages = [ pkgs.ghostty.terminfo ];
+      environment.systemPackages = lib.lists.singleton pkgs.ghostty.terminfo;
     };
 
   flake.homeModules.desktop = self.homeModules.ghostty;

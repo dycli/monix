@@ -11,6 +11,7 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.strings) toJSON;
       inherit (lib.options) mkOption;
       inherit (lib) types;
@@ -52,14 +53,14 @@
       config = {
         systemd.services.fleet-log-stream = {
           description = "Stream the fleet audit log to Matrix";
-          wantedBy = [ "multi-user.target" ];
+          wantedBy = singleton "multi-user.target";
           startLimitIntervalSec = 0;
           # The readers group grants the dynamic user the audit log, which is
           # not world-readable. Egress is loopback-only for the local
           # homeserver.
           serviceConfig = lib.ship.hardened.tenant // {
             DynamicUser = true;
-            SupplementaryGroups = [ topology.readersGroup ];
+            SupplementaryGroups = singleton topology.readersGroup;
             StateDirectory = "fleet-log-stream";
             EnvironmentFile = cfg.credentialsEnvFile;
             Restart = "always";

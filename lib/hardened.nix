@@ -1,6 +1,9 @@
 # Shared systemd hardening presets. Unit specifics (user, state directory,
 # egress fence) stay per-unit.
+lib:
 let
+  inherit (lib.lists) singleton;
+
   # tenant: unprivileged services that parse untrusted input or hold a
   # credential. None binds a port.
   tenant = {
@@ -33,7 +36,7 @@ let
     RestrictSUIDSGID = true;
     SocketBindDeny = "any";
     SystemCallArchitectures = "native";
-    SystemCallFilter = [ "@system-service" ];
+    SystemCallFilter = singleton "@system-service";
     SystemCallErrorNumber = "EPERM";
     UMask = "0077";
   };
@@ -44,7 +47,7 @@ in
   # rootSensor: root oneshots reading the journal or sysfs, or querying
   # systemd over D-Bus. The system bus authenticates by peer uid, which must
   # stay 0, so PrivateUsers is dropped; AF_UNIX carries D-Bus.
-  rootSensor = builtins.removeAttrs tenant [ "PrivateUsers" ] // {
+  rootSensor = builtins.removeAttrs tenant (singleton "PrivateUsers") // {
     RestrictAddressFamilies = [
       "AF_UNIX"
       "AF_INET"

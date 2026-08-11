@@ -22,7 +22,7 @@
               pkgs.pkg-config
             ];
             # luajit, matching what hyprland itself links.
-            buildInputs = [ pkgs.luajit ];
+            buildInputs = lib.lists.singleton pkgs.luajit;
             # The build emits gloview.so; the plugins option loads lib<name>.so.
             postInstall = ''ln -sf gloview.so "$out/lib/libgloview.so"'';
 

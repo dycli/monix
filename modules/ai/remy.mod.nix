@@ -17,6 +17,7 @@
     }:
     let
       inherit (lib) dirOf;
+      inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
       inherit (lib.strings) concatStringsSep escapeShellArg;
@@ -31,7 +32,7 @@
         ps.requests
       ]);
 
-      calPython = pkgs.python3.withPackages (ps: [ ps.caldav ]);
+      calPython = pkgs.python3.withPackages (ps: singleton ps.caldav);
 
       # Idempotent: logs in first, else walks the registration-token flow.
       register = pkgs.writeShellApplication {
@@ -110,7 +111,7 @@
         inviteUsers = mkOption {
           type = types.listOf types.str;
           default = [ ];
-          example = [ "@dylan:chat.example.com" ];
+          example = singleton "@dylan:chat.example.com";
           description = ''
             Users invited when the bot creates its Household room on first
             start. The first entry also gets admin power in the room.
@@ -120,7 +121,7 @@
         scratchpad.users = mkOption {
           type = types.listOf types.str;
           default = [ ];
-          example = [ "@alice:chat.example.com" ];
+          example = singleton "@alice:chat.example.com";
           description = ''
             Users invited to the bot's personal scratchpad room (notes,
             reminders, quick lists; own database, calendar read-only, no
@@ -210,9 +211,9 @@
 
         systemd.services.remy-register = {
           description = "remy Matrix account bootstrap";
-          wantedBy = [ "multi-user.target" ];
-          wants = [ "tuwunel.service" ];
-          after = [ "tuwunel.service" ];
+          wantedBy = singleton "multi-user.target";
+          wants = singleton "tuwunel.service";
+          after = singleton "tuwunel.service";
           serviceConfig =
             sandbox
             // loopbackOnly
@@ -229,9 +230,9 @@
 
         systemd.services.remy = {
           description = "family household chat bot";
-          wantedBy = [ "multi-user.target" ];
+          wantedBy = singleton "multi-user.target";
           # git_snapshot in bot.py commits a SQL dump on every mutation.
-          path = [ pkgs.git ];
+          path = singleton pkgs.git;
           wants = [
             "tuwunel.service"
             "remy-register.service"
@@ -287,7 +288,7 @@
         };
 
         systemd.timers.remy-calendar-sync = mkIf (cfg.calendar.credentialsFile != null) {
-          wantedBy = [ "timers.target" ];
+          wantedBy = singleton "timers.target";
           timerConfig = {
             OnBootSec = "5min";
             OnUnitActiveSec = "30min";
@@ -296,7 +297,7 @@
 
         # The bot touches outbox.flag when chat queues an event.
         systemd.paths.remy-calendar-sync = mkIf (cfg.calendar.credentialsFile != null) {
-          wantedBy = [ "multi-user.target" ];
+          wantedBy = singleton "multi-user.target";
           pathConfig.PathChanged = "/var/lib/remy/outbox.flag";
         };
 
@@ -308,7 +309,7 @@
             ExecStart = getExe (
               pkgs.writeShellApplication {
                 name = "remy-famlog";
-                runtimeInputs = [ pkgs.coreutils ];
+                runtimeInputs = singleton pkgs.coreutils;
                 text = ''
                   src=/var/lib/remy/log.md
                   [ -f "$src" ] || exit 0
@@ -318,13 +319,13 @@
               }
             );
             ProtectSystem = "strict";
-            ReadWritePaths = [ "-${dirOf cfg.famlog.path}" ];
-            ReadOnlyPaths = [ "/var/lib/remy" ];
+            ReadWritePaths = singleton "-${dirOf cfg.famlog.path}";
+            ReadOnlyPaths = singleton "/var/lib/remy";
           };
         };
 
         systemd.paths.remy-famlog = mkIf (cfg.famlog.path != null) {
-          wantedBy = [ "multi-user.target" ];
+          wantedBy = singleton "multi-user.target";
           # Watching the log itself makes the append the trigger.
           pathConfig.PathChanged = "/var/lib/remy/log.md";
         };
