@@ -317,6 +317,9 @@
         };
 
         # The bot is fenced out of /home, so root writes the vault copy.
+        # The vault dir is user-writable: ProtectSystem=strict caps where
+        # a planted symlink could redirect root's write, and mv -T
+        # replaces a symlinked target instead of following it.
         systemd.services.remy-famlog = mkIf (cfg.famlog.path != null) {
           description = "mirror remy's daily log into the vault";
           serviceConfig = {
@@ -327,9 +330,12 @@
                 runtimeInputs = [ pkgs.coreutils ];
                 text = ''
                   src=/var/lib/remy/log.md
+                  dst=${escapeShellArg cfg.famlog.path}
                   [ -f "$src" ] || exit 0
+                  rm -f "$dst.tmp"
                   install -D -o ${cfg.famlog.owner} -g ${cfg.famlog.group} -m 0644 \
-                    "$src" ${escapeShellArg cfg.famlog.path}
+                    "$src" "$dst.tmp"
+                  mv -T "$dst.tmp" "$dst"
                 '';
               }
             );
