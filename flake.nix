@@ -79,6 +79,11 @@
     url = "github:Infinidoge/nix-minecraft";
   };
 
+  inputs.paseo = {
+    url = "github:getpaseo/paseo";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
   outputs =
     inputs:
     let

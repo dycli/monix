@@ -428,6 +428,26 @@
         "type": "github"
       }
     },
+    "paseo": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1786456418,
+        "narHash": "sha256-cTfOuIqZyU0zyaB0UfC56Z++gGBzT2UWOLzvZ4A9KXk=",
+        "owner": "getpaseo",
+        "repo": "paseo",
+        "rev": "b7ca1f7502dedc4091d5801be6f129ee64567e4a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "getpaseo",
+        "repo": "paseo",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "agenix": "agenix",
@@ -443,6 +463,7 @@
         "nix4nvchad": "nix4nvchad",
         "nixos-hardware": "nixos-hardware",
         "nixpkgs": "nixpkgs_3",
+        "paseo": "paseo",
         "whitesur-kde": "whitesur-kde"
       }
     },
