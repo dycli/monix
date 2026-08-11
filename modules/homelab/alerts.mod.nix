@@ -289,8 +289,14 @@
           system.activationScripts.nut-upsmon-password = ''
             mkdir -p /var/lib/nut
             if [ ! -s /var/lib/nut/upsmon.password ]; then
-              tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > /var/lib/nut/upsmon.password
-              chmod 0600 /var/lib/nut/upsmon.password
+              # Written to a temp name and renamed, so an interrupted write
+              # cannot leave a partial password that then sticks forever.
+              (
+                umask 077
+                tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 \
+                  > /var/lib/nut/upsmon.password.new
+              )
+              mv -T /var/lib/nut/upsmon.password.new /var/lib/nut/upsmon.password
             fi
           '';
 

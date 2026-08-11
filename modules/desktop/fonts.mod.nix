@@ -31,13 +31,21 @@
           system.activationScripts.comic-code-fonts = {
             deps = [ "agenixInstall" ];
             text = ''
-              rm -rf /var/lib/fonts/comic-code
-              mkdir -p /var/lib/fonts/comic-code
+              # Extract to a sibling and swap, so a failed extract keeps
+              # the previous fonts instead of an empty directory.
+              rm -rf /var/lib/fonts/comic-code.new
+              mkdir -p /var/lib/fonts/comic-code.new
               # Activation runs with a minimal PATH, so tar cannot find a
               # gzip to shell out to; the store path is passed explicitly
-              ${pkgs.gnutar}/bin/tar --use-compress-program=${pkgs.gzip}/bin/gzip \
-                -xf "${config.secrets.comic-code.path}" -C /var/lib/fonts/comic-code
-              chmod -R a+rX /var/lib/fonts/comic-code
+              if ${pkgs.gnutar}/bin/tar --use-compress-program=${pkgs.gzip}/bin/gzip \
+                -xf "${config.secrets.comic-code.path}" -C /var/lib/fonts/comic-code.new
+              then
+                chmod -R a+rX /var/lib/fonts/comic-code.new
+                rm -rf /var/lib/fonts/comic-code
+                mv -T /var/lib/fonts/comic-code.new /var/lib/fonts/comic-code
+              else
+                echo "comic-code: extract failed, keeping the previous fonts" >&2
+              fi
             '';
           };
 

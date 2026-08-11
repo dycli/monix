@@ -129,7 +129,9 @@
 
             # Stream: first line of a batch blocks indefinitely; once one
             # arrives, keep absorbing lines until 2s of quiet, then post
-            # the batch as a single message.
+            # the batch as a single message. Lossy by design: -n 0 keeps no
+            # cursor, so lines logged while this unit is down never reach
+            # the room — the on-disk log is the durable record.
             batch=""
             while IFS= read -r line; do
               batch="$line"
