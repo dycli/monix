@@ -133,7 +133,7 @@
 
         summary.url = mkOption {
           type = types.str;
-          default = "http://127.0.0.1:8091";
+          default = "http://127.0.0.1:${toString config.inference.port}";
           description = "OpenAI-compatible endpoint (default: the local llama-swap).";
         };
 
