@@ -64,10 +64,10 @@
       guestCredsMount = "/run/host-creds";
 
       # virtiofs passes uid/gid verbatim, so the in-guest executor reaches this
-      # share through the agent-guest gid, pinned to the same value on host
-      # and guest. A broader group (users) would let the seat write into live
+      # share through the guest gid, pinned to the same value on host and
+      # guest. A broader group (users) would let the seat write into live
       # exchanges.
-      agentGuestGid = 3000;
+      inherit (topology) guestGroup guestGid;
       workDir = name: "/var/lib/agents/work/${name}/task";
       guestTaskMount = "/run/task";
 
@@ -358,30 +358,30 @@
               # distinct uids, which blocks ptrace between them. agent-guest
               # (runuser grants supplementary groups) carries the task
               # exchange across virtiofs.
-              users.groups.agent-guest.gid = agentGuestGid;
+              users.groups.${guestGroup}.gid = guestGid;
               users.users = {
                 agent-claude = {
                   isNormalUser = true;
                   homeMode = "0700";
-                  extraGroups = singleton "agent-guest";
+                  extraGroups = singleton guestGroup;
                   description = "Claude fleet executor";
                 };
                 agent-codex = {
                   isNormalUser = true;
                   homeMode = "0700";
-                  extraGroups = singleton "agent-guest";
+                  extraGroups = singleton guestGroup;
                   description = "Codex fleet executor";
                 };
                 agent-opencode = {
                   isNormalUser = true;
                   homeMode = "0700";
-                  extraGroups = singleton "agent-guest";
+                  extraGroups = singleton guestGroup;
                   description = "opencode fleet executor";
                 };
                 agent-local = {
                   isNormalUser = true;
                   homeMode = "0700";
-                  extraGroups = singleton "agent-guest";
+                  extraGroups = singleton guestGroup;
                   description = "credentialless local-model fleet executor";
                 };
               };
@@ -461,9 +461,9 @@
         microvm.vms = listToAttrs (map (w: nameValuePair w.name (mkAgentGuest w)) cfg.workers);
 
         # Share sources must exist before virtiofsd starts.
-        users.groups.agent-guest.gid = agentGuestGid;
+        users.groups.${guestGroup}.gid = guestGid;
         systemd.tmpfiles.rules = concatMap (w: [
-          "d ${workDir w.name} 0770 root agent-guest -"
+          "d ${workDir w.name} 0770 root ${guestGroup} -"
           "d ${credsDir w.name} 0700 root root -"
         ]) cfg.workers;
 

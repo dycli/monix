@@ -105,6 +105,7 @@
               else
                 toString cfg.credentials.openrouterKeyFile;
             FLEET_READERS = readers;
+            FLEET_WORK_GROUP = topology.guestGroup;
             FLEET_STALL_TIMEOUT = toString cfg.stallTimeout;
             FLEET_WARM_MAX_AGE = toString cfg.warmMaxAge;
             FLEET_TASK_TIMEOUT = toString cfg.taskTimeout;

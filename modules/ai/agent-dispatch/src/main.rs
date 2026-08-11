@@ -27,6 +27,7 @@ struct Config {
     codex_auth: PathBuf,
     openrouter_key: Option<PathBuf>,
     readers: String,
+    work_group: String,
     stall_timeout: u64,
     warm_max_age: u64,
     task_timeout: u64,
@@ -47,6 +48,7 @@ impl Config {
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
             readers: env_string("FLEET_READERS")?,
+            work_group: env_string("FLEET_WORK_GROUP")?,
             stall_timeout: env_u64("FLEET_STALL_TIMEOUT")?,
             warm_max_age: env_u64("FLEET_WARM_MAX_AGE")?,
             task_timeout: env_u64("FLEET_TASK_TIMEOUT")?,
@@ -509,7 +511,11 @@ impl Dispatcher {
     fn reset_work(&self) -> Result<()> {
         remove_any(&self.config.ready_dir().join(&self.config.worker))?;
         remove_tree(&self.config.work)?;
-        ensure_dir(&self.config.work, 0o770, Some("root:users"))
+        ensure_dir(
+            &self.config.work,
+            0o770,
+            Some(&format!("root:{}", self.config.work_group)),
+        )
     }
 
     fn reset_creds(&self) -> Result<()> {
@@ -1698,6 +1704,7 @@ impl Fixture {
             codex_auth: codex,
             openrouter_key: Some(openrouter),
             readers: "users".into(),
+            work_group: "users".into(),
             stall_timeout: 120,
             warm_max_age: 7200,
             task_timeout: 21_600,
