@@ -80,7 +80,7 @@
 
         # The bracketed pattern keeps the check from matching its own source.
         nix-style = pkgs.runCommand "nix-style-check" { } ''
-          if grep -rn 'builtins[.]' ${self}/modules ${self}/options ${self}/hosts --include='*.nix'; then
+          if grep -rn 'builtins[.]' ${self}/modules ${self}/options ${self}/hosts ${self}/lib --include='*.nix'; then
             echo 'builtins usage in a module - use the lib equivalent (AGENTS.md, Nix style)' >&2
             exit 1
           fi

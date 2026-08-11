@@ -1,6 +1,9 @@
 # Shared systemd hardening presets. Unit specifics (user, state directory,
 # egress fence) stay per-unit.
+lib:
 let
+  inherit (lib.attrsets) removeAttrs;
+
   # tenant: unprivileged services that parse untrusted input or hold a
   # credential. None binds a port.
   tenant = {
@@ -44,7 +47,7 @@ in
   # rootSensor: root oneshots reading the journal or sysfs, or querying
   # systemd over D-Bus. The system bus authenticates by peer uid, which must
   # stay 0, so PrivateUsers is dropped; AF_UNIX carries D-Bus.
-  rootSensor = builtins.removeAttrs tenant [ "PrivateUsers" ] // {
+  rootSensor = removeAttrs tenant [ "PrivateUsers" ] // {
     RestrictAddressFamilies = [
       "AF_UNIX"
       "AF_INET"
@@ -59,7 +62,7 @@ in
   # ReadWritePaths for anything it writes outside its StateDirectory, or the
   # unit starts and then cannot save.
   vendor =
-    builtins.removeAttrs tenant [
+    removeAttrs tenant [
       "SocketBindDeny"
       "PrivateUsers"
       "UMask"
