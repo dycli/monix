@@ -483,6 +483,11 @@ fn validate_prompt(config: &Config, path: &Path) -> Result<PromptMeta> {
         return Err("opencode model must start with local/ or openrouter/".into());
     }
     let guidance = san(&fm(&header, "guidance"))?.to_string();
+    // A typo here would silently downgrade the task's questions to stock
+    // answers, so unknown values fail like an unknown agent does.
+    if !guidance.is_empty() && guidance != "cockpit" {
+        return Err(format!("unknown guidance: {guidance} (known: cockpit)"));
+    }
     validate_timeout(config, &fm(&header, "timeout"))?;
     let task_key = fm(&header, "task-key");
     if !task_key.is_empty() && !valid_id(&task_key) {
@@ -951,8 +956,13 @@ fn cmd_run(config: &Config, arguments: &[String]) -> Result<i32> {
     let slug = arguments.first().map(String::as_str).unwrap_or("task");
     let base = submit_impl(config, slug)?;
     eprintln!("fleet: dispatched {base}");
-    wait_for_result(config, &base)?;
-    cmd_fetch(config, &[base])
+    let directory = wait_for_result(config, &base)?;
+    let code = cmd_fetch(config, &[base])?;
+    // The report still streams, but a failed task must not exit 0.
+    if directory.starts_with(config.failed()) {
+        return Ok(1);
+    }
+    Ok(code)
 }
 
 fn cmd_peek(config: &Config, arguments: &[String]) -> Result<i32> {
