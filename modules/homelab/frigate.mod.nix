@@ -87,8 +87,12 @@
         services.go2rtc = {
           enable = true;
           settings = {
-            # HA's dashboard proxies these websockets, so the browser
-            # Origin never matches go2rtc's host.
+            # go2rtc offers only same-origin or "*", and proxied
+            # websockets arrive with a browser Origin that cannot match
+            # this host. The fence is elsewhere: the listen is
+            # loopback-only, and both routes to it — HA's server-side
+            # proxy and Frigate's auth_request vhost — authenticate
+            # before go2rtc sees a frame.
             api = {
               listen = "127.0.0.1:1984";
               origin = "*";
