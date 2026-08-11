@@ -420,7 +420,11 @@ class RequestModal(discord.ui.Modal, title="Request"):
 
 class Bot(discord.Client):
     def __init__(self):
-        super().__init__(intents=discord.Intents.default())
+        # Messages embed user-controlled display names; never let one ping.
+        super().__init__(
+            intents=discord.Intents.default(),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
