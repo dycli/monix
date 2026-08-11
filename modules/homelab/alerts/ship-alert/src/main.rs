@@ -3,10 +3,12 @@
 // This binary owns only delivery: optional local-LLM enrichment, repeat
 // throttling, then a Matrix post over the loopback homeserver.
 //
-// The bot's credentials arrive by environment. Every alert logs in, sends
-// and logs out so devices do not accumulate; the first send also joins the
-// room and sets the display name, stamped in the state directory. If the
-// homeserver is down nothing sends, and there is no off-host watcher.
+// The bot's credentials arrive by environment. The access token is cached
+// in the state directory (one session, refreshed only when it stops
+// working), so a fan of OnFailure alerts cannot storm the login endpoint;
+// the first send also joins the room and sets the display name, stamped in
+// the state directory. If the homeserver is down nothing sends, and there
+// is no off-host watcher.
 //
 // usage: ship-alert [--summarize] [--throttle-minutes N] [message...]
 //        (message on stdin when no positional arguments are given)
@@ -48,7 +50,10 @@ struct Options {
     body: String,
 }
 
-fn parse_arguments(arguments: &[String], stdin_body: impl FnOnce() -> String) -> Result<Options> {
+fn parse_arguments(
+    arguments: &[String],
+    stdin_body: impl FnOnce() -> Result<String>,
+) -> Result<Options> {
     let mut summarize = false;
     let mut throttle_minutes = 0;
     let mut positional = Vec::new();
@@ -66,7 +71,7 @@ fn parse_arguments(arguments: &[String], stdin_body: impl FnOnce() -> String) ->
         }
     }
     let body = if positional.is_empty() {
-        stdin_body()
+        stdin_body()?
     } else {
         positional.join(" ")
     };
@@ -117,22 +122,19 @@ fn insert_summary(body: &str, summary: &str) -> String {
 }
 
 /// The Qwen template wraps reasoning in <think> blocks even when asked not
-/// to; strip them and the surrounding blank lines.
+/// to; strip them (an unterminated block loses the tail) and trim.
 fn clean_summary(raw: &str) -> String {
-    let mut kept = Vec::new();
-    let mut thinking = false;
-    for line in raw.lines() {
-        if line.contains("<think>") {
-            thinking = true;
-        }
-        if !thinking && !line.trim().is_empty() {
-            kept.push(line);
-        }
-        if line.contains("</think>") {
-            thinking = false;
-        }
+    let mut kept = String::new();
+    let mut rest = raw;
+    while let Some(start) = rest.find("<think>") {
+        kept.push_str(&rest[..start]);
+        rest = match rest[start..].find("</think>") {
+            Some(offset) => &rest[start + offset + "</think>".len()..],
+            None => "",
+        };
     }
-    kept.join("\n").trim().to_string()
+    kept.push_str(rest);
+    kept.trim().to_string()
 }
 
 // ---- throttle --------------------------------------------------------------
@@ -252,11 +254,9 @@ fn summarize(body: &str) -> Option<String> {
 
 // ---- Matrix delivery -------------------------------------------------------
 
-fn deliver(state: &Path, body: &str) -> Result<()> {
+fn login(state: &Path) -> Result<String> {
     let user = env_required("MATRIX_USER")?;
     let password = env_required("MATRIX_PASSWORD")?;
-    let room = percent_encode(&env_required("ALERT_ROOM_ID")?);
-
     let login = curl_json(
         "POST",
         &format!("{HOMESERVER}/_matrix/client/v3/login"),
@@ -272,18 +272,24 @@ fn deliver(state: &Path, body: &str) -> Result<()> {
         .and_then(Value::as_str)
         .ok_or("login returned no access token")?
         .to_string();
+    fs::write(state.join("session-token"), &token)
+        .map_err(|error| format!("cache session token: {error}"))?;
+    Ok(token)
+}
 
+fn send_message(state: &Path, room: &str, token: &str, body: &str) -> Result<()> {
     // One-time setup: accept the room invite and set the display name. The
     // send below must still happen whatever these return (concurrent alerts
     // can race here; joining is idempotent) — but the stamp is written only
     // after a successful join, so a failed first join is retried on the
-    // next alert instead of muting the bot forever. Profile is best-effort.
+    // next alert instead of muting the bot forever. Profile and stamp are
+    // best-effort: failing them must not drop the alert.
     let stamp = state.join("initialized");
     if !stamp.exists() {
         let joined = curl_json(
             "POST",
             &format!("{HOMESERVER}/_matrix/client/v3/join/{room}"),
-            Some(&token),
+            Some(token),
             &json!({}),
         )
         .is_ok();
@@ -293,7 +299,7 @@ fn deliver(state: &Path, body: &str) -> Result<()> {
                 "{HOMESERVER}/_matrix/client/v3/profile/{}/displayname",
                 percent_encode(&env_required("MATRIX_USER")?)
             ),
-            Some(&token),
+            Some(token),
             &json!({"displayname": "alertbot"}),
         );
         if joined {
@@ -303,24 +309,74 @@ fn deliver(state: &Path, body: &str) -> Result<()> {
 
     // txn id: nanoseconds + PID, so two concurrent alerts in the same
     // instant can't be deduplicated into one by the server.
-    let result = curl_json(
+    curl_json(
         "PUT",
         &format!(
             "{HOMESERVER}/_matrix/client/v3/rooms/{room}/send/m.room.message/{}-{}",
             unix_nanos(),
             std::process::id()
         ),
-        Some(&token),
+        Some(token),
         &json!({"msgtype": "m.text", "body": body}),
-    );
+    )
+    .map(|_| ())
+}
 
-    let _ = curl_json(
-        "POST",
-        &format!("{HOMESERVER}/_matrix/client/v3/logout"),
-        Some(&token),
-        &json!({}),
-    );
-    result.map(|_| ())
+fn deliver(state: &Path, body: &str) -> Result<()> {
+    let room = percent_encode(&env_required("ALERT_ROOM_ID")?);
+
+    // One cached session, refreshed only when it stops working — no
+    // per-alert login, no logout (which would revoke the cached token).
+    let cached = fs::read_to_string(state.join("session-token"))
+        .map(|token| token.trim().to_string())
+        .ok()
+        .filter(|token| !token.is_empty());
+    if let Some(token) = cached {
+        match send_message(state, &room, &token, body) {
+            Ok(()) => return Ok(()),
+            // Stale session (password rotation, server-side wipe): fall
+            // through to a fresh login and one retry.
+            Err(_) => {
+                let _ = fs::remove_file(state.join("session-token"));
+            }
+        }
+    }
+    let token = login(state)?;
+    send_message(state, &room, &token, body)
+}
+
+/// Claim the delivery of one alert body. The throttle check and the marker
+/// commit straddle the whole delivery, so without this two identical
+/// concurrent alerts would both pass the check and both send. false means a
+/// twin holds the claim. A claim older than the longest possible delivery
+/// is a crashed twin and is broken; claiming is best-effort — an error
+/// must never suppress an alert.
+fn claim_delivery(lock: &Path) -> bool {
+    const STALE_SECS: u64 = 600;
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(lock)
+    {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            let fresh = fs::metadata(lock)
+                .and_then(|metadata| metadata.modified())
+                .ok()
+                .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+                .is_some_and(|age| age.as_secs() < STALE_SECS);
+            if fresh {
+                return false;
+            }
+            let _ = fs::remove_file(lock);
+            let _ = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(lock);
+            true
+        }
+        Err(_) => true,
+    }
 }
 
 fn run() -> Result<()> {
@@ -330,14 +386,29 @@ fn run() -> Result<()> {
         // contain non-UTF-8 bytes, and dropping the alert over them would
         // silence exactly the message that matters.
         let mut bytes = Vec::new();
-        let _ = std::io::stdin().take(1_048_576).read_to_end(&mut bytes);
-        String::from_utf8_lossy(&bytes).into_owned()
+        std::io::stdin()
+            .take(1_048_577)
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("read stdin: {error}"))?;
+        let truncated = bytes.len() > 1_048_576;
+        if truncated {
+            bytes.truncate(1_048_576);
+        }
+        let mut body = String::from_utf8_lossy(&bytes).into_owned();
+        if truncated {
+            body.push_str("\n[alert truncated at 1 MiB]");
+        }
+        Ok(body)
     })?;
 
     let state = PathBuf::from(STATE_DIR);
-    let _ = fs::create_dir_all(&state);
+    fs::create_dir_all(&state).map_err(|error| format!("create state dir {STATE_DIR}: {error}"))?;
     let marker = throttle_marker(&state, &options.body);
     if throttled(&marker, options.throttle_minutes) {
+        return Ok(());
+    }
+    let lock = marker.with_extension("lock");
+    if options.throttle_minutes > 0 && !claim_delivery(&lock) {
         return Ok(());
     }
     let body = match options.summarize {
@@ -347,12 +418,20 @@ fn run() -> Result<()> {
         },
         false => options.body,
     };
-    deliver(&state, &body)?;
-    // Commit the throttle only now: delivery succeeded.
+    // Commit the throttle only on success, and release the claim either
+    // way; a failed state write is a real error — silent, it would leave
+    // every future identical alert unthrottled.
+    let result = deliver(&state, &body).and_then(|()| {
+        if options.throttle_minutes > 0 {
+            fs::write(&marker, b"").map_err(|error| format!("write throttle marker: {error}"))
+        } else {
+            Ok(())
+        }
+    });
     if options.throttle_minutes > 0 {
-        let _ = fs::write(&marker, b"");
+        let _ = fs::remove_file(&lock);
     }
-    Ok(())
+    result
 }
 
 fn main() {
@@ -380,15 +459,16 @@ mod tests {
                 "--throttle-minutes".into(),
                 "30".into(),
             ],
-            || "from stdin\n".into(),
+            || Ok("from stdin\n".into()),
         )
         .unwrap();
         assert!(options.summarize);
         assert_eq!(options.throttle_minutes, 30);
         assert_eq!(options.body, "from stdin");
 
-        assert!(parse_arguments(&[], || "".into()).is_err());
-        assert!(parse_arguments(&["--throttle-minutes".into()], || "x".into()).is_err());
+        assert!(parse_arguments(&[], || Ok("".into())).is_err());
+        assert!(parse_arguments(&["--throttle-minutes".into()], || Ok("x".into())).is_err());
+        assert!(parse_arguments(&[], || Err("read stdin: gone".into())).is_err());
     }
 
     #[test]
@@ -411,6 +491,12 @@ mod tests {
         );
         assert_eq!(clean_summary("plain answer"), "plain answer");
         assert_eq!(clean_summary("<think>only thoughts</think>"), "");
+        // Single-line answers must survive an inline think block.
+        assert_eq!(
+            clean_summary("<think>hm</think> The disk failed."),
+            "The disk failed."
+        );
+        assert_eq!(clean_summary("<think>unterminated\nstill thinking"), "");
     }
 
     #[test]
@@ -434,6 +520,27 @@ mod tests {
         assert!(!throttled(&throttle_marker(&state, "different body"), 30));
         // Window zero disables throttling entirely.
         assert!(!throttled(&marker, 0));
+        let _ = fs::remove_dir_all(&state);
+    }
+
+    #[test]
+    fn delivery_claims_block_twins_and_break_stale_locks() {
+        let state = env::temp_dir().join(format!("ship-alert-lock-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&state);
+        fs::create_dir_all(&state).unwrap();
+        let lock = state.join("throttle-feed.lock");
+        assert!(claim_delivery(&lock));
+        // A fresh lock is a twin mid-delivery.
+        assert!(!claim_delivery(&lock));
+        // A stale lock is a crashed twin: broken and retaken.
+        fs::File::options()
+            .write(true)
+            .open(&lock)
+            .unwrap()
+            .set_modified(SystemTime::now() - std::time::Duration::from_secs(601))
+            .unwrap();
+        assert!(claim_delivery(&lock));
+        assert!(!claim_delivery(&lock));
         let _ = fs::remove_dir_all(&state);
     }
 }
