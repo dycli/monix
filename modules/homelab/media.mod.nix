@@ -145,9 +145,10 @@
 
           settings.misc = {
             # The tailnet counts as LOCAL, so the UI answers it while
-            # inet_exposure stays "none".
+            # non-local access stays denied.
             host = "0.0.0.0";
             local_ranges = "127.0.0.1, ::1, ${fences.tailnet}";
+            inet_exposure = 0;
 
             # SABnzbd rejects Host headers it does not know.
             host_whitelist = lib.strings.concatStringsSep ", " [
