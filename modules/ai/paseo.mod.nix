@@ -12,7 +12,25 @@
 
       services.paseo = {
         enable = true;
-        package = inputs.paseo.packages.${pkgs.stdenv.hostPlatform.system}.paseo;
+        # node-pty ships per-platform prebuilt binaries, but upstream's install
+        # trace copies them from a hardcoded hoisted path while npm nests
+        # node-pty under packages/server — so its linux-x64 prebuild never
+        # reaches the output and the daemon crashes on first terminal spawn.
+        # Copy the linux-x64 prebuild beside every node-pty copy;
+        # autoPatchelfHook (already in the derivation) fixes the ELF for NixOS.
+        package = (inputs.paseo.packages.${pkgs.stdenv.hostPlatform.system}.paseo).overrideAttrs (old: {
+          postInstall = (old.postInstall or "") + ''
+            prebuild=$(find "$PWD" -type d -path '*/node-pty/prebuilds/linux-x64' -print -quit)
+            [ -n "$prebuild" ] || {
+              echo "node-pty linux-x64 prebuild not found in build tree" >&2
+              exit 1
+            }
+            find "$out" -type d -name node-pty | while read -r d; do
+              mkdir -p "$d/prebuilds"
+              cp -a "$prebuild" "$d/prebuilds/"
+            done
+          '';
+        });
 
         # inheritUserEnvironment (default for a non-paseo user) puts
         # /etc/profiles/per-user/bridge/bin on the daemon's PATH, so the agent
