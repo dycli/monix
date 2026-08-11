@@ -17,8 +17,7 @@
     }:
     let
       inherit (lib.attrsets) optionalAttrs;
-      inherit (lib.modules) mkIf;
-      inherit (lib.options) mkEnableOption mkOption;
+      inherit (lib.options) mkOption;
       inherit (lib) types;
 
       cfg = config.curtisbot;
@@ -28,8 +27,6 @@
     in
     {
       options.curtisbot = {
-        enable = mkEnableOption "Curtis work-Discord orders/requests bot";
-
         credentialsEnvFile = mkOption {
           type = types.str;
           description = ''
@@ -59,7 +56,7 @@
         };
       };
 
-      config = mkIf cfg.enable {
+      config = {
         users.users.curtisbot = {
           isSystemUser = true;
           group = "curtisbot";

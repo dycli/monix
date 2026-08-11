@@ -20,14 +20,12 @@
         let
           route = config.shipProxy.routes.${name};
         in
-        if config.shipProxy.enable then
-          "https://${route.subdomain}.${config.shipProxy.domain}"
-        else
-          "http://${config.networking.hostName}:${toString route.port}";
+        "https://${route.subdomain}.${config.shipProxy.domain}";
     in
     {
-      config = mkIf config.services.homepage-dashboard.enable {
+      config = {
         services.homepage-dashboard = {
+          enable = true;
           listenPort = 8082;
           openFirewall = false;
 
@@ -40,9 +38,7 @@
               "localhost"
               "127.0.0.1"
             ]
-            ++ lib.lists.optional (
-              config.shipProxy.enable && config.shipProxy.dashboardHost != null
-            ) config.shipProxy.dashboardHost
+            ++ lib.lists.optional (config.shipProxy.dashboardHost != null) config.shipProxy.dashboardHost
           );
 
           settings = {
@@ -114,13 +110,15 @@
                 };
               }
             ]
-            ++ lib.lists.optional config.shipCameras.enable {
-              Frigate = {
-                href = "https://frigate.${config.shipProxy.domain}";
-                description = "Cameras";
-                icon = "frigate.png";
-              };
-            };
+            ++ [
+              {
+                Frigate = {
+                  href = "https://frigate.${config.shipProxy.domain}";
+                  description = "Cameras";
+                  icon = "frigate.png";
+                };
+              }
+            ];
           }
           ++ [
             {

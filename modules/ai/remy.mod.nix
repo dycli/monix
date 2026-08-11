@@ -20,7 +20,7 @@
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
       inherit (lib.strings) concatStringsSep escapeShellArg;
-      inherit (lib.options) mkEnableOption mkOption;
+      inherit (lib.options) mkOption;
       inherit (lib) types;
 
       cfg = config.remy;
@@ -89,8 +89,6 @@
     in
     {
       options.remy = {
-        enable = mkEnableOption "the family household chat bot";
-
         credentialsEnvFile = mkOption {
           type = types.str;
           description = ''
@@ -203,14 +201,7 @@
         };
       };
 
-      config = mkIf cfg.enable {
-        assertions = [
-          {
-            assertion = config.matrix.enable && config.inference.enable;
-            message = "remy needs the matrix homeserver and local inference aspects on this host";
-          }
-        ];
-
+      config = {
         users.users.remy = {
           isSystemUser = true;
           group = "remy";

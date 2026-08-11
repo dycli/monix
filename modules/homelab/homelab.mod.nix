@@ -18,17 +18,8 @@
       # outages or false positives. Merges with the aspect's --ssh.
       services.tailscale.extraSetFlags = [ "--accept-dns=false" ];
 
-      alerts.enable = true;
-      alerts.summary.enable = true;
-
-      minecraft.enable = true;
-
-      media.enable = true;
-
-      services.home-assistant.enable = true;
       homeAssistant.lanSubnets = [ "192.168.1.0/24" ];
 
-      shipCameras.enable = true;
       shipCameras.reolink = {
         cam1 = "192.168.1.201";
         cam2 = "192.168.1.55";
@@ -39,19 +30,12 @@
       };
       shipCameras.lanSubnets = [ "192.168.1.0/24" ];
 
-      services.immich.enable = true;
-
-      shipProxy.enable = true;
       shipProxy.dashboardHost = "hp.su.is";
-
-      services.homepage-dashboard.enable = true;
 
       services.syncthing.enable = true;
 
-      matrix.enable = true;
       matrix.serverName = "chat.su.is";
 
-      remy.enable = true;
       remy.inviteUsers = [
         "@dylan:chat.su.is"
         "@gab:chat.su.is"
@@ -62,7 +46,6 @@
       remy.famlog.owner = config.primaryUser;
       remy.famlog.group = "syncthing";
 
-      curtisbot.enable = true;
       curtisbot.guildId = "916523305362685952";
       curtisbot.testGuildId = "1529484237210910753";
     };

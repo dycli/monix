@@ -136,7 +136,7 @@
         description = "maximum compressed context capsule bytes accepted for one task";
       };
 
-      config = mkIf (cfg.enable && cfg.workers != [ ]) {
+      config = mkIf (cfg.workers != [ ]) {
         systemd.tmpfiles.rules = [
           "d ${tasksDir} 0755 root root -"
           "d ${tasksDir}/queue 0770 root ${op} -"

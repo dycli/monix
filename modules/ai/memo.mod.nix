@@ -11,8 +11,7 @@
       ...
     }:
     let
-      inherit (lib.modules) mkIf;
-      inherit (lib.options) mkEnableOption mkOption;
+      inherit (lib.options) mkOption;
       inherit (lib.strings) hasSuffix;
       inherit (lib) types;
 
@@ -35,8 +34,6 @@
     in
     {
       options.memo = {
-        enable = mkEnableOption "the memo append-only agent memory CLI";
-
         memoryDir = mkOption {
           type = types.str;
           description = ''
@@ -47,7 +44,7 @@
         };
       };
 
-      config = mkIf cfg.enable {
+      config = {
         environment.systemPackages = [ memo ];
       };
     };

@@ -16,12 +16,10 @@
     let
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe';
-      inherit (lib.modules) mkForce mkIf;
+      inherit (lib.modules) mkForce;
       inherit (lib.strings) toJSON;
-      inherit (lib.options) mkEnableOption;
       inherit (lib.attrsets) attrValues mapAttrs';
 
-      cfg = config.minecraft;
       inherit (lib.ship) fences;
 
       # 26.x class files need Java 25; nix-minecraft wraps this server with 21.
@@ -121,9 +119,7 @@
     {
       imports = singleton inputs.nix-minecraft.nixosModules.minecraft-servers;
 
-      options.minecraft.enable = mkEnableOption "the declarative tailnet-only Fabric Minecraft server";
-
-      config = mkIf cfg.enable {
+      config = {
         unfreePackages = singleton "minecraft-server";
 
         nixpkgs.overlays = singleton inputs.nix-minecraft.overlay;

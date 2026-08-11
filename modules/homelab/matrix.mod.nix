@@ -19,7 +19,7 @@
     let
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
-      inherit (lib.options) mkEnableOption mkOption;
+      inherit (lib.options) mkOption;
       inherit (lib) types;
 
       cfg = config.matrix;
@@ -27,8 +27,6 @@
     in
     {
       options.matrix = {
-        enable = mkEnableOption "the family tuwunel Matrix homeserver (federation off, token-gated registration)";
-
         serverName = mkOption {
           type = types.str;
           example = "chat.example.com";
@@ -71,7 +69,7 @@
         };
       };
 
-      config = mkIf cfg.enable {
+      config = {
         services.matrix-tuwunel = {
           enable = true;
           environmentFile = cfg.registrationTokenEnvFile;

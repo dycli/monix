@@ -13,7 +13,6 @@
       ...
     }:
     let
-      inherit (lib.modules) mkIf;
       inherit (lib.ship) fences;
       cfg = config.homeAssistant;
     in
@@ -25,10 +24,11 @@
         description = "Home LAN subnets HA may reach (IoT devices, discovery).";
       };
 
-      config = mkIf config.services.home-assistant.enable {
+      config = {
         shipProxy.routes.ha.port = 8123;
 
         services.home-assistant = {
+          enable = true;
           openFirewall = false; # tailnet-only (UI/API on :8123)
 
           # Tapo C225 1.x firmware rejects plain-RSA key exchange and
@@ -49,18 +49,16 @@
             "met"
             "backup"
             "airgradient"
-          ]
-          # Frigate events arrive over MQTT; tplink drives the Tapo cameras
-          # directly with the same camera account Frigate's RTSP uses.
-          ++ lib.lists.optionals config.shipCameras.enable [
+            # Frigate events arrive over MQTT; tplink drives the Tapo cameras
+            # directly with the same camera account Frigate's RTSP uses.
             "mqtt"
             "tplink"
           ];
 
           # UI setup points this at http://127.0.0.1:5000.
-          customComponents = lib.lists.optional config.shipCameras.enable pkgs.home-assistant-custom-components.frigate;
+          customComponents = [ pkgs.home-assistant-custom-components.frigate ];
 
-          customLovelaceModules = lib.lists.optional config.shipCameras.enable pkgs.home-assistant-custom-lovelace-modules.advanced-camera-card;
+          customLovelaceModules = [ pkgs.home-assistant-custom-lovelace-modules.advanced-camera-card ];
 
           config = {
             # The standard integration bundle.

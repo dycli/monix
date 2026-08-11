@@ -15,8 +15,7 @@
     }:
     let
       inherit (lib.attrsets) concatMapAttrs mapAttrs;
-      inherit (lib.modules) mkIf;
-      inherit (lib.options) mkEnableOption mkOption;
+      inherit (lib.options) mkOption;
 
       inherit (lib.ship) fences;
       cfg = config.shipCameras;
@@ -56,8 +55,6 @@
     in
     {
       options.shipCameras = {
-        enable = mkEnableOption "Frigate NVR for the ship's cameras";
-
         reolink = mkOption {
           type = lib.types.attrsOf lib.types.str;
           default = { };
@@ -86,14 +83,7 @@
         };
       };
 
-      config = mkIf cfg.enable {
-        assertions = [
-          {
-            assertion = config.shipProxy.enable;
-            message = "shipCameras needs shipProxy (frigate.<domain> vhost + cert)";
-          }
-        ];
-
+      config = {
         services.go2rtc = {
           enable = true;
           settings = {

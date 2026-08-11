@@ -12,9 +12,8 @@
     }:
     let
       inherit (lib.ship) guide topology;
-      inherit (lib.attrsets) genAttrs optionalAttrs;
+      inherit (lib.attrsets) genAttrs;
       inherit (lib.lists) concatMap map;
-      inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption;
       inherit (lib.strings) toJSON;
       # Paths derive from the home this module is applied to, not from
@@ -191,7 +190,7 @@
         secrets, default-deny egress) — the walls replace the prompts
       '';
 
-      config = mkIf osConfig.cockpit.enable {
+      config = {
         home.file."cockpit/AGENTS.md" = {
           force = true;
           text = guide.system + guide.pilot;
@@ -212,7 +211,7 @@
               agent.plan.permission = opencodePlanPermissions;
               agent.explore.permission = opencodeExplorePermissions;
             }
-            // optionalAttrs osConfig.inference.enable {
+            // {
               provider.local = {
                 npm = "@ai-sdk/openai-compatible";
                 name = "water local inference";
@@ -274,8 +273,6 @@
     let
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
-      inherit (lib.modules) mkIf;
-      inherit (lib.options) mkEnableOption;
 
       # Fixed uid: the fence below is a drop-in on user-<uid>.slice.
       seatUid = 1001;
@@ -283,22 +280,7 @@
       inherit (lib.ship) topology fences;
     in
     {
-      options.cockpit.enable = mkEnableOption "the persistent cockpit session role on this host";
-
-      options.cockpit.webEnable = mkEnableOption "the opencode web cockpit seat";
-
-      config = mkIf config.cockpit.enable {
-        assertions = [
-          {
-            assertion = config.cockpit.webEnable -> config.shipProxy.enable;
-            message = "cockpit.webEnable requires shipProxy.enable (the tailnet-only front door)";
-          }
-          {
-            assertion = config.agentFleet.enable;
-            message = "the cockpit seat's egress proxy rides the fleet squid (microvm-host.mod.nix)";
-          }
-        ];
-
+      config = {
         # No wheel, no Nix trust, no secrets. A Tailscale SSH session would
         # run under tailscaled's cgroup and bypass the slice fence below.
         users.users.bridge = {
@@ -361,7 +343,7 @@
 
         # A system service, so it sits outside the seat's user slice and
         # carries its own fence. nginx serves it with no application auth.
-        systemd.services.opencode-web = mkIf config.cockpit.webEnable {
+        systemd.services.opencode-web = {
           description = "opencode web UI cockpit seat";
           wantedBy = [ "multi-user.target" ];
           wants = [ "network-online.target" ];

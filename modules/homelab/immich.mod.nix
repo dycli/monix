@@ -7,11 +7,11 @@
   flake.nixosModules.immich =
     { config, lib, ... }:
     let
-      inherit (lib.modules) mkDefault mkIf;
+      inherit (lib.modules) mkDefault;
       inherit (lib.ship) fences;
     in
     {
-      config = mkIf config.services.immich.enable {
+      config = {
         shipProxy.routes.immich = {
           port = 2283;
           # Phone backup ships originals; immich checks size itself.
@@ -29,6 +29,7 @@
         ];
 
         services.immich = {
+          enable = true;
           # Bind wide so the tailnet reaches :2283 without the vhost.
           host = mkDefault "0.0.0.0";
           mediaLocation = mkDefault "/srv/photos";

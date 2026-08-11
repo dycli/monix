@@ -12,7 +12,6 @@
       ...
     }:
     let
-      inherit (lib.lists) optionals;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
       inherit (lib.strings) concatMapStringsSep hasSuffix;
@@ -66,7 +65,7 @@
         '';
       };
 
-      config = mkIf (cfg.enable && cfg.workers != [ ]) {
+      config = mkIf (cfg.workers != [ ]) {
         users.groups.${readers} = { };
         users.groups.${op} = { };
         users.users.${op} = {
@@ -76,7 +75,9 @@
           description = "agent-fleet dispatch operator";
         };
         users.users.${config.primaryUser}.extraGroups = [ readers ];
-        users.users.bridge = mkIf config.cockpit.enable { extraGroups = [ readers ]; };
+        users.users.bridge = {
+          extraGroups = [ readers ];
+        };
 
         environment.systemPackages = [ fleet ];
 
@@ -84,7 +85,10 @@
         # `sudo -n` never blocks.
         security.sudo.extraRules = [
           {
-            users = [ config.primaryUser ] ++ optionals config.cockpit.enable [ "bridge" ];
+            users = [
+              config.primaryUser
+              "bridge"
+            ];
             runAs = op;
             commands = [
               {

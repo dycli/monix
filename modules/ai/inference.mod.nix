@@ -13,10 +13,10 @@
     }:
     let
       inherit (lib.attrsets) mapAttrs mapAttrsToList;
-      inherit (lib.lists) concatLists optionals singleton;
+      inherit (lib.lists) concatLists singleton;
       inherit (lib.meta) getExe';
-      inherit (lib.modules) mkIf mkMerge;
-      inherit (lib.options) mkEnableOption mkOption;
+      inherit (lib.modules) mkMerge;
+      inherit (lib.options) mkOption;
       inherit (lib.strings) concatStringsSep;
       inherit (lib) types;
       inherit (lib.ship) fences;
@@ -29,8 +29,6 @@
     in
     {
       options.inference = {
-        enable = mkEnableOption "the tailnet-only llama.cpp/llama-swap local inference server";
-
         port = mkOption {
           type = types.port;
           default = 8091;
@@ -106,7 +104,7 @@
           inference.modelIds = concatLists (mapAttrsToList (name: m: [ name ] ++ m.aliases) cfg.models);
         }
 
-        (mkIf cfg.enable {
+        {
           services.llama-swap = {
             enable = true;
             # The firewall handles reachability.
@@ -151,14 +149,10 @@
 
             # Loopback for the spawned llama-servers, the tailnet, and the
             # guest bridge when the fleet runs here. No public internet.
-            IPAddressAllow =
-              fences.loopback
-              ++ [
-                fences.tailnet
-              ]
-              ++ optionals config.agentFleet.enable [
-                "10.100.0.0/24" # br-agents guest subnet
-              ];
+            IPAddressAllow = fences.loopback ++ [
+              fences.tailnet
+              "10.100.0.0/24" # br-agents guest subnet
+            ];
             IPAddressDeny = "any";
           };
 
@@ -176,7 +170,7 @@
           systemd.tmpfiles.rules = singleton "d ${cfg.modelsDir} 0775 ${config.primaryUser} users -";
 
           environment.systemPackages = singleton llamaCpp;
-        })
+        }
       ];
     };
 }

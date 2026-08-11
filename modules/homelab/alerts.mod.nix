@@ -17,7 +17,7 @@
       inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib.options) mkEnableOption mkOption;
-      inherit (lib.strings) hasSuffix optionalString;
+      inherit (lib.strings) hasSuffix;
       inherit (lib) types;
       inherit (lib.ship) fences;
 
@@ -41,7 +41,7 @@
         env = {
           SHIP_ALERT_HOMESERVER = cfg.homeserverUrl;
           SHIP_ALERT_STATE_DIR = "/var/lib/alerts";
-          SHIP_ALERT_SUMMARY_URL = optionalString cfg.summary.enable cfg.summary.url;
+          SHIP_ALERT_SUMMARY_URL = cfg.summary.url;
           SHIP_ALERT_SUMMARY_MODEL = cfg.summary.model;
           SHIP_ALERT_CURL = getExe' pkgs.curl "curl";
         };
@@ -96,8 +96,6 @@
     in
     {
       options.alerts = {
-        enable = mkEnableOption "Matrix alerts for unit failures, disks, heat, and power";
-
         credentialsEnvFile = mkOption {
           type = types.str;
           description = ''
@@ -133,8 +131,6 @@
 
         ups.enable = mkEnableOption "NUT monitoring of the USB-attached UPS (probe the hardware first)";
 
-        summary.enable = mkEnableOption "a local-LLM plain-language line atop failure alerts";
-
         summary.url = mkOption {
           type = types.str;
           default = "http://127.0.0.1:8091";
@@ -148,7 +144,7 @@
         };
       };
 
-      config = mkIf cfg.enable (mkMerge [
+      config = mkMerge [
         {
           systemd.packages = [ onFailureDropins ];
           environment.systemPackages = [ shipAlert ];
@@ -171,7 +167,7 @@
               case "$unit" in alert-*) exit 0 ;; esac
               tail=$(journalctl -u "$unit" -n 12 --no-pager -o cat || true)
               printf '🔴 %s: %s failed\n%s' ${hostname} "$unit" "$tail" \
-                | ship-alert ${optionalString cfg.summary.enable "--summarize"}
+                | ship-alert --summarize
             '';
           };
 
@@ -343,6 +339,6 @@
             '';
           };
         })
-      ]);
+      ];
     };
 }

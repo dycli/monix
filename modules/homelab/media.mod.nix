@@ -17,7 +17,7 @@
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe';
       inherit (lib.modules) mkIf;
-      inherit (lib.options) mkEnableOption mkOption;
+      inherit (lib.options) mkOption;
 
       cfg = config.media;
       inherit (lib.ship) fences hardened;
@@ -44,8 +44,6 @@
     in
     {
       options.media = {
-        enable = mkEnableOption "the tailnet-only Jellyfin + Usenet automation media stack";
-
         sabnzbdSecretsFile = mkOption {
           type = types.nullOr types.str;
           default = null;
@@ -83,7 +81,7 @@
         };
       };
 
-      config = mkIf cfg.enable {
+      config = {
         shipProxy.routes = {
           calibre = {
             port = 8083;
@@ -152,9 +150,9 @@
             local_ranges = "127.0.0.1, ::1, ${fences.tailnet}";
 
             # SABnzbd rejects Host headers it does not know.
-            host_whitelist = lib.strings.concatStringsSep ", " (
-              lib.lists.optional config.shipProxy.enable "sab.${config.shipProxy.domain}"
-            );
+            host_whitelist = lib.strings.concatStringsSep ", " [
+              "sab.${config.shipProxy.domain}"
+            ];
 
             # Group-readable so the *arr importers can hardlink.
             download_dir = "${mediaRoot}/downloads/incomplete";

@@ -15,11 +15,10 @@
         genAttrs
         listToAttrs
         nameValuePair
-        optionalAttrs
         ;
       inherit (lib.lists) concatMap singleton;
       inherit (lib.meta) getExe getExe';
-      inherit (lib.modules) mkForce mkIf;
+      inherit (lib.modules) mkForce;
       inherit (lib.options) mkOption;
       inherit (lib.strings)
         concatMapStringsSep
@@ -47,7 +46,7 @@
           {
             "$schema" = "https://opencode.ai/config.json";
           }
-          // optionalAttrs config.inference.enable {
+          // {
             provider.local = {
               npm = "@ai-sdk/openai-compatible";
               name = "ship-local inference (llama-swap)";
@@ -425,7 +424,7 @@
         };
       };
 
-      config = mkIf cfg.enable {
+      config = {
         assertions = [
           {
             assertion =

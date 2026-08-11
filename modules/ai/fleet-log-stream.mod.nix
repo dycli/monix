@@ -11,9 +11,8 @@
       ...
     }:
     let
-      inherit (lib.modules) mkIf;
       inherit (lib.strings) toJSON;
-      inherit (lib.options) mkEnableOption mkOption;
+      inherit (lib.options) mkOption;
       inherit (lib) types;
       inherit (lib.ship) fences;
 
@@ -23,8 +22,6 @@
     in
     {
       options.fleetLogStream = {
-        enable = mkEnableOption "streaming the fleet audit log to a Matrix room";
-
         credentialsEnvFile = mkOption {
           type = types.str;
           description = ''
@@ -52,7 +49,7 @@
         };
       };
 
-      config = mkIf cfg.enable {
+      config = {
         systemd.services.fleet-log-stream = {
           description = "Stream the fleet audit log to Matrix";
           wantedBy = [ "multi-user.target" ];

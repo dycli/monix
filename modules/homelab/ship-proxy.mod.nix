@@ -9,8 +9,7 @@
     { config, lib, ... }:
     let
       inherit (lib.attrsets) mapAttrs' nameValuePair optionalAttrs;
-      inherit (lib.modules) mkIf;
-      inherit (lib.options) mkEnableOption mkOption;
+      inherit (lib.options) mkOption;
 
       cfg = config.shipProxy;
       inherit (lib.ship) fences topology;
@@ -28,8 +27,6 @@
     in
     {
       options.shipProxy = {
-        enable = mkEnableOption "tailnet-only nginx front door with <service>.<domain> names";
-
         domain = mkOption {
           type = lib.types.str;
           default = "su.is";
@@ -88,7 +85,7 @@
         };
       };
 
-      config = mkIf cfg.enable {
+      config = {
         security.acme = {
           acceptTerms = true;
           defaults.email = "dylan@dylandavid.com";
@@ -121,7 +118,7 @@
             ) cfg.routes
             # The web seat is shell-capable: without the source rules
             # below, any local service reaches it by Host header.
-            // optionalAttrs config.cockpit.webEnable {
+            // {
               "ai.${cfg.domain}" = proxyTo "http://${topology.seatWebAddr}:${toString topology.seatWebPort}" {
                 # SSE responses must not be buffered.
                 extraConfig = ''
