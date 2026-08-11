@@ -93,9 +93,16 @@ fn store() -> Result<PathBuf, String> {
         ));
     }
     fs::create_dir_all(expanded.join("TREE")).map_err(|e| e.to_string())?;
-    let log = expanded.join("LOG.txt");
-    if !log.exists() {
-        File::create(&log).map_err(|e| e.to_string())?;
+    // create_new: an exists-check racing another process would truncate
+    // the log it just wrote.
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(expanded.join("LOG.txt"))
+    {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e.to_string()),
     }
     Ok(expanded)
 }
@@ -136,9 +143,16 @@ fn tree_path(d: &Path, size: usize) -> PathBuf {
     d.join("TREE").join(size.to_string())
 }
 fn count(path: &Path, rec: usize) -> usize {
-    fs::metadata(path)
-        .map(|m| m.len() as usize / rec)
-        .unwrap_or(0)
+    // Only absence means empty; any other error impersonating an empty
+    // log would corrupt every decision built on these counts.
+    match fs::metadata(path) {
+        Ok(m) => m.len() as usize / rec,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(e) => {
+            eprintln!("memo: read {}: {e}", path.display());
+            std::process::exit(1);
+        }
+    }
 }
 fn log_len(d: &Path) -> usize {
     count(&log_path(d), LOG_REC)
@@ -650,6 +664,29 @@ fn cmd_recall(d: &Path, args: &[String], c: Config) -> Result<(), String> {
     Ok(())
 }
 
+/// The shape regex admits 2026-99-99; this checks the calendar, keeping
+/// the log's lexicographic ordering equivalent to chronological.
+fn valid_date(date: &str) -> bool {
+    let field = |r: std::ops::Range<usize>| date.get(r).and_then(|s| s.parse::<u32>().ok());
+    let (Some(y), Some(m), Some(day)) = (field(0..4), field(5..7), field(8..10)) else {
+        return false;
+    };
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let days = match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if leap {
+                29
+            } else {
+                28
+            }
+        }
+        _ => return false,
+    };
+    (1..=days).contains(&day)
+}
+
 fn cmd_import(d: &Path, args: &[String], c: Config) -> Result<(), String> {
     if args.len() != 1 {
         return die("usage: memo import <file>   # lines of 'YYYY-MM-DD <text>'");
@@ -676,7 +713,7 @@ fn cmd_import(d: &Path, args: &[String], c: Config) -> Result<(), String> {
             continue;
         }
         let (date, text) = line.split_once(' ').unwrap_or((line, ""));
-        if !date_re.is_match(date) {
+        if !date_re.is_match(date) || !valid_date(date) {
             return die(format!(
                 "line {}: expected 'YYYY-MM-DD <text>', got: {line}",
                 i + 1
