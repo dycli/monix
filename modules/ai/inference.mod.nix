@@ -166,8 +166,10 @@
             "ttm.page_pool_size=25165824"
           ];
 
-          # World-readable so the DynamicUser service can read the models.
-          systemd.tmpfiles.rules = singleton "d ${cfg.modelsDir} 0775 ${config.primaryUser} users -";
+          # World-readable so the DynamicUser service can read the models;
+          # group write is scoped to `models` (the seat), not all of `users`.
+          users.groups.models = { };
+          systemd.tmpfiles.rules = singleton "d ${cfg.modelsDir} 0775 ${config.primaryUser} models -";
 
           environment.systemPackages = singleton llamaCpp;
         }

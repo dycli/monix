@@ -64,7 +64,10 @@
       guestCredsMount = "/run/host-creds";
 
       # virtiofs passes uid/gid verbatim, so the in-guest executor reaches this
-      # share through its `users` group membership (the dir is root:users 0770).
+      # share through the agent-guest gid, pinned to the same value on host
+      # and guest. A broader group (users) would let the seat write into live
+      # exchanges.
+      agentGuestGid = 3000;
       workDir = name: "/var/lib/agents/work/${name}/task";
       guestTaskMount = "/run/task";
 
@@ -352,26 +355,33 @@
               };
 
               # Executors share the workspace but keep private 0700 homes and
-              # distinct uids, which blocks ptrace between them.
+              # distinct uids, which blocks ptrace between them. agent-guest
+              # (runuser grants supplementary groups) carries the task
+              # exchange across virtiofs.
+              users.groups.agent-guest.gid = agentGuestGid;
               users.users = {
                 agent-claude = {
                   isNormalUser = true;
                   homeMode = "0700";
+                  extraGroups = [ "agent-guest" ];
                   description = "Claude fleet executor";
                 };
                 agent-codex = {
                   isNormalUser = true;
                   homeMode = "0700";
+                  extraGroups = [ "agent-guest" ];
                   description = "Codex fleet executor";
                 };
                 agent-opencode = {
                   isNormalUser = true;
                   homeMode = "0700";
+                  extraGroups = [ "agent-guest" ];
                   description = "opencode fleet executor";
                 };
                 agent-local = {
                   isNormalUser = true;
                   homeMode = "0700";
+                  extraGroups = [ "agent-guest" ];
                   description = "credentialless local-model fleet executor";
                 };
               };
@@ -451,8 +461,9 @@
         microvm.vms = listToAttrs (map (w: nameValuePair w.name (mkAgentGuest w)) cfg.workers);
 
         # Share sources must exist before virtiofsd starts.
+        users.groups.agent-guest.gid = agentGuestGid;
         systemd.tmpfiles.rules = concatMap (w: [
-          "d ${workDir w.name} 0770 root users -"
+          "d ${workDir w.name} 0770 root agent-guest -"
           "d ${credsDir w.name} 0700 root root -"
         ]) cfg.workers;
 

@@ -291,10 +291,10 @@
           # Group-enterable so the primary user can reach the seat's files.
           homeMode = "750";
           openssh.authorizedKeys.keys = self.keys-admin;
-          # journal reads; users grants writes to the model directory.
+          # journal reads; models grants writes to the model directory.
           extraGroups = [
             "systemd-journal"
-            "users"
+            "models"
           ];
         };
         users.groups.bridge.gid = seatUid;
