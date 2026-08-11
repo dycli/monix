@@ -65,10 +65,10 @@
       home.packages = [
         # Elected applications (default-apps.mod.nix); referencing the options
         # installs whatever a host overrides them to.
-        config.desktopApps.email
-        config.desktopApps.pdfViewer
-        config.desktopApps.imageViewer
-        config.desktopApps.videoPlayer
+        config.desktopApps.email.package
+        config.desktopApps.pdfViewer.package
+        config.desktopApps.imageViewer.package
+        config.desktopApps.videoPlayer.package
 
         pkgs.brightnessctl
         pkgs.cliphist

@@ -1,34 +1,125 @@
-# The desktop's default applications as the desktopApps options, plus xdg mime
-# pins routing file and URL opens by declaration rather than by whichever app
-# registered itself first at runtime. The packages themselves install in
-# packages.mod.nix, and the mime desktop ids below are not derived from the
-# options, so they must be updated alongside any change of package.
+# The desktop's default applications as the desktopApps options. Each app
+# carries the package the session launches plus, where it handles files or
+# URLs, its .desktop id and the mime types it owns; the xdg mimeApps table
+# below is generated from those, so electing an app repoints its keybind,
+# its env var, its install and its mime routing from one place. Packages
+# install in packages.mod.nix.
 { self, ... }:
 {
   flake.homeModules.desktop = self.homeModules.default-apps;
   flake.homeModules.default-apps =
-    { lib, pkgs, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     let
       inherit (lib.options) mkOption;
       inherit (lib) types;
 
       app =
-        default: description:
+        {
+          package,
+          desktopId ? null,
+          mimeTypes ? [ ],
+        }:
+        description:
         mkOption {
-          type = types.package;
-          inherit default description;
+          inherit description;
+          default = { inherit package desktopId mimeTypes; };
+          type = types.submodule {
+            options = {
+              package = mkOption {
+                type = types.package;
+                description = "the package the session launches for this app";
+              };
+              desktopId = mkOption {
+                type = types.nullOr types.str;
+                default = null;
+                description = "the .desktop id handling this app's mimeTypes, or null if it routes nothing";
+              };
+              mimeTypes = mkOption {
+                type = types.listOf types.str;
+                default = [ ];
+                description = "mime types and url schemes this app is the default handler for";
+              };
+            };
+          };
         };
     in
     {
       options.desktopApps = {
-        terminal = app pkgs.ghostty "terminal emulator the session binds open";
-        browser = app pkgs.brave "web browser; also the URL handler below";
-        messenger = app pkgs.signal-desktop "chat client on the messenger bind";
-        passwordManager = app pkgs.keepassxc "password manager on its bind";
-        email = app pkgs.thunderbird "email client; also the mailto handler";
-        pdfViewer = app pkgs.kdePackages.okular "PDF viewer behind application/pdf";
-        imageViewer = app pkgs.kdePackages.gwenview "image viewer behind the image/* types";
-        videoPlayer = app pkgs.haruna "video player behind the video/* and audio/* types";
+        terminal = app { package = pkgs.ghostty; } "terminal emulator the session binds open";
+
+        browser = app {
+          package = pkgs.brave;
+          desktopId = "brave-browser.desktop";
+          mimeTypes = [
+            "text/html"
+            "x-scheme-handler/http"
+            "x-scheme-handler/https"
+            "x-scheme-handler/about"
+            "x-scheme-handler/unknown"
+          ];
+        } "web browser; also the URL handler";
+
+        messenger = app { package = pkgs.signal-desktop; } "chat client on the messenger bind";
+
+        passwordManager = app { package = pkgs.keepassxc; } "password manager on its bind";
+
+        email = app {
+          package = pkgs.thunderbird;
+          desktopId = "thunderbird.desktop";
+          mimeTypes = [ "x-scheme-handler/mailto" ];
+        } "email client; also the mailto handler";
+
+        pdfViewer = app {
+          package = pkgs.kdePackages.okular;
+          desktopId = "org.kde.okular.desktop";
+          mimeTypes = [ "application/pdf" ];
+        } "PDF viewer behind application/pdf";
+
+        imageViewer = app {
+          package = pkgs.kdePackages.gwenview;
+          desktopId = "org.kde.gwenview.desktop";
+          mimeTypes = [
+            "image/avif"
+            "image/bmp"
+            "image/gif"
+            "image/jpeg"
+            "image/png"
+            "image/svg+xml"
+            "image/tiff"
+            "image/webp"
+          ];
+        } "image viewer behind the image/* types";
+
+        videoPlayer = app {
+          package = pkgs.haruna;
+          desktopId = "org.kde.haruna.desktop";
+          mimeTypes = [
+            "audio/aac"
+            "audio/ac3"
+            "audio/flac"
+            "audio/mp4"
+            "audio/mpeg"
+            "audio/ogg"
+            "audio/vnd.wave"
+            "audio/webm"
+            "audio/x-matroska"
+            "audio/x-mpegurl"
+            "video/mp2t"
+            "video/mp4"
+            "video/mpeg"
+            "video/ogg"
+            "video/quicktime"
+            "video/vnd.avi"
+            "video/webm"
+            "video/x-matroska"
+            "video/x-ms-wmv"
+          ];
+        } "video player behind the video/* and audio/* types";
 
         # A command name, not a package: the editor is the wrapper on the
         # user's PATH from editors.mod.nix, which headless hosts use directly.
@@ -39,50 +130,18 @@
         };
       };
 
-      config = {
-        xdg.mimeApps = {
-          enable = true;
-          defaultApplications = {
-            "text/html" = "brave-browser.desktop";
-            "x-scheme-handler/http" = "brave-browser.desktop";
-            "x-scheme-handler/https" = "brave-browser.desktop";
-            "x-scheme-handler/about" = "brave-browser.desktop";
-            "x-scheme-handler/unknown" = "brave-browser.desktop";
-
-            "x-scheme-handler/mailto" = "thunderbird.desktop";
-
-            "application/pdf" = "org.kde.okular.desktop";
-
-            "image/avif" = "org.kde.gwenview.desktop";
-            "image/bmp" = "org.kde.gwenview.desktop";
-            "image/gif" = "org.kde.gwenview.desktop";
-            "image/jpeg" = "org.kde.gwenview.desktop";
-            "image/png" = "org.kde.gwenview.desktop";
-            "image/svg+xml" = "org.kde.gwenview.desktop";
-            "image/tiff" = "org.kde.gwenview.desktop";
-            "image/webp" = "org.kde.gwenview.desktop";
-
-            "audio/aac" = "org.kde.haruna.desktop";
-            "audio/ac3" = "org.kde.haruna.desktop";
-            "audio/flac" = "org.kde.haruna.desktop";
-            "audio/mp4" = "org.kde.haruna.desktop";
-            "audio/mpeg" = "org.kde.haruna.desktop";
-            "audio/ogg" = "org.kde.haruna.desktop";
-            "audio/vnd.wave" = "org.kde.haruna.desktop";
-            "audio/webm" = "org.kde.haruna.desktop";
-            "audio/x-matroska" = "org.kde.haruna.desktop";
-            "audio/x-mpegurl" = "org.kde.haruna.desktop";
-            "video/mp2t" = "org.kde.haruna.desktop";
-            "video/mp4" = "org.kde.haruna.desktop";
-            "video/mpeg" = "org.kde.haruna.desktop";
-            "video/ogg" = "org.kde.haruna.desktop";
-            "video/quicktime" = "org.kde.haruna.desktop";
-            "video/vnd.avi" = "org.kde.haruna.desktop";
-            "video/webm" = "org.kde.haruna.desktop";
-            "video/x-matroska" = "org.kde.haruna.desktop";
-            "video/x-ms-wmv" = "org.kde.haruna.desktop";
-          };
-        };
+      config.xdg.mimeApps = {
+        enable = true;
+        # Each electing app assigns its .desktop id to every mime type it owns.
+        defaultApplications = lib.mkMerge (
+          lib.attrsets.mapAttrsToList (
+            _: elected:
+            if lib.isAttrs elected && elected.desktopId != null then
+              lib.genAttrs elected.mimeTypes (_: elected.desktopId)
+            else
+              { }
+          ) config.desktopApps
+        );
       };
     };
 }

@@ -23,11 +23,11 @@
         ];
       };
 
-      terminal = getExe config.desktopApps.terminal;
-      browser = getExe config.desktopApps.browser;
-      messenger = getExe config.desktopApps.messenger;
-      passwordManager = getExe config.desktopApps.passwordManager;
-      email = getExe config.desktopApps.email;
+      terminal = getExe config.desktopApps.terminal.package;
+      browser = getExe config.desktopApps.browser.package;
+      messenger = getExe config.desktopApps.messenger.package;
+      passwordManager = getExe config.desktopApps.passwordManager.package;
+      email = getExe config.desktopApps.email.package;
       inherit (config.desktopApps) editor;
     in
     {
