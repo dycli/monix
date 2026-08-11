@@ -49,24 +49,30 @@
               -H "Content-Type: application/json" "$@"
           }
 
-          login=$(mcurl -X POST "$hs/_matrix/client/v3/login" \
-            -d "$(jq -n --arg u "$MATRIX_USER" --arg p "$MATRIX_PASSWORD" \
-              '{type:"m.login.password",identifier:{type:"m.id.user",user:$u},password:$p}')")
+          # /proc/<pid>/cmdline is world-readable: jq reads the secrets from
+          # the environment, request bodies ride stdin, and the bearer
+          # header goes to curl as a -K - config.
+          login=$(jq -n '{type:"m.login.password",
+              identifier:{type:"m.id.user",user:env.MATRIX_USER},
+              password:env.MATRIX_PASSWORD}' \
+            | mcurl -X POST "$hs/_matrix/client/v3/login" -d @-)
           tok=$(jq -r '.access_token // empty' <<< "$login")
           if [ -n "$tok" ]; then
-            mcurl -X POST -H "Authorization: Bearer $tok" \
-              "$hs/_matrix/client/v3/logout" -d '{}' > /dev/null || true
+            printf 'header = "Authorization: Bearer %s"\n' "$tok" \
+              | mcurl -K - -X POST "$hs/_matrix/client/v3/logout" \
+                  -d '{}' > /dev/null || true
             echo "account $MATRIX_USER exists"
             exit 0
           fi
 
           session=$(mcurl -X POST "$hs/_matrix/client/v3/register" -d '{}' \
             | jq -er .session)
-          out=$(mcurl -X POST "$hs/_matrix/client/v3/register" \
-            -d "$(jq -n --arg u "$localpart" --arg p "$MATRIX_PASSWORD" \
-                  --arg t "$TUWUNEL_REGISTRATION_TOKEN" --arg s "$session" \
-              '{username:$u, password:$p, inhibit_login:true,
-                auth:{type:"m.login.registration_token", token:$t, session:$s}}')")
+          out=$(localpart="$localpart" session="$session" jq -n \
+              '{username:env.localpart, password:env.MATRIX_PASSWORD,
+                inhibit_login:true,
+                auth:{type:"m.login.registration_token",
+                      token:env.TUWUNEL_REGISTRATION_TOKEN, session:env.session}}' \
+            | mcurl -X POST "$hs/_matrix/client/v3/register" -d @-)
           if jq -e '.user_id // empty' <<< "$out" > /dev/null; then
             echo "registered $MATRIX_USER"
           else

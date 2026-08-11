@@ -61,6 +61,8 @@
             DynamicUser = true;
             SupplementaryGroups = [ topology.readersGroup ];
             StateDirectory = "fleet-log-stream";
+            RuntimeDirectory = "fleet-log-stream";
+            RuntimeDirectoryMode = "0700";
             EnvironmentFile = cfg.credentialsEnvFile;
             Restart = "always";
             RestartSec = 10;
@@ -76,37 +78,49 @@
           script = ''
             hs=${lib.escapeShellArg cfg.homeserverUrl}
             state=/var/lib/fleet-log-stream
+            hdr=/run/fleet-log-stream/auth-header
 
             mcurl() {
               curl -sf --connect-timeout 5 --max-time 30 \
                 -H "Content-Type: application/json" "$@"
             }
 
-            tok=$(mcurl -X POST "$hs/_matrix/client/v3/login" \
-              -d "$(jq -n --arg u "$MATRIX_USER" --arg p "$MATRIX_PASSWORD" \
-                '{type:"m.login.password",identifier:{type:"m.id.user",user:$u},password:$p}')" \
+            # /proc/<pid>/cmdline is world-readable, so credentials and log
+            # content never ride argv: jq reads them from the environment,
+            # request bodies arrive on stdin, and the bearer header lives in
+            # the private runtime dir.
+            acurl() {
+              mcurl -H @"$hdr" "$@"
+            }
+
+            tok=$(jq -n '{type:"m.login.password",
+                identifier:{type:"m.id.user",user:env.MATRIX_USER},
+                password:env.MATRIX_PASSWORD}' \
+              | mcurl -X POST "$hs/_matrix/client/v3/login" -d @- \
               | jq -er .access_token)
-            trap 'mcurl -X POST -H "Authorization: Bearer $tok" "$hs/_matrix/client/v3/logout" -d "{}" > /dev/null || true' EXIT
+            printf 'Authorization: Bearer %s\n' "$tok" > "$hdr"
+            unset tok
+            trap 'acurl -X POST "$hs/_matrix/client/v3/logout" -d "{}" > /dev/null || true' EXIT
 
             # First start: create the private feed room, invite the crew,
             # remember the id. The room is the bot's own — no secret, no
             # repo state. If creation fails, exit and let Restart retry.
             if [ ! -s "$state/room-id" ]; then
-              room_id=$(mcurl -X POST -H "Authorization: Bearer $tok" \
-                "$hs/_matrix/client/v3/createRoom" \
-                -d "$(jq -n --arg n ${lib.escapeShellArg cfg.roomName} \
+              room_id=$(jq -n --arg n ${lib.escapeShellArg cfg.roomName} \
                   --argjson inv ${lib.escapeShellArg (toJSON cfg.inviteUsers)} \
                   '{name:$n, preset:"private_chat", invite:$inv,
-                    topic:"Live fleet audit log — every SUBMIT/DISPATCH/ESCALATE/STEER/ANSWER/DONE as it happens"}')" \
+                    topic:"Live fleet audit log — every SUBMIT/DISPATCH/ESCALATE/STEER/ANSWER/DONE as it happens"}' \
+                | acurl -X POST "$hs/_matrix/client/v3/createRoom" -d @- \
                 | jq -er .room_id)
               printf '%s\n' "$room_id" > "$state/room-id"
             fi
             room=$(jq -rn --arg r "$(cat "$state/room-id")" '$r|@uri')
 
             send() {
-              mcurl -X PUT -H "Authorization: Bearer $tok" \
-                "$hs/_matrix/client/v3/rooms/$room/send/m.room.message/$(date +%s%N)-$$" \
-                -d "$(jq -n --arg b "$1" '{msgtype:"m.text",body:$b}')" > /dev/null \
+              b="$1" jq -n '{msgtype:"m.text",body:env.b}' \
+                | acurl -X PUT \
+                  "$hs/_matrix/client/v3/rooms/$room/send/m.room.message/$(date +%s%N)-$$" \
+                  -d @- > /dev/null \
                 || {
                   echo "send failed, batch dropped; restarting to refresh login" >&2
                   return 1
