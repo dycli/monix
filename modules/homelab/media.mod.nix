@@ -16,7 +16,7 @@
       inherit (lib) types;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe';
-      inherit (lib.modules) mkIf;
+      inherit (lib.modules) mkBefore mkIf;
       inherit (lib.options) mkOption;
 
       cfg = config.media;
@@ -187,11 +187,16 @@
           };
         };
 
-        # calibre-web's pre-start hard-fails without an existing library.
-        systemd.services.calibre-web.preStart = ''
+        # calibre-web's pre-start hard-fails without an existing library;
+        # mkBefore orders the bootstrap ahead of that check. The library
+        # is built at a temp name and renamed in, so a failed import
+        # cannot leave a partial metadata.db that suppresses future init.
+        systemd.services.calibre-web.preStart = mkBefore ''
           if [ ! -f ${mediaRoot}/books/metadata.db ]; then
-            ${getExe' pkgs.sqlite "sqlite3"} ${mediaRoot}/books/metadata.db \
+            rm -f ${mediaRoot}/books/metadata.db.init
+            ${getExe' pkgs.sqlite "sqlite3"} ${mediaRoot}/books/metadata.db.init \
               < ${./calibre-library-init.sql}
+            mv ${mediaRoot}/books/metadata.db.init ${mediaRoot}/books/metadata.db
           fi
         '';
 
