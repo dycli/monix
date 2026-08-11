@@ -608,6 +608,15 @@ impl Dispatcher {
             };
             let id = file_stem_utf8(&source)?;
             let source_context = self.config.queue().join(format!("{id}.context.tar.zst"));
+            // The id becomes a path component of running/, done/ and the
+            // work exchange (removed recursively as root), so nothing
+            // downstream may ever see one that could traverse.
+            if !valid_id(&id) {
+                remove_any(&source)?;
+                remove_any(&source_context)?;
+                self.log("rejected queue entry with invalid task id")?;
+                continue;
+            }
             if exists_any(&self.config.tasks.join("done").join(&id))
                 || exists_any(&self.config.tasks.join("failed").join(&id))
             {
@@ -1107,11 +1116,16 @@ impl TaskMetadata {
             "opencode" => Agent::Opencode,
             value => return Err(format!("unsupported agent: {value}")),
         };
-        let requested_timeout = fields
-            .get("timeout")
-            .and_then(|value| value.parse::<u64>().ok())
-            .filter(|value| (1..=default_timeout).contains(value))
-            .unwrap_or(default_timeout);
+        // An invalid timeout rejects the task rather than silently running
+        // with the maximum the author tried to override.
+        let requested_timeout = match fields.get("timeout") {
+            None => default_timeout,
+            Some(value) => value
+                .parse::<u64>()
+                .ok()
+                .filter(|seconds| (1..=default_timeout).contains(seconds))
+                .ok_or_else(|| format!("invalid timeout: {value} (1..={default_timeout})"))?,
+        };
         Ok(Self {
             agent,
             model: token(&fields, "model")?,
@@ -1477,6 +1491,18 @@ fn file_stem_utf8(path: &Path) -> Result<String> {
         .ok_or_else(|| format!("non-UTF-8 task id: {}", path.display()))
 }
 
+// Mirrors fleet-cli's rule; the dispatcher revalidates because the queue
+// directory, not the tool, is the trust boundary.
+fn valid_id(value: &str) -> bool {
+    let mut characters = value.chars();
+    let Some(first) = characters.next() else {
+        return false;
+    };
+    value.len() <= 121
+        && first.is_ascii_alphanumeric()
+        && characters.all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+}
+
 fn numbered_suffix(path: &Path, prefix: &str, suffix: &str) -> Option<u32> {
     let token = suffix_token(path, prefix, suffix)?;
     let number: u32 = token.parse().ok()?;
@@ -1767,14 +1793,36 @@ mod tests {
         )
         .unwrap();
         assert!(TaskMetadata::read(&prompt, 100).is_err());
+        // Out-of-range and garbage timeouts reject the task; only an
+        // absent field takes the default.
         fs::write(
             &prompt,
             "---\nagent: codex\nmodel: gpt-5\ntimeout: 999999\n---\nbody\n",
         )
         .unwrap();
+        assert!(TaskMetadata::read(&prompt, 100).is_err());
+        fs::write(
+            &prompt,
+            "---\nagent: codex\nmodel: gpt-5\ntimeout: soon\n---\nbody\n",
+        )
+        .unwrap();
+        assert!(TaskMetadata::read(&prompt, 100).is_err());
+        fs::write(&prompt, "---\nagent: codex\nmodel: gpt-5\n---\nbody\n").unwrap();
         assert_eq!(TaskMetadata::read(&prompt, 100).unwrap().timeout, 100);
         fs::write(&prompt, "---\nagent: codex\nmodel: gpt-5\nbody\n").unwrap();
         assert!(TaskMetadata::read(&prompt, 100).is_err());
+    }
+
+    #[test]
+    fn traversal_task_ids_never_leave_the_queue() {
+        let fixture = Fixture::new().unwrap();
+        let config = fixture.config().unwrap();
+        let dispatcher = Dispatcher::new(config.clone());
+        // "...md" has file stem "..", a path component that would climb out
+        // of running/ and the work exchange.
+        fs::write(config.queue().join("...md"), "---\nagent: codex\n---\nx\n").unwrap();
+        assert!(dispatcher.claim_next().unwrap().is_none());
+        assert!(!config.queue().join("...md").exists());
     }
 
     #[test]
