@@ -20,7 +20,7 @@
           # policy's `ssh` section. Disabling this removes SSH access for
           # anyone without a key in authorized_keys — restrict via the ACL
           # instead. `set` flags apply on every activation, unlike `up`.
-          services.tailscale.extraSetFlags = [ "--ssh" ];
+          services.tailscale.extraSetFlags = singleton "--ssh";
 
           # Trust the tailnet interface so services bound on it are
           # reachable without opening the public firewall.

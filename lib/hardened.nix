@@ -3,6 +3,7 @@
 lib:
 let
   inherit (lib.attrsets) removeAttrs;
+  inherit (lib.lists) singleton;
 
   # tenant: unprivileged services that parse untrusted input or hold a
   # credential. None binds a port.
@@ -36,7 +37,7 @@ let
     RestrictSUIDSGID = true;
     SocketBindDeny = "any";
     SystemCallArchitectures = "native";
-    SystemCallFilter = [ "@system-service" ];
+    SystemCallFilter = singleton "@system-service";
     SystemCallErrorNumber = "EPERM";
     UMask = "0077";
   };
@@ -47,7 +48,7 @@ in
   # rootSensor: root oneshots reading the journal or sysfs, or querying
   # systemd over D-Bus. The system bus authenticates by peer uid, which must
   # stay 0, so PrivateUsers is dropped; AF_UNIX carries D-Bus.
-  rootSensor = removeAttrs tenant [ "PrivateUsers" ] // {
+  rootSensor = removeAttrs tenant (singleton "PrivateUsers") // {
     RestrictAddressFamilies = [
       "AF_UNIX"
       "AF_INET"

@@ -16,9 +16,7 @@
         enable = true;
 
         # Visible inside the nvim wrapper only, not on the user's PATH.
-        extraPackages = [
-          pkgs.lazygit
-        ];
+        extraPackages = lib.lists.singleton pkgs.lazygit;
 
         extraConfig = ''
           vim.o.shell = "/bin/sh"

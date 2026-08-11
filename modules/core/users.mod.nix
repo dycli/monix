@@ -2,7 +2,7 @@
 {
   flake.nixosModules.default = self.nixosModules.users;
   flake.nixosModules.users =
-    { config, ... }:
+    { config, lib, ... }:
     {
       # Accounts are fully declarative: /etc/shadow is regenerated from the
       # config on every activation, so `passwd` does not stick — each host
@@ -14,7 +14,7 @@
         isNormalUser = true;
         description = config.primaryUser;
 
-        extraGroups = [ "wheel" ];
+        extraGroups = lib.lists.singleton "wheel";
 
         openssh.authorizedKeys.keys = self.keys-admin;
       };

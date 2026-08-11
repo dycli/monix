@@ -11,6 +11,7 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.meta) getExe';
       inherit (lib.modules) mkIf;
       inherit (lib.ship) fences topology;
@@ -47,20 +48,18 @@
             hideVersion = true;
           };
 
-          widgets = [
-            {
-              resources = {
-                cpu = true;
-                memory = true;
-                cputemp = true;
-                # Only real mountpoints work here.
-                disk = [ "/" ];
-              };
-            }
-          ];
+          widgets = singleton {
+            resources = {
+              cpu = true;
+              memory = true;
+              cputemp = true;
+              # Only real mountpoints work here.
+              disk = singleton "/";
+            };
+          };
 
-          services = [
-            {
+          services =
+            singleton {
               Arr = [
                 {
                   Bazarr = {
@@ -99,100 +98,93 @@
                 }
               ];
             }
-          ]
-          ++ lib.lists.optional config.services.home-assistant.enable {
-            Home = [
-              {
-                "Home Assistant" = {
-                  href = url "ha";
-                  description = "Smart home";
-                  icon = "home-assistant.png";
+            ++ lib.lists.optional config.services.home-assistant.enable {
+              Home =
+                singleton {
+                  "Home Assistant" = {
+                    href = url "ha";
+                    description = "Smart home";
+                    icon = "home-assistant.png";
+                  };
+                }
+                ++ singleton {
+                  Frigate = {
+                    href = "https://frigate.${config.shipProxy.domain}";
+                    description = "Cameras";
+                    icon = "frigate.png";
+                  };
                 };
-              }
-            ]
+            }
             ++ [
               {
-                Frigate = {
-                  href = "https://frigate.${config.shipProxy.domain}";
-                  description = "Cameras";
-                  icon = "frigate.png";
+                Media =
+                  singleton {
+                    Calibre-Web = {
+                      href = url "calibre";
+                      description = "eBooks";
+                      icon = "calibre-web.png";
+                    };
+                  }
+                  ++ lib.lists.optional config.services.immich.enable {
+                    Immich = {
+                      href = url "immich";
+                      description = "Photos";
+                      icon = "immich.png";
+                    };
+                  }
+                  ++ singleton {
+                    Jellyfin = {
+                      href = url "jellyfin";
+                      description = "Movies & TV";
+                      icon = "jellyfin.png";
+                    };
+                  };
+              }
+              # No native NUT widget, so this reads the shim below.
+              {
+                Status = lib.lists.optional config.alerts.ups.enable {
+                  UPS = {
+                    description = "EcoFlow via NUT";
+                    icon = "mdi-battery-charging";
+                    widget = {
+                      type = "customapi";
+                      url = "http://127.0.0.1:3494/ups";
+                      mappings = [
+                        {
+                          field = "battery_charge";
+                          label = "battery";
+                          suffix = "%";
+                        }
+                        {
+                          field = "battery_runtime_hours";
+                          label = "runtime";
+                          suffix = "h";
+                        }
+                        {
+                          field = "ups_status";
+                          label = "status";
+                          format = "text";
+                        }
+                      ];
+                    };
+                  };
                 };
               }
             ];
-          }
-          ++ [
-            {
-              Media = [
-                {
-                  Calibre-Web = {
-                    href = url "calibre";
-                    description = "eBooks";
-                    icon = "calibre-web.png";
-                  };
-                }
-              ]
-              ++ lib.lists.optional config.services.immich.enable {
-                Immich = {
-                  href = url "immich";
-                  description = "Photos";
-                  icon = "immich.png";
-                };
-              }
-              ++ [
-                {
-                  Jellyfin = {
-                    href = url "jellyfin";
-                    description = "Movies & TV";
-                    icon = "jellyfin.png";
-                  };
-                }
-              ];
-            }
-            # No native NUT widget, so this reads the shim below.
-            {
-              Status = lib.lists.optional config.alerts.ups.enable {
-                UPS = {
-                  description = "EcoFlow via NUT";
-                  icon = "mdi-battery-charging";
-                  widget = {
-                    type = "customapi";
-                    url = "http://127.0.0.1:3494/ups";
-                    mappings = [
-                      {
-                        field = "battery_charge";
-                        label = "battery";
-                        suffix = "%";
-                      }
-                      {
-                        field = "battery_runtime_hours";
-                        label = "runtime";
-                        suffix = "h";
-                      }
-                      {
-                        field = "ups_status";
-                        label = "status";
-                        format = "text";
-                      }
-                    ];
-                  };
-                };
-              };
-            }
-          ];
         };
 
         systemd.services.homepage-dashboard.serviceConfig = {
-          Environment = [ "HOSTNAME=127.0.0.1" ];
+          Environment = singleton "HOSTNAME=127.0.0.1";
 
           # The internet is allowed for the icon CDN.
-          IPAddressAllow = fences.loopback ++ [ fences.tailnet ];
+          IPAddressAllow = fences.loopback ++ singleton fences.tailnet;
           IPAddressDeny = fences.privateRanges;
         };
 
         # GET /ups returns upsc output as JSON with dots in NUT names
         # replaced by underscores, since customapi reads a dot as nesting.
         systemd.sockets.ship-stats = mkIf config.alerts.ups.enable {
-          wantedBy = [ "sockets.target" ];
+          wantedBy = singleton "sockets.target";
           socketConfig = {
             ListenStream = "127.0.0.1:3494";
             Accept = true;
@@ -208,7 +200,7 @@
             IPAddressDeny = "any";
           };
           # awk only: printf and read are bash builtins, upsc is absolute.
-          path = [ pkgs.gawk ];
+          path = singleton pkgs.gawk;
           script = ''
             read -r _ reqpath _ || true
             while IFS= read -r line; do

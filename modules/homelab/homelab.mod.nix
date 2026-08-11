@@ -8,6 +8,9 @@
 {
   flake.nixosModules.lab =
     { config, lib, ... }:
+    let
+      inherit (lib.lists) singleton;
+    in
     {
       # sshd stays reachable over the tailnet, whose interface is trusted;
       # port 22 never opens publicly.
@@ -16,9 +19,9 @@
       # Resolve via the router rather than the tailnet's global
       # nameservers, so the role does not inherit the ad-block resolver's
       # outages or false positives. Merges with the aspect's --ssh.
-      services.tailscale.extraSetFlags = [ "--accept-dns=false" ];
+      services.tailscale.extraSetFlags = singleton "--accept-dns=false";
 
-      homeAssistant.lanSubnets = [ "192.168.1.0/24" ];
+      homeAssistant.lanSubnets = singleton "192.168.1.0/24";
 
       shipCameras.reolink = {
         cam1 = "192.168.1.201";
@@ -28,7 +31,7 @@
         tapo1 = "192.168.1.218";
         tapo2 = "192.168.1.220";
       };
-      shipCameras.lanSubnets = [ "192.168.1.0/24" ];
+      shipCameras.lanSubnets = singleton "192.168.1.0/24";
 
       shipProxy.dashboardHost = "hp.su.is";
 
@@ -40,7 +43,7 @@
         "@dylan:chat.su.is"
         "@gab:chat.su.is"
       ];
-      remy.scratchpad.users = [ "@dylan:chat.su.is" ];
+      remy.scratchpad.users = singleton "@dylan:chat.su.is";
       remy.model = "qwen3.6-35b-a3b";
       remy.famlog.path = "/home/${config.primaryUser}/crate/sync/notes/famlog.md";
       remy.famlog.owner = config.primaryUser;

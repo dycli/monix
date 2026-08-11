@@ -11,6 +11,7 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.modules) mkIf mkMerge;
 
       # Comic Code is paid, so the repo carries only agenix ciphertext of a
@@ -29,7 +30,7 @@
           secrets.comic-code.file = comicCodeAge;
 
           system.activationScripts.comic-code-fonts = {
-            deps = [ "agenixInstall" ];
+            deps = singleton "agenixInstall";
             text = ''
               # Extract to a sibling and swap, so a failed extract keeps
               # the previous fonts instead of an empty directory.
@@ -73,9 +74,9 @@
               "ComicCodeLigatures Nerd Font"
               "CaskaydiaMono Nerd Font"
             ];
-            sansSerif = [ "Noto Sans" ];
-            serif = [ "Noto Serif" ];
-            emoji = [ "Noto Color Emoji" ];
+            sansSerif = singleton "Noto Sans";
+            serif = singleton "Noto Serif";
+            emoji = singleton "Noto Color Emoji";
           };
         }
       ];

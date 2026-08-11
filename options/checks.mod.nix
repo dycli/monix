@@ -1,16 +1,16 @@
 # `nix flake check` builds the crates, runs their tests and verifies the
 # agenix rulebook. These builds omit the deployment environment the service
 # modules bake in, so they are test gates, not the production binaries.
-{ self, ... }:
+{ self, lib, ... }:
 {
-  systems = [ "x86_64-linux" ];
+  systems = lib.lists.singleton "x86_64-linux";
 
   perSystem =
     { pkgs, lib, ... }:
     let
       inherit (lib) baseNameOf;
       inherit (lib.attrsets) attrNames;
-      inherit (lib.lists) elem filter;
+      inherit (lib.lists) elem filter singleton;
       inherit (lib.strings) hasSuffix removePrefix;
 
       crate =
@@ -22,7 +22,7 @@
             src = "${self}/${path}";
             cargoLock.lockFile = "${self}/${path}/Cargo.lock";
             # The lint gate lives here, not in the production module builds.
-            nativeBuildInputs = [ pkgs.clippy ];
+            nativeBuildInputs = singleton pkgs.clippy;
             postCheck = "cargo clippy --all-targets -- -D warnings";
           }
           // extras
@@ -87,7 +87,7 @@
           touch $out
         '';
 
-        nixfmt = pkgs.runCommand "nixfmt-check" { nativeBuildInputs = [ pkgs.nixfmt-rfc-style ]; } ''
+        nixfmt = pkgs.runCommand "nixfmt-check" { nativeBuildInputs = singleton pkgs.nixfmt-rfc-style; } ''
           find ${self} -name '*.nix' -exec nixfmt --check {} +
           touch $out
         '';

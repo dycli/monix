@@ -17,7 +17,7 @@
   flake.homeModules.hyprland = self.homeModules.kde-integration;
 
   flake.homeModules.kde-integration =
-    { pkgs, ... }:
+    { pkgs, lib, ... }:
     let
       # Two fixes over upstream's package: the KF6 libraries are added so
       # CMake's optional detection compiles the KColorScheme loader in
@@ -57,9 +57,7 @@
         }
       '';
 
-      systemd.user.tmpfiles.rules = [
-        "f+ %h/.config/kdeglobals 0644 - - - [General]\\nColorScheme=WhiteSurDark\\n[KDE]\\nwidgetStyle=Breeze\\n[Icons]\\nTheme=breeze-dark\\n"
-      ];
+      systemd.user.tmpfiles.rules = lib.lists.singleton "f+ %h/.config/kdeglobals 0644 - - - [General]\\nColorScheme=WhiteSurDark\\n[KDE]\\nwidgetStyle=Breeze\\n[Icons]\\nTheme=breeze-dark\\n";
 
       # Named lookups (kdeglobals) resolve through the data dirs.
       xdg.dataFile."color-schemes/WhiteSurDark.colors".source =

@@ -15,6 +15,7 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.options) mkOption;
       inherit (lib) types;
 
@@ -71,13 +72,13 @@
         email = app {
           package = pkgs.thunderbird;
           desktopId = "thunderbird.desktop";
-          mimeTypes = [ "x-scheme-handler/mailto" ];
+          mimeTypes = singleton "x-scheme-handler/mailto";
         } "email client; also the mailto handler";
 
         pdfViewer = app {
           package = pkgs.kdePackages.okular;
           desktopId = "org.kde.okular.desktop";
-          mimeTypes = [ "application/pdf" ];
+          mimeTypes = singleton "application/pdf";
         } "PDF viewer behind application/pdf";
 
         imageViewer = app {

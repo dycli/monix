@@ -12,6 +12,7 @@
     }:
     let
       inherit (lib.attrsets) listToAttrs nameValuePair;
+      inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
@@ -43,7 +44,7 @@
         in
         {
           description = "Drain the agent task queue on worker ${worker}";
-          wantedBy = [ "multi-user.target" ];
+          wantedBy = singleton "multi-user.target";
           startLimitIntervalSec = 0;
           path = [
             pkgs.coreutils
@@ -82,13 +83,13 @@
               "/var/lib/agents"
               "/run/agents"
             ];
-            RestrictAddressFamilies = [ "AF_UNIX" ];
+            RestrictAddressFamilies = singleton "AF_UNIX";
             RestrictNamespaces = true;
             RestrictRealtime = true;
             RestrictSUIDSGID = true;
             SocketBindDeny = "any";
             SystemCallArchitectures = "native";
-            SystemCallFilter = [ "@system-service" ];
+            SystemCallFilter = singleton "@system-service";
             SystemCallErrorNumber = "EPERM";
           };
           environment = {

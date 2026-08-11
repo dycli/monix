@@ -4,6 +4,7 @@
   flake.nixosModules.hyprland =
     { lib, pkgs, ... }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.modules) mkForce;
       inherit (lib.meta) getExe getExe';
     in
@@ -17,30 +18,32 @@
       # nixpkgs' waylandCompositors entry cannot pass -D before --, so uwsm
       # derives XDG_CURRENT_DESKTOP from the binary name and Hyprland's exact
       # match fails, warning about external management every session.
-      services.displayManager.sessionPackages = mkForce [
-        (pkgs.writeTextFile {
-          name = "hyprland-uwsm";
-          text = ''
-            [Desktop Entry]
-            Name=Hyprland
-            Comment=Hyprland compositor managed by UWSM
-            Exec=${getExe pkgs.uwsm} start -F -D Hyprland -- ${getExe' pkgs.hyprland "start-hyprland"}
-            Type=Application
-          '';
-          # start-hyprland forks to create the --watchdog-fd pipe the raw
-          # binary lacks, and does no systemd manipulation of its own.
-          destination = "/share/wayland-sessions/hyprland-uwsm.desktop";
-          derivationArgs = {
-            # sessionPackages reads the session id from this passthru.
-            passthru.providedSessions = [ "hyprland-uwsm" ];
-          };
-        })
-      ];
+      services.displayManager.sessionPackages = mkForce (
+        singleton (
+          pkgs.writeTextFile {
+            name = "hyprland-uwsm";
+            text = ''
+              [Desktop Entry]
+              Name=Hyprland
+              Comment=Hyprland compositor managed by UWSM
+              Exec=${getExe pkgs.uwsm} start -F -D Hyprland -- ${getExe' pkgs.hyprland "start-hyprland"}
+              Type=Application
+            '';
+            # start-hyprland forks to create the --watchdog-fd pipe the raw
+            # binary lacks, and does no systemd manipulation of its own.
+            destination = "/share/wayland-sessions/hyprland-uwsm.desktop";
+            derivationArgs = {
+              # sessionPackages reads the session id from this passthru.
+              passthru.providedSessions = singleton "hyprland-uwsm";
+            };
+          }
+        )
+      );
 
       hardware.graphics.enable = true;
 
       xdg.portal.enable = true;
-      xdg.portal.extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
+      xdg.portal.extraPortals = singleton pkgs.xdg-desktop-portal-gtk;
 
       # Without flatpak installed this portal fails at session start and
       # degrades the user service manager; no portal in use depends on it.

@@ -6,9 +6,9 @@
 {
   flake.nixosModules.lab = self.nixosModules.paseo;
   flake.nixosModules.paseo =
-    { pkgs, ... }:
+    { pkgs, lib, ... }:
     {
-      imports = [ inputs.paseo.nixosModules.paseo ];
+      imports = lib.lists.singleton inputs.paseo.nixosModules.paseo;
 
       services.paseo = {
         enable = true;
@@ -50,7 +50,7 @@
 
         # Phone/web clients reach it by MagicDNS name; loopback and IPs are
         # always allowed regardless.
-        hostnames = [ ".olm-hen.ts.net" ];
+        hostnames = lib.lists.singleton ".olm-hen.ts.net";
       };
     };
 }

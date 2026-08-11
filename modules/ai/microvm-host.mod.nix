@@ -53,12 +53,10 @@
           "net.ipv6.conf.all.forwarding" = 0;
         };
 
-        assertions = [
-          {
-            assertion = !(lib.lists.elem bridge config.networking.firewall.trustedInterfaces);
-            message = "br-agents must never be a trusted firewall interface";
-          }
-        ];
+        assertions = singleton {
+          assertion = !(lib.lists.elem bridge config.networking.firewall.trustedInterfaces);
+          message = "br-agents must never be a trusted firewall interface";
+        };
 
         systemd.network.networks."10-uplink" = {
           matchConfig.Name = "en*";
@@ -131,8 +129,8 @@
           # A DNS answer mapping an allowed name onto a LAN or tailnet
           # address would otherwise make the proxy a pivot: guests and
           # loopback in, internet out, nothing private in between.
-          IPAddressAllow = fences.loopback ++ [ "${hostAddr}/24" ];
-          IPAddressDeny = fences.privateRanges ++ [ fences.tailnet ];
+          IPAddressAllow = fences.loopback ++ singleton "${hostAddr}/24";
+          IPAddressDeny = fences.privateRanges ++ singleton fences.tailnet;
 
           NoNewPrivileges = true;
           ProtectSystem = "strict";

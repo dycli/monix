@@ -13,6 +13,7 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.ship) fences;
       cfg = config.homeAssistant;
     in
@@ -20,7 +21,7 @@
       options.homeAssistant.lanSubnets = lib.options.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
-        example = [ "192.168.1.0/24" ];
+        example = singleton "192.168.1.0/24";
         description = "Home LAN subnets HA may reach (IoT devices, discovery).";
       };
 
@@ -56,9 +57,9 @@
           ];
 
           # UI setup points this at http://127.0.0.1:5000.
-          customComponents = [ pkgs.home-assistant-custom-components.frigate ];
+          customComponents = singleton pkgs.home-assistant-custom-components.frigate;
 
-          customLovelaceModules = [ pkgs.home-assistant-custom-lovelace-modules.advanced-camera-card ];
+          customLovelaceModules = singleton pkgs.home-assistant-custom-lovelace-modules.advanced-camera-card;
 
           config = {
             # The standard integration bundle.
@@ -82,7 +83,7 @@
         };
 
         systemd.services.home-assistant.serviceConfig = {
-          IPAddressAllow = fences.loopback ++ [ fences.tailnet ] ++ cfg.lanSubnets;
+          IPAddressAllow = fences.loopback ++ singleton fences.tailnet ++ cfg.lanSubnets;
           IPAddressDeny = fences.privateRanges;
         };
       };

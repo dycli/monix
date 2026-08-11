@@ -11,6 +11,7 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.options) mkOption;
       inherit (lib.strings) hasSuffix;
       inherit (lib) types;
@@ -45,7 +46,7 @@
       };
 
       config = {
-        environment.systemPackages = [ memo ];
+        environment.systemPackages = singleton memo;
       };
     };
 }

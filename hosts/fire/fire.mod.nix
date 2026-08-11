@@ -30,7 +30,7 @@
           "usb_storage"
           "sd_mod"
         ];
-        boot.kernelModules = [ "kvm-amd" ];
+        boot.kernelModules = lib.lists.singleton "kvm-amd";
         hardware.enableRedistributableFirmware = true;
         hardware.cpu.amd.updateMicrocode = true;
 

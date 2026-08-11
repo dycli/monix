@@ -3,6 +3,9 @@
 {
   flake.nixosModules.lab =
     { lib, ... }:
+    let
+      inherit (lib.lists) singleton;
+    in
     {
       # More workers than typical demand, so a task finds an already-warm VM.
       agentFleet.workers = lib.lists.imap1 (index: name: { inherit name index; }) [
@@ -16,7 +19,7 @@
         "seleucidis"
       ];
 
-      fleetLogStream.inviteUsers = [ "@dylan:chat.su.is" ];
+      fleetLogStream.inviteUsers = singleton "@dylan:chat.su.is";
 
       # Baked in as memo's default so nothing sets MEMORY_DIR at runtime.
       memo.memoryDir = "/home/bridge/cockpit/memory/log";
@@ -31,7 +34,7 @@
           "on"
           "--jinja"
         ];
-        aliases = [ "qwen3.6" ];
+        aliases = singleton "qwen3.6";
       };
       # MTP speculative decoding: the MTP tensors are embedded in the main
       # GGUF, so --spec-type selects that path with no separate draft model.
@@ -51,7 +54,7 @@
           "-np"
           "1"
         ];
-        aliases = [ "qwen3.6-dense" ];
+        aliases = singleton "qwen3.6-dense";
       };
     };
 }

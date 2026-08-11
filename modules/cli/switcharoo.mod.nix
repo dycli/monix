@@ -7,10 +7,10 @@
 {
   flake.homeModules.default = self.homeModules.switcharoo;
   flake.homeModules.switcharoo =
-    { pkgs, ... }:
+    { pkgs, lib, ... }:
     {
-      home.packages = [
-        (pkgs.writers.writeNuBin "switcharoo" # nu
+      home.packages = lib.lists.singleton (
+        pkgs.writers.writeNuBin "switcharoo" # nu
           ''
             def main [] {
               let repo = $env.HOME | path join "ark" "monix"
@@ -39,7 +39,6 @@
               ^nh os switch $repo
             }
           ''
-        )
-      ];
+      );
     };
 }

@@ -17,6 +17,7 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
@@ -75,7 +76,7 @@
           environmentFile = cfg.registrationTokenEnvFile;
           settings.global = {
             server_name = cfg.serverName;
-            port = [ cfg.port ];
+            port = singleton cfg.port;
             # Bind everywhere; reachability is the firewall's job.
             address = [
               "0.0.0.0"
@@ -95,16 +96,14 @@
         systemd.services.tuwunel.serviceConfig = {
           # Loopback carries the cloudflared hop and resolved's stub; the
           # internet is unmatched and so allowed, which push gateways need.
-          IPAddressAllow = fences.loopback ++ [
-            fences.tailnet
-          ];
+          IPAddressAllow = fences.loopback ++ singleton fences.tailnet;
           IPAddressDeny = fences.privateRanges;
         };
 
         systemd.services.matrix-tunnel = mkIf (cfg.tunnelTokenFile != null) {
           description = "Cloudflare Tunnel for the Matrix homeserver";
-          wantedBy = [ "multi-user.target" ];
-          partOf = [ "tuwunel.service" ];
+          wantedBy = singleton "multi-user.target";
+          partOf = singleton "tuwunel.service";
           wants = [
             "network-online.target"
             "tuwunel.service"
@@ -115,7 +114,7 @@
           ];
           serviceConfig = {
             DynamicUser = true;
-            LoadCredential = [ "token:${cfg.tunnelTokenFile}" ];
+            LoadCredential = singleton "token:${cfg.tunnelTokenFile}";
             ExecStart = "${getExe pkgs.cloudflared} tunnel --no-autoupdate run --token-file %d/token";
             Restart = "always";
             RestartSec = 5;
@@ -124,7 +123,7 @@
             # Cloudflare's edge and loopback are needed; 127.0.0.0/8 is
             # denied because the allow is a /24.
             IPAddressAllow = fences.loopback;
-            IPAddressDeny = fences.internetOnlyDeny ++ [ "127.0.0.0/8" ];
+            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
           };
           environment = {
             TUNNEL_TRANSPORT_PROTOCOL = "http2";

@@ -30,7 +30,7 @@
         "usb_storage"
         "sd_mod"
       ];
-      boot.kernelModules = [ "kvm-amd" ];
+      boot.kernelModules = lib.lists.singleton "kvm-amd";
       hardware.enableRedistributableFirmware = true;
 
       # EcoFlow RIVER 3 Plus over USB HID (usbhid-ups, 3746:ffff).
@@ -79,7 +79,7 @@
 
             settings = {
               allowDiscards = true;
-              crypttabExtraOpts = [ "tpm2-device=auto" ];
+              crypttabExtraOpts = lib.lists.singleton "tpm2-device=auto";
             };
 
             content = {
@@ -103,7 +103,7 @@
               subvolumes."@models" = {
                 mountpoint = "/var/lib/models";
                 # Model weights do not compress.
-                mountOptions = [ "noatime" ];
+                mountOptions = lib.lists.singleton "noatime";
               };
             };
           };

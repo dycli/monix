@@ -184,7 +184,7 @@
           value.serviceConfig = {
 
             ProtectSystem = "strict";
-            ReadWritePaths = [ "${dataDir}/${name}" ];
+            ReadWritePaths = singleton "${dataDir}/${name}";
             NoNewPrivileges = true;
             # ProcSubset=pid is unset: it hides /proc/mounts, which Java's
             # NIO needs for file-store lookups, and world loading fails.
@@ -195,7 +195,7 @@
             # Spark's async-profiler probes perf_event_open, outside
             # @system-service; EPERM makes that probe fail instead of
             # killing the JVM mid-startup.
-            SystemCallFilter = [ "@system-service" ];
+            SystemCallFilter = singleton "@system-service";
             SystemCallErrorNumber = "EPERM";
 
             # The internet is unmatched and so allowed, for session auth.
