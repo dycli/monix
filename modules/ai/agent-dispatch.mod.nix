@@ -56,7 +56,14 @@
             RestartSec = 2;
 
             # Root is required for cross-user chown and VM lifecycle over
-            # D-Bus, which rules out PrivateUsers and a capability clamp.
+            # D-Bus (authorized by uid, not capability), which rules out
+            # PrivateUsers — but not a capability clamp: only the
+            # file-ownership work needs privilege.
+            CapabilityBoundingSet = [
+              "CAP_CHOWN"
+              "CAP_DAC_OVERRIDE"
+              "CAP_FOWNER"
+            ];
             LockPersonality = true;
             NoNewPrivileges = true;
             PrivateDevices = true;

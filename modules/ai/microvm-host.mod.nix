@@ -14,7 +14,7 @@
       inherit (lib.strings) concatStringsSep;
 
       cfg = config.agentFleet;
-      inherit (lib.ship) topology;
+      inherit (lib.ship) fences topology;
       inherit (topology) bridge hostAddr;
 
       # The only destinations a guest can reach. A leading-dot dstdomain
@@ -128,6 +128,11 @@
         # squid parses bytes from untrusted guests: only the capabilities
         # needed to drop from root.
         systemd.services.squid.serviceConfig = {
+          # A DNS answer mapping an allowed name onto a LAN or tailnet
+          # address would otherwise make the proxy a pivot: guests and
+          # loopback in, internet out, nothing private in between.
+          IPAddressAllow = fences.loopback ++ [ "${hostAddr}/24" ];
+          IPAddressDeny = fences.privateRanges ++ [ fences.tailnet ];
 
           NoNewPrivileges = true;
           ProtectSystem = "strict";
