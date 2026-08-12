@@ -13,6 +13,10 @@ type Result<T> = std::result::Result<T, String>;
 
 const READY_MAX_AGE: u64 = 60;
 const PROMPT_MAX_BYTES: u64 = 1_048_576;
+// A byte cap alone misses a flood of empty files exhausting host inodes.
+// The exchange legitimately holds a few dozen entries, so this is orders of
+// magnitude of headroom.
+const EXCHANGE_MAX_ENTRIES: u64 = 100_000;
 
 const NO_ADVISOR_ANSWER: &[u8] =
     b"No advisor is configured for this task \xe2\x80\x94 proceed on your own best judgment.\n";
@@ -483,12 +487,13 @@ impl Dispatcher {
                 return Ok(decision);
             }
 
-            if let Ok(exchange_size) = directory_apparent_size(&self.config.work)
-                && exchange_size > self.config.exchange_max_bytes
+            if let Ok(usage) = directory_usage(&self.config.work)
+                && (usage.bytes > self.config.exchange_max_bytes
+                    || usage.entries > EXCHANGE_MAX_ENTRIES)
             {
                 self.log(&format!(
-                    "OVERSIZE {} (task exchange exceeded {} bytes)",
-                    task.id, self.config.exchange_max_bytes
+                    "OVERSIZE {} (task exchange exceeded {} bytes or {} entries)",
+                    task.id, self.config.exchange_max_bytes, EXCHANGE_MAX_ENTRIES
                 ))?;
                 return Ok(TaskStatus::Oversize);
             }
@@ -1553,23 +1558,30 @@ fn suffix_token<'a>(path: &'a Path, prefix: &str, suffix: &str) -> Option<&'a st
 
 /// Apparent size of everything under `path`. The exchange cap is a guardrail,
 /// not exact accounting, so entry lengths are summed directly.
-fn directory_apparent_size(path: &Path) -> Result<u64> {
-    let mut total = fs::symlink_metadata(path)
+struct ExchangeUsage {
+    bytes: u64,
+    entries: u64,
+}
+
+fn directory_usage(path: &Path) -> Result<ExchangeUsage> {
+    let mut bytes = fs::symlink_metadata(path)
         .with_context(|| format!("inspect {}", path.display()))?
         .len();
+    let mut entries = 0u64;
     let mut pending = vec![path.to_path_buf()];
     while let Some(directory) = pending.pop() {
         for entry in directory_entries(&directory)? {
             let Ok(metadata) = fs::symlink_metadata(&entry) else {
                 continue;
             };
-            total = total.saturating_add(metadata.len());
+            entries = entries.saturating_add(1);
+            bytes = bytes.saturating_add(metadata.len());
             if metadata.file_type().is_dir() {
                 pending.push(entry);
             }
         }
     }
-    Ok(total)
+    Ok(ExchangeUsage { bytes, entries })
 }
 
 fn optional_field(name: &str, value: &str) -> String {
