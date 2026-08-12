@@ -42,6 +42,11 @@
         subnet = "192.168.1.0/24";
       };
 
+      # Advertised tailnet exit node; "server" enables the forwarding
+      # sysctls. Devices opt in per network from the client.
+      services.tailscale.useRoutingFeatures = "server";
+      services.tailscale.extraSetFlags = lib.lists.singleton "--advertise-exit-node";
+
       # TPM-sealed key so the host boots headless; a passphrase slot remains
       # for recovery.
       disko.devices.disk.main = {

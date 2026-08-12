@@ -23,6 +23,11 @@
         # sshd answers on the trusted tailscale0 only.
         services.openssh.openFirewall = false;
 
+        # Advertised tailnet exit node; "server" enables the forwarding
+        # sysctls. Devices opt in per network from the client.
+        services.tailscale.useRoutingFeatures = "server";
+        services.tailscale.extraSetFlags = lib.lists.singleton "--advertise-exit-node";
+
         # Vultr instances boot SeaBIOS, so grub carries the BIOS-boot
         # partition below; /boot lives on the root btrfs.
         boot.loader.systemd-boot.enable = false;
