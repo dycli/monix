@@ -26,7 +26,12 @@
         # Advertised tailnet exit node; "server" enables the forwarding
         # sysctls. Devices opt in per network from the client.
         services.tailscale.useRoutingFeatures = "server";
-        services.tailscale.extraSetFlags = lib.lists.singleton "--advertise-exit-node";
+        services.tailscale.extraSetFlags = [
+          "--advertise-exit-node"
+          # Resolve via the datacenter resolvers, not the tailnet's global
+          # nameserver: cert renewal must not depend on the home link.
+          "--accept-dns=false"
+        ];
 
         # Vultr instances boot SeaBIOS, so grub carries the BIOS-boot
         # partition below; /boot lives on the root btrfs.
