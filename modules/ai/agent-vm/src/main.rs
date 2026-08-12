@@ -1155,10 +1155,14 @@ impl Supervisor {
         } else {
             None
         };
-        let (meta, mut credential_error) = match meta {
+        // A missing or unparseable task-meta is a metadata fault, not a
+        // credential one; keep them distinct so the rejection names the
+        // real cause instead of blaming the credential set.
+        let (meta, meta_error) = match meta {
             Some(meta) => (meta, false),
             None => (TaskMeta::default(), true),
         };
+        let mut credential_error = false;
 
         let executor = classify(&meta.agent, &meta.model);
         // An unknown (agent, model) pair fails the credential check by
@@ -1212,7 +1216,9 @@ impl Supervisor {
             }
         }
 
-        let outcome = if credential_error {
+        let outcome = if meta_error {
+            Outcome::MetaRejected
+        } else if credential_error {
             Outcome::CredentialRejected
         } else if let Some(log) = context_error {
             Outcome::ContextFailed(log)

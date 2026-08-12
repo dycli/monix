@@ -430,7 +430,13 @@ impl Dispatcher {
                 return Ok(TaskStatus::Cancelled);
             }
             let exit_code = self.config.work.join("exit-code");
-            if exists_any(&exit_code) {
+            // Only a root-owned exit-code is real. The exchange is
+            // group-writable by the executor, but an unprivileged executor
+            // cannot create a root-owned file, so a non-root one is a
+            // self-abort attempt and is ignored — the guest supervisor
+            // (guest root) writes the genuine one. Presence and trust are
+            // the same check.
+            if root_owned_file(&exit_code) {
                 // Bounded fd-based read: uid and size are checked on the open
                 // descriptor, so the executor cannot race the checks.
                 match read_bounded_owned(&exit_code, 64, Some(0)) {
@@ -769,19 +775,18 @@ impl Dispatcher {
             return Ok(());
         }
         *previous_mtime = current;
-        let full = live.join(".log.tmp");
         let tail = live.join(".tail.tmp");
-        remove_any(&full)?;
         remove_any(&tail)?;
-        if self
-            .safe_transfer(&source, &full, 52_428_800, 0o600)
-            .is_ok()
-        {
-            copy_tail(&full, &tail, 65_536, 0o640)?;
+        // Read the last 64 KiB straight from the worker log — a busy log is
+        // megabytes and changes every poll, so copying the whole thing to
+        // read its tail was pure waste.
+        if copy_tail(&source, &tail, 65_536, 0o640).is_ok() {
             chown(&tail, &format!("root:{}", self.config.readers))?;
             rename_replace(&tail, &live.join("agent-tail.log"))?;
+        } else {
+            remove_any(&tail)?;
         }
-        remove_any(&full)
+        Ok(())
     }
 
     fn relay_steering(&self, task: &ClaimedTask, live: &Path) -> Result<()> {
@@ -1281,6 +1286,15 @@ fn exists_any(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok()
 }
 
+// A regular file owned by root. In the worker exchange only the guest
+// supervisor (guest root) can produce one, so root ownership proves the
+// file is the supervisor's and not an executor's plant.
+fn root_owned_file(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_file() && metadata.uid() == 0)
+        .unwrap_or(false)
+}
+
 fn is_regular_nofollow(path: &Path) -> bool {
     fs::symlink_metadata(path)
         .map(|metadata| metadata.file_type().is_file())
@@ -1443,16 +1457,31 @@ fn trusted_copy_replace(source: &Path, destination: &Path, mode: u32) -> Result<
     rename_replace(&temporary, destination)
 }
 
+// Copy at most `limit` trailing bytes of a worker-written log. O_NOFOLLOW
+// and a regular-file check on the descriptor keep the untrusted source from
+// redirecting the read; the seek means a large log costs one tail read, not
+// a full copy.
 fn copy_tail(source: &Path, destination: &Path, limit: u64, mode: u32) -> Result<()> {
-    let mut input = File::open(source).context("open staged log")?;
-    let length = input.metadata().context("stat staged log")?.len();
+    use std::io::Seek;
+    let mut input = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
+        .open(source)
+        .with_context(|| format!("open staged log {}", source.display()))?;
+    let metadata = input.metadata().context("stat staged log")?;
+    if !metadata.file_type().is_file() {
+        return Err(format!(
+            "staged log is not a regular file: {}",
+            source.display()
+        ));
+    }
+    let length = metadata.len();
     if length > limit {
-        use std::io::Seek;
         input
             .seek(std::io::SeekFrom::Start(length - limit))
             .context("seek staged log")?;
     }
-    let mut bytes = Vec::with_capacity(limit as usize);
+    let mut bytes = Vec::with_capacity(limit.min(length) as usize);
     input
         .take(limit)
         .read_to_end(&mut bytes)
@@ -1953,6 +1982,17 @@ mod tests {
         assert_eq!(exit_status(b"0\n\n"), TaskStatus::Done);
         assert_eq!(exit_status(b"1\n"), TaskStatus::Failed);
         assert_eq!(exit_status(&[0xff]), TaskStatus::Failed);
+    }
+
+    #[test]
+    fn only_root_owned_exit_code_is_trusted() {
+        let fixture = Fixture::new().unwrap();
+        // Tests run unprivileged, so a file we write is owned by us, not
+        // root — exactly the executor-plant case, which must not be trusted.
+        let planted = fixture.root.join("exit-code");
+        fs::write(&planted, b"0\n").unwrap();
+        assert!(!root_owned_file(&planted));
+        assert!(!root_owned_file(&fixture.root.join("absent")));
     }
 
     #[test]

@@ -1150,12 +1150,13 @@ fn cmd_cancel(config: &Config, arguments: &[String]) -> Result<i32> {
 }
 
 fn cmd_status(config: &Config, arguments: &[String]) -> Result<i32> {
-    let count = arguments
-        .first()
-        .map(String::as_str)
-        .unwrap_or("20")
-        .parse::<usize>()
-        .unwrap_or(0);
+    // A non-numeric count silently printed nothing; reject it instead.
+    let count = match arguments.first() {
+        Some(argument) => argument
+            .parse::<usize>()
+            .map_err(|_| format!("usage: fleet status [count] (not a number: {argument})"))?,
+        None => 20,
+    };
     let Ok(contents) = fs::read_to_string(config.log()) else {
         return Ok(0);
     };
