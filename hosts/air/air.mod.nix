@@ -28,9 +28,17 @@
         services.tailscale.useRoutingFeatures = "server";
         services.tailscale.extraSetFlags = [
           "--advertise-exit-node"
-          # Resolve via the datacenter resolvers, not the tailnet's global
-          # nameserver: cert renewal must not depend on the home link.
+          # Resolve through the local unbound rather than the tailnet's
+          # global nameserver, which points back at this host.
           "--accept-dns=false"
+        ];
+
+        # The tailnet's global nameserver and the home router's forwarder
+        # both point at these addresses.
+        resolver.enable = true;
+        resolver.addresses = [
+          "100.107.48.89"
+          "fd7a:115c:a1e0::5436:305b"
         ];
 
         # Vultr instances boot SeaBIOS, so grub carries the BIOS-boot
