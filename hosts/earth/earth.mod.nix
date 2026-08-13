@@ -75,6 +75,10 @@
               type = "luks";
               name = "cryptroot";
 
+              # Without discards an SSD under LUKS never learns which blocks
+              # are free.
+              settings.allowDiscards = true;
+
               content = {
                 type = "btrfs";
                 subvolumes."@" = {
