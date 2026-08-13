@@ -11,6 +11,10 @@
     {
       boot.plymouth.enable = true;
 
+      # Boot the default generation immediately; holding a key during
+      # firmware handoff still brings up the menu for rollbacks.
+      boot.loader.timeout = lib.modules.mkDefault 0;
+
       # Keep the console from writing over the splash.
       boot.initrd.verbose = lib.modules.mkDefault false;
       boot.kernelParams = [

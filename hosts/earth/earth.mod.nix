@@ -104,7 +104,24 @@
         powerManagement.enable = true;
         powerManagement.powertop.enable = true;
 
+        networking.networkmanager.wifi.powersave = true;
+
+        # s2idle drains ~1%/hour, so a closed lid suspends, then after two
+        # hours writes the image and powers off. The swapfile below backs
+        # the image (NoCOW, created by the swap unit on btrfs). resume
+        # needs the file's physical offset, which only exists once the
+        # file does: after the creating switch, pin it here from
+        # `btrfs inspect-internal map-swapfile -r /swap` and switch again —
+        # until then suspend-then-hibernate falls back to plain suspend.
+        swapDevices = singleton {
+          device = "/swap";
+          size = 32768;
+        };
+        boot.resumeDevice = "/dev/mapper/cryptroot";
+        systemd.sleep.settings.Sleep.HibernateDelaySec = "2h";
+
         services.logind.settings.Login.HandlePowerKey = "suspend";
+        services.logind.settings.Login.HandleLidSwitch = "suspend-then-hibernate";
 
         systemd.timers."fwupd-refresh".enable = false;
 
