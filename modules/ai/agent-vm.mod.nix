@@ -458,17 +458,20 @@
           }
         ];
 
-        microvm.vms = listToAttrs (map (w: nameValuePair w.name (mkAgentGuest w)) cfg.workers);
+        microvm.vms = cfg.workers |> map (w: nameValuePair w.name (mkAgentGuest w)) |> listToAttrs;
 
         # Share sources must exist before virtiofsd starts.
         users.groups.${guestGroup}.gid = guestGid;
-        systemd.tmpfiles.rules = concatMap (w: [
-          "d ${workDir w.name} 0770 root ${guestGroup} -"
-          "d ${credsDir w.name} 0700 root root -"
-        ]) cfg.workers;
+        systemd.tmpfiles.rules =
+          cfg.workers
+          |> concatMap (w: [
+            "d ${workDir w.name} 0770 root ${guestGroup} -"
+            "d ${credsDir w.name} 0700 root root -"
+          ]);
 
-        systemd.services = listToAttrs (
-          map (
+        systemd.services =
+          cfg.workers
+          |> map (
             w:
             (nameValuePair "microvm@${w.name}" {
               serviceConfig = {
@@ -489,8 +492,8 @@
                 );
               };
             })
-          ) cfg.workers
-        );
+          )
+          |> listToAttrs;
       };
     };
 }

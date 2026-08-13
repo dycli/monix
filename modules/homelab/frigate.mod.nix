@@ -29,14 +29,24 @@
       # go2rtc connects; Frigate only needs to know the restreams exist.
       streamsWith =
         pass:
-        concatMapAttrs (name: ip: {
-          ${name} = singleton "rtsp://frigate:${pass}@${ip}:554/h264Preview_01_main";
-          "${name}_sub" = singleton "rtsp://frigate:${pass}@${ip}:554/h264Preview_01_sub";
-        }) cfg.reolink
-        // concatMapAttrs (name: ip: {
-          ${name} = singleton "rtsp://frigate:${pass}@${ip}:554/stream1";
-          "${name}_sub" = singleton "rtsp://frigate:${pass}@${ip}:554/stream2";
-        }) cfg.tapo;
+        (
+          cfg.reolink
+          |> concatMapAttrs (
+            name: ip: {
+              ${name} = singleton "rtsp://frigate:${pass}@${ip}:554/h264Preview_01_main";
+              "${name}_sub" = singleton "rtsp://frigate:${pass}@${ip}:554/h264Preview_01_sub";
+            }
+          )
+        )
+        // (
+          cfg.tapo
+          |> concatMapAttrs (
+            name: ip: {
+              ${name} = singleton "rtsp://frigate:${pass}@${ip}:554/stream1";
+              "${name}_sub" = singleton "rtsp://frigate:${pass}@${ip}:554/stream2";
+            }
+          )
+        );
 
       frigateCamera = detect: name: _: {
         ffmpeg.inputs = [
@@ -156,28 +166,34 @@
 
             cameras =
               # RLC-520A sub-stream is 640x480.
-              mapAttrs (frigateCamera {
-                enabled = true;
-                width = 640;
-                height = 480;
-              }) cfg.reolink
-              # C225 sub-stream is 640x360; pan/tilt over ONVIF on 2020.
-              // mapAttrs (
-                name: ip:
-                frigateCamera {
+              (
+                cfg.reolink
+                |> mapAttrs (frigateCamera {
                   enabled = true;
                   width = 640;
-                  height = 360;
-                } name ip
-                // {
-                  onvif = {
-                    host = ip;
-                    port = 2020;
-                    user = "frigate";
-                    password = "{FRIGATE_RTSP_PASSWORD}";
-                  };
-                }
-              ) cfg.tapo;
+                  height = 480;
+                })
+              )
+              # C225 sub-stream is 640x360; pan/tilt over ONVIF on 2020.
+              // (
+                cfg.tapo
+                |> mapAttrs (
+                  name: ip:
+                  frigateCamera {
+                    enabled = true;
+                    width = 640;
+                    height = 360;
+                  } name ip
+                  // {
+                    onvif = {
+                      host = ip;
+                      port = 2020;
+                      user = "frigate";
+                      password = "{FRIGATE_RTSP_PASSWORD}";
+                    };
+                  }
+                )
+              );
           };
         };
         systemd.services.frigate.serviceConfig = lanFence // {

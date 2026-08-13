@@ -163,9 +163,8 @@
           "a+ ${tasksDir}/log - - - - group:${readers}:r"
         ];
 
-        systemd.services = listToAttrs (
-          map (w: nameValuePair "agent-dispatch-${w.name}" (drainerFor w.name)) cfg.workers
-        );
+        systemd.services =
+          cfg.workers |> map (w: nameValuePair "agent-dispatch-${w.name}" (drainerFor w.name)) |> listToAttrs;
       };
     };
 }

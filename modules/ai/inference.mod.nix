@@ -117,22 +117,26 @@
               # longer than the 120s default health check allows.
               healthCheckTimeout = 600;
 
-              models = mapAttrs (_: m: {
-                # ${PORT} is llama-swap's macro, escaped so Nix passes it
-                # through verbatim.
-                cmd = concatStringsSep " " (
-                  [
-                    llamaServer
-                    "--port \${PORT}"
-                    "--host 127.0.0.1" # children speak only to the proxy
-                    "-m ${if lib.strings.hasPrefix "/" m.file then m.file else "${cfg.modelsDir}/${m.file}"}"
-                    "-ngl 999" # full offload; unified memory has no VRAM cliff
-                    "--no-webui"
-                  ]
-                  ++ m.flags
+              models =
+                cfg.models
+                |> mapAttrs (
+                  _: m: {
+                    # ${PORT} is llama-swap's macro, escaped so Nix passes it
+                    # through verbatim.
+                    cmd = concatStringsSep " " (
+                      [
+                        llamaServer
+                        "--port \${PORT}"
+                        "--host 127.0.0.1" # children speak only to the proxy
+                        "-m ${if lib.strings.hasPrefix "/" m.file then m.file else "${cfg.modelsDir}/${m.file}"}"
+                        "-ngl 999" # full offload; unified memory has no VRAM cliff
+                        "--no-webui"
+                      ]
+                      ++ m.flags
+                    );
+                    inherit (m) ttl aliases;
+                  }
                 );
-                inherit (m) ttl aliases;
-              }) cfg.models;
             };
           };
 

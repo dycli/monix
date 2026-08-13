@@ -35,10 +35,13 @@
           @ SOA localhost. root.localhost. 1 43200 3600 259200 3600
             NS localhost.
         ''
-        + lib.strings.concatMapStrings (d: ''
-          ${d} CNAME rpz-passthru.
-          *.${d} CNAME rpz-passthru.
-        '') cfg.allow
+        + (
+          cfg.allow
+          |> lib.strings.concatMapStrings (d: ''
+            ${d} CNAME rpz-passthru.
+            *.${d} CNAME rpz-passthru.
+          '')
+        )
       );
     in
     {

@@ -135,13 +135,14 @@
         enable = true;
         # Each electing app assigns its .desktop id to every mime type it owns.
         defaultApplications = lib.mkMerge (
-          lib.attrsets.mapAttrsToList (
+          config.desktopApps
+          |> lib.attrsets.mapAttrsToList (
             _: elected:
             if lib.isAttrs elected && elected.desktopId != null then
               lib.genAttrs elected.mimeTypes (_: elected.desktopId)
             else
               { }
-          ) config.desktopApps
+          )
         );
       };
     };

@@ -106,16 +106,19 @@
           # own module via shipProxy.routes; the seat, dashboard and
           # catch-alls stay here.
           virtualHosts =
-            mapAttrs' (
-              _: route:
-              nameValuePair "${route.subdomain}.${cfg.domain}" (
-                proxy route.port (
-                  optionalAttrs (route.proxyExtra != "") {
-                    extraConfig = route.proxyExtra;
-                  }
+            (
+              cfg.routes
+              |> mapAttrs' (
+                _: route:
+                nameValuePair "${route.subdomain}.${cfg.domain}" (
+                  proxy route.port (
+                    optionalAttrs (route.proxyExtra != "") {
+                      extraConfig = route.proxyExtra;
+                    }
+                  )
                 )
               )
-            ) cfg.routes
+            )
             # The web seat is shell-capable: without the source rules
             # below, any local service reaches it by Host header.
             // {

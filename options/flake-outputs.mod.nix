@@ -46,7 +46,11 @@ in
     description = "Home Manager aspects and bundles.";
   };
 
-  config.flake.nixosModules = mapAttrs (_: module: {
-    home-manager.sharedModules = singleton module;
-  }) config.flake.homeModules;
+  config.flake.nixosModules =
+    config.flake.homeModules
+    |> mapAttrs (
+      _: module: {
+        home-manager.sharedModules = singleton module;
+      }
+    );
 }

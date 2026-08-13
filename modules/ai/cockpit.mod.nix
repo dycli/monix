@@ -43,10 +43,12 @@
         "remote -v"
         "tag --list*"
       ];
-      gitReadPermissions = concatMap (command: [
-        "git ${command}"
-        "git -C * ${command}"
-      ]) gitReadCommands;
+      gitReadPermissions =
+        gitReadCommands
+        |> concatMap (command: [
+          "git ${command}"
+          "git -C * ${command}"
+        ]);
       claudeBashPermissions = [
         "sudo -n -u fleet-operator fleet *"
         "fleet dispatch *"
@@ -117,11 +119,14 @@
         map (command: "Bash(${command})") claudeBashPermissions
         # These paths are absolute; a doubled slash matches nothing and
         # silently disables the rule.
-        ++ concatMap (path: [
-          "Read(${path}/**)"
-          "Edit(${path}/**)"
-          "Write(${path}/**)"
-        ]) claudeFilePermissions
+        ++ (
+          claudeFilePermissions
+          |> concatMap (path: [
+            "Read(${path}/**)"
+            "Edit(${path}/**)"
+            "Write(${path}/**)"
+          ])
+        )
         ++ [
           "WebFetch(domain:github.com)"
           "WebSearch"
@@ -131,10 +136,12 @@
       mkOpenCodeRules = patterns: { "*" = "ask"; } // genAttrs patterns (_: "allow");
       # OpenCode strips the leading slash for file-tool paths, but
       # external_directory checks the same path in absolute form.
-      opencodeFilePermissions = concatMap (path: [
-        "${path}/**"
-        "${lib.strings.removePrefix "/" path}/**"
-      ]) claudeFilePermissions;
+      opencodeFilePermissions =
+        claudeFilePermissions
+        |> concatMap (path: [
+          "${path}/**"
+          "${lib.strings.removePrefix "/" path}/**"
+        ]);
       # Claude permits reads inside its working directory; OpenCode needs them
       # listed.
       opencodeReadPermissions = opencodeFilePermissions ++ [

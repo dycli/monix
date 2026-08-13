@@ -142,10 +142,13 @@ Reference secrets in modules as `config.secrets.<name>.path`.
 
 ## Pipe operators
 
-Prefer `x |> f |> g` over nested calls when an expression is a genuine
-pipeline — three or more transformations of one value. Do not decorate
-single applications with `|>` or `<|`; plain application reads better and
-stays familiar. The `pipe-operators` feature is enabled in
+Write transformations subject-first: `x |> f |> g` over `g (f x)` for
+chains of any length, and `x |> f (lambda…)` over `f (lambda…) x`
+whenever the application spans multiple lines — the value being
+transformed leads instead of trailing the lambda. Keep plain application
+when the whole call fits on one line; `x |> f` there is decoration.
+`|>` binds loosest, so a piped operand of `//`, `+` or `++` needs
+parentheses. The `pipe-operators` feature is enabled in
 `nix.settings.experimental-features` (nix.mod.nix); a machine evaluating
 the flake before its first switch passes it by hand
 (`NIX_CONFIG="extra-experimental-features = pipe-operators"`). flake.nix

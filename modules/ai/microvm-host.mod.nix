@@ -40,9 +40,8 @@
 
         # An interrupted install-microvm leaves a state dir root-owned, and
         # microvm-set-booted then fails with EACCES and aborts activation.
-        systemd.tmpfiles.rules = map (
-          w: "d ${config.microvm.stateDir}/${w.name} 0755 microvm kvm -"
-        ) cfg.workers;
+        systemd.tmpfiles.rules =
+          cfg.workers |> map (w: "d ${config.microvm.stateDir}/${w.name} 0755 microvm kvm -");
 
         # networkd is authoritative for every interface here; mixing in
         # scripted dhcpcd can drop networking.
