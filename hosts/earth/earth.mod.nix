@@ -98,6 +98,8 @@
           "amdgpu.runpm=1"
           "video.use_native_backlight=1"
           "amdgpu.abmlevel=1"
+          # The hibernation swapfile's physical offset (see the swap block).
+          "resume_offset=294525629"
         ];
 
         boot.kernel.sysctl = {
@@ -112,11 +114,10 @@
 
         # s2idle drains ~1%/hour, so a closed lid suspends, then after two
         # hours writes the image and powers off. The swapfile below backs
-        # the image (NoCOW, created by the swap unit on btrfs). resume
-        # needs the file's physical offset, which only exists once the
-        # file does: after the creating switch, pin it here from
-        # `btrfs inspect-internal map-swapfile -r /swap` and switch again —
-        # until then suspend-then-hibernate falls back to plain suspend.
+        # the image (NoCOW, created by the swap unit on btrfs); the offset
+        # is its physical position from
+        # `btrfs inspect-internal map-swapfile -r /swap` — re-derive it if
+        # the file is ever recreated.
         swapDevices = singleton {
           device = "/swap";
           size = 32768;
