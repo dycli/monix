@@ -110,6 +110,13 @@
                   url = "https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/rpz/pro.txt";
                   zonefile = "${config.services.unbound.stateDir}/hagezi-pro.rpz.zone";
                 }
+                # Public DoH servers, so clients with hardcoded DoH cannot
+                # resolve their way around the filter.
+                {
+                  name = "hagezi.doh.rpz";
+                  url = "https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/rpz/doh.txt";
+                  zonefile = "${config.services.unbound.stateDir}/hagezi-doh.rpz.zone";
+                }
               ];
 
             forward-zone = [
