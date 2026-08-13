@@ -46,9 +46,9 @@
         boot.loader.systemd-boot.enable = false;
         boot.loader.grub.enable = true;
 
-        # 1 GB of RAM: zram takes the pressure first, the on-disk file (NoCOW,
-        # created by the swap unit on btrfs) is the overflow.
-        zramSwap.enable = true;
+        # 1 GB of RAM: zram (core default) takes the pressure first, the
+        # on-disk file (NoCOW, created by the swap unit on btrfs) is the
+        # overflow.
         swapDevices = lib.lists.singleton {
           device = "/swap";
           size = 2048;

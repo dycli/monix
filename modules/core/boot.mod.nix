@@ -12,5 +12,10 @@
       boot.loader.efi.canTouchEfiVariables = mkDefault true;
 
       boot.initrd.systemd.enable = mkDefault true;
+
+      # Compressed swap in RAM on every host: memory pressure lands on
+      # page compression instead of the OOM killer. Disk swap exists only
+      # where it has a job — hibernation (earth), tiny-RAM overflow (air).
+      zramSwap.enable = mkDefault true;
     };
 }
