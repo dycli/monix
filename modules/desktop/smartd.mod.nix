@@ -7,7 +7,15 @@
 { self, ... }:
 {
   flake.nixosModules.desktop = self.nixosModules.smartd;
-  flake.nixosModules.smartd = {
-    services.smartd.enable = true;
-  };
+  flake.nixosModules.smartd =
+    { lib, ... }:
+    {
+      services.smartd.enable = true;
+
+      # Under Type=notify smartd signals readiness only after probing every
+      # disk, and multi-user.target — hence the greeter — waits for it, so
+      # one slow probe becomes a blank screen at boot. Nothing orders after
+      # smartd; start it simple and let the scan run in the background.
+      systemd.services.smartd.serviceConfig.Type = lib.modules.mkForce "simple";
+    };
 }
