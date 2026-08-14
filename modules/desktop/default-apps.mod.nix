@@ -6,11 +6,36 @@
 # install in packages.mod.nix.
 { self, ... }:
 {
+  # KService (Dolphin, the Open With dialog) builds its application database
+  # through the XDG menu spec and finds no applications without an
+  # applications.menu; Plasma ships one, a bare compositor session must
+  # provide its own. Include everything.
+  flake.nixosModules.desktop = self.nixosModules.xdg-app-menu;
+  flake.nixosModules.xdg-app-menu =
+    { lib, pkgs, ... }:
+    {
+      environment.systemPackages = lib.lists.singleton (
+        pkgs.writeTextDir "etc/xdg/menus/applications.menu" ''
+          <!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN"
+           "http://www.freedesktop.org/standards/menu-spec/menu-1.0.dtd">
+          <Menu>
+            <Name>Applications</Name>
+            <DefaultAppDirs/>
+            <DefaultDirectoryDirs/>
+            <Include>
+              <All/>
+            </Include>
+          </Menu>
+        ''
+      );
+    };
+
   flake.homeModules.desktop = self.homeModules.default-apps;
   flake.homeModules.default-apps =
     {
       config,
       lib,
+      osConfig,
       pkgs,
       ...
     }:
@@ -145,5 +170,16 @@
           )
         );
       };
+
+      # The ksycoca cache invalidates on directory timestamps, which are
+      # always the epoch in the store, so app changes would never reach
+      # KService consumers; rebuild it on every activation. The profile dirs
+      # are spelled out because activation does not run in the session env.
+      config.home.activation.kbuildsycoca = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+        run env \
+          XDG_CONFIG_DIRS=/etc/profiles/per-user/${osConfig.primaryUser}/etc/xdg:/run/current-system/sw/etc/xdg \
+          XDG_DATA_DIRS=/etc/profiles/per-user/${osConfig.primaryUser}/share:/run/current-system/sw/share \
+          ${lib.meta.getExe' pkgs.kdePackages.kservice "kbuildsycoca6"} --noincremental >/dev/null 2>&1
+      '';
     };
 }
