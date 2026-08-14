@@ -13,7 +13,6 @@
     let
       inherit (lib.lists) singleton;
       inherit (lib.options) mkOption;
-      inherit (lib.strings) hasSuffix;
       inherit (lib) types;
 
       cfg = config.memo;
@@ -21,10 +20,7 @@
       memo = pkgs.rustPlatform.buildRustPackage {
         pname = "memo";
         version = "0.1.0";
-        src = lib.sources.cleanSourceWith {
-          src = ./memo/memo-cli;
-          filter = path: type: type != "directory" || !hasSuffix "/target" (toString path);
-        };
+        src = ./memo/memo-cli;
         cargoLock.lockFile = ./memo/memo-cli/Cargo.lock;
         env = {
           # MEMORY_DIR still overrides this at runtime.

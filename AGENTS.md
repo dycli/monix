@@ -44,6 +44,7 @@ Current bundles:
   for a host that runs a different session.
 - `dev`      — the authoring toolchain and agent CLIs, for hosts where a
   human or the seat develops. A desktop is not automatically one.
+- `web`      — the internet-facing static-site host.
 - `lab`      — the home server's role: the house's services (media, family
   apps, smart home, their front door and alerting) and the agent lab
   (cockpit seat, worker fleet, local inference). Needs `dev` alongside it.

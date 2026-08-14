@@ -23,7 +23,6 @@
       inherit (lib.strings)
         concatMapStringsSep
         fixedWidthString
-        hasSuffix
         toJSON
         ;
       inherit (lib) types;
@@ -164,10 +163,7 @@
               guestSupervisor = pkgs.rustPlatform.buildRustPackage {
                 pname = "fleet-guest-supervisor";
                 version = "0.1.0";
-                src = lib.sources.cleanSourceWith {
-                  src = ./agent-vm;
-                  filter = path: type: type != "directory" || !hasSuffix "/target" (toString path);
-                };
+                src = ./agent-vm;
 
                 cargoLock.lockFile = ./agent-vm/Cargo.lock;
                 nativeCheckInputs = [

@@ -10,16 +10,12 @@
 # Only the su.is apex lives here; *.su.is is the tailnet front door.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.sites;
+  flake.nixosModules.web = self.nixosModules.sites;
   flake.nixosModules.sites =
-    { config, lib, ... }:
+    { lib, ... }:
     let
       inherit (lib.attrsets) genAttrs;
       inherit (lib.lists) singleton;
-      inherit (lib.modules) mkIf;
-      inherit (lib.options) mkEnableOption;
-
-      cfg = config.sites;
 
       webRoot = "/srv/www";
 
@@ -33,9 +29,7 @@
       parked = singleton "cleary.is";
     in
     {
-      options.sites.enable = mkEnableOption "the public static-site server";
-
-      config = mkIf cfg.enable {
+      config = {
         services.nginx = {
           enable = true;
           recommendedTlsSettings = true;

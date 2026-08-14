@@ -10,6 +10,7 @@ nixpkgsLib.extend (
       hardened = import ./hardened.nix final;
       topology = import ./fleet-topology.nix;
       guide = import ./fleet-guide.nix;
+      keys = import ../keys.nix;
 
       # `ship.host "name" module` is a flake-parts module defining
       # nixosConfigurations.name. Every host gets the `default` bundle.

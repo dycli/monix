@@ -15,7 +15,7 @@
       inherit (lib.lists) singleton;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
-      inherit (lib.strings) concatMapStringsSep hasSuffix;
+      inherit (lib.strings) concatMapStringsSep;
       inherit (lib) types;
 
       cfg = config.agentFleet;
@@ -33,10 +33,7 @@
       fleet = pkgs.rustPlatform.buildRustPackage {
         pname = "fleet";
         version = "0.1.0";
-        src = lib.sources.cleanSourceWith {
-          src = ./fleet-tool/fleet-cli;
-          filter = path: type: type != "directory" || !hasSuffix "/target" (toString path);
-        };
+        src = ./fleet-tool/fleet-cli;
         cargoLock.lockFile = ./fleet-tool/fleet-cli/Cargo.lock;
         env = {
           FLEET_TASKS_DIR = tasksDir;

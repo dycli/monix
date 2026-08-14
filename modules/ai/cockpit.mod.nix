@@ -293,7 +293,7 @@
           description = "bridge seat";
           # Group-enterable so the primary user can reach the seat's files.
           homeMode = "750";
-          openssh.authorizedKeys.keys = self.keys-admin;
+          openssh.authorizedKeys.keys = lib.ship.keys.admin;
           # journal reads; models grants writes to the model directory.
           extraGroups = [
             "systemd-journal"

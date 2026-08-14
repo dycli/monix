@@ -4,12 +4,14 @@
 # Vultr cloud instance, installed via nixos-anywhere from the live ISO.
 # Tailscale enrollment and alert credentials are provisioned out of band,
 # not by the flake.
-{ lib, ... }:
+{ self, lib, ... }:
 {
   imports = lib.lists.singleton (
     lib.ship.host "air" (
       { config, ... }:
       {
+        imports = lib.lists.singleton self.nixosModules.web;
+
         primaryUser = "aang";
 
         # Rotate with `mkpasswd -m yescrypt` into the .age file.
@@ -17,8 +19,6 @@
         users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.aang-password.path;
 
         nixpkgs.hostPlatform = "x86_64-linux";
-
-        sites.enable = true;
 
         # sshd answers on the trusted tailscale0 only.
         services.openssh.openFirewall = false;

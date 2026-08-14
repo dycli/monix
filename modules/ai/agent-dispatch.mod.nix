@@ -16,7 +16,6 @@
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
-      inherit (lib.strings) hasSuffix;
       inherit (lib) types;
 
       cfg = config.agentFleet;
@@ -27,10 +26,7 @@
       agentDispatcher = pkgs.rustPlatform.buildRustPackage {
         pname = "agent-dispatcher";
         version = "0.1.0";
-        src = lib.sources.cleanSourceWith {
-          src = ./agent-dispatch;
-          filter = path: type: type != "directory" || !hasSuffix "/target" (toString path);
-        };
+        src = ./agent-dispatch;
 
         cargoLock.lockFile = ./agent-dispatch/Cargo.lock;
         meta.mainProgram = "agent-dispatcher";

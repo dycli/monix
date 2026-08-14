@@ -16,7 +16,7 @@
 
         extraGroups = lib.lists.singleton "wheel";
 
-        openssh.authorizedKeys.keys = self.keys-admin;
+        openssh.authorizedKeys.keys = lib.ship.keys.admin;
       };
     };
 

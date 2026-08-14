@@ -18,7 +18,6 @@
       inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib.options) mkEnableOption mkOption;
-      inherit (lib.strings) hasSuffix;
       inherit (lib) types;
       inherit (lib.ship) fences;
 
@@ -34,10 +33,7 @@
       shipAlert = pkgs.rustPlatform.buildRustPackage {
         pname = "ship-alert";
         version = "0.1.0";
-        src = lib.sources.cleanSourceWith {
-          src = ./alerts/ship-alert;
-          filter = path: type: type != "directory" || !hasSuffix "/target" (toString path);
-        };
+        src = ./alerts/ship-alert;
         cargoLock.lockFile = ./alerts/ship-alert/Cargo.lock;
         env = {
           SHIP_ALERT_HOMESERVER = cfg.homeserverUrl;

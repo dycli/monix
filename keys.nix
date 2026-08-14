@@ -5,9 +5,8 @@
 #                add the key here, then `agenix -r` to rekey existing secrets.
 #   Admin keys - your personal public key(s), e.g. `cat ~/.ssh/id_ed25519.pub`.
 #
-# This file is the single source of truth for keys: it is imported both by
-# `secrets.nix` (consumed by the agenix CLI) and by `modules/core/keys.mod.nix`
-# (which exposes the admin keys as the flake output `keys-admin`).
+# This file is the single source of truth for keys: `secrets.nix` imports it
+# for the agenix CLI, and `lib.ship.keys` carries it into the flake modules.
 {
   hosts = {
     water = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINLRVD/zQrWUetJ3VxVJtZ6Zc6wOck05M9l0opF/Emb8 water";
