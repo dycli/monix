@@ -56,7 +56,11 @@ in
     { lib, pkgs, ... }:
     let
       inherit (lib.meta) getExe';
-      icat = "${getExe' pkgs.kitty.kitten "kitten"} icat --silent --stdin=no";
+      # The pinned transfer mode matters: without it icat probes the terminal
+      # for protocol support and reads the reply from the tty, racing lf for
+      # input — keystrokes leak into lf's prompt and icat hangs. stream is
+      # the base protocol every kitty-graphics terminal supports.
+      icat = "${getExe' pkgs.kitty.kitten "kitten"} icat --silent --stdin=no --transfer-mode=stream";
     in
     {
       programs.lf = {
