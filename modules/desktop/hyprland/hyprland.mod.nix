@@ -54,7 +54,12 @@
     };
 
   flake.homeModules.hyprland =
-    { lib, pkgs, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     let
       inherit (lib.generators) mkLuaInline;
       inherit (lib.modules) mkOrder;
@@ -109,6 +114,9 @@
                   hl.exec_cmd("${getExe pkgs.uwsm} finalize XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_ID XDG_DATA_DIRS XCURSOR_THEME XCURSOR_SIZE HYPRCURSOR_THEME HYPRCURSOR_SIZE QT_QPA_PLATFORMTHEME GTK_THEME")
                   hl.exec_cmd("${getExe pkgs.uwsm} app -- ${getExe pkgs.wl-clip-persist} --clipboard regular")
                   hl.exec_cmd("${getExe pkgs.uwsm} app -- ${getExe' pkgs.wl-clipboard "wl-paste"} --watch ${getExe pkgs.cliphist} store")
+                  -- Idles in the tray so the browser extension can raise the
+                  -- unlock dialog on demand instead of a manual app launch.
+                  hl.exec_cmd("${getExe pkgs.uwsm} app -- ${getExe config.desktopApps.passwordManager.package} --minimized")
                 end
               '')
             ];
