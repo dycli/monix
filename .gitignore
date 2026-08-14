@@ -34,6 +34,9 @@
 !*.json
 !*.irs
 
+# Tab-separated data: the lf filetype icon map.
+!*.tsv
+
 # Build artifacts and runtime junk trump the whitelist (later rules win).
 target/
 result

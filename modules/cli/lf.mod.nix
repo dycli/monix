@@ -10,8 +10,13 @@
       inherit (lib.meta) getExe';
     in
     {
+      # Filetype icon map from voidrice; lf reads the file natively.
+      xdg.configFile."lf/icons".source = ./lf-icons.tsv;
+
       programs.lf = {
         enable = true;
+
+        settings.icons = true;
 
         # `w` would otherwise spawn $SHELL, which is bash.
         keybindings.w = "$" + getExe' pkgs.nushell "nu";
