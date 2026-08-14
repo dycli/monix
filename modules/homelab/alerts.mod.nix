@@ -69,6 +69,7 @@
       upsSpool = "/var/lib/nut-alerts";
       upsNotify = pkgs.writeShellApplication {
         name = "ship-alert-ups-spool";
+        runtimeInputs = singleton pkgs.coreutils;
         text = ''
           printf '%s %s\n' "''${NOTIFYTYPE:-EVENT}" "$*" \
             > ${upsSpool}/.$$.tmp && mv ${upsSpool}/.$$.tmp "${upsSpool}/$(date +%s%N)"

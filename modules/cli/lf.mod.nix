@@ -38,7 +38,8 @@ in
                 ;;
               *)
                 for f in $fx; do
-                  setsid -f xdg-open "$f" >/dev/null 2>&1
+                  ${getExe' pkgs.util-linux "setsid"} -f ${getExe' pkgs.xdg-utils "xdg-open"} "$f" \
+                    >/dev/null 2>&1
                 done
                 ;;
             esac
@@ -71,7 +72,7 @@ in
               exit 1
               ;;
             ${textLike})
-              cat "$1"
+              ${getExe' pkgs.coreutils "cat"} "$1"
               ;;
             *)
               ${getExe' pkgs.file "file"} -Lb "$1"

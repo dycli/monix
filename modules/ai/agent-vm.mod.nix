@@ -105,6 +105,7 @@
             let
               askCockpit = pkgs.writeShellApplication {
                 name = "ask-cockpit";
+                runtimeInputs = singleton pkgs.coreutils;
                 text = ''
                   if [ $# -lt 1 ]; then
                     echo "usage: ask-cockpit <question...>" >&2

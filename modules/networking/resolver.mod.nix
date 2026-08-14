@@ -22,6 +22,7 @@
       inherit (lib.lists) optional;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption mkOption;
+      inherit (lib) types;
       inherit (lib.ship) fences;
 
       cfg = config.resolver;
@@ -49,12 +50,12 @@
         enable = mkEnableOption "the tailnet filtering resolver";
 
         addresses = mkOption {
-          type = with lib.types; listOf str;
+          type = types.listOf types.str;
           description = "Tailnet addresses to serve on, alongside loopback.";
         };
 
         allow = mkOption {
-          type = with lib.types; listOf str;
+          type = types.listOf types.str;
           default = [ ];
           description = "Domains exempted from the blocklist, subdomains included.";
         };

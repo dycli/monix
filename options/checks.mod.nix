@@ -46,7 +46,7 @@
       dangling = filter (path: !elem path tracked) ruled;
     in
     {
-      formatter = pkgs.nixfmt-rfc-style;
+      formatter = pkgs.nixfmt;
 
       checks = {
         agent-dispatch = crate "modules/ai/agent-dispatch" { };
@@ -84,10 +84,14 @@
             echo 'builtins usage in a module - use the lib equivalent (AGENTS.md, Nix style)' >&2
             exit 1
           fi
+          if grep -rn 'with lib[.]' ${self}/modules ${self}/options ${self}/hosts ${self}/lib --include='*.nix'; then
+            echo 'with lib usage in a module - inherit from the full lib path (AGENTS.md, Nix style)' >&2
+            exit 1
+          fi
           touch $out
         '';
 
-        nixfmt = pkgs.runCommand "nixfmt-check" { nativeBuildInputs = singleton pkgs.nixfmt-rfc-style; } ''
+        nixfmt = pkgs.runCommand "nixfmt-check" { nativeBuildInputs = singleton pkgs.nixfmt; } ''
           find ${self} -name '*.nix' -exec nixfmt --check {} +
           touch $out
         '';
