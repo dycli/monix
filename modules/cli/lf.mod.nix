@@ -18,6 +18,10 @@
 
         commands.open = ''
           ''${{
+            # $fx is newline-separated; under the default IFS, names with
+            # spaces would split into nonexistent paths.
+            IFS="$(printf '\n\t')"
+            set -f
             case $(${getExe' pkgs.file "file"} --mime-type -Lb "$f") in
               text/* | application/json | application/javascript | application/x-shellscript | application/toml | application/yaml | application/xml | inode/x-empty)
                 $EDITOR $fx
