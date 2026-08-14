@@ -1,7 +1,12 @@
 # File manager. `open` picks by mime type: text-like files go to $EDITOR in the
 # same terminal, everything else is dispatched async to xdg-open, which a
-# headless host does not have.
+# headless host does not have. Desktops add photo rendering in the preview
+# pane; headless hosts keep lf's built-in text preview.
 { self, ... }:
+let
+  # Types that read as text in a terminal, shared by `open` and the previewer.
+  textLike = "text/* | application/json | application/javascript | application/x-shellscript | application/toml | application/yaml | application/xml | inode/x-empty";
+in
 {
   flake.homeModules.default = self.homeModules.lf;
   flake.homeModules.lf =
@@ -28,7 +33,7 @@
             IFS="$(printf '\n\t')"
             set -f
             case $(${getExe' pkgs.file "file"} --mime-type -Lb "$f") in
-              text/* | application/json | application/javascript | application/x-shellscript | application/toml | application/yaml | application/xml | inode/x-empty)
+              ${textLike})
                 $EDITOR $fx
                 ;;
               *)
@@ -39,6 +44,39 @@
             esac
           }}
         '';
+      };
+    };
+
+  # ghostty speaks the kitty graphics protocol, so kitten icat can draw
+  # images into the preview rectangle lf hands the previewer. The drawing
+  # happens out of band, so the image case exits non-zero to keep lf from
+  # caching an empty pane, and the cleaner erases it on the way out.
+  flake.homeModules.desktop = self.homeModules.lf-previews;
+  flake.homeModules.lf-previews =
+    { lib, pkgs, ... }:
+    let
+      inherit (lib.meta) getExe';
+      icat = "${getExe' pkgs.kitty.kitten "kitten"} icat --silent --stdin=no";
+    in
+    {
+      programs.lf = {
+        previewer.source = pkgs.writeShellScript "lf-preview" ''
+          case "$(${getExe' pkgs.file "file"} --mime-type -Lb "$1")" in
+            image/*)
+              ${icat} --place "''${2}x''${3}@''${4}x''${5}" "$1" </dev/null >/dev/tty
+              exit 1
+              ;;
+            ${textLike})
+              cat "$1"
+              ;;
+            *)
+              ${getExe' pkgs.file "file"} -Lb "$1"
+              ;;
+          esac
+        '';
+        settings.cleaner = "${pkgs.writeShellScript "lf-clean" ''
+          ${icat} --clear </dev/null >/dev/tty
+        ''}";
       };
     };
 }
