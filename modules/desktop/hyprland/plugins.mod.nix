@@ -1,5 +1,5 @@
-# Hyprland plugins: gloview (workspace overview) and hyprbars (titlebars),
-# plus all plugin-coupled configuration.
+# Hyprland plugins: gloview (workspace overview), hyprbars (titlebars), and hy3
+# (manual tiling), plus all plugin-coupled configuration.
 #
 # A store-path change here makes the next switch live-unload and reload the
 # plugin inside the running compositor, which is unreliable upstream; re-log in
@@ -33,6 +33,7 @@
             };
           })
           pkgs.hyprlandPlugins.hyprbars
+          pkgs.hyprlandPlugins.hy3
         ];
 
         # Plugin-coupled config belongs in these guarded blocks, not in
@@ -117,20 +118,20 @@
               icon = "󰖲",
               action = "hyprctl dispatch 'hl.dsp.window.float()'",
             })
-            -- Step the scrolling layout's preset widths; no-ops under dwindle.
+            -- Width steps work across the available tiled layouts.
             hl.plugin.hyprbars.add_button({
               bg_color = "rgba(00000000)",
               fg_color = "rgb(222222)",
               size = 20,
               icon = "󰅁",
-              action = [=[hyprctl dispatch 'hl.dsp.layout("colresize -conf")']=],
+              action = [=[hyprctl dispatch 'hl.dsp.window.resize({ x = -100, y = 0, relative = true })']=],
             })
             hl.plugin.hyprbars.add_button({
               bg_color = "rgba(00000000)",
               fg_color = "rgb(222222)",
               size = 20,
               icon = "󰅂",
-              action = [=[hyprctl dispatch 'hl.dsp.layout("colresize +conf")']=],
+              action = [=[hyprctl dispatch 'hl.dsp.window.resize({ x = 100, y = 0, relative = true })']=],
             })
           end
         '';

@@ -23,6 +23,26 @@
         ];
       };
 
+      focusDirection = direction: ''
+        function()
+          if hl.plugin.hy3 and hl.get_config("general.layout") == "hy3" then
+            hl.plugin.hy3.move_focus("${direction}")()
+          else
+            hl.dsp.focus({ direction = "${direction}" })()
+          end
+        end
+      '';
+
+      moveDirection = direction: ''
+        function()
+          if hl.plugin.hy3 and hl.get_config("general.layout") == "hy3" then
+            hl.plugin.hy3.move_window("${direction}")()
+          else
+            hl.dsp.window.move({ direction = "${direction}" })()
+          end
+        end
+      '';
+
       terminal = getExe config.desktopApps.terminal.package;
       browser = getExe config.desktopApps.browser.package;
       messenger = getExe config.desktopApps.messenger.package;
@@ -80,14 +100,24 @@
         (mkBind "SUPER + I" ''hl.dsp.exec_cmd("dms ipc call inhibit toggle")'' "Toggle idle inhibit" { })
 
         (mkBind "SUPER + T" ''hl.dsp.layout("togglesplit")'' "Toggle split direction" { })
+        (mkBind "SUPER + G"
+          ''function() if hl.plugin.hy3 then hl.plugin.hy3.change_group("toggletab")() end end''
+          "Toggle tabbed group"
+          { }
+        )
         # hl.config called outside config parsing applies immediately and
         # schedules the layout refresh.
         (mkBind "SUPER + A" ''
           function()
+            hl.config({ general = { layout = "hy3" } })
+          end
+        '' "Switch to hy3 layout" { })
+        (mkBind "SUPER + SHIFT + A" ''
+          function()
             hl.config({ general = { layout = "scrolling" } })
           end
         '' "Switch to scrolling layout" { })
-        (mkBind "SUPER + SHIFT + A" ''
+        (mkBind "SUPER + CTRL + A" ''
           function()
             hl.config({ general = { layout = "dwindle" } })
           end
@@ -114,15 +144,15 @@
         (mkBind "SUPER + SHIFT + F" "hl.dsp.window.float()" "Toggle floating" { })
         (mkBind "SUPER + F" ''hl.dsp.window.fullscreen({ mode = "fullscreen" })'' "Toggle fullscreen" { })
 
-        (mkBind "SUPER + LEFT" ''hl.dsp.focus({ direction = "l" })'' "Focus window left" { })
-        (mkBind "SUPER + RIGHT" ''hl.dsp.focus({ direction = "r" })'' "Focus window right" { })
-        (mkBind "SUPER + UP" ''hl.dsp.focus({ direction = "u" })'' "Focus window up" { })
-        (mkBind "SUPER + DOWN" ''hl.dsp.focus({ direction = "d" })'' "Focus window down" { })
+        (mkBind "SUPER + LEFT" (focusDirection "l") "Focus window left" { })
+        (mkBind "SUPER + RIGHT" (focusDirection "r") "Focus window right" { })
+        (mkBind "SUPER + UP" (focusDirection "u") "Focus window up" { })
+        (mkBind "SUPER + DOWN" (focusDirection "d") "Focus window down" { })
 
-        (mkBind "SUPER + H" ''hl.dsp.focus({ direction = "l" })'' "Focus window left" { })
-        (mkBind "SUPER + L" ''hl.dsp.focus({ direction = "r" })'' "Focus window right" { })
-        (mkBind "SUPER + K" ''hl.dsp.focus({ direction = "u" })'' "Focus window up" { })
-        (mkBind "SUPER + J" ''hl.dsp.focus({ direction = "d" })'' "Focus window down" { })
+        (mkBind "SUPER + H" (focusDirection "l") "Focus window left" { })
+        (mkBind "SUPER + L" (focusDirection "r") "Focus window right" { })
+        (mkBind "SUPER + K" (focusDirection "u") "Focus window up" { })
+        (mkBind "SUPER + J" (focusDirection "d") "Focus window down" { })
 
         (mkBind "SUPER + COMMA" ''hl.dsp.focus({ workspace = "-1" })'' "Previous workspace" { })
         (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
@@ -130,17 +160,15 @@
         # is nil during the first config pass.
         (mkBind "SUPER + O" "function() hl.plugin.gloview.toggle() end" "Workspace overview" { })
 
-        # move rather than swap: under the scrolling layout a directional move
-        # merges the window into an adjacent column, which a swap cannot do.
-        (mkBind "SUPER + SHIFT + LEFT" ''hl.dsp.window.move({ direction = "l" })'' "Move window left" { })
-        (mkBind "SUPER + SHIFT + RIGHT" ''hl.dsp.window.move({ direction = "r" })'' "Move window right" { })
-        (mkBind "SUPER + SHIFT + UP" ''hl.dsp.window.move({ direction = "u" })'' "Move window up" { })
-        (mkBind "SUPER + SHIFT + DOWN" ''hl.dsp.window.move({ direction = "d" })'' "Move window down" { })
+        (mkBind "SUPER + SHIFT + LEFT" (moveDirection "l") "Move window left" { })
+        (mkBind "SUPER + SHIFT + RIGHT" (moveDirection "r") "Move window right" { })
+        (mkBind "SUPER + SHIFT + UP" (moveDirection "u") "Move window up" { })
+        (mkBind "SUPER + SHIFT + DOWN" (moveDirection "d") "Move window down" { })
 
-        (mkBind "SUPER + SHIFT + H" ''hl.dsp.window.move({ direction = "l" })'' "Move window left" { })
-        (mkBind "SUPER + SHIFT + L" ''hl.dsp.window.move({ direction = "r" })'' "Move window right" { })
-        (mkBind "SUPER + SHIFT + K" ''hl.dsp.window.move({ direction = "u" })'' "Move window up" { })
-        (mkBind "SUPER + SHIFT + J" ''hl.dsp.window.move({ direction = "d" })'' "Move window down" { })
+        (mkBind "SUPER + SHIFT + H" (moveDirection "l") "Move window left" { })
+        (mkBind "SUPER + SHIFT + L" (moveDirection "r") "Move window right" { })
+        (mkBind "SUPER + SHIFT + K" (moveDirection "u") "Move window up" { })
+        (mkBind "SUPER + SHIFT + J" (moveDirection "d") "Move window down" { })
 
         (mkBind "SUPER + MINUS" "hl.dsp.window.resize({ x = -100, y = 0, relative = true })"
           "Shrink window width"

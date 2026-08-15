@@ -18,7 +18,7 @@
 
             resize_on_border = true;
             allow_tearing = false;
-            layout = "scrolling";
+            layout = "hy3";
             no_focus_fallback = true;
           };
 
