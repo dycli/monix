@@ -34,7 +34,6 @@
           "on"
           "--jinja"
         ];
-        aliases = singleton "qwen3.6";
       };
       # MTP speculative decoding: the MTP tensors are embedded in the main
       # GGUF, so --spec-type selects that path with no separate draft model.
@@ -54,7 +53,6 @@
           "-np"
           "1"
         ];
-        aliases = singleton "qwen3.8-dense";
       };
     };
 }
