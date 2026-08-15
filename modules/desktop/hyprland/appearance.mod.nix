@@ -16,7 +16,7 @@
             col.active_border = "rgb(cccccc)";
             col.inactive_border = "rgb(dddddd)";
 
-            resize_on_border = false;
+            resize_on_border = true;
             allow_tearing = false;
             layout = "scrolling";
             no_focus_fallback = true;
