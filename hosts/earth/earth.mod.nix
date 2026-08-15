@@ -128,8 +128,6 @@
         services.logind.settings.Login.HandlePowerKey = "suspend";
         services.logind.settings.Login.HandleLidSwitch = "suspend-then-hibernate";
 
-        systemd.timers."fwupd-refresh".enable = false;
-
         # FRAMEWORK QUIRKS
         hardware.framework.enableKmod = mkForce false;
         hardware.sensor.iio.enable = false;

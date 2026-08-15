@@ -13,6 +13,10 @@
 
       boot.initrd.systemd.enable = mkDefault true;
 
+      # Refresh LVFS metadata automatically; installing firmware remains a
+      # deliberate fwupdmgr update.
+      services.fwupd.enable = mkDefault true;
+
       # Compressed swap in RAM on every host: memory pressure lands on
       # page compression instead of the OOM killer. Disk swap exists only
       # where it has a job — hibernation (earth), tiny-RAM overflow (air).

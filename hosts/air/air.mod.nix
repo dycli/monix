@@ -43,6 +43,7 @@
 
         # Vultr instances boot SeaBIOS, so grub carries the BIOS-boot
         # partition below; /boot lives on the root btrfs.
+        services.fwupd.enable = false;
         boot.loader.systemd-boot.enable = false;
         boot.loader.grub.enable = true;
 
