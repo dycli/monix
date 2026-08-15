@@ -99,6 +99,11 @@
         )
         (mkBind "SUPER + I" ''hl.dsp.exec_cmd("dms ipc call inhibit toggle")'' "Toggle idle inhibit" { })
 
+        (mkBind "SUPER + B"
+          ''function() if hl.plugin.hy3 then hl.plugin.hy3.make_group("opposite")() end end''
+          "Create opposite-direction group"
+          { }
+        )
         (mkBind "SUPER + T" ''hl.dsp.layout("togglesplit")'' "Toggle split direction" { })
         (mkBind "SUPER + G"
           ''function() if hl.plugin.hy3 then hl.plugin.hy3.change_group("toggletab")() end end''
