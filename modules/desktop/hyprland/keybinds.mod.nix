@@ -33,6 +33,11 @@
     {
       wayland.windowManager.hyprland.settings.bind = [
         (mkBind "SUPER + RETURN" ''hl.dsp.exec_cmd("${terminal}")'' "Open terminal" { })
+        (mkBind "SUPER + SHIFT + RETURN"
+          ''hl.dsp.exec_cmd("${terminal} --class=com.mitchellh.ghostty.floating")''
+          "Open floating terminal"
+          { }
+        )
         (mkBind "SUPER + BACKSPACE" ''hl.dsp.exec_cmd("dms ipc call powermenu toggle")'' "Power menu" { })
         (mkBind "SUPER + SLASH" ''hl.dsp.exec_cmd("${passwordManager}")'' "Open password manager" { })
         (mkBind "SUPER + C" ''hl.dsp.send_shortcut({ mods = "CTRL", key = "Insert" })''

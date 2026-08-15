@@ -72,16 +72,12 @@
             float = true;
           }
           {
-            match.class = ".*";
+            match.class = "^com[.]mitchellh[.]ghostty[.]floating$";
+            float = true;
+          }
+          {
+            match.class = "^com[.]mitchellh[.]ghostty([.]floating)?$";
             opacity = "1 0.9";
-          }
-          {
-            match.class = "brave-browser";
-            opacity = "1 1";
-          }
-          {
-            match.class = "^(steam)$";
-            opacity = "1 1";
           }
           {
             # Fixes dragging issues under XWayland.
