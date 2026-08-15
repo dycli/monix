@@ -66,7 +66,7 @@
           end
 
           if hl.plugin.hyprbars then
-            -- Mac OS 9 Platinum greys. bar_precedence_over_border wraps the
+            -- Mid-tone neutral greys. bar_precedence_over_border wraps the
             -- border around bar+window; the like-colored top segment vanishes
             -- into the bar (appearance.mod.nix borders match). Button
             -- alignment is global; there is no per-button side.
@@ -74,7 +74,7 @@
               plugin = {
                 hyprbars = {
                   bar_height = 25,
-                  bar_color = "rgb(cccccc)",
+                  bar_color = "rgb(888888)",
                   col = { text = "rgb(000000)" },
                   bar_text_weight = "bold",
                   bar_text_font = "Noto Sans",
@@ -88,8 +88,8 @@
             -- change. Plugin rule effects require the string keys.
             hl.window_rule({
               match = { focus = false },
-              ["hyprbars:bar_color"] = "rgb(dddddd)",
-              ["hyprbars:title_color"] = "rgb(777777)",
+              ["hyprbars:bar_color"] = "rgb(999999)",
+              ["hyprbars:title_color"] = "rgb(333333)",
             })
 
             -- Declaration order reads left-to-right on screen. A transparent

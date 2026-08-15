@@ -13,8 +13,8 @@
 
             # Tracks the hyprbars greys: under bar_precedence_over_border the
             # top border segment lies against the bar and vanishes into it.
-            col.active_border = "rgb(cccccc)";
-            col.inactive_border = "rgb(dddddd)";
+            col.active_border = "rgb(888888)";
+            col.inactive_border = "rgb(999999)";
 
             resize_on_border = true;
             allow_tearing = false;
