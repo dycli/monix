@@ -39,8 +39,8 @@
       # MTP speculative decoding: the MTP tensors are embedded in the main
       # GGUF, so --spec-type selects that path with no separate draft model.
       # -np > 1 is unsupported with MTP.
-      inference.models."qwen3.6-27b" = {
-        file = "Qwen3.6-27B-Q6_K.gguf";
+      inference.models."qwen3.8-27b" = {
+        file = "Qwen3.8-27B-Q6_K.gguf";
         flags = [
           "-c"
           "65536"
@@ -54,7 +54,7 @@
           "-np"
           "1"
         ];
-        aliases = singleton "qwen3.6-dense";
+        aliases = singleton "qwen3.8-dense";
       };
     };
 }
