@@ -18,6 +18,30 @@
           self.nixosModules.inference-backend
         ];
 
+        # A 24 GiB 7900 XTX cannot hold either Water catalog entry plus its
+        # runtime state. Keep one dense model at Q4_K_M and quantize the KV
+        # cache; Water retains Q6_K in unified memory.
+        inference.models = lib.modules.mkForce {
+          "qwen3.8-27b" = {
+            file = "Qwen3.8-27B-Q4_K_M.gguf";
+            flags = [
+              "--flash-attn"
+              "on"
+              "--jinja"
+              "--cache-type-k"
+              "q8_0"
+              "--cache-type-v"
+              "q8_0"
+              "--spec-type"
+              "draft-mtp"
+              "--spec-draft-n-max"
+              "2"
+              "-np"
+              "1"
+            ];
+          };
+        };
+
         primaryUser = "zuko";
 
         nixpkgs.hostPlatform = "x86_64-linux";
