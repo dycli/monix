@@ -52,7 +52,7 @@
 
         services.paseo = {
           user = config.primaryUser;
-          group = config.primaryUser;
+          group = config.users.users.${config.primaryUser}.group;
         };
 
         nixpkgs.hostPlatform = "x86_64-linux";
