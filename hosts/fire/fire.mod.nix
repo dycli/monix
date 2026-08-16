@@ -9,6 +9,28 @@
   imports = lib.lists.singleton (
     lib.ship.host "fire" (
       { config, ... }:
+      let
+        qwen38 = file: {
+          inherit file;
+          context = 32768;
+          output = 8192;
+          flags = [
+            "--flash-attn"
+            "on"
+            "--jinja"
+            "--cache-type-k"
+            "q8_0"
+            "--cache-type-v"
+            "q8_0"
+            "--spec-type"
+            "draft-mtp"
+            "--spec-draft-n-max"
+            "2"
+            "-np"
+            "1"
+          ];
+        };
+      in
       {
         imports = [
           self.nixosModules.desktop
@@ -18,28 +40,11 @@
           self.nixosModules.inference-backend
         ];
 
-        # A 24 GiB 7900 XTX cannot hold either Water catalog entry plus its
-        # runtime state. Keep one dense model at Q4_K_M and quantize the KV
-        # cache; Water retains Q6_K in unified memory.
+        # A 24 GiB 7900 XTX cannot hold Water's Q6 or Q8 plus runtime state.
+        # Keep two smaller comparison quants at 32K with Q8 KV cache.
         inference.models = lib.modules.mkForce {
-          "qwen3.8-27b" = {
-            file = "Qwen3.8-27B-Q4_K_M.gguf";
-            flags = [
-              "--flash-attn"
-              "on"
-              "--jinja"
-              "--cache-type-k"
-              "q8_0"
-              "--cache-type-v"
-              "q8_0"
-              "--spec-type"
-              "draft-mtp"
-              "--spec-draft-n-max"
-              "2"
-              "-np"
-              "1"
-            ];
-          };
+          "qwen3.8-27b-q4-k-m" = qwen38 "Qwen3.8-27B-Q4_K_M.gguf";
+          "qwen3.8-27b-q5-k-s" = qwen38 "Qwen3.8-27B-Q5_K_S.gguf";
         };
 
         primaryUser = "zuko";

@@ -1,6 +1,19 @@
 # The local inference catalog and the agent lab that consumes it. Role wiring
 # only; credentials and model weights stay with the importing host.
 { self, ... }:
+let
+  qwen38Flags = [
+    "--flash-attn"
+    "on"
+    "--jinja"
+    "--spec-type"
+    "draft-mtp"
+    "--spec-draft-n-max"
+    "2"
+    "-np"
+    "1"
+  ];
+in
 {
   flake.nixosModules.inference-backend =
     { ... }:
@@ -21,17 +34,7 @@
       # -np > 1 is unsupported with MTP.
       inference.models."qwen3.8-27b" = {
         file = "Qwen3.8-27B-Q6_K.gguf";
-        flags = [
-          "--flash-attn"
-          "on"
-          "--jinja"
-          "--spec-type"
-          "draft-mtp"
-          "--spec-draft-n-max"
-          "2"
-          "-np"
-          "1"
-        ];
+        flags = qwen38Flags;
       };
     };
 
@@ -64,5 +67,9 @@
       # fleet guests reach inference over the private bridge.
       inference.gttSizeMiB = 98304;
       inference.extraAllowedSubnets = [ "10.100.0.0/24" ];
+      inference.models."qwen3.8-27b-q8-0" = {
+        file = "Qwen3.8-27B-Q8_0.gguf";
+        flags = qwen38Flags;
+      };
     };
 }
