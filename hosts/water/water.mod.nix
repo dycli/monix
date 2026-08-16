@@ -17,7 +17,8 @@
         ./credentials.nix
       ];
 
-      primaryUser = "max";
+      primaryUser = "katara";
+      users.users.katara.uid = 1000;
 
       nixpkgs.hostPlatform = "x86_64-linux";
 

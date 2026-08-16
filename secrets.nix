@@ -30,7 +30,7 @@ in
   ]
   ++ admin;
 
-  "hosts/water/secrets/max-password.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/katara-password.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/agent-claude-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/agent-codex-auth.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/agent-openrouter-key.age".publicKeys = singleton water ++ admin;

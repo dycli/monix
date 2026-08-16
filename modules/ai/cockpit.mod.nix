@@ -25,7 +25,7 @@
       cockpitDir = "${userHome}/cockpit";
       cockpitMemoryDir = "${userHome}/cockpit/memory";
       # Claude Code keys per-project state to the working dir path with
-      # slashes turned into dashes ("/home/max/cockpit" -> -home-max-cockpit).
+      # slashes turned into dashes ("/home/katara/cockpit" -> -home-katara-cockpit).
       projectKey = lib.strings.replaceStrings (singleton "/") (singleton "-") cockpitDir;
       claudeMemoryDir = "${userHome}/.claude/projects/${projectKey}/memory";
       gitReadCommands = [

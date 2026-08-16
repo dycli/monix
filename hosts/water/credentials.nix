@@ -6,7 +6,7 @@ let
   inherit (lib.lists) singleton;
 in
 {
-  users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.max-password.path;
+  users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.katara-password.path;
 
   alerts.credentialsEnvFile = config.secrets.matrix-alertbot-env.path;
 
@@ -34,7 +34,7 @@ in
   };
 
   secrets = {
-    max-password.file = ./secrets/max-password.age;
+    katara-password.file = ./secrets/katara-password.age;
     agent-claude-token.file = ./secrets/agent-claude-token.age;
     agent-codex-auth.file = ./secrets/agent-codex-auth.age;
     agent-openrouter-key.file = ./secrets/agent-openrouter-key.age;
