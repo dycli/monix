@@ -10,9 +10,8 @@
     lib.ship.host "fire" (
       { config, ... }:
       let
-        qwen38 = file: {
-          inherit file;
-          context = 32768;
+        qwen38 = context: file: {
+          inherit context file;
           output = 8192;
           flags = [
             "--flash-attn"
@@ -41,11 +40,11 @@
           self.nixosModules.inference-client
         ];
 
-        # A 24 GiB 7900 XTX cannot hold Water's Q6 or Q8 plus runtime state.
-        # Keep two smaller comparison quants at 32K with Q8 KV cache.
+        # Leave enough VRAM for MTP, Vulkan, and the desktop: Q4 uses 128K,
+        # while Q5 trades some context for higher weight precision at 96K.
         inference.models = lib.modules.mkForce {
-          "qwen3.8-27b-q4-k-m" = qwen38 "Qwen3.8-27B-Q4_K_M.gguf";
-          "qwen3.8-27b-q5-k-s" = qwen38 "Qwen3.8-27B-Q5_K_S.gguf";
+          "qwen3.8-27b-q4-k-m" = qwen38 131072 "Qwen3.8-27B-Q4_K_M.gguf";
+          "qwen3.8-27b-q5-k-s" = qwen38 98304 "Qwen3.8-27B-Q5_K_S.gguf";
         };
 
         primaryUser = "zuko";
