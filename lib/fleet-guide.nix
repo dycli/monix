@@ -20,6 +20,15 @@
     model, not a security boundary: containment is structural at the host
     (unprivileged, network-contained guests; a scoped-sudo operator hop for
     dispatch). Full ship lore: the monix README.
+
+    ## Retrieval
+
+    Inspect the repository before answering repository questions. For facts that may have
+    changed, use available retrieval tools instead of memory: prefer Context7 for current
+    library and API documentation, and web search for general current information. Fetch the
+    most authoritative relevant source when web fetch is reachable. Never assume a named
+    tool exists; if it is unavailable, use the best reachable primary source or state the
+    limit.
   '';
 
   pilot = ''

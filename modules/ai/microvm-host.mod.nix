@@ -25,6 +25,8 @@
         ".chatgpt.com"
         ".openrouter.ai"
         ".models.dev" # opencode fetches its provider registry at startup
+        ".exa.ai"
+        ".context7.com"
         "cache.nixos.org" # exact: *.nixos.org carries user content
       ];
 

@@ -12,8 +12,8 @@
     }:
     let
       inherit (lib.attrsets)
-        genAttrs
         listToAttrs
+        mapAttrsToList
         nameValuePair
         ;
       inherit (lib.lists) concatMap singleton;
@@ -32,18 +32,19 @@
 
       cfg = config.agentFleet;
 
-      inherit (lib.ship) topology;
+      inherit (lib.ship) opencode topology;
       inherit (topology) hostAddr;
       proxyUrl = "http://${hostAddr}:3128";
       # Local inference is plain HTTP to a bridge IP, which a CONNECT
       # allowlist cannot express, so it bypasses the proxy.
       noProxy = "127.0.0.1,localhost,${hostAddr}";
-
       # The ai-sdk loader requires a non-empty apiKey; llama-swap ignores it.
       opencodeConfig = pkgs.writeText "opencode.json" (
         toJSON (
           {
             "$schema" = "https://opencode.ai/config.json";
+            inherit (opencode) lsp mcp;
+            permission = opencode.permissions;
           }
           // {
             provider.local = {
@@ -53,7 +54,7 @@
                 baseURL = "http://${hostAddr}:${toString config.inference.port}/v1";
                 apiKey = "local";
               };
-              models = genAttrs config.inference.modelIds (_: { });
+              models = config.inference.openCodeModels;
             };
           }
         )
@@ -268,7 +269,8 @@
                 HTTPS_PROXY = proxyUrl;
                 NO_PROXY = noProxy;
                 OPENCODE_CONFIG = "${opencodeConfig}";
-              };
+              }
+              // opencode.environment;
 
               environment.systemPackages = [
                 askCockpit
@@ -284,7 +286,9 @@
                 pkgs.gnumake
                 pkgs.gcc
                 pkgs.gnutar
+                pkgs.nixd
                 pkgs.procps
+                pkgs.rust-analyzer
                 pkgs.util-linux
                 pkgs.zstd
               ];
@@ -327,6 +331,9 @@
                     "HTTPS_PROXY=${proxyUrl}"
                     "NO_PROXY=${noProxy}"
                     "OPENCODE_CONFIG=${opencodeConfig}"
+                  ]
+                  ++ (opencode.environment |> mapAttrsToList (name: value: "${name}=${value}"))
+                  ++ [
                     "BASH_DEFAULT_TIMEOUT_MS=1200000"
                     "BASH_MAX_TIMEOUT_MS=1800000"
                     "FLEET_GUEST_TASK_DIR=${guestTaskMount}"

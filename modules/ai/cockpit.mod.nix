@@ -11,7 +11,7 @@
       ...
     }:
     let
-      inherit (lib.ship) guide topology;
+      inherit (lib.ship) guide opencode topology;
       inherit (lib.attrsets) genAttrs;
       inherit (lib.lists) concatMap map singleton;
       inherit (lib.options) mkEnableOption;
@@ -161,11 +161,11 @@
         task = "allow";
         # OpenCode cannot scope webfetch by domain.
         webfetch = "ask";
-        websearch = "allow";
         todowrite = "allow";
         question = "allow";
         skill = "allow";
-      };
+      }
+      // opencode.permissions;
       # Appended after OpenCode's built-in agent rules.
       opencodePlanPermissions = opencodePermissions // {
         edit = "deny";
@@ -184,9 +184,9 @@
           list
           read
           webfetch
-          websearch
           ;
-      };
+      }
+      // opencode.permissions;
     in
     {
       # Opt-in per home rather than derived from the home's path, so a rename
@@ -198,6 +198,8 @@
       '';
 
       config = {
+        home.sessionVariables = opencode.environment;
+
         home.file."cockpit/AGENTS.md" = {
           force = true;
           text = guide.system + guide.pilot;
@@ -214,6 +216,7 @@
           text = toJSON (
             {
               "$schema" = "https://opencode.ai/config.json";
+              inherit (opencode) lsp mcp;
               permission = opencodePermissions;
               agent.plan.permission = opencodePlanPermissions;
               agent.explore.permission = opencodeExplorePermissions;
@@ -226,7 +229,7 @@
                   baseURL = "http://${topology.seatInferenceAddr}:${toString osConfig.inference.port}/v1";
                   apiKey = "local";
                 };
-                models = genAttrs osConfig.inference.modelIds (_: { });
+                models = osConfig.inference.openCodeModels;
               };
             }
           );
@@ -274,13 +277,14 @@
       ...
     }:
     let
+      inherit (lib.attrsets) mapAttrsToList;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
 
       # Fixed uid: the fence below is a drop-in on user-<uid>.slice.
       seatUid = 1001;
 
-      inherit (lib.ship) topology fences;
+      inherit (lib.ship) fences opencode topology;
     in
     {
       config = {
@@ -368,7 +372,9 @@
               "${topology.seatInferenceAddr}/32"
             ];
             IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
-            Environment = singleton "OPENCODE_CONFIG=/home/bridge/.config/opencode/opencode.jsonc";
+            Environment =
+              singleton "OPENCODE_CONFIG=/home/bridge/.config/opencode/opencode.jsonc"
+              ++ (opencode.environment |> mapAttrsToList (name: value: "${name}=${value}"));
             WorkingDirectory = "/home/bridge/cockpit";
             # The seat listener is the only socket this service may open.
             SocketBindAllow = "tcp:${toString topology.seatWebPort}";

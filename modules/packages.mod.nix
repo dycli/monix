@@ -112,6 +112,7 @@
         pkgs.hugo
         # The codex plugin's hooks invoke node directly.
         pkgs.nodejs
+        pkgs.nixd
         pkgs.rust-analyzer
         pkgs.rustc
         pkgs.rustfmt

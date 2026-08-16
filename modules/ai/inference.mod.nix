@@ -3,7 +3,6 @@
 # RAM.
 { self, ... }:
 {
-  flake.nixosModules.lab = self.nixosModules.inference;
   flake.nixosModules.inference =
     {
       config,
@@ -12,10 +11,15 @@
       ...
     }:
     let
-      inherit (lib.attrsets) mapAttrs mapAttrsToList;
+      inherit (lib.attrsets)
+        listToAttrs
+        mapAttrs
+        mapAttrsToList
+        nameValuePair
+        ;
       inherit (lib.lists) concatLists singleton;
       inherit (lib.meta) getExe';
-      inherit (lib.modules) mkMerge;
+      inherit (lib.modules) mkIf mkMerge;
       inherit (lib.options) mkOption;
       inherit (lib.strings) concatStringsSep;
       inherit (lib) types;
@@ -41,11 +45,19 @@
         modelsDir = mkOption {
           type = types.str;
           default = "/var/lib/models";
-          description = ''
-            Where GGUF files live (on water the @models btrfs subvolume). The
-            operator downloads into it (owned by the primary user); the
-            service only ever reads it.
-          '';
+          description = "where operator-supplied GGUF files live";
+        };
+
+        gttSizeMiB = mkOption {
+          type = types.nullOr types.ints.positive;
+          default = null;
+          description = "AMD GTT size in MiB; null leaves the kernel default";
+        };
+
+        extraAllowedSubnets = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "extra subnets permitted to reach llama-swap";
         };
 
         models = mkOption {
@@ -64,14 +76,24 @@
                   type = types.str;
                   description = "GGUF filename relative to modelsDir (or an absolute path)";
                 };
+                context = mkOption {
+                  type = types.ints.positive;
+                  default = 65536;
+                  description = "total context window served by llama-server";
+                };
+                output = mkOption {
+                  type = types.ints.positive;
+                  default = 16384;
+                  description = "maximum output OpenCode should reserve per response";
+                };
                 flags = mkOption {
                   type = types.listOf types.str;
                   default = [ ];
                   example = [
-                    "-c"
-                    "32768"
+                    "--flash-attn"
+                    "on"
                   ];
-                  description = "extra llama-server flags (context size, jinja templates, ...)";
+                  description = "extra llama-server flags";
                 };
                 ttl = mkOption {
                   type = types.int;
@@ -97,11 +119,39 @@
             configuration read this instead of re-deriving it.
           '';
         };
+
+        openCodeModels = mkOption {
+          type = types.attrsOf types.anything;
+          readOnly = true;
+          description = "OpenCode metadata for every served model id and alias";
+        };
       };
 
       config = mkMerge [
         {
           inference.modelIds = concatLists (mapAttrsToList (name: m: singleton name ++ m.aliases) cfg.models);
+          inference.openCodeModels =
+            cfg.models
+            |> mapAttrsToList (
+              name: m:
+              (singleton name ++ m.aliases)
+              |> lib.lists.map (
+                id:
+                nameValuePair id {
+                  name = id;
+                  tool_call = true;
+                  modalities = {
+                    input = singleton "text";
+                    output = singleton "text";
+                  };
+                  limit = {
+                    inherit (m) context output;
+                  };
+                }
+              )
+            )
+            |> concatLists
+            |> listToAttrs;
         }
 
         {
@@ -130,6 +180,7 @@
                         "--host 127.0.0.1" # children speak only to the proxy
                         "-m ${if lib.strings.hasPrefix "/" m.file then m.file else "${cfg.modelsDir}/${m.file}"}"
                         "-ngl 999" # full offload; unified memory has no VRAM cliff
+                        "-c ${toString m.context}"
                         "--no-webui"
                       ]
                       ++ m.flags
@@ -151,32 +202,29 @@
             DevicePolicy = "closed";
             DeviceAllow = singleton "char-drm rw";
 
-            # Loopback for the spawned llama-servers, the tailnet, and the
-            # guest bridge when the fleet runs here. No public internet.
-            IPAddressAllow = fences.loopback ++ [
-              fences.tailnet
-              "10.100.0.0/24" # br-agents guest subnet
-            ];
+            # Child servers use loopback; clients use the tailnet plus any
+            # role-specific private subnet. No public internet.
+            IPAddressAllow = fences.loopback ++ singleton fences.tailnet ++ cfg.extraAllowedSubnets;
             IPAddressDeny = "any";
           };
 
-          # The iGPU maps weights from system RAM through GTT, whose kernel
-          # default of about half of RAM caps model size. GTT is a limit, not a
-          # reservation, so an idle host pays nothing. 96G as 98304 MiB and
-          # 25165824 4K pages; page_pool_size bounds TTM's reuse pool to match.
-          boot.kernelParams = [
-            "amdgpu.gttsize=98304"
-            "ttm.pages_limit=25165824"
-            "ttm.page_pool_size=25165824"
-          ];
-
           # World-readable so the DynamicUser service can read the models;
-          # group write is scoped to `models` (the seat), not all of `users`.
+          # group write is scoped to `models`, not all of `users`.
           users.groups.models = { };
           systemd.tmpfiles.rules = singleton "d ${cfg.modelsDir} 0775 ${config.primaryUser} models -";
 
           environment.systemPackages = singleton llamaCpp;
         }
+
+        (mkIf (cfg.gttSizeMiB != null) {
+          # Unified-memory GPUs map model weights through GTT. GTT is a limit,
+          # not a reservation; the TTM page limits use 4 KiB pages.
+          boot.kernelParams = [
+            "amdgpu.gttsize=${toString cfg.gttSizeMiB}"
+            "ttm.pages_limit=${toString (cfg.gttSizeMiB * 256)}"
+            "ttm.page_pool_size=${toString (cfg.gttSizeMiB * 256)}"
+          ];
+        })
       ];
     };
 }
