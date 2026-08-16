@@ -186,8 +186,8 @@
         model: <model-id>     # required. codex: e.g. gpt-5.6-sol. opencode: a slug —
                               #   openrouter/<vendor>/<model> (any OpenRouter model,
                               #   metered) or local/<name> from the ship's llama-swap
-                              #   catalog (free; currently local/qwen3.6-35b-a3b and
-                              #   local/qwen3.8-27b).
+                              #   catalog (free; currently local/qwen3.6-35b-a3b,
+                              #   local/qwen3.8-27b-q6-k and local/qwen3.8-27b-q8-0).
         guidance: cockpit     # optional; `cockpit` (the only value) routes
                               #   escalations to YOU: they surface in `fleet health`
                               #   and `fleet peek`, answer with `fleet answer` (drone

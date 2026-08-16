@@ -39,7 +39,7 @@ in
         flags = baseFlags;
         ttl = 3600;
       };
-      inference.models."qwen3.8-27b" = {
+      inference.models."qwen3.8-27b-q6-k" = {
         file = "Qwen3.8-27B-Q6_K.gguf";
         flags = baseFlags ++ mtpFlags;
         ttl = 3600;
