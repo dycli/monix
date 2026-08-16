@@ -9,44 +9,16 @@
   imports = lib.lists.singleton (
     lib.ship.host "fire" (
       { config, ... }:
-      let
-        qwen38 = context: file: {
-          inherit context file;
-          output = 8192;
-          flags = [
-            "--flash-attn"
-            "on"
-            "--jinja"
-            "--cache-type-k"
-            "q8_0"
-            "--cache-type-v"
-            "q8_0"
-            "--spec-type"
-            "draft-mtp"
-            "--spec-draft-n-max"
-            "2"
-            "-np"
-            "1"
-          ];
-        };
-      in
       {
         imports = [
           self.nixosModules.desktop
           self.nixosModules.hyprland
           self.nixosModules.dev
           self.nixosModules.gaming
-          self.nixosModules.inference-backend
+          self.nixosModules.inference-fire
           self.nixosModules.inference-client
           self.nixosModules.paseo
         ];
-
-        # Leave enough VRAM for MTP, Vulkan, and the desktop: Q4 uses 128K,
-        # while Q5 trades some context for higher weight precision at 96K.
-        inference.models = lib.modules.mkForce {
-          "qwen3.8-27b-q4-k-m" = qwen38 131072 "Qwen3.8-27B-Q4_K_M.gguf";
-          "qwen3.8-27b-q5-k-s" = qwen38 98304 "Qwen3.8-27B-Q5_K_S.gguf";
-        };
 
         primaryUser = "zuko";
 
