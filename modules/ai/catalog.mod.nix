@@ -32,17 +32,22 @@ in
       inference.gttSizeMiB = 98304;
       inference.extraAllowedSubnets = [ "10.100.0.0/24" ];
 
+      # A cold load takes minutes; RAM held by a resident model is otherwise
+      # idle on this host, so eviction waits an hour rather than ten minutes.
       inference.models."qwen3.6-35b-a3b" = {
         file = "Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf";
         flags = baseFlags;
+        ttl = 3600;
       };
       inference.models."qwen3.8-27b" = {
         file = "Qwen3.8-27B-Q6_K.gguf";
         flags = baseFlags ++ mtpFlags;
+        ttl = 3600;
       };
       inference.models."qwen3.8-27b-q8-0" = {
         file = "Qwen3.8-27B-Q8_0.gguf";
         flags = baseFlags ++ mtpFlags;
+        ttl = 3600;
       };
     };
 
