@@ -78,7 +78,7 @@
                 };
                 context = mkOption {
                   type = types.ints.positive;
-                  default = 65536;
+                  default = 262144;
                   description = "total context window served by llama-server";
                 };
                 output = mkOption {
