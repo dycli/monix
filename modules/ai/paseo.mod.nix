@@ -1,7 +1,6 @@
-# The remote coding-agent seat: Paseo's daemon drives the bridge account's
-# already-authenticated claude/codex/opencode CLIs, reachable from phone/web
-# clients over the tailnet. Runs as the unprivileged bridge user, so agents
-# inherit its privilege boundary (no wheel, no Nix trust, no secrets).
+# The remote coding-agent seat: Paseo's daemon drives an existing user's
+# authenticated claude/codex/opencode CLIs, reachable from phone/web clients
+# over the tailnet. Agents inherit that user's privilege boundary.
 { self, inputs, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.paseo;
@@ -32,11 +31,11 @@
           '';
         });
 
-        # inheritUserEnvironment (default for a non-paseo user) puts
-        # /etc/profiles/per-user/bridge/bin on the daemon's PATH, so the agent
-        # providers resolve from the seat's authenticated installs.
-        user = "bridge";
-        group = "bridge";
+        # inheritUserEnvironment (default for a non-paseo user) puts that
+        # account's profile on PATH, so providers resolve from its installs.
+        # Water keeps the locked bridge seat; another host can override this.
+        user = lib.modules.mkDefault "bridge";
+        group = lib.modules.mkDefault "bridge";
 
         # bazarr owns 6767 (Paseo's default). tailscale0 is a trusted firewall
         # interface, so binding broadly with the public firewall closed leaves

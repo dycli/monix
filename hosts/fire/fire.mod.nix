@@ -38,6 +38,7 @@
           self.nixosModules.gaming
           self.nixosModules.inference-backend
           self.nixosModules.inference-client
+          self.nixosModules.paseo
         ];
 
         # Leave enough VRAM for MTP, Vulkan, and the desktop: Q4 uses 128K,
@@ -48,6 +49,11 @@
         };
 
         primaryUser = "zuko";
+
+        services.paseo = {
+          user = config.primaryUser;
+          group = config.primaryUser;
+        };
 
         nixpkgs.hostPlatform = "x86_64-linux";
 
