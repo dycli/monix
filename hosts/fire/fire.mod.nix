@@ -65,6 +65,13 @@
         hardware.enableRedistributableFirmware = true;
         hardware.cpu.amd.updateMicrocode = true;
 
+        # DMS owns the rest of the output configuration; this final rule
+        # keeps Adaptive Sync enabled on the gaming display.
+        home-manager.users.${config.primaryUser}.wayland.windowManager.hyprland.extraConfig =
+          lib.modules.mkAfter ''
+            hl.monitor({ output = "DP-1", vrr = 1 })
+          '';
+
         # DISK
         disko.devices.disk.main = {
           device = "/dev/disk/by-id/ata-Samsung_SSD_870_EVO_2TB_S6PNNS0W206576T";
