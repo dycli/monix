@@ -38,6 +38,7 @@
           self.nixosModules.dev
           self.nixosModules.gaming
           self.nixosModules.inference-backend
+          self.nixosModules.inference-client
         ];
 
         # A 24 GiB 7900 XTX cannot hold Water's Q6 or Q8 plus runtime state.
