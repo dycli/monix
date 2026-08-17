@@ -20,6 +20,7 @@
       # systemd user units do not inherit the session's XDG_DATA_DIRS.
       systemd.user.services.ship-shell = {
         description = "Kestrel desktop shell";
+        path = singleton pkgs.quickshell;
         partOf = singleton "graphical-session.target";
         after = [
           "graphical-session.target"
@@ -30,7 +31,9 @@
         environment.XDG_DATA_DIRS = "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
 
         serviceConfig = {
-          ExecStartPre = "${getExe config.programs.dms-shell.package} ipc call bar hide";
+          # DMS 1.6 resolves IPC through `qs` and addresses bars by selector.
+          # The handoff is best effort: Kestrel must still start if DMS is late.
+          ExecStartPre = "-${getExe config.programs.dms-shell.package} ipc call bar hide index 0";
           ExecStart = "${getExe pkgs.quickshell} -p ${./qml}";
           Restart = "on-failure";
           RestartSec = 1;
