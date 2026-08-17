@@ -13,8 +13,8 @@ PopupWindow {
     property date selectedDate: new Date()
 
     color: "transparent"
-    implicitWidth: 650
-    implicitHeight: 410
+    implicitWidth: 410
+    implicitHeight: 650
     grabFocus: true
     visible: ClockPanelService.isOpen(screenName)
 
@@ -80,20 +80,21 @@ PopupWindow {
         border.width: 1
         radius: 12
 
-        Row {
+        Column {
             anchors {
                 fill: parent
                 margins: 18
             }
-            spacing: 22
+            spacing: 12
 
             Column {
-                width: 280
-                height: parent.height
+                width: parent.width
+                height: 322
                 spacing: 12
 
                 Item {
-                    width: parent.width
+                    x: Math.round((parent.width - width) / 2)
+                    width: 280
                     height: 28
 
                     Text {
@@ -129,7 +130,8 @@ PopupWindow {
                 }
 
                 Grid {
-                    width: parent.width
+                    x: Math.round((parent.width - width) / 2)
+                    width: 280
                     columns: 7
 
                     Repeater {
@@ -198,14 +200,14 @@ PopupWindow {
             }
 
             Rectangle {
-                width: 1
-                height: parent.height
+                width: parent.width
+                height: 1
                 color: Style.panelBorderColor
             }
 
             Column {
-                width: parent.width - 303
-                height: parent.height
+                width: parent.width
+                height: parent.height - 347
                 spacing: 10
 
                 Item {
