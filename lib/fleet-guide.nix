@@ -184,8 +184,8 @@
         ---
         agent: claude | codex | opencode # required
         model: <model-id>     # required. codex: e.g. gpt-5.6-sol. opencode: a slug —
-                              #   openrouter/<vendor>/<model> (any OpenRouter model,
-                              #   metered) or local/<name> from the ship's llama-swap
+                              #   opencode/<model> (Zen, metered), opencode-go/<model>
+                              #   (Go subscription), or local/<name> from llama-swap
                               #   catalog (free; currently local/qwen3.6-35b-a3b,
                               #   local/qwen3.8-27b-q6-k and local/qwen3.8-27b-q8-0).
         guidance: cockpit     # optional; `cockpit` (the only value) routes
@@ -202,8 +202,8 @@
     Each external executor and the credentialless local-model path run as separate
     non-root Unix users sharing only the disposable workspace. `codex` + `gpt-5.6-sol`
     = independent reviews and second opinions (ChatGPT pool, not Claude). `opencode` +
-    openrouter/ = anything outside the two subscription vendors (bills OpenRouter
-    credit per token — match model price to task weight). `opencode` + local/ = bulk
+    opencode/ uses metered Zen credit; opencode-go/ uses the Go subscription pool.
+    Both share one OpenCode key. `opencode` + local/ = bulk
     low-stakes volume on the ship's GPU — but local models are WEAKER and more
     prompt-injectable, so keep them off untrusted input and real judgment. Context
     must arrive through `fleet dispatch` or be embedded in the prompt; drones have no

@@ -33,7 +33,12 @@ in
   "hosts/water/secrets/katara-password.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/agent-claude-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/agent-codex-auth.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/agent-openrouter-key.age".publicKeys = singleton water ++ admin;
+  "secrets/opencode-key.age".publicKeys = [
+    water
+    fire
+    earth
+  ]
+  ++ admin;
   "hosts/water/secrets/matrix-registration.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-remy.env.age".publicKeys = singleton water ++ admin;

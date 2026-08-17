@@ -29,7 +29,7 @@ struct Config {
     creds: PathBuf,
     claude_token: PathBuf,
     codex_auth: PathBuf,
-    openrouter_key: Option<PathBuf>,
+    opencode_key: Option<PathBuf>,
     readers: String,
     work_group: String,
     stall_timeout: u64,
@@ -48,7 +48,7 @@ impl Config {
             creds: env_path("FLEET_CREDS_DIR")?,
             claude_token: env_path("FLEET_CLAUDE_TOKEN_FILE")?,
             codex_auth: env_path("FLEET_CODEX_AUTH_FILE")?,
-            openrouter_key: env::var_os("FLEET_OPENROUTER_KEY_FILE")
+            opencode_key: env::var_os("FLEET_OPENCODE_KEY_FILE")
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
             readers: env_string("FLEET_READERS")?,
@@ -1174,14 +1174,16 @@ fn select_credential<'a>(config: &'a Config, task: &TaskMetadata) -> Result<Cred
             source: &config.codex_auth,
             name: "codex-auth.json",
         }),
-        (Agent::Opencode, model) if model.starts_with("openrouter/") => {
+        (Agent::Opencode, model)
+            if model.starts_with("opencode/") || model.starts_with("opencode-go/") =>
+        {
             let source = config
-                .openrouter_key
+                .opencode_key
                 .as_deref()
-                .ok_or_else(|| "openrouter credential is not configured".to_string())?;
+                .ok_or_else(|| "opencode credential is not configured".to_string())?;
             Ok(Credential::File {
                 source,
-                name: "openrouter-key",
+                name: "opencode-key",
             })
         }
         (Agent::Opencode, model) if model.starts_with("local/") => Ok(Credential::None),
@@ -1732,10 +1734,10 @@ impl Fixture {
         }
         let claude = self.root.join("claude-token");
         let codex = self.root.join("codex-auth.json");
-        let openrouter = self.root.join("openrouter-key");
+        let opencode = self.root.join("opencode-key");
         fs::write(&claude, "secret").context("write fixture credential")?;
         fs::write(&codex, "{}").context("write fixture credential")?;
-        fs::write(&openrouter, "secret").context("write fixture credential")?;
+        fs::write(&opencode, "secret").context("write fixture credential")?;
         Ok(Config {
             tasks,
             worker: "worker".into(),
@@ -1743,7 +1745,7 @@ impl Fixture {
             creds: self.root.join("creds"),
             claude_token: claude,
             codex_auth: codex,
-            openrouter_key: Some(openrouter),
+            opencode_key: Some(opencode),
             readers: "users".into(),
             work_group: "users".into(),
             stall_timeout: 120,
@@ -1945,6 +1947,33 @@ mod tests {
     fn credential_selection_fails_closed() {
         let fixture = Fixture::new().unwrap();
         let config = fixture.config().unwrap();
+        for model in ["opencode/gpt-5.6-sol", "opencode-go/kimi-k3"] {
+            let hosted = TaskMetadata {
+                agent: Agent::Opencode,
+                model: model.into(),
+                effort: String::new(),
+                guidance: String::new(),
+                timeout: 1,
+            };
+            assert!(matches!(
+                select_credential(&config, &hosted).unwrap(),
+                Credential::File {
+                    name: "opencode-key",
+                    ..
+                }
+            ));
+        }
+        let local = TaskMetadata {
+            agent: Agent::Opencode,
+            model: "local/qwen".into(),
+            effort: String::new(),
+            guidance: String::new(),
+            timeout: 1,
+        };
+        assert!(matches!(
+            select_credential(&config, &local).unwrap(),
+            Credential::None
+        ));
         let invalid = TaskMetadata {
             agent: Agent::Opencode,
             model: "other/model".into(),

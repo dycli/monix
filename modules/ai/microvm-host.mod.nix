@@ -23,7 +23,7 @@
         ".anthropic.com"
         ".openai.com"
         ".chatgpt.com"
-        ".openrouter.ai"
+        ".opencode.ai"
         ".models.dev" # opencode fetches its provider registry at startup
         ".exa.ai"
         ".context7.com"

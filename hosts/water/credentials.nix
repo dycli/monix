@@ -30,14 +30,13 @@ in
   agentFleet.credentials = {
     claudeTokenFile = config.secrets.agent-claude-token.path;
     codexAuthFile = config.secrets.agent-codex-auth.path;
-    openrouterKeyFile = config.secrets.agent-openrouter-key.path;
+    opencodeKeyFile = config.secrets.opencode-key.path;
   };
 
   secrets = {
     katara-password.file = ./secrets/katara-password.age;
     agent-claude-token.file = ./secrets/agent-claude-token.age;
     agent-codex-auth.file = ./secrets/agent-codex-auth.age;
-    agent-openrouter-key.file = ./secrets/agent-openrouter-key.age;
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
     matrix-remy-env.file = ./secrets/matrix-remy.env.age;
     remy-caldav-json = {

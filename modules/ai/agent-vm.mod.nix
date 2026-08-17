@@ -430,10 +430,10 @@
             type = types.str;
             description = "host path of a copy of Codex's auth.json (from a ChatGPT login)";
           };
-          openrouterKeyFile = mkOption {
+          opencodeKeyFile = mkOption {
             type = types.nullOr types.str;
             default = null;
-            description = "host path of an OpenRouter API key (single line, from openrouter.ai/keys); null = opencode dispatch has no credential and fails auth";
+            description = "host path of an OpenCode API key for Zen and Go (single line); null = hosted opencode dispatch has no credential and fails auth";
           };
         };
       };

@@ -479,8 +479,12 @@ fn validate_prompt(config: &Config, path: &Path) -> Result<PromptMeta> {
     if model.is_empty() {
         return Err("model not specified in front-matter (model: <model-id>)".into());
     }
-    if agent == "opencode" && !(model.starts_with("local/") || model.starts_with("openrouter/")) {
-        return Err("opencode model must start with local/ or openrouter/".into());
+    if agent == "opencode"
+        && !(model.starts_with("local/")
+            || model.starts_with("opencode/")
+            || model.starts_with("opencode-go/"))
+    {
+        return Err("opencode model must start with local/, opencode/, or opencode-go/".into());
     }
     let guidance = san(&fm(&header, "guidance"))?.to_string();
     // A typo here would silently downgrade the task's questions to stock
@@ -1450,10 +1454,7 @@ mod tests {
 
     #[test]
     fn san_sanitizes_model_ids() {
-        assert_eq!(
-            san("openrouter/deepseek-v3").unwrap(),
-            "openrouter/deepseek-v3"
-        );
+        assert_eq!(san("opencode-go/kimi-k3").unwrap(), "opencode-go/kimi-k3");
         assert_eq!(san("").unwrap(), "");
         assert!(san("has space").is_err());
         assert!(san(&"x".repeat(65)).is_err());
@@ -1471,6 +1472,15 @@ mod tests {
         assert_eq!(meta.agent, "claude");
         assert_eq!(meta.model, "opus");
         assert_eq!(meta.guidance, "cockpit");
+
+        for model in ["local/qwen", "opencode/gpt-5.6-sol", "opencode-go/kimi-k3"] {
+            let hosted = write_prompt(
+                &fixture,
+                &format!("{}.md", model.replace('/', "-")),
+                &format!("---\nagent: opencode\nmodel: {model}\n---\n"),
+            );
+            assert!(validate_prompt(&fixture.config, &hosted).is_ok());
+        }
 
         let unclosed = write_prompt(&fixture, "unclosed.md", "---\nagent: claude\nbody\n");
         assert!(validate_prompt(&fixture.config, &unclosed).is_err());

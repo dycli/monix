@@ -193,15 +193,15 @@ fn classify(agent: &str, model: &str) -> Option<AgentSpec> {
             "/home/agent-local",
             None,
         ),
-        "opencode" if model.starts_with("openrouter/") => spec(
+        "opencode" if model.starts_with("opencode/") || model.starts_with("opencode-go/") => spec(
             ExecutorKind::Opencode,
             "agent-opencode",
             "/home/agent-opencode",
             Some(Credential {
-                name: "openrouter-key",
+                name: "opencode-key",
                 directory: "/run/agent-opencode",
                 file: "env",
-                secret: Secret::EnvLine("OPENROUTER_API_KEY"),
+                secret: Secret::EnvLine("OPENCODE_API_KEY"),
             }),
         ),
         _ => None,
@@ -1347,7 +1347,12 @@ mod tests {
             ("codex", "gpt-5", Some(("agent-codex", ExecutorKind::Codex))),
             (
                 "opencode",
-                "openrouter/moonshotai/kimi-k2",
+                "opencode/gpt-5.6-sol",
+                Some(("agent-opencode", ExecutorKind::Opencode)),
+            ),
+            (
+                "opencode",
+                "opencode-go/kimi-k3",
                 Some(("agent-opencode", ExecutorKind::Opencode)),
             ),
             (
@@ -1376,8 +1381,12 @@ mod tests {
         assert_eq!(credential("claude", "sonnet"), Some(Some("claude-token")));
         assert_eq!(credential("codex", "gpt-5"), Some(Some("codex-auth.json")));
         assert_eq!(
-            credential("opencode", "openrouter/x/y"),
-            Some(Some("openrouter-key"))
+            credential("opencode", "opencode/gpt-5.6-sol"),
+            Some(Some("opencode-key"))
+        );
+        assert_eq!(
+            credential("opencode", "opencode-go/kimi-k3"),
+            Some(Some("opencode-key"))
         );
         assert_eq!(credential("opencode", "local/x"), Some(None));
         // Unknown pairs have no spec at all: nothing could be staged.
@@ -1401,7 +1410,7 @@ mod tests {
         ));
         assert!(!credentials_match(&[], exactly));
         assert!(!credentials_match(
-            &[entry("claude-token", true), entry("openrouter-key", true)],
+            &[entry("claude-token", true), entry("opencode-key", true)],
             exactly
         ));
         assert!(!credentials_match(&[entry("claude-token", false)], exactly));
@@ -1663,7 +1672,7 @@ mod tests {
         let store = home.join(".local/share/opencode");
         fs::create_dir_all(&store).expect("create store");
         let database = store.join("opencode.db");
-        let row = r#"{"role":"assistant","providerID":"openrouter","modelID":"moonshotai/kimi-k2","tokens":{"input":7,"output":11,"reasoning":13,"cache":{"read":17,"write":19}}}"#;
+        let row = r#"{"role":"assistant","providerID":"opencode-go","modelID":"kimi-k3","tokens":{"input":7,"output":11,"reasoning":13,"cache":{"read":17,"write":19}}}"#;
         let ignored = r#"{"role":"user"}"#;
         let script = format!(
             "create table message (data text);\ninsert into message values ('{row}');\ninsert into message values ('{ignored}');\n"
@@ -1684,7 +1693,7 @@ mod tests {
         let usage = opencode_usage(&home, None).expect("usage extracted");
         assert_eq!(
             usage,
-            r#"{"executor":"opencode","model":"openrouter/moonshotai/kimi-k2","input_tokens":7,"output_tokens":24,"cache_read_tokens":17,"cache_creation_tokens":19}"#
+            r#"{"executor":"opencode","model":"opencode-go/kimi-k3","input_tokens":7,"output_tokens":24,"cache_read_tokens":17,"cache_creation_tokens":19}"#
         );
         let _ = fs::remove_dir_all(&home);
     }

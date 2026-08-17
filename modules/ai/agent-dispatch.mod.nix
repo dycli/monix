@@ -95,11 +95,8 @@
             FLEET_CREDS_DIR = creds;
             FLEET_CLAUDE_TOKEN_FILE = cfg.credentials.claudeTokenFile;
             FLEET_CODEX_AUTH_FILE = cfg.credentials.codexAuthFile;
-            FLEET_OPENROUTER_KEY_FILE =
-              if cfg.credentials.openrouterKeyFile == null then
-                ""
-              else
-                toString cfg.credentials.openrouterKeyFile;
+            FLEET_OPENCODE_KEY_FILE =
+              if cfg.credentials.opencodeKeyFile == null then "" else toString cfg.credentials.opencodeKeyFile;
             FLEET_READERS = readers;
             FLEET_WORK_GROUP = topology.guestGroup;
             FLEET_STALL_TIMEOUT = toString cfg.stallTimeout;

@@ -288,8 +288,9 @@
     in
     {
       config = {
-        # No wheel, no Nix trust, no secrets. A Tailscale SSH session would
-        # run under tailscaled's cgroup and bypass the slice fence below.
+        # No wheel, no Nix trust, and no host/service secrets; its sole
+        # provider key is part of the model boundary. A Tailscale SSH session
+        # would run under tailscaled's cgroup and bypass the slice fence below.
         users.users.bridge = {
           isNormalUser = true;
           uid = seatUid;
@@ -328,6 +329,8 @@
           cockpit.bypassPermissions = true;
         };
 
+        opencodeAuth.users = singleton "bridge";
+
         users.users.${config.primaryUser}.extraGroups = singleton "bridge";
 
         # Must exist before the first session keys its project state to it.
@@ -354,7 +357,11 @@
           description = "opencode web UI cockpit seat";
           wantedBy = singleton "multi-user.target";
           wants = singleton "network-online.target";
-          after = singleton "network-online.target";
+          requires = singleton "home-manager-bridge.service";
+          after = [
+            "home-manager-bridge.service"
+            "network-online.target"
+          ];
           # Privilege wrappers must precede the system profile, or sudo
           # resolves to its non-setuid binary.
           path = [
