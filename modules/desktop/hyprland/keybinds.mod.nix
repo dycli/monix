@@ -12,7 +12,7 @@
       inherit (lib.generators) mkLuaInline;
       inherit (lib.lists) concatMap range;
       inherit (lib.attrsets) recursiveUpdate;
-      inherit (lib.meta) getExe;
+      inherit (lib.meta) getExe getExe';
 
       # One hl.bind call per element; opts merges over the description.
       mkBind = keys: dispatcherLua: description: opts: {
@@ -89,7 +89,10 @@
 
         (mkBind "SUPER + Q" "hl.dsp.window.close()" "Close window" { })
 
-        (mkBind "SUPER + ESCAPE" ''hl.dsp.exec_cmd("dms ipc call lock lock")'' "Lock screen" { })
+        (mkBind "SUPER + ESCAPE" ''hl.dsp.exec_cmd("${getExe' pkgs.systemd "loginctl"} lock-session")''
+          "Lock screen"
+          { }
+        )
         (mkBind "SUPER + SHIFT + ESCAPE" "hl.dsp.exit()" "Exit Hyprland" { })
         (mkBind "SUPER + CTRL + ESCAPE" ''hl.dsp.exec_cmd("reboot")'' "Reboot" { })
         (mkBind "SUPER + SHIFT + CTRL + ESCAPE" ''hl.dsp.exec_cmd("systemctl poweroff")'' "Power off" { })
@@ -97,7 +100,11 @@
           "Show keybindings"
           { }
         )
-        (mkBind "SUPER + I" ''hl.dsp.exec_cmd("dms ipc call inhibit toggle")'' "Toggle idle inhibit" { })
+        (mkBind "SUPER + I"
+          ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call power toggleIdleInhibit")''
+          "Toggle idle inhibit"
+          { }
+        )
 
         (mkBind "SUPER + B"
           ''function() if hl.plugin.hy3 then hl.plugin.hy3.make_group("opposite")() end end''

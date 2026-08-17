@@ -66,10 +66,7 @@
       inherit (lib.meta) getExe getExe';
     in
     {
-      # DMS rewrites this at runtime, so it must be a real user-writable
-      # file rather than a store symlink; `f` seeds without overwriting.
       systemd.user.tmpfiles.rules = [
-        "f %h/.config/hypr/dms/outputs.lua 0644 - - -"
         # A blank-password default keyring: autologin types no password, so
         # PAM cannot unlock a protected one. Plaintext-format contents stay
         # under LUKS. Seeded only if missing — the daemon writes secrets
@@ -91,11 +88,10 @@
         # UWSM brings up the graphical-session targets itself.
         systemd.enable = false;
 
-        # pcall, not require: a first login racing tmpfiles would otherwise
-        # abort the whole Lua config. mkOrder 900 keeps the requires ahead of
-        # the default-order plugin blocks and host-level mkAfter additions.
+        # A safe default for unknown outputs. Host rules follow this and own
+        # the exact modes, positions, scaling, color profiles and VRR policy.
         extraConfig = mkOrder 900 ''
-          pcall(require, "dms.outputs")
+          hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
         '';
 
         settings = {

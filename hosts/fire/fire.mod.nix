@@ -44,11 +44,11 @@
         hardware.cpu.amd.updateMicrocode = true;
         hardware.amdgpu.opencl.enable = true;
 
-        # DMS owns the rest of the output configuration; this final rule
-        # keeps Adaptive Sync enabled on the gaming display.
+        # The display advertises its native mode; Hyprland owns the output
+        # directly and enables Adaptive Sync on it.
         home-manager.users.${config.primaryUser}.wayland.windowManager.hyprland.extraConfig =
           lib.modules.mkAfter ''
-            hl.monitor({ output = "DP-1", vrr = 1 })
+            hl.monitor({ output = "DP-1", mode = "preferred", position = "auto", scale = 1, vrr = 1 })
           '';
 
         # DISK

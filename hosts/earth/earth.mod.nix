@@ -145,12 +145,11 @@
           };
           xdg.dataFile."easyeffects/irs/IR_22ms_27dB_5t_15s_0c.irs".source = ./IR_22ms_27dB_5t_15s_0c.irs;
 
-          # i1Pro 2 profile for the 2.8K panel (EDID id BOE0CB4). DMS owns
-          # dms/outputs.lua but its writer cannot express icc; mkAfter lands
-          # this after the dms.outputs require, and the last rule for an
-          # output wins. Scale 2 matches the session's static GDK_SCALE.
+          # Native panel and desk display layout. The i1Pro 2 profile belongs
+          # to the 2.8K panel (EDID id BOE0CB4).
           wayland.windowManager.hyprland.extraConfig = mkAfter ''
-            hl.monitor({ output = "eDP-1", mode = "2880x1920@120", position = "auto", scale = 2, icc = "${./BOE0CB4.icc}" })
+            hl.monitor({ output = "DP-10", mode = "3440x1440@179.999", position = "1440x0", scale = 1 })
+            hl.monitor({ output = "eDP-1", mode = "2880x1920@120.000", position = "0x0", scale = 2, vrr = 1, icc = "${./BOE0CB4.icc}" })
           '';
         };
 
