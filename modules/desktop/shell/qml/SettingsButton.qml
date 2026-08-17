@@ -1,13 +1,9 @@
 import QtQuick
 import Quickshell
 
-Rectangle {
-    id: root
-
+Item {
     width: 28
     height: 24
-    radius: 2
-    color: mouse.containsMouse ? "#272a31" : "transparent"
 
     Item {
         width: 15
@@ -48,11 +44,8 @@ Rectangle {
     }
 
     MouseArea {
-        id: mouse
-
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        hoverEnabled: true
         onClicked: Quickshell.execDetached(["dms", "ipc", "call", "control-center", "toggle"])
     }
 }

@@ -4,7 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.UPower
 
-Rectangle {
+Item {
     id: root
 
     readonly property var batteries: UPower.devices.values.filter(device => device.isLaptopBattery && device.ready)
@@ -14,8 +14,6 @@ Rectangle {
 
     width: 28
     height: 24
-    radius: 2
-    color: mouse.containsMouse ? "#272a31" : "transparent"
 
     Item {
         width: 21
@@ -73,12 +71,9 @@ Rectangle {
     }
 
     MouseArea {
-        id: mouse
-
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        hoverEnabled: true
         onClicked: event => {
             if (event.button === Qt.MiddleButton) {
                 Quickshell.execDetached(["dms", "ipc", "call", "inhibit", "toggle"]);
