@@ -67,7 +67,7 @@ Variants {
 
             Clock {
                 anchors.verticalCenter: parent.verticalCenter
-                format: "ddd d MMM  HH:mm"
+                format: "ddd d MMM  h:mm AP"
             }
         }
 

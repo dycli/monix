@@ -51,7 +51,7 @@ Row {
                 color: workspace.active ? Style.foregroundColor : Style.inactiveWorkspaceColor
                 font {
                     family: Style.fontFamily
-                    pixelSize: Style.smallFontSize
+                    pixelSize: Style.textFontSize
                     weight: workspace.active ? Style.fontWeight : Font.Normal
                 }
                 renderType: Text.NativeRendering
