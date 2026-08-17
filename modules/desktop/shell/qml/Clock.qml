@@ -4,6 +4,8 @@ import Quickshell
 Text {
     id: root
 
+    signal clicked
+
     property string format: "HH:mm"
     property int fontPixelSize: Style.textFontSize
 
@@ -19,5 +21,11 @@ Text {
     SystemClock {
         id: clock
         precision: SystemClock.Minutes
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.clicked()
     }
 }

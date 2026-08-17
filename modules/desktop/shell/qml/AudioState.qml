@@ -20,4 +20,12 @@ QtObject {
         if (available)
             sink.audio.muted = true;
     }
+
+    function setVolume(value: real): void {
+        if (!available)
+            return;
+        sink.audio.volume = Math.max(0, Math.min(1, value));
+        if (sink.audio.muted && value > 0)
+            sink.audio.muted = false;
+    }
 }

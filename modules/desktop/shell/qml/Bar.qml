@@ -45,6 +45,8 @@ Variants {
         }
 
         Row {
+            id: leftGroup
+
             anchors {
                 left: parent.left
                 leftMargin: Math.round(12 * window.scaleFactor)
@@ -80,10 +82,40 @@ Variants {
             }
 
             Clock {
+                id: clock
+
                 anchors.verticalCenter: parent.verticalCenter
                 fontPixelSize: window.barFontSize
                 format: "ddd MMM d h:mm AP"
+                onClicked: {
+                    BarModeService.close();
+                    ClockPanelService.toggle(window.modelData.name);
+                }
             }
+        }
+
+        Item {
+            id: tickerLane
+
+            anchors {
+                left: leftGroup.right
+                leftMargin: 12
+                right: modeHost.active ? modeHost.left : rightGroup.left
+                rightMargin: 12
+                top: parent.top
+                bottom: parent.bottom
+            }
+            clip: true
+
+            NotificationTicker {
+                anchors.fill: parent
+                screenName: window.modelData.name
+            }
+        }
+
+        ClockPopout {
+            anchorItem: clock
+            screenName: window.modelData.name
         }
 
         BarModeHost {

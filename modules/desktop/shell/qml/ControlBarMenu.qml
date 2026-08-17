@@ -31,19 +31,19 @@ Row {
         onSecondaryActivated: BluetoothState.disable()
     }
 
-    BarModeButton {
-        active: AudioState.available && !AudioState.muted
-        interactive: false
+    BarSlider {
+        available: AudioState.available
         icon: AudioState.icon
-        label: AudioState.label
-        secondaryInteractive: AudioState.available
+        value: AudioState.volume / 100
+        onMoved: value => AudioState.setVolume(value)
         onSecondaryActivated: AudioState.mute()
     }
 
-    BarModeButton {
-        enabled: false
-        icon: "󰍹"
-        label: "Display"
+    BarSlider {
+        available: BrightnessState.available
+        icon: BrightnessState.icon
+        value: BrightnessState.level
+        onMoved: value => BrightnessState.setLevel(value)
     }
 
     SettingsButton {
