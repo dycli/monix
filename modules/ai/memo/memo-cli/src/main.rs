@@ -1,9 +1,10 @@
 mod blocks;
 
-use regex_lite::{Regex, RegexBuilder};
+use regex::{Regex, RegexBuilder};
+use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 
@@ -24,24 +25,92 @@ fn today() -> String {
 }
 
 const ENTRY_CHARS: usize = 280;
-const WAKE_LINES: usize = 208;
+const WAKE_LINES: usize = 96;
 const RAW_MAX: usize = 16;
 const PART_CHARS: usize = 20000;
 const PART_LINES: usize = 500;
 const LOG_REC: usize = 320;
 const TREE_REC: usize = 288;
+const KNOBS: [(&str, usize, &str); 4] = [
+    (
+        "WAKE_LINES",
+        WAKE_LINES,
+        "the memory context: how many lines wake prints",
+    ),
+    (
+        "ENTRY_CHARS",
+        ENTRY_CHARS,
+        "the longest one memory may be, in bytes",
+    ),
+    (
+        "PART_CHARS",
+        PART_CHARS,
+        "output paging: largest part, in bytes",
+    ),
+    (
+        "PART_LINES",
+        PART_LINES,
+        "output paging: largest part, in lines",
+    ),
+];
 
 const USAGE: &str = r#"OptMem: a permanent, append-only memory for AI agents.
 
+  memo init                 create this memory; print the setup block.
   memo wake [part [T]]     read your memory. Run first, every session.
-  memo note "..."          record one memory: one line, at most 280 chars.
+  memo note "..."          record one memory: one short line.
   memo nap [id "..."]      do the pending compressions.
   memo recall <regex>      search every memory ever recorded.
   memo zoom <lo>-<hi>      open a tree node: its two halves.
   memo forget <lo>-<hi>    drop a bad summary; nap rebuilds it.
+  memo config [NAME=N]     show this memory's sizes, or change one.
   memo import <file>       bulk-load dated memories (bootstrap only).
 
-Everything lives in $MEMORY_DIR."#;
+The memories live in the Nix-configured directory, or in $MEMORY_DIR if set.
+See github.com/VictorTaelin/OptMem."#;
+
+const TEMPLATE: &str = r#"## Memory
+
+Your memory is OptMem:
+- The tool is `memo`
+- Your memories are in `{data}`
+
+OptMem outlives every session, compaction, model and vendor change.
+Without it you do not know who you are, or what was decided and tried.
+
+### At startup: activating OptMem (mandatory)
+
+Run `memo wake` before any other tool call, in every session, and
+then do exactly what it prints, to the end of its output.
+
+### While working: register memories (mandatory)
+
+Call `memo note "<1 line, max {bytes} bytes>"` whenever you learn
+something new, or something worth keeping happens. That covers a task
+worth real effort, a fact or insight the user teaches you, anything you
+learn about their life (even indirectly), any event of lasting effect.
+
+Do not register redundant memories.
+
+If `memo note` asks a compression: do it before your next action.
+
+Never edit or delete anything under `{data}`: the tool manages it.
+
+### When you need an old memory: search, or navigate
+
+`memo recall <regex>` searches every memory, word for word.
+
+Your memories also form a binary tree: #0-1, #2-3 ... exist as one-line
+summaries, pairs of those as #0-3, and so on -- every `#a-b` line wake
+prints is one node of it. `memo zoom <a-b>` opens a node into its
+two halves, down to the raw memories.
+
+### If you're a subagent: skip everything above
+
+Parallel sessions on this machine are all you, and may all write memories.
+A subagent is not: it must never run `memo`, because it cannot judge what
+is already known, and its notes would arrive duplicated and incorrectly.
+When you spawn one, write: `You are a subagent. Don't run memo.`"#;
 
 #[derive(Clone, Copy)]
 struct Config {
@@ -73,7 +142,7 @@ fn die<T>(msg: impl Into<String>) -> Result<T, String> {
     Err(msg.into())
 }
 
-fn store() -> Result<PathBuf, String> {
+fn memory_dir() -> Result<PathBuf, String> {
     let raw = env::var("MEMORY_DIR")
         .ok()
         .filter(|s| !s.is_empty())
@@ -85,11 +154,24 @@ fn store() -> Result<PathBuf, String> {
     } else {
         PathBuf::from(&raw)
     };
+    Ok(expanded)
+}
+
+fn pretty(path: &Path) -> String {
+    let Ok(home) = env::var("HOME") else {
+        return path.display().to_string();
+    };
+    path.strip_prefix(&home)
+        .map(|rest| format!("~/{}", rest.display()))
+        .unwrap_or_else(|_| path.display().to_string())
+}
+
+fn store() -> Result<PathBuf, String> {
+    let expanded = memory_dir()?;
     if !expanded.is_dir() {
         return die(format!(
-            "MEMORY_DIR={} does not exist.\nIf this is a new identity, run: mkdir -p {}",
-            expanded.display(),
-            expanded.display()
+            "No memory at {}.\nTo create one, run: memo init\nTo use an existing one, point MEMORY_DIR at it.",
+            pretty(&expanded)
         ));
     }
     fs::create_dir_all(expanded.join("TREE")).map_err(|e| e.to_string())?;
@@ -102,36 +184,86 @@ fn store() -> Result<PathBuf, String> {
     {
         Ok(_) => {}
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(format!("{}: {e}", log_path(&expanded).display())),
     }
     Ok(expanded)
 }
 
-fn config(d: &Path) -> Result<Config, String> {
-    let mut c = Config::default();
-    let p = d.join("config");
-    if p.exists() {
-        let src = fs::read_to_string(p).map_err(|e| e.to_string())?;
-        for raw in src.lines() {
-            let line = raw.split('#').next().unwrap().trim();
-            let Some((key, value)) = line.split_once('=') else {
-                continue;
-            };
-            let value: usize = value.trim().parse().map_err(|e| format!("{e}"))?;
-            match key.trim() {
-                "ENTRY_CHARS" => c.entry_chars = value,
-                "WAKE_LINES" => c.wake_lines = value,
-                "PART_CHARS" => c.part_chars = value,
-                "PART_LINES" => c.part_lines = value,
-                _ => {}
-            }
-        }
-    }
-    if c.entry_chars > (TREE_REC - 8).min(LOG_REC - 40) {
+fn parse_size(key: &str, value: &str, where_: &str) -> Result<usize, String> {
+    if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
         return die(format!(
-            "config: ENTRY_CHARS={} does not fit the {LOG_REC}/{TREE_REC}-byte records.",
-            c.entry_chars
+            "{where_}{key} must be a positive whole number, not '{value}'."
         ));
+    }
+    let value: usize = value.parse().map_err(|e| format!("{where_}{e}"))?;
+    if value == 0 {
+        return die(format!(
+            "{where_}{key} must be a positive whole number, not '0'."
+        ));
+    }
+    let top = (TREE_REC - 8).min(LOG_REC - 40);
+    if key == "ENTRY_CHARS" && value > top {
+        return die(format!(
+            "{where_}ENTRY_CHARS is at most {top}: a memory has to fit the fixed-width records."
+        ));
+    }
+    Ok(value)
+}
+
+fn overrides(d: &Path) -> Result<HashMap<String, usize>, String> {
+    let mut out = HashMap::new();
+    let p = d.join("config");
+    if !p.exists() {
+        return Ok(out);
+    }
+    let src = fs::read_to_string(&p).map_err(|e| e.to_string())?;
+    for (n, raw) in src.lines().enumerate() {
+        let line = raw.split('#').next().unwrap().trim();
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim().to_ascii_uppercase();
+        let value = value.trim();
+        let where_ = format!("{} line {}: ", pretty(&p), n + 1);
+        if !KNOBS.iter().any(|(name, _, _)| *name == key) {
+            return die(format!(
+                "{where_}{key} is not a size. Delete the line, or name one of: {}.",
+                KNOBS.map(|(name, _, _)| name).join(", ")
+            ));
+        }
+        out.insert(key.clone(), parse_size(&key, value, &where_)?);
+    }
+    Ok(out)
+}
+
+fn write_config(d: &Path, over: &HashMap<String, usize>) -> Result<(), String> {
+    let mut out = vec![
+        "# OptMem sizes for this memory. A commented line means: follow the".to_owned(),
+        "# tool's default. Edit with `memo config NAME=VALUE`.".to_owned(),
+        String::new(),
+    ];
+    for (name, default, what) in KNOBS {
+        out.push(format!(
+            "{}{:12} = {:<6} # {what}",
+            if over.contains_key(name) { "" } else { "# " },
+            name,
+            over.get(name).copied().unwrap_or(default)
+        ));
+    }
+    fs::write(d.join("config"), format!("{}\n", out.join("\n"))).map_err(|e| e.to_string())
+}
+
+fn config(d: &Path) -> Result<Config, String> {
+    let over = overrides(d)?;
+    let mut c = Config::default();
+    for (key, value) in over {
+        match key.as_str() {
+            "ENTRY_CHARS" => c.entry_chars = value,
+            "WAKE_LINES" => c.wake_lines = value,
+            "PART_CHARS" => c.part_chars = value,
+            "PART_LINES" => c.part_lines = value,
+            _ => unreachable!(),
+        }
     }
     Ok(c)
 }
@@ -159,8 +291,10 @@ fn log_len(d: &Path) -> usize {
 }
 
 fn repair(path: &Path, rec: usize) -> Result<(), String> {
-    let Ok(meta) = fs::metadata(path) else {
-        return Ok(());
+    let meta = match fs::metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
     };
     let n = meta.len() as usize;
     if !n.is_multiple_of(rec) {
@@ -211,15 +345,23 @@ fn log_slice(d: &Path, lo: usize, hi: usize) -> Result<Vec<Entry>, String> {
 
 fn tree_get(d: &Path, lo: usize, hi: usize) -> Result<Option<String>, String> {
     let size = hi - lo;
-    let Ok(mut f) = File::open(tree_path(d, size)) else {
-        return Ok(None);
+    let mut f = match File::open(tree_path(d, size)) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("{}: {e}", tree_path(d, size).display())),
     };
     f.seek(SeekFrom::Start((lo / size * TREE_REC) as u64))
         .map_err(|e| e.to_string())?;
     let mut rec = vec![0; TREE_REC];
     let n = f.read(&mut rec).map_err(|e| e.to_string())?;
     let text = std::str::from_utf8(&rec[..n])
-        .map_err(|e| e.to_string())?
+        .map_err(|_| {
+            format!(
+                "The summary of #{lo}-{} is corrupt. Run: memo forget {lo}-{}",
+                hi - 1,
+                hi - 1
+            )
+        })?
         .trim_end();
     Ok((!text.is_empty()).then(|| text.to_owned()))
 }
@@ -242,7 +384,11 @@ fn pad(text: &str, rec: usize) -> Result<Vec<u8>, String> {
 struct Lock(File);
 impl Lock {
     fn take(d: &Path) -> Result<Self, String> {
-        let f = File::create(d.join(".lock")).map_err(|e| e.to_string())?;
+        let f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(d.join(".lock"))
+            .map_err(|e| e.to_string())?;
         // SAFETY: flock only uses this live file descriptor.
         if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX) } != 0 {
             return die(std::io::Error::last_os_error().to_string());
@@ -409,7 +555,7 @@ fn nap_prompt(d: &Path, lo: usize, hi: usize, left: usize, c: Config) -> Result<
         format!("\n{left} compressions remain after this one.")
     };
     Ok(format!(
-        "Compress memories #{lo}-{} into one line of at most {} characters.\n\
+        "Compress memories #{lo}-{} into one line of at most {} bytes.\n\
          Keep what has lasting effect, drop what does not. Invent nothing.\n\n\
          {body}\n{tail}\n\
          Run: memo nap {lo}-{} \"<your line>\"",
@@ -442,6 +588,45 @@ fn paginate(lines: Vec<String>, c: Config) -> Vec<Vec<String>> {
         parts.push(cur)
     }
     parts
+}
+
+fn cmd_init(d: &Path, args: &[String]) -> Result<(), String> {
+    if !args.is_empty() {
+        return die("usage: memo init");
+    }
+    let fresh = !d.is_dir();
+    fs::create_dir_all(d.join("TREE")).map_err(|e| e.to_string())?;
+    match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(log_path(d))
+    {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e.to_string()),
+    }
+    let config_path = d.join("config");
+    if !config_path.exists() {
+        write_config(d, &HashMap::new())?;
+    }
+    let c = config(d)?;
+    if fresh {
+        println!(
+            "Created {}: this machine's memory, one identity, forever.",
+            pretty(d)
+        );
+    } else {
+        println!("Found {}: {}.", pretty(d), plural(log_len(d), "memory"));
+    }
+    println!("Sizes live in {}/config; the defaults are fine.", pretty(d));
+    println!("\nPaste this at the top of your agent's AGENTS.md (or CLAUDE.md), done:\n");
+    println!(
+        "{}",
+        TEMPLATE
+            .replace("{data}", &pretty(d))
+            .replace("{bytes}", &c.entry_chars.to_string())
+    );
+    Ok(())
 }
 
 fn cmd_wake(d: &Path, args: &[String], c: Config) -> Result<(), String> {
@@ -477,7 +662,8 @@ fn cmd_wake(d: &Path, args: &[String], c: Config) -> Result<(), String> {
             let e = log_get(d, lo)?;
             lines.push(format!("#{} {} {}", e.id, e.date, e.text));
         } else {
-            let Some(s) = tree_get(d, lo, hi)? else {
+            let mut summary = tree_get(d, lo, hi)?;
+            if summary.is_none() {
                 // Refuse only when the document itself needs this summary;
                 // pending work the document does not need is handed over
                 // after the read instead.
@@ -492,6 +678,11 @@ fn cmd_wake(d: &Path, args: &[String], c: Config) -> Result<(), String> {
                     println!("{nap}");
                     std::process::exit(1);
                 }
+                // A parallel session may have settled this block between our
+                // first read and the pending-work check.
+                summary = tree_get(d, lo, hi)?;
+            }
+            let Some(s) = summary else {
                 return die(format!(
                     "The summary of #{lo}-{} is blank. Run: memo forget {lo}-{}",
                     hi - 1,
@@ -530,7 +721,7 @@ fn cmd_wake(d: &Path, args: &[String], c: Config) -> Result<(), String> {
 fn cmd_note(d: &Path, args: &[String], c: Config) -> Result<(), String> {
     if args.len() != 1 {
         return die(format!(
-            "usage: memo note \"<one line, at most {} chars>\"",
+            "usage: memo note \"<one line, at most {} bytes>\"",
             c.entry_chars
         ));
     }
@@ -543,14 +734,70 @@ fn cmd_note(d: &Path, args: &[String], c: Config) -> Result<(), String> {
     Ok(())
 }
 
-fn block_id(arg: &str) -> Option<(usize, usize)> {
-    let caps = Regex::new(r"^(\d+)-(\d+)$").unwrap().captures(arg)?;
-    let lo: usize = caps[1].parse().ok()?;
-    let hi: usize = caps[2].parse().ok()?;
-    if lo > hi {
-        return None;
+fn cmd_config(d: &Path, args: &[String]) -> Result<(), String> {
+    let mut over = overrides(d)?;
+    for arg in args {
+        let Some((key, value)) = arg.split_once('=') else {
+            return die(format!(
+                "usage: memo config [NAME=VALUE ...]   # NAME one of {}",
+                KNOBS.map(|(name, _, _)| name).join(", ")
+            ));
+        };
+        let key = key.trim().to_ascii_uppercase();
+        if !KNOBS.iter().any(|(name, _, _)| *name == key) {
+            return die(format!(
+                "usage: memo config [NAME=VALUE ...]   # NAME one of {}",
+                KNOBS.map(|(name, _, _)| name).join(", ")
+            ));
+        }
+        let value = value.trim();
+        if value.is_empty() {
+            over.remove(&key);
+        } else {
+            over.insert(key.clone(), parse_size(&key, value, "")?);
+        }
     }
-    Some((lo, hi.checked_add(1)?))
+    if !args.is_empty() {
+        write_config(d, &over)?;
+    }
+    for (name, default, what) in KNOBS {
+        let value = over.get(name).copied().unwrap_or(default);
+        println!(
+            "{name:12} {value:<7} {what}{}",
+            if over.contains_key(name) {
+                format!(" (default {default})")
+            } else {
+                String::new()
+            }
+        );
+    }
+    Ok(())
+}
+
+fn block_id(arg: &str) -> Result<(usize, usize), String> {
+    let Some(caps) = Regex::new(r"^(\d+)-(\d+)$").unwrap().captures(arg) else {
+        return die(format!(
+            "'{arg}' is not a block id. Copy it from the prompt."
+        ));
+    };
+    let lo: usize = caps[1]
+        .parse()
+        .map_err(|_| format!("'{arg}' is not a block id. Copy it from the prompt."))?;
+    let inclusive_hi: usize = caps[2]
+        .parse()
+        .map_err(|_| format!("'{arg}' is not a block id. Copy it from the prompt."))?;
+    let Some(hi) = inclusive_hi.checked_add(1) else {
+        return die(format!(
+            "'{arg}' is not a block id. Copy it from the prompt."
+        ));
+    };
+    let size = hi.saturating_sub(lo);
+    if size < 2 || !size.is_power_of_two() || !lo.is_multiple_of(size) {
+        return die(format!(
+            "{arg} is not a block. Copy the id printed by wake, like 16-31."
+        ));
+    }
+    Ok((lo, hi))
 }
 
 fn cmd_nap(d: &Path, args: &[String], c: Config) -> Result<(), String> {
@@ -560,12 +807,7 @@ fn cmd_nap(d: &Path, args: &[String], c: Config) -> Result<(), String> {
         if args.len() != 2 {
             return die("usage: memo nap <lo>-<hi> \"<one line>\"");
         }
-        let Some((lo, hi)) = block_id(&args[0]) else {
-            return die(format!(
-                "'{}' is not a block id. Copy it from the prompt.",
-                args[0]
-            ));
-        };
+        let (lo, hi) = block_id(&args[0])?;
         let todo = pending(d, t, Some(1));
         if todo.is_empty() {
             println!("Nothing left to compress.");
@@ -600,16 +842,7 @@ fn cmd_forget(d: &Path, args: &[String]) -> Result<(), String> {
     if args.len() != 1 {
         return die("usage: memo forget <lo>-<hi>");
     }
-    let Some((lo, hi)) = block_id(&args[0]) else {
-        return die(format!("'{}' is not a block id.", args[0]));
-    };
-    let size = hi - lo;
-    if size < 2 || !size.is_power_of_two() || !lo.is_multiple_of(size) {
-        return die(format!(
-            "{} is not a block. Copy the id printed by wake, like 16-31.",
-            args[0]
-        ));
-    }
+    let (lo, hi) = block_id(&args[0])?;
     let gone = tree_drop(d, lo, hi)?;
     if gone.is_empty() {
         return die(format!("No summary at {}.", args[0]));
@@ -627,39 +860,41 @@ fn cmd_recall(d: &Path, args: &[String], c: Config) -> Result<(), String> {
     if args.len() != 1 {
         return die("usage: memo recall <regex>");
     }
-    // regex-lite folds case ASCII-only: accented text must match its stored
-    // case exactly. Accepted trade for the zero-dep engine.
     let pat = RegexBuilder::new(&args[0])
         .case_insensitive(true)
         .build()
         .map_err(|e| format!("bad regex: {e}"))?;
-    let hits: Vec<_> = log_slice(d, 0, log_len(d))?
-        .into_iter()
-        .filter(|e| pat.is_match(&format!("#{} {} {}", e.id, e.date, e.text)))
-        .collect();
-    if hits.is_empty() {
+    let mut reader = BufReader::new(File::open(log_path(d)).map_err(|e| e.to_string())?);
+    let (mut hits, mut out, mut size) = (0, VecDeque::new(), 0);
+    for _ in 0..log_len(d) {
+        let mut record = [0; LOG_REC];
+        reader.read_exact(&mut record).map_err(|e| e.to_string())?;
+        let e = parse(&record)?;
+        let line = format!("#{} {} {}", e.id, e.date, e.text);
+        if !pat.is_match(&line) {
+            continue;
+        }
+        hits += 1;
+        size += line.len() + 1;
+        out.push_back(line);
+        while size > c.part_chars {
+            let dropped = out.pop_front().unwrap();
+            size -= dropped.len() + 1;
+        }
+    }
+    if hits == 0 {
         println!("No match.");
         return Ok(());
     }
-    let (mut out, mut size) = (Vec::new(), 0);
-    for e in hits.iter().rev() {
-        let line = format!("#{} {} {}", e.id, e.date, e.text);
-        size += line.len() + 1;
-        if size > c.part_chars {
-            break;
-        }
-        out.push(line);
-    }
-    out.reverse();
-    println!("{}", out.join("\n"));
-    if out.len() < hits.len() {
+    println!("{}", out.iter().cloned().collect::<Vec<_>>().join("\n"));
+    if out.len() < hits {
         println!(
             "Newest {} of {}. Narrow the regex.",
             out.len(),
-            plural(hits.len(), "match")
+            plural(hits, "match")
         );
     } else {
-        println!("{}.", plural(hits.len(), "match"));
+        println!("{}.", plural(hits, "match"));
     }
     Ok(())
 }
@@ -691,13 +926,11 @@ fn cmd_import(d: &Path, args: &[String], c: Config) -> Result<(), String> {
     if args.len() != 1 {
         return die("usage: memo import <file>   # lines of 'YYYY-MM-DD <text>'");
     }
-    let src = fs::read_to_string(&args[0]).map_err(|e| {
+    let src = fs::read(&args[0]).map_err(|e| format!("Cannot read {}: {e}", args[0]))?;
+    let src = String::from_utf8(src).map_err(|_| {
         format!(
-            "Cannot read {}: {}",
-            args[0],
-            e.raw_os_error()
-                .map(|n| std::io::Error::from_raw_os_error(n).to_string())
-                .unwrap_or_else(|| e.to_string())
+            "{} is not UTF-8 text. Convert it, then import again.",
+            pretty(Path::new(&args[0]))
         )
     })?;
     let mut last = if log_len(d) == 0 {
@@ -713,11 +946,14 @@ fn cmd_import(d: &Path, args: &[String], c: Config) -> Result<(), String> {
             continue;
         }
         let (date, text) = line.split_once(' ').unwrap_or((line, ""));
-        if !date_re.is_match(date) || !valid_date(date) {
+        if !date_re.is_match(date) {
             return die(format!(
                 "line {}: expected 'YYYY-MM-DD <text>', got: {line}",
                 i + 1
             ));
+        }
+        if !valid_date(date) {
+            return die(format!("line {}: {date} is not a real date.", i + 1));
         }
         if date < last.as_str() {
             return die(format!(
@@ -760,19 +996,7 @@ fn cmd_zoom(d: &Path, args: &[String]) -> Result<(), String> {
     if args.len() != 1 {
         return die("usage: memo zoom <lo>-<hi>   # a block id, as wake prints them");
     }
-    let Some((lo, hi)) = block_id(&args[0]) else {
-        return die(format!(
-            "'{}' is not a block id. Copy it from wake's output.",
-            args[0]
-        ));
-    };
-    let size = hi - lo;
-    if size < 2 || !size.is_power_of_two() || !lo.is_multiple_of(size) {
-        return die(format!(
-            "{} is not a block. Copy the id printed by wake, like 16-31.",
-            args[0]
-        ));
-    }
+    let (lo, hi) = block_id(&args[0])?;
     let t = log_len(d);
     if lo >= t {
         return die(format!(
@@ -808,21 +1032,26 @@ fn run() -> Result<(), String> {
     }
     if !matches!(
         args[0].as_str(),
-        "wake" | "note" | "nap" | "recall" | "zoom" | "forget" | "import"
+        "init" | "wake" | "note" | "nap" | "recall" | "zoom" | "forget" | "config" | "import"
     ) {
         eprintln!("No such command: {}\n", args[0]);
         eprintln!("{USAGE}");
         std::process::exit(1);
     }
+    if args[0] == "init" {
+        return cmd_init(&memory_dir()?, &args[1..]);
+    }
     let d = store()?;
     let c = config(&d)?;
     match args[0].as_str() {
+        "init" => unreachable!(),
         "wake" => cmd_wake(&d, &args[1..], c),
         "note" => cmd_note(&d, &args[1..], c),
         "nap" => cmd_nap(&d, &args[1..], c),
         "recall" => cmd_recall(&d, &args[1..], c),
         "zoom" => cmd_zoom(&d, &args[1..]),
         "forget" => cmd_forget(&d, &args[1..]),
+        "config" => cmd_config(&d, &args[1..]),
         "import" => cmd_import(&d, &args[1..], c),
         _ => unreachable!(),
     }

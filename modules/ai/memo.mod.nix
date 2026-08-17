@@ -36,7 +36,7 @@
           description = ''
             Default MEMORY_DIR baked into the binary: the directory holding
             LOG.txt and TREE/. A runtime MEMORY_DIR env var overrides it.
-            The directory must be created by hand once (identity creation).
+            The directory must be created once with memo init (identity creation).
           '';
         };
       };

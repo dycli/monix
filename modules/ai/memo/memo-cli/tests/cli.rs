@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -36,7 +36,7 @@ fn seed_date(mut days: u32) -> String {
     }
     format!("{year:04}-{month:02}-{day:02}")
 }
-const WAKE_LINES: usize = 208;
+const WAKE_LINES: usize = 96;
 const CAP_CHARS: usize = 30000;
 const CAP_LINES: usize = 2000;
 
@@ -143,6 +143,117 @@ fn tree_size(store: &Path) -> u64 {
 }
 
 #[test]
+fn init_and_config_match_upstream() {
+    let store = TempDir::new("init");
+    fs::remove_dir(&store.0).unwrap();
+
+    let created = run(&store.0, &["init"]);
+    assert!(created.status.success(), "{}", stderr(&created));
+    assert!(stdout(&created).contains("Created") && stdout(&created).contains("## Memory"));
+    assert!(store.0.join("LOG.txt").is_file());
+    assert!(store.0.join("TREE").is_dir());
+    assert!(store.0.join("config").is_file());
+
+    let shown = run(&store.0, &["config"]);
+    assert!(shown.status.success());
+    assert!(stdout(&shown).contains("WAKE_LINES   96"));
+    assert!(!stdout(&shown).contains("default 96"));
+
+    let set = run(&store.0, &["config", "wake_lines=12"]);
+    assert!(set.status.success(), "{}", stderr(&set));
+    assert!(stdout(&set).contains("WAKE_LINES   12") && stdout(&set).contains("default 96"));
+
+    let reset = run(&store.0, &["config", "WAKE_LINES="]);
+    assert!(reset.status.success());
+    assert!(stdout(&reset).contains("WAKE_LINES   96"));
+    assert!(!stdout(&reset).contains("default 96"));
+
+    for bad in [
+        "WAKE_LINES=0",
+        "WAKE_LINES=x",
+        "ENTRY_CHARS=999",
+        "NOPE=1",
+        "WAKE_LINES",
+    ] {
+        assert!(
+            !run(&store.0, &["config", bad]).status.success(),
+            "accepted {bad}"
+        );
+    }
+
+    let note = run(&store.0, &["note", "an initialized memory"]);
+    assert!(note.status.success());
+    let log = fs::read(store.0.join("LOG.txt")).unwrap();
+    let config = fs::read(store.0.join("config")).unwrap();
+
+    let invalid_utf8 = store.0.join("latin1.txt");
+    fs::write(&invalid_utf8, b"2027-01-01 caf\xe9\n").unwrap();
+    let bad = run(&store.0, &["import", invalid_utf8.to_str().unwrap()]);
+    assert!(!bad.status.success() && stderr(&bad).contains("not UTF-8"));
+
+    let invalid_date = store.0.join("bad-date.txt");
+    fs::write(&invalid_date, b"2027-99-99 impossible\n").unwrap();
+    let bad = run(&store.0, &["import", invalid_date.to_str().unwrap()]);
+    assert!(!bad.status.success() && stderr(&bad).contains("not a real date"));
+    assert_eq!(fs::read(store.0.join("LOG.txt")).unwrap(), log);
+
+    let found = run(&store.0, &["init"]);
+    assert!(found.status.success() && stdout(&found).contains("Found"));
+    assert_eq!(fs::read(store.0.join("LOG.txt")).unwrap(), log);
+    assert_eq!(fs::read(store.0.join("config")).unwrap(), config);
+
+    OpenOptions::new()
+        .append(true)
+        .open(store.0.join("config"))
+        .unwrap()
+        .write_all(b"WAKE_LNES=100\n")
+        .unwrap();
+    let bad = run(&store.0, &["wake"]);
+    assert!(!bad.status.success());
+    assert!(stderr(&bad).contains("config line") && stderr(&bad).contains("WAKE_LNES"));
+}
+
+#[test]
+fn zoom_and_corrupt_summary_recovery_match_upstream() {
+    let store = TempDir::new("recovery");
+    for i in 0..4 {
+        assert!(
+            run(&store.0, &["note", &format!("recovery probe {i}")])
+                .status
+                .success()
+        );
+    }
+    assert_eq!(settle(&store.0, "settled recovery probe"), 3);
+
+    let zoom = run(&store.0, &["zoom", "0-3"]);
+    assert!(
+        zoom.status.success() && stdout(&zoom).contains("#0-1 ") && stdout(&zoom).contains("#2-3 ")
+    );
+    for bad in ["5-6", "0-2", "3-9", "backwards"] {
+        assert!(!run(&store.0, &["zoom", bad]).status.success());
+    }
+
+    let level = store.0.join("TREE/2");
+    let mut file = OpenOptions::new().write(true).open(&level).unwrap();
+    file.seek(SeekFrom::Start(0)).unwrap();
+    file.write_all(b"\xff\xfe").unwrap();
+    let corrupt = run(&store.0, &["zoom", "0-3"]);
+    assert!(
+        !corrupt.status.success()
+            && stderr(&corrupt).contains("corrupt")
+            && stderr(&corrupt).contains("forget 0-1")
+    );
+
+    file.seek(SeekFrom::Start(0)).unwrap();
+    file.write_all(&[b' '; 287]).unwrap();
+    file.write_all(b"\n").unwrap();
+    drop(file);
+    assert!(run(&store.0, &["config", "WAKE_LINES=2"]).status.success());
+    let blank = run(&store.0, &["wake"]);
+    assert!(!blank.status.success() && stderr(&blank).contains("forget 0-1"));
+}
+
+#[test]
 fn cli_end_to_end() {
     let store = TempDir::new("test");
 
@@ -151,7 +262,7 @@ fn cli_end_to_end() {
     assert!(smoke.status.success() && stdout(&smoke).contains("No memories yet"));
     let typo = store.0.with_extension("typo");
     let ghost = run(&typo, &["wake"]);
-    assert!(!ghost.status.success() && stderr(&ghost).contains("does not exist"));
+    assert!(!ghost.status.success() && stderr(&ghost).contains("No memory at"));
     assert!(!typo.exists());
     let noenv = Command::new(env!("CARGO_BIN_EXE_memo"))
         .env_remove("MEMORY_DIR")
@@ -165,7 +276,7 @@ fn cli_end_to_end() {
     let expected = match option_env!("MEMO_MEMORY_DIR") {
         // The baked default points outside the sandbox; it must be reported
         // missing, never silently created (that would be a second identity).
-        Some(_) => "does not exist",
+        Some(_) => "No memory at",
         None => "MEMORY_DIR is not set",
     };
     assert!(!noenv.status.success() && stderr(&noenv).contains(expected));
@@ -193,7 +304,7 @@ fn cli_end_to_end() {
     for i in 0..N {
         let date = seed_date((i / 5) as u32);
         seed.push_str(&format!(
-            "{date} memory number {i}, a thing that happened\n"
+            "{date} memory number {i}, a thing that happened, was weighed against the rest of the week, turned out to matter more than anyone guessed at the time, and left a mark on every plan that followed it\n"
         ));
     }
     let seed_path = store.0.join("seed.txt");
@@ -280,6 +391,15 @@ fn cli_end_to_end() {
     assert_eq!(tree_size(&store.0), mid);
     let r = run(&store.0, &["nap", "0-31", "out of order"]);
     assert!(!r.status.success() && stderr(&r).contains("Wrong block"));
+    for bad in ["5-6", "0-2", "3-9", "backwards"] {
+        let r = run(&store.0, &["nap", bad, "not a real block"]);
+        assert!(
+            !r.status.success() && stderr(&r).contains("not a block"),
+            "accepted {bad}: {}{}",
+            stdout(&r),
+            stderr(&r)
+        );
+    }
     assert!(settle(&store.0, "rebuilt after forget") > 0);
     assert!(run(&store.0, &["wake"]).status.success());
     assert_eq!(tree_size(&store.0), before);
@@ -302,10 +422,8 @@ fn cli_end_to_end() {
         &["note", "a plain ascii memory right after the accented one"],
     );
     assert!(stdout(&run(&store.0, &["recall", "coração"])).contains("João"));
-    // regex-lite case-folds ASCII only (documented trade): mixed-case ASCII
-    // matches, but accented characters must match their stored case exactly.
     assert!(stdout(&run(&store.0, &["recall", "reunião COM joão"])).contains("São Paulo"));
-    assert!(stdout(&run(&store.0, &["recall", "REUNIÃO com joão"])).contains("No match."));
+    assert!(stdout(&run(&store.0, &["recall", "REUNIÃO com joão"])).contains("São Paulo"));
     assert!(
         stdout(&run(
             &store.0,

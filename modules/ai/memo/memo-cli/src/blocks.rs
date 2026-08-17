@@ -73,7 +73,7 @@ mod tests {
     use super::{complete, cover};
     use std::collections::HashSet;
 
-    const WAKE_LINES: usize = 208;
+    const WAKE_LINES: usize = 96;
 
     #[test]
     fn covers_are_aligned_complete_and_finer_toward_present() {

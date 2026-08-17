@@ -47,11 +47,11 @@
       to add or update a tool, change the flake and have the captain rebuild. nixpkgs
       lags upstream for fast-moving tools — check what it carries before promising a
       version.
-    - Long-term memory lives at `~/cockpit/memory/` — plain markdown any model can read
-      and write. `MEMORY.md` is the index (one terse line per memory); the memory
-      files hold STATE. Chronological memory is the memo log (next section). Memory
-      files hold session-learned, non-derivable facts only; the monix repo is
-      canonical. A memory file that stops being true is edited or deleted —
+    - Long-term memory lives at `~/cockpit/memory/`. Its markdown files are state any
+      model can read and write. `MEMORY.md` is the index (one terse line per memory);
+      the memory files hold STATE. Chronological memory is the memo log (next section).
+      Memory files hold session-learned, non-derivable facts only; the monix repo is
+      canonical. A markdown memory file that stops being true is edited or deleted —
       its story is already in the log.
 
     ## Memory — wake, note, nap
@@ -60,19 +60,21 @@
     of shifts. Continuity is the memo log (`memo` CLI; store `~/cockpit/memory/log`):
     append-only, never edited, never forgets. `memo wake` prints all of it in a
     fixed-size digest — newest memories verbatim, oldest as one-line epochs.
+    Never edit or delete anything under `~/cockpit/memory/log`; `memo` manages its
+    fixed-width records, and changing one byte can destroy every record after it.
 
     - WAKE. Run `memo wake` before any other tool call, in every session. (The
       Claude seat gets part 1 injected by a SessionStart hook — read it, then
       continue; other seats run it by hand.) It prints numbered parts, each ordering
       the next command; run them until one says "You are awake." If it refuses
       because compressions are pending, do them, then wake again.
-    - NOTE. `memo note "<one line, at most 280 chars>"` the moment something
+    - NOTE. `memo note "<one line, at most 280 bytes>"` the moment something
       happens, you learn something, or something changes — if and only if it is new,
       important, and lasting: work that lands (with ids/commits), decisions and
       their outcomes, anything the captain teaches you. Never trivia, never your own
       process, never what you already know.
     - NAP. When a note returns a compression prompt, pay it on the spot: one line,
-      at most 280 chars — keep every name, number, date, decision and outcome; drop
+      at most 280 bytes — keep every name, number, date, decision and outcome; drop
       wording, not facts; invent nothing. Before a session ends or context clears,
       run `memo nap` until "Nothing left to compress", and tell the captain what
       state the ship sleeps in: running tasks, background jobs, uncommitted or
@@ -81,6 +83,10 @@
       summary is too coarse. `memo forget <lo>-<hi>` drops a bad summary (never a
       memory); the next sleep rebuilds it. A wrong memory is corrected by noting the
       correction.
+
+    The `#a-b` summary lines form a binary tree. `memo zoom <a-b>` opens one node
+    into its two halves, down to the raw memories; use it when recall is too literal
+    and a wake summary is too broad.
 
     A fact has exactly one home. Memory FILES hold state — what is true now,
     edited in place as truth changes. The LOG holds events — what happened, when,

@@ -7,9 +7,9 @@ publish = false
 
 [dependencies]
 libc = "0.2"
-# regex-lite over regex: same authors and linear-time guarantee, zero
-# transitive deps; recall patterns don't need the optimized engines.
-regex-lite = "0.1"
+# Python's re.I case-folds Unicode. The full engine preserves that upstream
+# behavior while retaining Rust regex's linear-time guarantee.
+regex = "1"
 
 [profile.release]
 lto = "thin"
