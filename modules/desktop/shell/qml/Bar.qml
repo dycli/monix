@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import Quickshell
 import QtQuick
+import Quickshell.Hyprland
 import Quickshell.Wayland
 
 Variants {
@@ -35,6 +36,12 @@ Variants {
         IdleInhibitor {
             window: window
             enabled: PowerService.idleInhibited
+        }
+
+        HyprlandFocusGrab {
+            active: window.powerMenuOpen
+            windows: [window]
+            onCleared: window.powerMenuOpen = false
         }
 
         Row {
