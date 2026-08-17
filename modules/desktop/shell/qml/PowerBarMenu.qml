@@ -6,8 +6,6 @@ import Quickshell.Services.UPower
 Row {
     id: root
 
-    signal closeRequested
-
     height: 24
     spacing: 10
 
@@ -128,10 +126,5 @@ Row {
                 }
             }
         }
-    }
-
-    Power {
-        anchors.verticalCenter: parent.verticalCenter
-        onMenuToggleRequested: root.closeRequested()
     }
 }

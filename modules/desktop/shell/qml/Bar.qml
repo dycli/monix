@@ -30,7 +30,7 @@ Variants {
 
         WlrLayershell.layer: WlrLayer.Top
         WlrLayershell.namespace: "kestrel:bar"
-        WlrLayershell.keyboardFocus: BarModeService.wantsKeyboard && modeHost.active
+        WlrLayershell.keyboardFocus: BarModeService.wantsKeyboard && rightRail.pinned
             ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
         IdleInhibitor {
@@ -39,7 +39,7 @@ Variants {
         }
 
         HyprlandFocusGrab {
-            active: modeHost.active
+            active: rightRail.pinned
             windows: [window]
             onCleared: BarModeService.close()
         }
@@ -60,38 +60,16 @@ Variants {
             }
         }
 
-        Row {
-            id: rightGroup
+        RightRail {
+            id: rightRail
 
             anchors {
                 right: parent.right
                 rightMargin: Math.round(12 * window.scaleFactor)
                 verticalCenter: parent.verticalCenter
             }
-
-            spacing: Math.round(10 * window.scaleFactor)
-            visible: !modeHost.active
-
-            Power {
-                scaleFactor: window.scaleFactor
-                onMenuToggleRequested: BarModeService.toggle("power", window.modelData.name)
-            }
-            SettingsButton {
-                scaleFactor: window.scaleFactor
-                onMenuToggleRequested: BarModeService.toggle("control", window.modelData.name)
-            }
-
-            Clock {
-                id: clock
-
-                anchors.verticalCenter: parent.verticalCenter
-                fontPixelSize: window.barFontSize
-                format: "ddd MMM d h:mm AP"
-                onClicked: {
-                    BarModeService.close();
-                    ClockPanelService.toggle(window.modelData.name);
-                }
-            }
+            maximumWidth: Math.max(0, window.width - leftGroup.width - 48)
+            screenName: window.modelData.name
         }
 
         Item {
@@ -100,7 +78,7 @@ Variants {
             anchors {
                 left: leftGroup.right
                 leftMargin: 12
-                right: modeHost.active ? modeHost.left : rightGroup.left
+                right: rightRail.left
                 rightMargin: 12
                 top: parent.top
                 bottom: parent.bottom
@@ -111,22 +89,6 @@ Variants {
                 anchors.fill: parent
                 screenName: window.modelData.name
             }
-        }
-
-        ClockPopout {
-            anchorItem: clock
-            screenName: window.modelData.name
-        }
-
-        BarModeHost {
-            id: modeHost
-
-            anchors {
-                right: parent.right
-                rightMargin: 12
-                verticalCenter: parent.verticalCenter
-            }
-            screenName: window.modelData.name
         }
 
     }

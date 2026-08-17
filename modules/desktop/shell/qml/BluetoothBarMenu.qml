@@ -6,19 +6,11 @@ import Quickshell.Bluetooth
 Row {
     id: root
 
-    signal backRequested
-    signal closeRequested
-
     height: 24
     spacing: 4
 
     Component.onCompleted: BluetoothState.startScan()
     Component.onDestruction: BluetoothState.stopScan()
-
-    BarModeButton {
-        icon: "󰁍"
-        onActivated: root.backRequested()
-    }
 
     BarModeButton {
         active: BluetoothState.enabled
@@ -68,10 +60,5 @@ Row {
             ? "No Bluetooth adapter"
             : (BluetoothState.enabled ? "No devices" : "Bluetooth Off")
         visible: !BluetoothState.enabled || BluetoothState.visibleDeviceRows.length === 0
-    }
-
-    SettingsButton {
-        anchors.verticalCenter: parent.verticalCenter
-        onMenuToggleRequested: root.closeRequested()
     }
 }

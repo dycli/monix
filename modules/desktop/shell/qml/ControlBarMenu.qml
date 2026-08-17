@@ -5,7 +5,6 @@ import QtQuick
 Row {
     id: root
 
-    signal closeRequested
     signal modeRequested(string mode)
 
     height: 24
@@ -44,10 +43,5 @@ Row {
         icon: BrightnessState.icon
         value: BrightnessState.level
         onMoved: value => BrightnessState.setLevel(value)
-    }
-
-    SettingsButton {
-        anchors.verticalCenter: parent.verticalCenter
-        onMenuToggleRequested: root.closeRequested()
     }
 }

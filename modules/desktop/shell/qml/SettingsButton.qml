@@ -6,6 +6,7 @@ Item {
     signal menuToggleRequested
 
     property real scaleFactor: 1
+    readonly property bool hovered: pointer.containsMouse
 
     width: Math.round(28 * scaleFactor)
     height: Math.round(24 * scaleFactor)
@@ -49,8 +50,11 @@ Item {
     }
 
     MouseArea {
+        id: pointer
+
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
+        hoverEnabled: true
         onClicked: root.menuToggleRequested()
     }
 }

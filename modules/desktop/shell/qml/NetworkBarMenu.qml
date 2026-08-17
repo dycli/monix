@@ -5,9 +5,6 @@ import QtQuick
 Row {
     id: root
 
-    signal backRequested
-    signal closeRequested
-
     property var passwordNetwork: null
 
     height: 24
@@ -45,11 +42,6 @@ Row {
         value: true
         when: root.visible && NetworkState.wifiDevice !== null
         restoreMode: Binding.RestoreBindingOrValue
-    }
-
-    BarModeButton {
-        icon: "󰁍"
-        onActivated: root.backRequested()
     }
 
     BarModeButton {
@@ -151,10 +143,5 @@ Row {
         label: "Cancel"
         visible: root.passwordNetwork !== null
         onActivated: root.cancelPassword()
-    }
-
-    SettingsButton {
-        anchors.verticalCenter: parent.verticalCenter
-        onMenuToggleRequested: root.closeRequested()
     }
 }
