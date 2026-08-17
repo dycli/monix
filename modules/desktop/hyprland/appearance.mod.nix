@@ -93,10 +93,16 @@
           }
         ];
 
-        layer_rule = lib.lists.singleton {
-          match.namespace = "^(dms)$";
-          no_anim = true;
-        };
+        layer_rule = [
+          {
+            match.namespace = "^(dms)$";
+            no_anim = true;
+          }
+          {
+            match.namespace = "^(kestrel:bar)$";
+            blur = true;
+          }
+        ];
       };
     };
 }
