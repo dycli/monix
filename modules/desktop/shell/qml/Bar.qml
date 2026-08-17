@@ -27,27 +27,14 @@ Variants {
         WlrLayershell.namespace: "kestrel:bar"
 
         Row {
-            id: leftGroup
-
             anchors {
                 left: parent.left
-                right: rightGroup.left
                 leftMargin: 8
-                rightMargin: 16
                 verticalCenter: parent.verticalCenter
             }
 
-            spacing: 8
-
             Workspaces {
-                id: workspaces
-
                 screenName: window.modelData.name
-            }
-
-            CurrentWindow {
-                width: Math.max(0, leftGroup.width - workspaces.width - 8)
-                anchors.verticalCenter: parent.verticalCenter
             }
         }
 

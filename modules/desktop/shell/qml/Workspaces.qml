@@ -10,6 +10,20 @@ Row {
 
     spacing: 0
 
+    readonly property var workspaceNames: [
+        "",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten"
+    ]
+
     readonly property int activeWorkspaceId: {
         const monitors = Hyprland.monitors?.values || [];
         const monitor = monitors.find(candidate => candidate.name === screenName);
@@ -57,7 +71,7 @@ Row {
                     weight: workspace.active ? Style.fontWeight : Font.Normal
                 }
                 renderType: Text.NativeRendering
-                text: workspace.workspaceId
+                text: root.workspaceNames[workspace.workspaceId]
             }
 
             MouseArea {

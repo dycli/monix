@@ -75,21 +75,18 @@
                 hyprbars = {
                   bar_height = 25,
                   bar_color = "rgb(cccccc)",
-                  col = { text = "rgb(000000)" },
-                  bar_text_weight = "bold",
-                  bar_text_font = "Noto Sans",
+                  bar_title_enabled = false,
                   bar_precedence_over_border = true,
                   bar_buttons_alignment = "left",
                 },
               },
             })
 
-            -- Inactive-window greys; focus rules re-evaluate on every focus
+            -- Inactive-window grey; focus rules re-evaluate on every focus
             -- change. Plugin rule effects require the string keys.
             hl.window_rule({
               match = { focus = false },
               ["hyprbars:bar_color"] = "rgb(dddddd)",
-              ["hyprbars:title_color"] = "rgb(777777)",
             })
 
             -- Declaration order reads left-to-right on screen. A transparent
