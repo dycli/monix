@@ -84,10 +84,6 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  inputs.omp = {
-    url = "git+https://github.com/can1357/oh-my-pi";
-  };
-
   outputs =
     inputs:
     let
