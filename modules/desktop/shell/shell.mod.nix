@@ -1,13 +1,8 @@
-# An in-tree quickshell desktop shell, off unless shipShell.enable is set. The
-# QML tree in ./qml is the shell; the stock quickshell binary interprets it.
-#
-# Mutually exclusive with DMS, which contends for layer-shell and the
-# notification bus, so enabling this requires removing dank.mod.nix from the
-# hyprland bundle. The store copy is read-only; iterate against a working
-# checkout with `qs -p modules/desktop/shell/qml`, which hot-reloads.
+# The Kestrel desktop shell. DMS stays running for the features not yet aboard;
+# its bar is hidden before Kestrel claims the top edge.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.ship-shell;
+  flake.nixosModules.desktop = self.nixosModules.ship-shell;
   flake.nixosModules.ship-shell =
     {
       config,
@@ -17,32 +12,28 @@
     }:
     let
       inherit (lib.lists) singleton;
-      inherit (lib.modules) mkIf;
       inherit (lib.meta) getExe;
-      inherit (lib.options) mkEnableOption;
-
-      cfg = config.shipShell;
     in
     {
-      options.shipShell.enable = mkEnableOption "the ship's own quickshell desktop shell";
+      environment.systemPackages = singleton pkgs.quickshell;
 
-      config = mkIf cfg.enable {
-        environment.systemPackages = singleton pkgs.quickshell;
+      # systemd user units do not inherit the session's XDG_DATA_DIRS.
+      systemd.user.services.ship-shell = {
+        description = "Kestrel desktop shell";
+        partOf = singleton "graphical-session.target";
+        after = [
+          "graphical-session.target"
+          "dms.service"
+        ];
+        wantedBy = singleton "graphical-session.target";
 
-        # systemd user units do not inherit the session's XDG_DATA_DIRS.
-        systemd.user.services.ship-shell = {
-          description = "ship quickshell desktop shell";
-          partOf = singleton "graphical-session.target";
-          after = singleton "graphical-session.target";
-          wantedBy = singleton "graphical-session.target";
+        environment.XDG_DATA_DIRS = "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
 
-          environment.XDG_DATA_DIRS = "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
-
-          serviceConfig = {
-            ExecStart = "${getExe pkgs.quickshell} -p ${./qml}";
-            Restart = "on-failure";
-            RestartSec = 5;
-          };
+        serviceConfig = {
+          ExecStartPre = "${getExe config.programs.dms-shell.package} ipc call bar hide";
+          ExecStart = "${getExe pkgs.quickshell} -p ${./qml}";
+          Restart = "on-failure";
+          RestartSec = 1;
         };
       };
     };

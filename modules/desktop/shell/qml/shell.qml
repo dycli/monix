@@ -1,5 +1,6 @@
-// Root of the ship shell. Sibling .qml files in this directory are one
-// QML module and need no imports to reference each other.
+//@ pragma AppId org.kestrel.shell
+//@ pragma Env QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+
 import Quickshell
 
 ShellRoot {

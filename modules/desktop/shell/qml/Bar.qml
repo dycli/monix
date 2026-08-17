@@ -1,27 +1,83 @@
-// Placeholder bar: a strip and a clock, proving the layer-shell window
-// and the render loop end to end. Everything else is design work that
-// has not happened yet.
+pragma ComponentBehavior: Bound
+
 import Quickshell
 import QtQuick
+import Quickshell.Wayland
 
-PanelWindow {
-    anchors {
-        top: true
-        left: true
-        right: true
-    }
-    implicitHeight: 24
-    color: "#c0101010"
+Variants {
+    model: Quickshell.screens
 
-    SystemClock {
-        id: clock
-        precision: SystemClock.Minutes
-    }
+    delegate: PanelWindow {
+        id: window
 
-    Text {
-        anchors.centerIn: parent
-        color: "#e6e6e6"
-        font.pixelSize: 12
-        text: Qt.formatDateTime(clock.date, "ddd d MMM  HH:mm")
+        required property var modelData
+
+        screen: modelData
+        color: "transparent"
+        implicitHeight: 32
+        exclusiveZone: implicitHeight
+
+        anchors {
+            top: true
+            left: true
+            right: true
+        }
+
+        WlrLayershell.layer: WlrLayer.Top
+        WlrLayershell.namespace: "kestrel:bar"
+
+        Row {
+            id: leftGroup
+
+            anchors {
+                left: parent.left
+                right: rightGroup.left
+                leftMargin: 8
+                rightMargin: 16
+                verticalCenter: parent.verticalCenter
+            }
+
+            spacing: 8
+
+            Workspaces {
+                id: workspaces
+
+                screenName: window.modelData.name
+            }
+
+            Rectangle {
+                width: 1
+                height: 14
+                anchors.verticalCenter: parent.verticalCenter
+                color: "#343840"
+            }
+
+            CurrentWindow {
+                width: Math.max(0, leftGroup.width - workspaces.width - 17)
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+
+        Row {
+            id: rightGroup
+
+            anchors {
+                right: parent.right
+                rightMargin: 8
+                verticalCenter: parent.verticalCenter
+            }
+
+            spacing: 4
+
+            Power {}
+            SettingsButton {}
+
+            Clock {
+                anchors.verticalCenter: parent.verticalCenter
+                format: "ddd d MMM  HH:mm"
+                fontWeight: Font.DemiBold
+            }
+        }
+
     }
 }
