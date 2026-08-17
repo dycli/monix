@@ -60,7 +60,7 @@ Variants {
                 verticalCenter: parent.verticalCenter
             }
 
-            spacing: 4
+            spacing: 6
 
             Power {}
             SettingsButton {}
