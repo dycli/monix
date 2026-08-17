@@ -27,7 +27,7 @@ Rectangle {
             id: batteryBody
 
             width: 19
-            height: 8
+            height: 10
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             radius: 2.5
