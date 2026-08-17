@@ -5,13 +5,12 @@ Text {
     id: root
 
     property string format: "HH:mm"
-    property int fontWeight: Font.Normal
 
     color: "#eef0f4"
     font {
-        family: "Noto Sans"
+        family: Style.fontFamily
         pixelSize: 12
-        weight: root.fontWeight
+        weight: Style.fontWeight
     }
     renderType: Text.NativeRendering
     text: Qt.formatDateTime(clock.date, format)

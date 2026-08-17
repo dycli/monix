@@ -68,8 +68,9 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             color: root.percentage <= 15 ? "#d26a6a" : "#aeb3bd"
             font {
-                family: "Noto Sans"
+                family: Style.fontFamily
                 pixelSize: 11
+                weight: Style.fontWeight
             }
             renderType: Text.NativeRendering
             text: root.percentage + "%"
@@ -80,8 +81,9 @@ Rectangle {
         anchors.centerIn: parent
         color: "#aeb3bd"
         font {
-            family: "Noto Sans"
+            family: Style.fontFamily
             pixelSize: 16
+            weight: Style.fontWeight
         }
         renderType: Text.NativeRendering
         text: "⏻"

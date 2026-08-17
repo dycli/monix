@@ -17,7 +17,7 @@ Row {
     }
 
     readonly property var workspaceIds: {
-        const ids = [1, 2, 3, 4, 5];
+        const ids = [];
         const workspaces = Hyprland.workspaces?.values || [];
 
         for (const workspace of workspaces) {
@@ -25,20 +25,10 @@ Row {
                 ids.push(workspace.id);
         }
 
+        if (root.activeWorkspaceId > 0 && !ids.includes(root.activeWorkspaceId))
+            ids.push(root.activeWorkspaceId);
+
         return ids.sort((left, right) => left - right);
-    }
-
-    readonly property var occupiedWorkspaceIds: {
-        const ids = [];
-        const toplevels = Hyprland.toplevels?.values || [];
-
-        for (const toplevel of toplevels) {
-            const id = toplevel.workspace?.id;
-            if (id > 0 && !ids.includes(id))
-                ids.push(id);
-        }
-
-        return ids;
     }
 
     Repeater {
@@ -51,7 +41,6 @@ Row {
 
             readonly property int workspaceId: modelData
             readonly property bool active: workspaceId === root.activeWorkspaceId
-            readonly property bool occupied: root.occupiedWorkspaceIds.includes(workspaceId)
 
             width: 24
             height: 24
@@ -60,11 +49,11 @@ Row {
 
             Text {
                 anchors.centerIn: parent
-                color: workspace.active ? "#111318" : workspace.occupied ? "#eef0f4" : "#737985"
+                color: workspace.active ? "#111318" : "#eef0f4"
                 font {
-                    family: "Noto Sans"
+                    family: Style.fontFamily
                     pixelSize: 11
-                    weight: workspace.active ? Font.DemiBold : Font.Normal
+                    weight: Style.fontWeight
                 }
                 renderType: Text.NativeRendering
                 text: workspace.workspaceId

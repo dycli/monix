@@ -7,8 +7,9 @@ Text {
     color: "#aeb3bd"
     elide: Text.ElideRight
     font {
-        family: "Noto Sans"
+        family: Style.fontFamily
         pixelSize: 12
+        weight: Style.fontWeight
     }
     renderType: Text.NativeRendering
     text: activeWindow?.title || ""

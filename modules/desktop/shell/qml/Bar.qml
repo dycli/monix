@@ -75,7 +75,6 @@ Variants {
             Clock {
                 anchors.verticalCenter: parent.verticalCenter
                 format: "ddd d MMM  HH:mm"
-                fontWeight: Font.DemiBold
             }
         }
 
