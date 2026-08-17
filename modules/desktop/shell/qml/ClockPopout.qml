@@ -75,7 +75,7 @@ PopupWindow {
 
     Rectangle {
         anchors.fill: parent
-        color: Style.panelColor
+        color: Style.popupBackgroundColor
         border.color: Style.panelBorderColor
         border.width: 1
         radius: 12

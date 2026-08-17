@@ -9,6 +9,7 @@ QtObject {
     readonly property color inactiveWorkspaceColor: "#c5c9d0"
     readonly property color lowBatteryColor: "#d26a6a"
     readonly property color panelColor: "#151515"
+    readonly property color popupBackgroundColor: Qt.rgba(21 / 255, 21 / 255, 21 / 255, 0.7)
     readonly property color panelBorderColor: "#343434"
     readonly property color panelMutedColor: "#a9adb4"
     readonly property int iconFontSize: 14
