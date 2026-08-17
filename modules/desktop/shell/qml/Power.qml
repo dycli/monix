@@ -27,10 +27,10 @@ Rectangle {
             id: batteryBody
 
             width: 19
-            height: 10
+            height: 8
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            radius: 3
+            radius: 2.5
             clip: true
             color: Qt.rgba(root.batteryColor.r, root.batteryColor.g, root.batteryColor.b, 0.3)
 
