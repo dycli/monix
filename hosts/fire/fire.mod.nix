@@ -15,6 +15,7 @@
           self.nixosModules.hyprland
           self.nixosModules.dev
           self.nixosModules.gaming
+          self.nixosModules.creative
           self.nixosModules.inference-fire
           self.nixosModules.inference-client
           self.nixosModules.paseo
