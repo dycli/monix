@@ -18,6 +18,7 @@
         pkgs.gimp
         pkgs.obs-studio
         pkgs.darktable
+        pkgs.ffmpeg-full
       ];
     };
 }
