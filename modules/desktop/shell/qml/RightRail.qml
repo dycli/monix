@@ -18,20 +18,21 @@ Item {
     readonly property bool overviewVisible: !detailVisible && hoverOpen
         && BarModeService.activeMode === ""
     readonly property bool pinned: ownsMode
+    readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
 
     property bool hoverOpen: false
     property string displayedDetailMode: ""
     property real overviewProgress: overviewVisible ? 1 : 0
     property real detailProgress: detailVisible ? 1 : 0
 
-    readonly property real idleWidth: powerButton.width + gap + settingsButton.width
+    readonly property real idleWidth: trayLead + powerButton.width + gap + settingsButton.width
         + gap + clock.width
     readonly property real overviewWidth: Math.min(maximumWidth,
         idleWidth + gap + controlMenu.implicitWidth)
     readonly property real endControlWidth: powerDetailVisual
         ? powerButton.width
         : (detailEndLoader.item ? detailEndLoader.item.implicitWidth : settingsButton.width)
-    readonly property real selectedStatusStartX: powerButton.width + gap
+    readonly property real selectedStatusStartX: trayLead + powerButton.width + gap
         + (displayedDetailMode === "bluetooth" ? controlMenu.bluetoothItemX : controlMenu.networkItemX)
     readonly property real availableDetailWidth: Math.max(0, maximumWidth - endControlWidth - gap)
     readonly property real requestedDetailWidth: detailLoader.item
@@ -80,15 +81,25 @@ Item {
         onActivated: BarModeService.close()
     }
 
+    SystemTrayView {
+        id: tray
+
+        anchors.verticalCenter: parent.verticalCenter
+        x: -root.detailProgress * (width + root.gap)
+        enabled: !root.detailVisible
+        opacity: 1 - root.detailProgress
+    }
+
     Power {
         id: powerButton
 
         anchors.verticalCenter: parent.verticalCenter
         scaleFactor: 1
         x: {
+            const start = root.trayLead;
             if (root.powerDetailVisual)
-                return root.detailProgress * (root.width - width);
-            return -root.detailProgress * (width + root.gap);
+                return start + root.detailProgress * (root.width - width - start);
+            return start + root.detailProgress * (-width - root.gap - start);
         }
         onMenuToggleRequested: {
             root.hoverOpen = false;
