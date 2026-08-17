@@ -11,6 +11,7 @@ Item {
     property string label: ""
     property bool active: false
     property bool enabled: true
+    property bool interactive: true
     property real maximumWidth: 0
 
     readonly property real contentSpacing: icon.length > 0 && label.length > 0 ? 4 : 0
@@ -75,8 +76,8 @@ Item {
 
     MouseArea {
         anchors.fill: parent
-        cursorShape: root.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-        enabled: root.enabled
+        cursorShape: root.enabled && root.interactive ? Qt.PointingHandCursor : Qt.ArrowCursor
+        enabled: root.enabled && root.interactive
         onClicked: root.activated()
     }
 }

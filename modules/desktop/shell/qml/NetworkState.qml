@@ -24,10 +24,14 @@ QtObject {
     readonly property string primaryType: wiredConnected
         ? "ethernet"
         : (connectedWifiNetwork ? "wifi" : (wiredDevice !== null && wifiDevice === null ? "ethernet" : "none"))
-    readonly property string primaryIcon: primaryType === "ethernet" ? "󰈀" : (wifiEnabled ? "󰖩" : "󰖪")
+    readonly property string primaryIcon: wiredConnected
+        ? "󰈀"
+        : (connectedWifiNetwork ? "󰖩" : (primaryType === "ethernet" ? "󰈂" : "󰖪"))
     readonly property string primaryLabel: primaryType === "ethernet"
-        ? "Ethernet"
-        : (connectedWifiNetwork ? connectedWifiNetwork.name : "Network")
+        ? (wiredConnected ? "Ethernet" : "")
+        : (connectedWifiNetwork
+            ? connectedWifiNetwork.name + " " + Math.round(connectedWifiNetwork.signalStrength * 100) + "%"
+            : "")
 
     function findDevice(type) {
         let fallback = null;

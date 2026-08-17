@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Quickshell.Bluetooth
 
 Row {
     id: root
@@ -14,23 +13,24 @@ Row {
 
     BarModeButton {
         active: NetworkState.connected
-        enabled: NetworkState.available && (NetworkState.wiredDevice !== null || NetworkState.wifiHardwareEnabled)
         icon: NetworkState.primaryIcon
+        interactive: NetworkState.available && (NetworkState.wiredDevice !== null || NetworkState.wifiHardwareEnabled)
         label: NetworkState.primaryLabel
         onActivated: root.modeRequested("network")
     }
 
     BarModeButton {
-        active: Bluetooth.defaultAdapter ? Bluetooth.defaultAdapter.enabled : false
-        enabled: false
-        icon: "󰂯"
-        label: "Bluetooth"
+        active: BluetoothState.connected
+        interactive: false
+        icon: BluetoothState.icon
+        label: BluetoothState.label
     }
 
     BarModeButton {
-        enabled: false
-        icon: "󰕾"
-        label: "Sound"
+        active: AudioState.available && !AudioState.muted
+        interactive: false
+        icon: AudioState.icon
+        label: AudioState.label
     }
 
     BarModeButton {
