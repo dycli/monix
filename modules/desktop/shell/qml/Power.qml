@@ -1,10 +1,11 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Quickshell
 
 Item {
     id: root
+
+    signal menuToggleRequested
 
     property real scaleFactor: 1
 
@@ -65,11 +66,6 @@ Item {
         }
     }
 
-    PowerPanel {
-        id: panel
-        anchorItem: root
-    }
-
     MouseArea {
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         anchors.fill: parent
@@ -80,7 +76,7 @@ Item {
             } else if (event.button === Qt.RightButton) {
                 PowerService.cycleProfile();
             } else {
-                panel.open = !panel.open;
+                root.menuToggleRequested();
             }
         }
     }

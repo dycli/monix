@@ -16,6 +16,8 @@ Variants {
         readonly property int barHeight: 28
         readonly property int barFontSize: 10
 
+        property bool powerMenuOpen: false
+
         screen: modelData
         color: "transparent"
         implicitHeight: barHeight
@@ -59,9 +61,11 @@ Variants {
             }
 
             spacing: Math.round(10 * window.scaleFactor)
+            visible: !window.powerMenuOpen
 
             Power {
                 scaleFactor: window.scaleFactor
+                onMenuToggleRequested: window.powerMenuOpen = true
             }
             SettingsButton {
                 scaleFactor: window.scaleFactor
@@ -72,6 +76,16 @@ Variants {
                 fontPixelSize: window.barFontSize
                 format: "ddd MMM d h:mm AP"
             }
+        }
+
+        PowerBarMenu {
+            anchors {
+                right: parent.right
+                rightMargin: 12
+                verticalCenter: parent.verticalCenter
+            }
+            visible: window.powerMenuOpen
+            onCloseRequested: window.powerMenuOpen = false
         }
 
     }
