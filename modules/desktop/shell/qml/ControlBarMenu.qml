@@ -15,23 +15,27 @@ Row {
     BarModeButton {
         active: NetworkState.wifiEnabled && NetworkState.connectedNetwork !== null
         enabled: NetworkState.available && NetworkState.wifiHardwareEnabled
-        label: NetworkState.connectedNetwork ? "Wi-Fi " + NetworkState.connectedNetwork.name : "Wi-Fi"
+        icon: NetworkState.wifiEnabled ? "󰖩" : "󰖪"
+        label: NetworkState.connectedNetwork ? NetworkState.connectedNetwork.name : "Wi-Fi"
         onActivated: root.modeRequested("wifi")
     }
 
     BarModeButton {
         active: Bluetooth.defaultAdapter ? Bluetooth.defaultAdapter.enabled : false
         enabled: false
+        icon: "󰂯"
         label: "Bluetooth"
     }
 
     BarModeButton {
         enabled: false
+        icon: "󰕾"
         label: "Sound"
     }
 
     BarModeButton {
         enabled: false
+        icon: "󰍹"
         label: "Display"
     }
 

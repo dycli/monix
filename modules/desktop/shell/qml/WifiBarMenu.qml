@@ -48,13 +48,14 @@ Row {
     }
 
     BarModeButton {
-        label: "‹"
+        icon: "󰁍"
         onActivated: root.backRequested()
     }
 
     BarModeButton {
         active: NetworkState.wifiEnabled
         enabled: NetworkState.available && NetworkState.wifiHardwareEnabled
+        icon: NetworkState.wifiEnabled ? "󰖩" : "󰖪"
         label: NetworkState.wifiEnabled ? "Wi-Fi On" : "Wi-Fi Off"
         onActivated: NetworkState.toggleWifi()
     }
@@ -67,6 +68,7 @@ Row {
             required property var modelData
 
             active: modelData.connected
+            icon: "󰖩"
             label: modelData.name + " " + Math.round(modelData.signalStrength * 100) + "%"
             maximumWidth: 150
             onActivated: root.chooseNetwork(modelData)
