@@ -8,12 +8,15 @@
       config,
       lib,
       osConfig,
+      pkgs,
       ...
     }:
     let
       inherit (lib.ship) guide opencode topology;
       inherit (lib.attrsets) genAttrs;
-      inherit (lib.lists) concatMap map singleton;
+      inherit (lib.lists) concatMap map;
+      inherit (lib.meta) getExe';
+      inherit (lib.modules) mkForce mkIf;
       inherit (lib.strings) toJSON;
       # Paths derive from the home this module is applied to, not from
       # primaryUser: the same aspect serves both accounts, each with its own
@@ -22,11 +25,11 @@
       monixDir = "${userHome}/ark/monix";
       holdDir = "${userHome}/hold";
       cockpitDir = "${userHome}/cockpit";
-      cockpitMemoryDir = "${userHome}/cockpit/memory";
-      # Claude Code keys per-project state to the working dir path with
-      # slashes turned into dashes ("/home/katara/cockpit" -> -home-katara-cockpit).
-      projectKey = lib.strings.replaceStrings (singleton "/") (singleton "-") cockpitDir;
-      claudeMemoryDir = "${userHome}/.claude/projects/${projectKey}/memory";
+      optmemRoot = "${userHome}/.optmem";
+      optmemMemoryDir = "${optmemRoot}/memory";
+      legacyMemoryDir = "${cockpitDir}/archive/state-memory";
+      rootGuide = guide.system + guide.pilot;
+      isBridge = config.home.username == "bridge";
       gitReadCommands = [
         "status*"
         "diff*"
@@ -111,8 +114,7 @@
       ];
       claudeFilePermissions = [
         monixDir
-        cockpitMemoryDir
-        claudeMemoryDir
+        optmemMemoryDir
       ];
       # OpenCode evaluates the final matching rule; keep the catch-all first.
       mkOpenCodeRules = patterns: { "*" = "ask"; } // genAttrs patterns (_: "allow");
@@ -172,15 +174,25 @@
     in
     {
       config = {
-        home.sessionVariables = opencode.environment;
+        home.sessionVariables =
+          opencode.environment
+          // lib.optionalAttrs isBridge {
+            CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
+          };
 
-        home.file."cockpit/AGENTS.md" = {
+        # Each frontend has its own global instruction location. Repositories
+        # then add narrower AGENTS.md files beneath this shared root layer.
+        home.file.".codex/AGENTS.md" = mkIf isBridge {
           force = true;
-          text = guide.system + guide.pilot;
+          text = rootGuide;
         };
-        home.file."cockpit/CLAUDE.md" = {
+        home.file.".config/opencode/AGENTS.md" = mkIf isBridge {
           force = true;
-          text = "@AGENTS.md\n";
+          text = rootGuide;
+        };
+        home.file.".claude/CLAUDE.md" = mkIf isBridge {
+          force = mkForce true;
+          text = mkForce rootGuide;
         };
 
         # The baseURL uses the seat-plane address because the slice fence
@@ -209,25 +221,35 @@
           );
         };
 
-        # Symlinked so every frontend shares one set of memory files.
-        home.file.".claude/projects/${projectKey}/memory" = {
-          force = true;
-          source = config.lib.file.mkOutOfStoreSymlink cockpitMemoryDir;
-        };
+        # Adopt OptMem's upstream location. Retire the old mutable Markdown
+        # memory as an inactive archive instead of creating a second system.
+        # Refuse ambiguous merges and leave conflicting trees untouched.
+        home.activation.moveCockpitMemory = mkIf isBridge (
+          lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+            old_memory=${lib.escapeShellArg "${userHome}/cockpit/memory"}
+            old_optmem=${lib.escapeShellArg "${userHome}/cockpit/memory/log"}
+            new_optmem=${lib.escapeShellArg optmemMemoryDir}
+            legacy_memory=${lib.escapeShellArg legacyMemoryDir}
 
-        home.file."cockpit/.claude/settings.json" = {
-          force = true;
-          text = toJSON {
-            permissions = {
-              # The memory symlink resolves outside the working directory.
-              additionalDirectories = [
-                monixDir
-                holdDir
-                claudeMemoryDir
-              ];
-            };
-          };
-        };
+            if [ -e "$old_optmem" ] && [ -e "$new_optmem" ]; then
+              echo "memory migration: both $old_optmem and $new_optmem exist" >&2
+              exit 1
+            fi
+            if [ -e "$old_memory" ] && [ -e "$legacy_memory" ]; then
+              echo "memory migration: both $old_memory and $legacy_memory exist" >&2
+              exit 1
+            fi
+
+            if [ -e "$old_optmem" ]; then
+              run ${getExe' pkgs.coreutils "mkdir"} -p ${lib.escapeShellArg optmemRoot}
+              run ${getExe' pkgs.coreutils "mv"} "$old_optmem" "$new_optmem"
+            fi
+            if [ -e "$old_memory" ]; then
+              run ${getExe' pkgs.coreutils "mkdir"} -p ${lib.escapeShellArg "${cockpitDir}/archive"}
+              run ${getExe' pkgs.coreutils "mv"} "$old_memory" "$legacy_memory"
+            fi
+          ''
+        );
       };
     };
 
