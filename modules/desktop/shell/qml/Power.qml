@@ -10,6 +10,7 @@ Rectangle {
     readonly property var batteries: UPower.devices.values.filter(device => device.isLaptopBattery && device.ready)
     readonly property var device: batteries[0] || null
     readonly property int percentage: device ? Math.round(device.percentage * 100) : 0
+    readonly property color batteryColor: percentage <= 15 ? Style.lowBatteryColor : Style.foregroundColor
 
     width: 28
     height: 24
@@ -30,23 +31,19 @@ Rectangle {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             radius: 3
-            color: "transparent"
-            border {
-                width: 1
-                color: root.percentage <= 15 ? Style.lowBatteryColor : Style.foregroundColor
-            }
+            clip: true
+            color: Qt.rgba(root.batteryColor.r, root.batteryColor.g, root.batteryColor.b, 0.3)
 
             Rectangle {
                 anchors {
                     left: parent.left
-                    leftMargin: 2
                     verticalCenter: parent.verticalCenter
                 }
 
-                width: Math.max(1, (batteryBody.width - 4) * root.percentage / 100)
-                height: batteryBody.height - 4
-                radius: 1.5
-                color: root.percentage <= 15 ? Style.lowBatteryColor : Style.foregroundColor
+                width: batteryBody.width * root.percentage / 100
+                height: batteryBody.height
+                radius: batteryBody.radius
+                color: root.batteryColor
             }
         }
 
@@ -56,7 +53,7 @@ Rectangle {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             radius: 0.5
-            color: root.percentage <= 15 ? Style.lowBatteryColor : Style.foregroundColor
+            color: root.batteryColor
         }
     }
 
