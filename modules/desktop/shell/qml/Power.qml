@@ -28,7 +28,7 @@ Item {
             font {
                 family: Style.fontFamily
                 pixelSize: Math.round(10 * root.scaleFactor)
-                weight: Font.Bold
+                weight: 400
             }
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter

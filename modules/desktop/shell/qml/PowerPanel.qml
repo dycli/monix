@@ -101,7 +101,7 @@ PopupWindow {
                         font {
                             family: Style.fontFamily
                             pixelSize: 18
-                            weight: Font.Bold
+                            weight: 400
                         }
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter

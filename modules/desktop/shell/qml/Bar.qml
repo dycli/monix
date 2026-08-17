@@ -15,7 +15,7 @@ Variants {
         readonly property real referenceScreenHeight: 960
         readonly property real scaleFactor: modelData.height / referenceScreenHeight
         readonly property int barHeight: Math.max(2, Math.round(modelData.height * 0.03 / 2) * 2)
-        readonly property int barFontSize: Math.max(1, Math.round(modelData.height * 0.01))
+        readonly property int barFontSize: 10
 
         screen: modelData
         color: "transparent"
