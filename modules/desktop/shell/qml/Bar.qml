@@ -45,15 +45,8 @@ Variants {
                 screenName: window.modelData.name
             }
 
-            Rectangle {
-                width: 1
-                height: 14
-                anchors.verticalCenter: parent.verticalCenter
-                color: "#343840"
-            }
-
             CurrentWindow {
-                width: Math.max(0, leftGroup.width - workspaces.width - 17)
+                width: Math.max(0, leftGroup.width - workspaces.width - 8)
                 anchors.verticalCenter: parent.verticalCenter
             }
         }

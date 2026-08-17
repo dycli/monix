@@ -44,27 +44,23 @@ Row {
 
             width: 24
             height: 24
-            radius: 2
-            color: active ? "#eef0f4" : mouse.containsMouse ? "#272a31" : "transparent"
+            color: "transparent"
 
             Text {
                 anchors.centerIn: parent
-                color: workspace.active ? "#111318" : "#eef0f4"
+                color: workspace.active ? Style.foregroundColor : Style.inactiveWorkspaceColor
                 font {
                     family: Style.fontFamily
-                    pixelSize: 11
-                    weight: Style.fontWeight
+                    pixelSize: Style.smallFontSize
+                    weight: workspace.active ? Style.fontWeight : Font.Normal
                 }
                 renderType: Text.NativeRendering
                 text: workspace.workspaceId
             }
 
             MouseArea {
-                id: mouse
-
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                hoverEnabled: true
                 onClicked: Hyprland.dispatch("hl.dsp.focus({ workspace = " + workspace.workspaceId + " })")
             }
         }

@@ -6,10 +6,10 @@ Text {
 
     property string format: "HH:mm"
 
-    color: "#eef0f4"
+    color: Style.foregroundColor
     font {
         family: Style.fontFamily
-        pixelSize: 12
+        pixelSize: Style.textFontSize
         weight: Style.fontWeight
     }
     renderType: Text.NativeRendering

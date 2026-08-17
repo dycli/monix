@@ -37,7 +37,7 @@ Rectangle {
                 color: "transparent"
                 border {
                     width: 1
-                    color: "#aeb3bd"
+                    color: Style.foregroundColor
                 }
 
                 Rectangle {
@@ -50,7 +50,7 @@ Rectangle {
                     width: Math.max(1, (batteryBody.width - 4) * root.percentage / 100)
                     height: batteryBody.height - 4
                     radius: 1
-                    color: root.percentage <= 15 ? "#d26a6a" : "#eef0f4"
+                    color: root.percentage <= 15 ? Style.lowBatteryColor : Style.foregroundColor
                 }
             }
 
@@ -60,16 +60,16 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 radius: 1
-                color: "#aeb3bd"
+                color: Style.foregroundColor
             }
         }
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            color: root.percentage <= 15 ? "#d26a6a" : "#aeb3bd"
+            color: root.percentage <= 15 ? Style.lowBatteryColor : Style.foregroundColor
             font {
                 family: Style.fontFamily
-                pixelSize: 11
+                pixelSize: Style.smallFontSize
                 weight: Style.fontWeight
             }
             renderType: Text.NativeRendering
@@ -79,10 +79,10 @@ Rectangle {
 
     Text {
         anchors.centerIn: parent
-        color: "#aeb3bd"
+        color: Style.foregroundColor
         font {
             family: Style.fontFamily
-            pixelSize: 16
+            pixelSize: Style.iconFontSize
             weight: Style.fontWeight
         }
         renderType: Text.NativeRendering

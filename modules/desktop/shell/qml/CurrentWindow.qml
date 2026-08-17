@@ -4,11 +4,11 @@ import Quickshell.Wayland
 Text {
     readonly property var activeWindow: ToplevelManager.activeToplevel
 
-    color: "#aeb3bd"
+    color: Style.foregroundColor
     elide: Text.ElideRight
     font {
         family: Style.fontFamily
-        pixelSize: 12
+        pixelSize: Style.textFontSize
         weight: Style.fontWeight
     }
     renderType: Text.NativeRendering

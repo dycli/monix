@@ -18,7 +18,7 @@ Rectangle {
             width: parent.width
             height: 1
             y: 4
-            color: "#aeb3bd"
+            color: Style.foregroundColor
         }
 
         Rectangle {
@@ -27,14 +27,14 @@ Rectangle {
             x: 3
             y: 2.5
             radius: 2
-            color: "#eef0f4"
+            color: Style.foregroundColor
         }
 
         Rectangle {
             width: parent.width
             height: 1
             y: 10
-            color: "#aeb3bd"
+            color: Style.foregroundColor
         }
 
         Rectangle {
@@ -43,7 +43,7 @@ Rectangle {
             x: 9
             y: 8.5
             radius: 2
-            color: "#eef0f4"
+            color: Style.foregroundColor
         }
     }
 
