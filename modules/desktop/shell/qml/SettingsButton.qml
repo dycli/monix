@@ -1,8 +1,9 @@
 import QtQuick
-import Quickshell
 
 Item {
     id: root
+
+    signal menuToggleRequested
 
     property real scaleFactor: 1
 
@@ -50,6 +51,6 @@ Item {
     MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: Quickshell.execDetached(["dms", "ipc", "call", "control-center", "toggle"])
+        onClicked: root.menuToggleRequested()
     }
 }

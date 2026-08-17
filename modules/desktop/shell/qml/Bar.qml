@@ -17,8 +17,6 @@ Variants {
         readonly property int barHeight: 28
         readonly property int barFontSize: 10
 
-        property bool powerMenuOpen: false
-
         screen: modelData
         color: "transparent"
         implicitHeight: barHeight
@@ -32,6 +30,8 @@ Variants {
 
         WlrLayershell.layer: WlrLayer.Top
         WlrLayershell.namespace: "kestrel:bar"
+        WlrLayershell.keyboardFocus: BarModeService.wantsKeyboard && modeHost.active
+            ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
         IdleInhibitor {
             window: window
@@ -39,9 +39,9 @@ Variants {
         }
 
         HyprlandFocusGrab {
-            active: window.powerMenuOpen
+            active: modeHost.active
             windows: [window]
-            onCleared: window.powerMenuOpen = false
+            onCleared: BarModeService.close()
         }
 
         Row {
@@ -68,14 +68,15 @@ Variants {
             }
 
             spacing: Math.round(10 * window.scaleFactor)
-            visible: !window.powerMenuOpen
+            visible: !modeHost.active
 
             Power {
                 scaleFactor: window.scaleFactor
-                onMenuToggleRequested: window.powerMenuOpen = true
+                onMenuToggleRequested: BarModeService.toggle("power", window.modelData.name)
             }
             SettingsButton {
                 scaleFactor: window.scaleFactor
+                onMenuToggleRequested: BarModeService.toggle("control", window.modelData.name)
             }
 
             Clock {
@@ -85,14 +86,15 @@ Variants {
             }
         }
 
-        PowerBarMenu {
+        BarModeHost {
+            id: modeHost
+
             anchors {
                 right: parent.right
                 rightMargin: 12
                 verticalCenter: parent.verticalCenter
             }
-            visible: window.powerMenuOpen
-            onCloseRequested: window.powerMenuOpen = false
+            screenName: window.modelData.name
         }
 
     }
