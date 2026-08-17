@@ -14,31 +14,49 @@ Item {
     implicitWidth: Math.round(21 * scaleFactor)
     implicitHeight: Math.round(12 * scaleFactor)
 
-    Rectangle {
+    Item {
         id: body
 
         width: Math.round(20 * root.scaleFactor)
         height: Math.round(10 * root.scaleFactor)
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
-        radius: 2.5 * root.scaleFactor
-        clip: true
-        color: Qt.rgba(root.color.r, root.color.g, root.color.b, 0.3)
 
-        Rectangle {
-            anchors {
-                left: parent.left
-                verticalCenter: parent.verticalCenter
+        Canvas {
+            id: charge
+
+            readonly property real fillWidth: width * root.percentage / 100
+            readonly property color fillColor: root.color
+            readonly property real cornerRadius: 2.5 * root.scaleFactor
+
+            anchors.fill: parent
+
+            onFillWidthChanged: requestPaint()
+            onFillColorChanged: requestPaint()
+            onCornerRadiusChanged: requestPaint()
+            onPaint: {
+                const context = getContext("2d");
+                const radius = Math.min(cornerRadius, width / 2, height / 2);
+
+                context.reset();
+                context.beginPath();
+                context.moveTo(radius, 0);
+                context.lineTo(width - radius, 0);
+                context.quadraticCurveTo(width, 0, width, radius);
+                context.lineTo(width, height - radius);
+                context.quadraticCurveTo(width, height, width - radius, height);
+                context.lineTo(radius, height);
+                context.quadraticCurveTo(0, height, 0, height - radius);
+                context.lineTo(0, radius);
+                context.quadraticCurveTo(0, 0, radius, 0);
+                context.closePath();
+
+                context.fillStyle = Qt.rgba(fillColor.r, fillColor.g, fillColor.b, 0.3);
+                context.fill();
+                context.clip();
+                context.fillStyle = fillColor;
+                context.fillRect(0, 0, fillWidth, height);
             }
-
-            width: body.width * root.percentage / 100
-            height: body.height
-            radius: 0
-            topLeftRadius: body.radius
-            topRightRadius: root.full || root.percentage >= 100 ? body.radius : 0
-            bottomLeftRadius: body.radius
-            bottomRightRadius: root.full || root.percentage >= 100 ? body.radius : 0
-            color: root.color
         }
 
         Text {
