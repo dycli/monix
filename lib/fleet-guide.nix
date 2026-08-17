@@ -76,6 +76,15 @@
     reasoning; lists and headings only for genuinely comparative, sequential, or
     parallel content.
 
+    ## Council pattern
+
+    When the captain asks for a **council** (or the stakes warrant one: reviews,
+    audits, one-way-door decisions), dispatch the SAME prompt to 2-3 executors across
+    different vendors, strictly independently — no drone sees another's output. Then
+    YOU synthesize: adopt the strongest take, graft the best of the rest, and report
+    where they disagreed (disagreement locates the judgment call for the captain).
+    Councils are for expensive-to-be-wrong calls only, never routine work.
+
     ## Dispatching
 
     Dispatch through the `fleet` tool as the unprivileged `fleet-operator` user.
@@ -144,15 +153,6 @@
     prompt-injectable, so keep them off untrusted input and real judgment. Context
     must arrive through `fleet dispatch` or be embedded in the prompt; drones have no
     GitHub route or forge credentials.
-
-    ## Council pattern
-
-    When the captain asks for a **council** (or the stakes warrant one: reviews,
-    audits, one-way-door decisions), dispatch the SAME prompt to 2-3 executors across
-    different vendors, strictly independently — no drone sees another's output. Then
-    YOU synthesize: adopt the strongest take, graft the best of the rest, and report
-    where they disagreed (disagreement locates the judgment call for the captain).
-    Councils are for expensive-to-be-wrong calls only, never routine work.
 
     ## Handling results
 
