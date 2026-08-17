@@ -14,7 +14,7 @@ Variants {
 
         screen: modelData
         color: "transparent"
-        implicitHeight: 32
+        implicitHeight: 28
         exclusiveZone: implicitHeight
 
         anchors {
