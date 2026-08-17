@@ -43,6 +43,8 @@ Rectangle {
                 width: batteryBody.width * root.percentage / 100
                 height: batteryBody.height
                 radius: 0
+                topLeftRadius: batteryBody.radius
+                bottomLeftRadius: batteryBody.radius
                 color: root.batteryColor
             }
         }
