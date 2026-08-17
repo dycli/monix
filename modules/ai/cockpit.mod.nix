@@ -226,14 +226,6 @@
                 claudeMemoryDir
               ];
             };
-            # `|| true`: a pending compression exits 1 while still printing
-            # the instruction that must surface.
-            hooks.SessionStart = singleton {
-              hooks = singleton {
-                type = "command";
-                command = "memo wake 2>&1 || true";
-              };
-            };
           };
         };
       };

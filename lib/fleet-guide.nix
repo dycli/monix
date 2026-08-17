@@ -63,11 +63,10 @@
     Never edit or delete anything under `~/cockpit/memory/log`; `memo` manages its
     fixed-width records, and changing one byte can destroy every record after it.
 
-    - WAKE. Run `memo wake` before any other tool call, in every session. (The
-      Claude seat gets part 1 injected by a SessionStart hook — read it, then
-      continue; other seats run it by hand.) It prints numbered parts, each ordering
-      the next command; run them until one says "You are awake." If it refuses
-      because compressions are pending, do them, then wake again.
+    - WAKE. Run `memo wake` before any other tool call, in every session. It prints
+      numbered parts, each ordering the next command; run them until one says "You
+      are awake." If it refuses because compressions are pending, do them, then wake
+      again.
     - NOTE. `memo note "<one line, at most 280 bytes>"` the moment something
       happens, you learn something, or something changes — if and only if it is new,
       important, and lasting: work that lands (with ids/commits), decisions and
