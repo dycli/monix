@@ -53,6 +53,6 @@ Rectangle {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
         hoverEnabled: true
-        onClicked: Quickshell.execDetached(["dms", "ipc", "call", "settings", "open"])
+        onClicked: Quickshell.execDetached(["dms", "ipc", "call", "control-center", "toggle"])
     }
 }

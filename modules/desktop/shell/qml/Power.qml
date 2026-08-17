@@ -93,9 +93,20 @@ Rectangle {
     MouseArea {
         id: mouse
 
+        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
         hoverEnabled: true
-        onClicked: Quickshell.execDetached(["dms", "ipc", "call", "powermenu", "toggle"])
+        onClicked: event => {
+            if (event.button === Qt.MiddleButton) {
+                Quickshell.execDetached(["dms", "ipc", "call", "inhibit", "toggle"]);
+            } else if (root.device && event.button === Qt.RightButton) {
+                Quickshell.execDetached(["dms", "ipc", "call", "powerprofile", "cycle"]);
+            } else if (root.device) {
+                Quickshell.execDetached(["dms", "ipc", "call", "powerprofile", "toggle"]);
+            } else if (event.button === Qt.LeftButton) {
+                Quickshell.execDetached(["dms", "ipc", "call", "powermenu", "toggle"]);
+            }
+        }
     }
 }
