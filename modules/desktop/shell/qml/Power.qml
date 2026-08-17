@@ -19,6 +19,8 @@ Item {
         spacing: 4
 
         Text {
+            width: 12
+            height: 12
             anchors.verticalCenter: parent.verticalCenter
             color: Style.foregroundColor
             font {
@@ -26,6 +28,8 @@ Item {
                 pixelSize: 10
                 weight: Font.Bold
             }
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
             renderType: Text.NativeRendering
             text: ""
             visible: PowerService.idleInhibited
@@ -41,6 +45,8 @@ Item {
         }
 
         Text {
+            width: 16
+            height: 16
             anchors.verticalCenter: parent.verticalCenter
             color: Style.foregroundColor
             font {
@@ -48,6 +54,8 @@ Item {
                 pixelSize: Style.iconFontSize
                 weight: Style.fontWeight
             }
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
             renderType: Text.NativeRendering
             text: "󰚥"
             visible: !PowerService.hasBattery

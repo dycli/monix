@@ -39,13 +39,15 @@ Item {
         }
 
         Text {
-            anchors.centerIn: parent
+            anchors.fill: parent
             color: Style.panelColor
             font {
                 family: Style.fontFamily
-                pixelSize: 7
+                pixelSize: 8
                 weight: Font.Bold
             }
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
             renderType: Text.NativeRendering
             text: root.charging ? "" : "✓"
             visible: root.charging || root.full

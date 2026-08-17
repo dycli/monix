@@ -96,13 +96,15 @@ PopupWindow {
                     }
 
                     Text {
-                        anchors.centerIn: parent
+                        anchors.fill: parent
                         color: Style.foregroundColor
                         font {
                             family: Style.fontFamily
                             pixelSize: 18
                             weight: Font.Bold
                         }
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
                         renderType: Text.NativeRendering
                         text: "󰚥"
                         visible: !PowerService.hasBattery
