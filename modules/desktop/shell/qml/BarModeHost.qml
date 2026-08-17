@@ -36,6 +36,8 @@ Item {
                 return controlMode;
             case "network":
                 return networkMode;
+            case "bluetooth":
+                return bluetoothMode;
             default:
                 return null;
             }
@@ -63,6 +65,15 @@ Item {
         id: networkMode
 
         NetworkBarMenu {
+            onBackRequested: BarModeService.open("control", root.screenName)
+            onCloseRequested: BarModeService.close()
+        }
+    }
+
+    Component {
+        id: bluetoothMode
+
+        BluetoothBarMenu {
             onBackRequested: BarModeService.open("control", root.screenName)
             onCloseRequested: BarModeService.close()
         }

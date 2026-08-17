@@ -15,4 +15,9 @@ QtObject {
         ? ""
         : (volume < 34 ? "" : (volume < 67 ? "" : ""))
     readonly property string label: available && !muted ? volume + "%" : ""
+
+    function mute(): void {
+        if (available)
+            sink.audio.muted = true;
+    }
 }

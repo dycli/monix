@@ -6,12 +6,14 @@ Item {
     id: root
 
     signal activated
+    signal secondaryActivated
 
     property string icon: ""
     property string label: ""
     property bool active: false
     property bool enabled: true
     property bool interactive: true
+    property bool secondaryInteractive: false
     property real maximumWidth: 0
 
     readonly property real contentSpacing: icon.length > 0 && label.length > 0 ? 4 : 0
@@ -76,8 +78,17 @@ Item {
 
     MouseArea {
         anchors.fill: parent
-        cursorShape: root.enabled && root.interactive ? Qt.PointingHandCursor : Qt.ArrowCursor
-        enabled: root.enabled && root.interactive
-        onClicked: root.activated()
+        acceptedButtons: (root.interactive ? Qt.LeftButton : Qt.NoButton)
+            | (root.secondaryInteractive ? Qt.RightButton : Qt.NoButton)
+        cursorShape: root.enabled && (root.interactive || root.secondaryInteractive)
+            ? Qt.PointingHandCursor
+            : Qt.ArrowCursor
+        enabled: root.enabled && (root.interactive || root.secondaryInteractive)
+        onClicked: mouse => {
+            if (mouse.button === Qt.RightButton)
+                root.secondaryActivated();
+            else
+                root.activated();
+        }
     }
 }

@@ -21,6 +21,7 @@
       systemd.user.services.ship-shell = {
         description = "Kestrel desktop shell";
         path = [
+          pkgs.bluez-tools
           pkgs.quickshell
           config.programs.dms-shell.package
         ];

@@ -1,4 +1,4 @@
-# Bluetooth stack. Pairing UI comes from the DMS control centre.
+# Bluetooth stack. Kestrel owns the pairing agent while its Bluetooth menu is open.
 { self, ... }:
 {
   flake.nixosModules.desktop = self.nixosModules.bluetooth;

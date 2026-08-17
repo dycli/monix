@@ -16,14 +16,19 @@ Row {
         icon: NetworkState.primaryIcon
         interactive: NetworkState.available && (NetworkState.wiredDevice !== null || NetworkState.wifiHardwareEnabled)
         label: NetworkState.primaryLabel
+        secondaryInteractive: NetworkState.available
         onActivated: root.modeRequested("network")
+        onSecondaryActivated: NetworkState.disablePrimary()
     }
 
     BarModeButton {
         active: BluetoothState.connected
-        interactive: false
+        interactive: BluetoothState.available
         icon: BluetoothState.icon
         label: BluetoothState.label
+        secondaryInteractive: BluetoothState.available
+        onActivated: root.modeRequested("bluetooth")
+        onSecondaryActivated: BluetoothState.disable()
     }
 
     BarModeButton {
@@ -31,6 +36,8 @@ Row {
         interactive: false
         icon: AudioState.icon
         label: AudioState.label
+        secondaryInteractive: AudioState.available
+        onSecondaryActivated: AudioState.mute()
     }
 
     BarModeButton {
