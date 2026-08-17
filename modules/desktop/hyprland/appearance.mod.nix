@@ -100,7 +100,7 @@
           }
           {
             match.namespace = "^(kestrel:bar)$";
-            blur = true;
+            blur_popups = true;
           }
         ];
       };

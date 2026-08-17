@@ -35,7 +35,9 @@ Item {
             height: body.height
             radius: 0
             topLeftRadius: body.radius
+            topRightRadius: root.full || root.percentage >= 100 ? body.radius : 0
             bottomLeftRadius: body.radius
+            bottomRightRadius: root.full || root.percentage >= 100 ? body.radius : 0
             color: root.color
         }
 
