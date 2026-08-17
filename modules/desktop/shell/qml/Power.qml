@@ -2,72 +2,61 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
-import Quickshell.Services.UPower
 
 Item {
     id: root
 
-    readonly property var batteries: UPower.devices.values.filter(device => device.isLaptopBattery && device.ready)
-    readonly property var device: batteries[0] || null
-    readonly property int percentage: device ? Math.round(device.percentage * 100) : 0
-    readonly property color batteryColor: percentage <= 15 ? Style.lowBatteryColor : Style.foregroundColor
+    readonly property color batteryColor: PowerService.percentage <= 15 && !PowerService.charging
+        ? Style.lowBatteryColor : Style.foregroundColor
 
-    width: 28
+    width: content.implicitWidth
     height: 24
 
-    Item {
-        width: 21
-        height: 12
+    Row {
+        id: content
+
         anchors.centerIn: parent
-        visible: root.device !== null
+        spacing: 4
 
-        Rectangle {
-            id: batteryBody
-
-            width: 20
-            height: 10
-            anchors.left: parent.left
+        Text {
             anchors.verticalCenter: parent.verticalCenter
-            radius: 2.5
-            clip: true
-            color: Qt.rgba(root.batteryColor.r, root.batteryColor.g, root.batteryColor.b, 0.3)
-
-            Rectangle {
-                anchors {
-                    left: parent.left
-                    verticalCenter: parent.verticalCenter
-                }
-
-                width: batteryBody.width * root.percentage / 100
-                height: batteryBody.height
-                radius: 0
-                topLeftRadius: batteryBody.radius
-                bottomLeftRadius: batteryBody.radius
-                color: root.batteryColor
+            color: Style.foregroundColor
+            font {
+                family: Style.fontFamily
+                pixelSize: 10
+                weight: Font.Bold
             }
+            renderType: Text.NativeRendering
+            text: ""
+            visible: PowerService.idleInhibited
         }
 
-        Rectangle {
-            width: 1
-            height: 4
-            anchors.right: parent.right
+        BatteryIcon {
             anchors.verticalCenter: parent.verticalCenter
-            radius: 0.5
             color: root.batteryColor
+            percentage: PowerService.percentage
+            charging: PowerService.charging
+            full: PowerService.full
+            visible: PowerService.hasBattery
+        }
+
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            color: Style.foregroundColor
+            font {
+                family: Style.fontFamily
+                pixelSize: Style.iconFontSize
+                weight: Style.fontWeight
+            }
+            renderType: Text.NativeRendering
+            text: "󰚥"
+            visible: !PowerService.hasBattery
         }
     }
 
-    Text {
-        anchors.centerIn: parent
-        color: Style.foregroundColor
-        font {
-            family: Style.fontFamily
-            pixelSize: Style.iconFontSize
-            weight: Style.fontWeight
-        }
-        renderType: Text.NativeRendering
-        text: "⏻"
-        visible: root.device === null
+    PowerPanel {
+        id: panel
+        anchorItem: root
     }
 
     MouseArea {
@@ -76,13 +65,11 @@ Item {
         cursorShape: Qt.PointingHandCursor
         onClicked: event => {
             if (event.button === Qt.MiddleButton) {
-                Quickshell.execDetached(["dms", "ipc", "call", "inhibit", "toggle"]);
-            } else if (root.device && event.button === Qt.RightButton) {
-                Quickshell.execDetached(["dms", "ipc", "call", "powerprofile", "cycle"]);
-            } else if (root.device) {
-                Quickshell.execDetached(["dms", "ipc", "call", "powerprofile", "toggle"]);
-            } else if (event.button === Qt.LeftButton) {
-                Quickshell.execDetached(["dms", "ipc", "call", "powermenu", "toggle"]);
+                PowerService.idleInhibited = !PowerService.idleInhibited;
+            } else if (event.button === Qt.RightButton) {
+                PowerService.cycleProfile();
+            } else {
+                panel.open = !panel.open;
             }
         }
     }

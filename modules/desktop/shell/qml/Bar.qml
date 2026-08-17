@@ -26,6 +26,11 @@ Variants {
         WlrLayershell.layer: WlrLayer.Top
         WlrLayershell.namespace: "kestrel:bar"
 
+        IdleInhibitor {
+            window: window
+            enabled: PowerService.idleInhibited
+        }
+
         Row {
             anchors {
                 left: parent.left
