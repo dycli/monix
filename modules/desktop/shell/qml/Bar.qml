@@ -29,7 +29,7 @@ Variants {
         Row {
             anchors {
                 left: parent.left
-                leftMargin: 8
+                leftMargin: 12
                 verticalCenter: parent.verticalCenter
             }
 
@@ -43,7 +43,7 @@ Variants {
 
             anchors {
                 right: parent.right
-                rightMargin: 8
+                rightMargin: 12
                 verticalCenter: parent.verticalCenter
             }
 
