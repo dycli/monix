@@ -42,6 +42,7 @@
         boot.kernelModules = lib.lists.singleton "kvm-amd";
         hardware.enableRedistributableFirmware = true;
         hardware.cpu.amd.updateMicrocode = true;
+        hardware.amdgpu.opencl.enable = true;
 
         # DMS owns the rest of the output configuration; this final rule
         # keeps Adaptive Sync enabled on the gaming display.
