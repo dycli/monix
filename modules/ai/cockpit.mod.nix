@@ -14,7 +14,6 @@
       inherit (lib.ship) guide opencode topology;
       inherit (lib.attrsets) genAttrs;
       inherit (lib.lists) concatMap map singleton;
-      inherit (lib.options) mkEnableOption;
       inherit (lib.strings) toJSON;
       # Paths derive from the home this module is applied to, not from
       # primaryUser: the same aspect serves both accounts, each with its own
@@ -115,23 +114,6 @@
         cockpitMemoryDir
         claudeMemoryDir
       ];
-      claudeAllow =
-        map (command: "Bash(${command})") claudeBashPermissions
-        # These paths are absolute; a doubled slash matches nothing and
-        # silently disables the rule.
-        ++ (
-          claudeFilePermissions
-          |> concatMap (path: [
-            "Read(${path}/**)"
-            "Edit(${path}/**)"
-            "Write(${path}/**)"
-          ])
-        )
-        ++ [
-          "WebFetch(domain:github.com)"
-          "WebSearch"
-          "SendUserFile"
-        ];
       # OpenCode evaluates the final matching rule; keep the catch-all first.
       mkOpenCodeRules = patterns: { "*" = "ask"; } // genAttrs patterns (_: "allow");
       # OpenCode strips the leading slash for file-tool paths, but
@@ -189,14 +171,6 @@
       // opencode.permissions;
     in
     {
-      # Opt-in per home rather than derived from the home's path, so a rename
-      # cannot silently move it to the wrong account.
-      options.cockpit.bypassPermissions = mkEnableOption ''
-        running this seat with Claude tool prompts off. Only ever true for a
-        home whose account is fenced at the OS (no wheel, no Nix trust, no
-        secrets, default-deny egress) — the walls replace the prompts
-      '';
-
       config = {
         home.sessionVariables = opencode.environment;
 
@@ -245,8 +219,6 @@
           force = true;
           text = toJSON {
             permissions = {
-              allow = claudeAllow;
-              defaultMode = if config.cockpit.bypassPermissions then "bypassPermissions" else "default";
               # The memory symlink resolves outside the working directory.
               additionalDirectories = [
                 monixDir
@@ -325,8 +297,6 @@
           home.homeDirectory = "/home/bridge";
           home.stateVersion = config.system.stateVersion;
 
-          # Safe only because this account is the fenced one.
-          cockpit.bypassPermissions = true;
         };
 
         opencodeAuth.users = singleton "bridge";
