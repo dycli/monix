@@ -11,69 +11,52 @@ Rectangle {
     readonly property var device: batteries[0] || null
     readonly property int percentage: device ? Math.round(device.percentage * 100) : 0
 
-    width: device ? 58 : 28
+    width: 28
     height: 24
     radius: 2
     color: mouse.containsMouse ? "#272a31" : "transparent"
 
-    Row {
+    Item {
+        width: 21
+        height: 12
         anchors.centerIn: parent
-        spacing: 5
         visible: root.device !== null
 
-        Item {
-            width: 21
-            height: 12
+        Rectangle {
+            id: batteryBody
+
+            width: 18
+            height: 10
+            anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-
-            Rectangle {
-                id: batteryBody
-
-                width: 18
-                height: 10
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                radius: 2
-                color: "transparent"
-                border {
-                    width: 1
-                    color: Style.foregroundColor
-                }
-
-                Rectangle {
-                    anchors {
-                        left: parent.left
-                        leftMargin: 2
-                        verticalCenter: parent.verticalCenter
-                    }
-
-                    width: Math.max(1, (batteryBody.width - 4) * root.percentage / 100)
-                    height: batteryBody.height - 4
-                    radius: 1
-                    color: root.percentage <= 15 ? Style.lowBatteryColor : Style.foregroundColor
-                }
+            radius: 2
+            color: "transparent"
+            border {
+                width: 1
+                color: Style.foregroundColor
             }
 
             Rectangle {
-                width: 2
-                height: 4
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
+                anchors {
+                    left: parent.left
+                    leftMargin: 2
+                    verticalCenter: parent.verticalCenter
+                }
+
+                width: Math.max(1, (batteryBody.width - 4) * root.percentage / 100)
+                height: batteryBody.height - 4
                 radius: 1
-                color: Style.foregroundColor
+                color: root.percentage <= 15 ? Style.lowBatteryColor : Style.foregroundColor
             }
         }
 
-        Text {
+        Rectangle {
+            width: 2
+            height: 4
+            anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            color: root.percentage <= 15 ? Style.lowBatteryColor : Style.foregroundColor
-            font {
-                family: Style.fontFamily
-                pixelSize: Style.smallFontSize
-                weight: Style.fontWeight
-            }
-            renderType: Text.NativeRendering
-            text: root.percentage + "%"
+            radius: 1
+            color: Style.foregroundColor
         }
     }
 
