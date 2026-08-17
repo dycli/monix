@@ -66,8 +66,8 @@
           tmp=$(mktemp "$auth_dir/.auth.json.XXXXXX")
           trap 'rm -f "$tmp"' EXIT
           jq --exit-status --rawfile key ${osConfig.secrets.opencode-key.path} '
-            ($key | rtrimstr("\n")) as $key
-            | if ($key | length) == 0 or ($key | contains("\n")) then
+            ($key | gsub("[\r\n]+$"; "")) as $key
+            | if ($key | length) == 0 or ($key | test("[\r\n]")) then
                 error("OpenCode key must be exactly one non-empty line")
               else
                 . + {
