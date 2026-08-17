@@ -45,7 +45,7 @@ Item {
             font {
                 family: Style.fontFamily
                 pixelSize: Math.max(2, Math.round(8 * root.scaleFactor / 2) * 2)
-                weight: 400
+                weight: 500
             }
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter

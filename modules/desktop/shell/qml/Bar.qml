@@ -12,9 +12,8 @@ Variants {
 
         required property var modelData
 
-        readonly property real referenceScreenHeight: 960
-        readonly property real scaleFactor: modelData.height / referenceScreenHeight
-        readonly property int barHeight: Math.max(2, Math.round(modelData.height * 0.03 / 2) * 2)
+        readonly property real scaleFactor: 1
+        readonly property int barHeight: 28
         readonly property int barFontSize: 10
 
         screen: modelData

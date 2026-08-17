@@ -4,7 +4,7 @@ import QtQuick
 
 QtObject {
     readonly property string fontFamily: "ComicCodeLigatures Nerd Font"
-    readonly property int fontWeight: 400
+    readonly property int fontWeight: 500
     readonly property color foregroundColor: "#ffffff"
     readonly property color inactiveWorkspaceColor: "#c5c9d0"
     readonly property color lowBatteryColor: "#d26a6a"
@@ -18,16 +18,16 @@ QtObject {
     readonly property font panelTextFont: Qt.font({
         family: fontFamily,
         pixelSize: 10,
-        weight: 400
+        weight: 500
     })
     readonly property font panelTitleFont: Qt.font({
         family: fontFamily,
         pixelSize: 10,
-        weight: 400
+        weight: 500
     })
     readonly property font panelValueFont: Qt.font({
         family: fontFamily,
         pixelSize: 10,
-        weight: 400
+        weight: 500
     })
 }
