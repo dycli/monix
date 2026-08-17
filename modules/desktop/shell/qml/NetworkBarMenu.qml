@@ -53,10 +53,20 @@ Row {
     }
 
     BarModeButton {
+        active: NetworkState.wiredConnected
+        enabled: NetworkState.wiredNetwork !== null
+        icon: "󰈀"
+        label: NetworkState.wiredConnected ? "Ethernet Connected" : "Ethernet Disconnected"
+        visible: root.passwordNetwork === null && NetworkState.wiredDevice !== null
+        onActivated: NetworkState.activateWired()
+    }
+
+    BarModeButton {
         active: NetworkState.wifiEnabled
         enabled: NetworkState.available && NetworkState.wifiHardwareEnabled
         icon: NetworkState.wifiEnabled ? "󰖩" : "󰖪"
         label: NetworkState.wifiEnabled ? "Wi-Fi On" : "Wi-Fi Off"
+        visible: root.passwordNetwork === null && NetworkState.wifiDevice !== null
         onActivated: NetworkState.toggleWifi()
     }
 
@@ -85,8 +95,8 @@ Row {
         }
         renderType: Text.NativeRendering
         text: "No networks"
-        visible: root.passwordNetwork === null && NetworkState.wifiEnabled
-            && NetworkState.visibleNetworks.length === 0
+        visible: root.passwordNetwork === null && NetworkState.wifiDevice !== null
+            && NetworkState.wifiEnabled && NetworkState.visibleNetworks.length === 0
     }
 
     Text {

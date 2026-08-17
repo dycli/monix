@@ -9,19 +9,30 @@ QtObject {
 
     readonly property bool available: Networking.backend === NetworkBackendType.NetworkManager
     readonly property var devices: Networking.devices ? Networking.devices.values : []
-    readonly property var wifiDevice: findWifiDevice()
+    readonly property var wifiDevice: findDevice(DeviceType.Wifi)
+    readonly property var wiredDevice: findDevice(DeviceType.Wired)
+    readonly property var wiredNetwork: wiredDevice ? wiredDevice.network : null
     readonly property var networkObjects: wifiDevice && wifiDevice.networks ? wifiDevice.networks.values : []
     readonly property var networks: sortedNetworks()
-    readonly property var visibleNetworks: networks.slice(0, 6)
+    readonly property var visibleNetworks: networks.slice(0, wiredConnected ? 5 : 6)
 
     readonly property bool wifiEnabled: Networking.wifiEnabled
     readonly property bool wifiHardwareEnabled: Networking.wifiHardwareEnabled
-    readonly property var connectedNetwork: networks.find(network => network.connected) || null
+    readonly property var connectedWifiNetwork: networks.find(network => network.connected) || null
+    readonly property bool wiredConnected: wiredDevice !== null && wiredDevice.connected
+    readonly property bool connected: wiredConnected || connectedWifiNetwork !== null
+    readonly property string primaryType: wiredConnected
+        ? "ethernet"
+        : (connectedWifiNetwork ? "wifi" : (wiredDevice !== null && wifiDevice === null ? "ethernet" : "none"))
+    readonly property string primaryIcon: primaryType === "ethernet" ? "󰈀" : (wifiEnabled ? "󰖩" : "󰖪")
+    readonly property string primaryLabel: primaryType === "ethernet"
+        ? "Ethernet"
+        : (connectedWifiNetwork ? connectedWifiNetwork.name : "Network")
 
-    function findWifiDevice() {
+    function findDevice(type) {
         let fallback = null;
         for (const device of devices) {
-            if (!device || device.type !== DeviceType.Wifi)
+            if (!device || device.type !== type)
                 continue;
             if (device.connected)
                 return device;
@@ -53,6 +64,15 @@ QtObject {
     function toggleWifi(): void {
         if (available && wifiHardwareEnabled)
             Networking.wifiEnabled = !Networking.wifiEnabled;
+    }
+
+    function activateWired(): void {
+        if (!wiredNetwork)
+            return;
+        if (wiredNetwork.connected)
+            wiredNetwork.disconnect();
+        else
+            wiredNetwork.connect();
     }
 
     function isOpen(network): bool {

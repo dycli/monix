@@ -34,8 +34,8 @@ Item {
                 return powerMode;
             case "control":
                 return controlMode;
-            case "wifi":
-                return wifiMode;
+            case "network":
+                return networkMode;
             default:
                 return null;
             }
@@ -60,9 +60,9 @@ Item {
     }
 
     Component {
-        id: wifiMode
+        id: networkMode
 
-        WifiBarMenu {
+        NetworkBarMenu {
             onBackRequested: BarModeService.open("control", root.screenName)
             onCloseRequested: BarModeService.close()
         }

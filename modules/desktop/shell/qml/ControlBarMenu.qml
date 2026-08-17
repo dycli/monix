@@ -13,11 +13,11 @@ Row {
     spacing: 4
 
     BarModeButton {
-        active: NetworkState.wifiEnabled && NetworkState.connectedNetwork !== null
-        enabled: NetworkState.available && NetworkState.wifiHardwareEnabled
-        icon: NetworkState.wifiEnabled ? "󰖩" : "󰖪"
-        label: NetworkState.connectedNetwork ? NetworkState.connectedNetwork.name : "Wi-Fi"
-        onActivated: root.modeRequested("wifi")
+        active: NetworkState.connected
+        enabled: NetworkState.available && (NetworkState.wiredDevice !== null || NetworkState.wifiHardwareEnabled)
+        icon: NetworkState.primaryIcon
+        label: NetworkState.primaryLabel
+        onActivated: root.modeRequested("network")
     }
 
     BarModeButton {
