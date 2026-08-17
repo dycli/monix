@@ -194,6 +194,10 @@
           force = mkForce true;
           text = mkForce rootGuide;
         };
+        home.file."cockpit/FLEET.md" = mkIf isBridge {
+          force = true;
+          text = guide.fleet;
+        };
 
         # The baseURL uses the seat-plane address because the slice fence
         # below admits that /32, not 127.0.0.1.
