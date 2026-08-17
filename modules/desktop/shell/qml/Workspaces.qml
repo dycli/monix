@@ -8,7 +8,7 @@ Row {
 
     required property string screenName
 
-    spacing: 2
+    spacing: 0
 
     readonly property int activeWorkspaceId: {
         const monitors = Hyprland.monitors?.values || [];
@@ -42,11 +42,13 @@ Row {
             readonly property int workspaceId: modelData
             readonly property bool active: workspaceId === root.activeWorkspaceId
 
-            width: 24
+            width: workspaceLabel.implicitWidth + 6
             height: 24
             color: "transparent"
 
             Text {
+                id: workspaceLabel
+
                 anchors.centerIn: parent
                 color: workspace.active ? Style.foregroundColor : Style.inactiveWorkspaceColor
                 font {

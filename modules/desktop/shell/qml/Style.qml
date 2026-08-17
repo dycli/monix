@@ -10,5 +10,5 @@ QtObject {
     readonly property color lowBatteryColor: "#d26a6a"
     readonly property int iconFontSize: 14
     readonly property int smallFontSize: 9
-    readonly property int textFontSize: 10
+    readonly property int textFontSize: 9
 }

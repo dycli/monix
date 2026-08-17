@@ -22,30 +22,23 @@ Rectangle {
         anchors.centerIn: parent
         visible: root.device !== null
 
-        Rectangle {
+        Item {
             id: batteryBody
 
             width: 18
             height: 10
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            radius: 2
-            color: "transparent"
-            border {
-                width: 1
-                color: Style.foregroundColor
-            }
 
             Rectangle {
                 anchors {
                     left: parent.left
-                    leftMargin: 2
                     verticalCenter: parent.verticalCenter
                 }
 
-                width: Math.max(1, (batteryBody.width - 4) * root.percentage / 100)
-                height: batteryBody.height - 4
-                radius: 1
+                width: Math.max(2, batteryBody.width * root.percentage / 100)
+                height: batteryBody.height
+                radius: 2
                 color: root.percentage <= 15 ? Style.lowBatteryColor : Style.foregroundColor
             }
         }
@@ -56,7 +49,7 @@ Rectangle {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             radius: 1
-            color: Style.foregroundColor
+            color: root.percentage <= 15 ? Style.lowBatteryColor : Style.foregroundColor
         }
     }
 
