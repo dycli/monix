@@ -44,6 +44,18 @@ Variants {
             onCleared: BarModeService.close()
         }
 
+        TapHandler {
+            acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+            onTapped: eventPoint => {
+                if (!rightRail.pinned)
+                    return;
+                const point = rightRail.mapFromItem(window.contentItem,
+                    eventPoint.position.x, eventPoint.position.y);
+                if (!rightRail.contains(point))
+                    BarModeService.close();
+            }
+        }
+
         Row {
             id: leftGroup
 

@@ -7,27 +7,22 @@ Row {
 
     signal modeRequested(string mode)
 
+    readonly property real networkItemX: networkButton.x
+    readonly property real bluetoothItemX: bluetoothButton.x
+
     height: 24
     spacing: 4
 
-    BarModeButton {
-        active: NetworkState.connected
-        icon: NetworkState.primaryIcon
-        interactive: NetworkState.available && (NetworkState.wiredDevice !== null || NetworkState.wifiHardwareEnabled)
-        label: NetworkState.primaryLabel
-        secondaryInteractive: NetworkState.available
-        onActivated: root.modeRequested("network")
-        onSecondaryActivated: NetworkState.disablePrimary()
+    NetworkStatusButton {
+        id: networkButton
+
+        onDetailRequested: root.modeRequested("network")
     }
 
-    BarModeButton {
-        active: BluetoothState.connected
-        interactive: BluetoothState.available
-        icon: BluetoothState.icon
-        label: BluetoothState.label
-        secondaryInteractive: BluetoothState.available
-        onActivated: root.modeRequested("bluetooth")
-        onSecondaryActivated: BluetoothState.disable()
+    BluetoothStatusButton {
+        id: bluetoothButton
+
+        onDetailRequested: root.modeRequested("bluetooth")
     }
 
     BarSlider {

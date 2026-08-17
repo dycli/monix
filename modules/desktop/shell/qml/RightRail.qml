@@ -10,16 +10,13 @@ Item {
 
     readonly property real gap: 10
     readonly property bool ownsMode: BarModeService.isActive(screenName)
-    readonly property bool pinnedOverview: ownsMode && BarModeService.activeMode === "control"
     readonly property bool controlDetail: ownsMode
         && (BarModeService.activeMode === "network" || BarModeService.activeMode === "bluetooth")
     readonly property bool powerDetail: ownsMode && BarModeService.activeMode === "power"
     readonly property bool detailVisible: controlDetail || powerDetail
-    readonly property bool controlDetailVisual: displayedDetailMode === "network"
-        || displayedDetailMode === "bluetooth"
     readonly property bool powerDetailVisual: displayedDetailMode === "power"
-    readonly property bool overviewVisible: !detailVisible
-        && (pinnedOverview || (hoverOpen && BarModeService.activeMode === ""))
+    readonly property bool overviewVisible: !detailVisible && hoverOpen
+        && BarModeService.activeMode === ""
     readonly property bool pinned: ownsMode
 
     property bool hoverOpen: false
@@ -31,7 +28,11 @@ Item {
         + gap + clock.width
     readonly property real overviewWidth: Math.min(maximumWidth,
         idleWidth + gap + controlMenu.implicitWidth)
-    readonly property real endControlWidth: powerDetailVisual ? powerButton.width : settingsButton.width
+    readonly property real endControlWidth: powerDetailVisual
+        ? powerButton.width
+        : (detailEndLoader.item ? detailEndLoader.item.implicitWidth : settingsButton.width)
+    readonly property real selectedStatusStartX: powerButton.width + gap
+        + (displayedDetailMode === "bluetooth" ? controlMenu.bluetoothItemX : controlMenu.networkItemX)
     readonly property real availableDetailWidth: Math.max(0, maximumWidth - endControlWidth - gap)
     readonly property real requestedDetailWidth: detailLoader.item
         ? detailLoader.item.implicitWidth : controlMenu.implicitWidth
@@ -68,7 +69,7 @@ Item {
         id: railHover
 
         onHoveredChanged: {
-            if (!hovered && !root.pinnedOverview)
+            if (!hovered)
                 root.hoverOpen = false;
         }
     }
@@ -96,17 +97,28 @@ Item {
         }
     }
 
-    ControlBarMenu {
-        id: controlMenu
+    Item {
+        id: overviewViewport
 
         anchors.verticalCenter: parent.verticalCenter
-        x: powerButton.width + root.gap
+        x: settingsButton.x - root.gap - width
+        width: controlMenu.implicitWidth * root.overviewProgress * (1 - root.detailProgress)
+        height: 24
+        clip: true
         enabled: root.overviewVisible
-        opacity: root.overviewProgress * (1 - root.detailProgress)
-        onModeRequested: mode => {
-            root.hoverOpen = false;
-            ClockPanelService.close();
-            BarModeService.open(mode, root.screenName);
+
+        ControlBarMenu {
+            id: controlMenu
+
+            anchors {
+                right: parent.right
+                verticalCenter: parent.verticalCenter
+            }
+            onModeRequested: mode => {
+                root.hoverOpen = false;
+                ClockPanelService.close();
+                BarModeService.open(mode, root.screenName);
+            }
         }
     }
 
@@ -143,28 +155,40 @@ Item {
         }
     }
 
+    Loader {
+        id: detailEndLoader
+
+        anchors.verticalCenter: parent.verticalCenter
+        x: root.selectedStatusStartX + root.detailProgress
+            * (root.width - width - root.selectedStatusStartX)
+        enabled: root.controlDetail
+        opacity: root.detailProgress
+        sourceComponent: {
+            switch (root.displayedDetailMode) {
+            case "network":
+                return networkEndMode;
+            case "bluetooth":
+                return bluetoothEndMode;
+            default:
+                return null;
+            }
+        }
+    }
+
     SettingsButton {
         id: settingsButton
 
         anchors.verticalCenter: parent.verticalCenter
         x: root.width - clock.width - root.gap - width
-            + root.detailProgress * (root.controlDetailVisual
-                ? clock.width + root.gap
-                : clock.width + root.gap + width + root.gap)
+            + root.detailProgress * (clock.width + root.gap + width + root.gap)
         onHoveredChanged: {
-            if (hovered && !root.detailVisible
-                    && (BarModeService.activeMode === "" || root.pinnedOverview))
+            if (hovered && !root.detailVisible && BarModeService.activeMode === "")
                 root.hoverOpen = true;
         }
         onMenuToggleRequested: {
             ClockPanelService.close();
-            if (root.controlDetail) {
-                BarModeService.open("control", root.screenName);
-            } else if (root.pinnedOverview) {
-                BarModeService.close();
-            } else {
-                BarModeService.open("control", root.screenName);
-            }
+            if (!root.detailVisible && BarModeService.activeMode === "")
+                root.hoverOpen = true;
         }
     }
 
@@ -203,5 +227,31 @@ Item {
         id: powerMode
 
         PowerBarMenu {}
+    }
+
+    Component {
+        id: networkEndMode
+
+        NetworkStatusButton {
+            onDetailRequested: {
+                if (!NetworkState.wifiEnabled && NetworkState.wifiDevice !== null)
+                    NetworkState.toggleWifi();
+                else
+                    BarModeService.close();
+            }
+        }
+    }
+
+    Component {
+        id: bluetoothEndMode
+
+        BluetoothStatusButton {
+            onDetailRequested: {
+                if (!BluetoothState.enabled)
+                    BluetoothState.toggleEnabled();
+                else
+                    BarModeService.close();
+            }
+        }
     }
 }

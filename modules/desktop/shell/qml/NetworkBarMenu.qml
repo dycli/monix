@@ -44,33 +44,13 @@ Row {
         restoreMode: Binding.RestoreBindingOrValue
     }
 
-    BarModeButton {
-        active: NetworkState.wiredConnected
-        enabled: NetworkState.wiredNetwork !== null
-        icon: "󰈀"
-        label: NetworkState.wiredConnected ? "Ethernet Connected" : "Ethernet Disconnected"
-        visible: root.passwordNetwork === null && NetworkState.wiredDevice !== null
-        onActivated: NetworkState.activateWired()
-    }
-
-    BarModeButton {
-        active: NetworkState.wifiEnabled
-        enabled: NetworkState.available && NetworkState.wifiHardwareEnabled
-        icon: NetworkState.wifiEnabled ? "󰖩" : "󰖪"
-        label: NetworkState.wifiEnabled ? "Wi-Fi On" : "Wi-Fi Off"
-        visible: root.passwordNetwork === null && NetworkState.wifiDevice !== null
-        onActivated: NetworkState.toggleWifi()
-    }
-
     Repeater {
         model: root.passwordNetwork === null && NetworkState.wifiEnabled
-            ? NetworkState.visibleNetworks : []
+            ? NetworkState.visibleNetworks.filter(network => !network.connected) : []
 
         delegate: BarModeButton {
             required property var modelData
 
-            active: modelData.connected
-            icon: "󰖩"
             label: modelData.name + " " + Math.round(modelData.signalStrength * 100) + "%"
             maximumWidth: 150
             onActivated: root.chooseNetwork(modelData)
@@ -86,9 +66,12 @@ Row {
             weight: Style.fontWeight
         }
         renderType: Text.NativeRendering
-        text: "No networks"
-        visible: root.passwordNetwork === null && NetworkState.wifiDevice !== null
-            && NetworkState.wifiEnabled && NetworkState.visibleNetworks.length === 0
+        text: NetworkState.wifiDevice === null
+            ? "No Wi-Fi adapter"
+            : (NetworkState.wifiEnabled ? "No other networks" : "Wi-Fi Off")
+        visible: root.passwordNetwork === null
+            && (NetworkState.wifiDevice === null || !NetworkState.wifiEnabled
+                || NetworkState.visibleNetworks.filter(network => !network.connected).length === 0)
     }
 
     Text {
