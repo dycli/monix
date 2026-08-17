@@ -5,11 +5,12 @@ Text {
     id: root
 
     property string format: "HH:mm"
+    property int fontPixelSize: Style.textFontSize
 
     color: Style.foregroundColor
     font {
         family: Style.fontFamily
-        pixelSize: Style.textFontSize
+        pixelSize: root.fontPixelSize
         weight: Style.fontWeight
     }
     renderType: Text.NativeRendering

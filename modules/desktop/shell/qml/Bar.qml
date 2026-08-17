@@ -12,9 +12,14 @@ Variants {
 
         required property var modelData
 
+        readonly property real referenceScreenHeight: 960
+        readonly property real scaleFactor: modelData.height / referenceScreenHeight
+        readonly property int barHeight: Math.max(2, Math.round(modelData.height * (28 / referenceScreenHeight) / 2) * 2)
+        readonly property int barFontSize: Math.max(1, Math.round(modelData.height * (9 / referenceScreenHeight)))
+
         screen: modelData
         color: "transparent"
-        implicitHeight: 28
+        implicitHeight: barHeight
         exclusiveZone: implicitHeight
 
         anchors {
@@ -34,11 +39,13 @@ Variants {
         Row {
             anchors {
                 left: parent.left
-                leftMargin: 12
+                leftMargin: Math.round(12 * window.scaleFactor)
                 verticalCenter: parent.verticalCenter
             }
 
             Workspaces {
+                fontPixelSize: window.barFontSize
+                scaleFactor: window.scaleFactor
                 screenName: window.modelData.name
             }
         }
@@ -48,17 +55,22 @@ Variants {
 
             anchors {
                 right: parent.right
-                rightMargin: 12
+                rightMargin: Math.round(12 * window.scaleFactor)
                 verticalCenter: parent.verticalCenter
             }
 
-            spacing: 10
+            spacing: Math.round(10 * window.scaleFactor)
 
-            Power {}
-            SettingsButton {}
+            Power {
+                scaleFactor: window.scaleFactor
+            }
+            SettingsButton {
+                scaleFactor: window.scaleFactor
+            }
 
             Clock {
                 anchors.verticalCenter: parent.verticalCenter
+                fontPixelSize: window.barFontSize
                 format: "ddd MMM d h:mm AP"
             }
         }

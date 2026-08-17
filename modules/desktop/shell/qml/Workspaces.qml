@@ -7,6 +7,8 @@ Row {
     id: root
 
     required property string screenName
+    property int fontPixelSize: Style.textFontSize
+    property real scaleFactor: 1
 
     spacing: 0
 
@@ -56,8 +58,8 @@ Row {
             readonly property int workspaceId: modelData
             readonly property bool active: workspaceId === root.activeWorkspaceId
 
-            width: workspaceLabel.implicitWidth + 12
-            height: 24
+            width: workspaceLabel.implicitWidth + Math.round(12 * root.scaleFactor)
+            height: Math.round(24 * root.scaleFactor)
             color: "transparent"
 
             Text {
@@ -67,7 +69,7 @@ Row {
                 color: workspace.active ? Style.foregroundColor : Style.inactiveWorkspaceColor
                 font {
                     family: Style.fontFamily
-                    pixelSize: Style.textFontSize
+                    pixelSize: root.fontPixelSize
                     weight: workspace.active ? Style.fontWeight : Font.Normal
                 }
                 renderType: Text.NativeRendering

@@ -6,26 +6,28 @@ import Quickshell
 Item {
     id: root
 
+    property real scaleFactor: 1
+
     readonly property color batteryColor: PowerService.percentage <= 15 && !PowerService.charging
         ? Style.lowBatteryColor : Style.foregroundColor
 
     width: content.implicitWidth
-    height: 24
+    height: Math.round(24 * scaleFactor)
 
     Row {
         id: content
 
         anchors.centerIn: parent
-        spacing: 4
+        spacing: Math.round(4 * root.scaleFactor)
 
         Text {
-            width: 12
-            height: 12
+            width: Math.round(12 * root.scaleFactor)
+            height: Math.round(12 * root.scaleFactor)
             anchors.verticalCenter: parent.verticalCenter
             color: Style.foregroundColor
             font {
                 family: Style.fontFamily
-                pixelSize: 10
+                pixelSize: Math.round(10 * root.scaleFactor)
                 weight: Font.Bold
             }
             horizontalAlignment: Text.AlignHCenter
@@ -41,17 +43,18 @@ Item {
             percentage: PowerService.percentage
             charging: PowerService.charging
             full: PowerService.full
+            scaleFactor: root.scaleFactor
             visible: PowerService.hasBattery
         }
 
         Text {
-            width: 16
-            height: 16
+            width: Math.round(16 * root.scaleFactor)
+            height: Math.round(16 * root.scaleFactor)
             anchors.verticalCenter: parent.verticalCenter
             color: Style.foregroundColor
             font {
                 family: Style.fontFamily
-                pixelSize: Style.iconFontSize
+                pixelSize: Math.round(Style.iconFontSize * root.scaleFactor)
                 weight: Style.fontWeight
             }
             horizontalAlignment: Text.AlignHCenter
