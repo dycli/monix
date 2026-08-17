@@ -190,6 +190,14 @@
           force = true;
           text = rootGuide;
         };
+        home.file.".pi/agent/AGENTS.md" = mkIf isBridge {
+          force = true;
+          text = rootGuide;
+        };
+        home.file.".omp/agent/AGENTS.md" = mkIf isBridge {
+          force = true;
+          text = rootGuide;
+        };
         home.file.".claude/CLAUDE.md" = mkIf isBridge {
           force = mkForce true;
           text = mkForce rootGuide;

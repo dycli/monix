@@ -1,7 +1,7 @@
 # Packages that carry no configuration; anything with config has its own file.
 # The system list reaches every user on every host; the home lists are bundle
 # members.
-{ self, ... }:
+{ inputs, self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.packages;
   flake.nixosModules.packages =
@@ -102,6 +102,14 @@
   flake.homeModules.dev = self.homeModules.packages-dev-extras;
   flake.homeModules.packages-dev-extras =
     { pkgs, ... }:
+    let
+      omp = inputs.omp.packages.${pkgs.stdenv.hostPlatform.system}.omp.overrideAttrs (_: {
+        # The upstream check runs after Nix has unlinked the build directory.
+        preInstallCheck = ''
+          cd "$TMPDIR"
+        '';
+      });
+    in
     {
       home.packages = [
         pkgs.cargo
@@ -110,6 +118,8 @@
         pkgs.codex
         pkgs.gcc
         pkgs.opencode
+        pkgs.pi-coding-agent
+        omp
         pkgs.hugo
         # The codex plugin's hooks invoke node directly.
         pkgs.nodejs
