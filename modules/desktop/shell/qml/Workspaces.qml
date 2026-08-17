@@ -42,7 +42,7 @@ Row {
             readonly property int workspaceId: modelData
             readonly property bool active: workspaceId === root.activeWorkspaceId
 
-            width: workspaceLabel.implicitWidth + 6
+            width: workspaceLabel.implicitWidth + 10
             height: 24
             color: "transparent"
 
