@@ -40,6 +40,7 @@ Row {
         icon: NightModeState.enabled
             ? "󰖔" : (BrightnessState.available ? BrightnessState.icon : "󰃠")
         iconAvailable: true
+        iconLeftAligned: true
         value: BrightnessState.level
         onIconActivated: NightModeState.toggle()
         onMoved: value => BrightnessState.setLevel(value)
