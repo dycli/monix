@@ -71,7 +71,7 @@ Variants {
                 leftMargin: 12
                 verticalCenter: parent.verticalCenter
             }
-            visible: !launcher.active && !tickerLane.overlaps(leftRail)
+            visible: !launcher.active
         }
 
         Row {
@@ -115,7 +115,8 @@ Variants {
             }
 
             anchors {
-                left: parent.left
+                left: leftRail.right
+                leftMargin: Style.barItemGap
                 right: rightRail.left
                 rightMargin: Style.barItemGap
                 top: parent.top
