@@ -56,7 +56,7 @@ in
     let
       # qwen3.8 is hybrid SSM/attention (full attention every 4th layer), so
       # even long contexts fit a 24G card; q8 KV halves what remains. Q4 takes
-      # 128K, while Q5 trades some context for higher weight precision at 96K.
+      # 144K, while Q5 trades some context for higher weight precision at 96K.
       qwen38 = context: file: {
         inherit context file;
         output = 8192;
@@ -75,7 +75,7 @@ in
       imports = [ self.nixosModules.inference ];
 
       inference.models = {
-        "qwen3.8-27b-q4-k-m" = qwen38 131072 "Qwen3.8-27B-Q4_K_M.gguf";
+        "qwen3.8-27b-q4-k-m" = qwen38 147456 "Qwen3.8-27B-Q4_K_M.gguf";
         "qwen3.8-27b-q5-k-s" = qwen38 98304 "Qwen3.8-27B-Q5_K_S.gguf";
       };
     };
