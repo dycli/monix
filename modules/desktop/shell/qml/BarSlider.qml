@@ -17,36 +17,44 @@ Item {
     implicitWidth: 82
     implicitHeight: 24
 
-    Text {
-        id: iconItem
+    Item {
+        id: iconSlot
 
         anchors {
             left: parent.left
-            verticalCenter: parent.verticalCenter
+            top: parent.top
+            bottom: parent.bottom
         }
-        color: Style.foregroundColor
-        font {
-            family: Style.fontFamily
-            pixelSize: Style.iconFontSize
-            weight: Style.fontWeight
-        }
-        renderType: Text.NativeRendering
-        text: root.icon
-        opacity: root.iconAvailable ? 1 : 0.45
-    }
+        width: 16
 
-    MouseArea {
-        anchors.fill: iconItem
-        cursorShape: Qt.PointingHandCursor
-        enabled: root.iconAvailable
-        onClicked: root.iconActivated()
+        Text {
+            id: iconItem
+
+            anchors.centerIn: parent
+            color: Style.foregroundColor
+            font {
+                family: Style.fontFamily
+                pixelSize: Style.iconFontSize
+                weight: Style.fontWeight
+            }
+            renderType: Text.NativeRendering
+            text: root.icon
+            opacity: root.iconAvailable ? 1 : 0.45
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            enabled: root.iconAvailable
+            onClicked: root.iconActivated()
+        }
     }
 
     Item {
         id: track
 
         anchors {
-            left: iconItem.right
+            left: iconSlot.right
             leftMargin: 6
             right: parent.right
             top: parent.top
