@@ -48,7 +48,8 @@ QtObject {
     function applyState(output: string): void {
         const line = output.split("\n").find(value => value.trim().length > 0) || "";
         const fields = line.split(",");
-        const percent = Number(String(fields[fields.length - 1] || "").replace("%", ""));
+        const percentField = fields.find(value => String(value).trim().endsWith("%")) || "";
+        const percent = Number(String(percentField).trim().replace("%", ""));
         if (fields.length < 2 || !Number.isFinite(percent)) {
             available = false;
             device = "";
