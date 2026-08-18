@@ -29,8 +29,9 @@ Row {
         available: AudioState.available
         icon: AudioState.icon
         value: AudioState.volume / 100
+        onIconActivated: AudioState.toggleMute()
         onMoved: value => AudioState.setVolume(value)
-        onSecondaryActivated: AudioState.mute()
+        onSecondaryActivated: AudioState.toggleMute()
     }
 
     BarSlider {

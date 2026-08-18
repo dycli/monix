@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls
 
 Item {
     id: root
@@ -43,44 +42,66 @@ Item {
         onClicked: root.iconActivated()
     }
 
-    Slider {
-        id: slider
+    Item {
+        id: track
 
         anchors {
             left: iconItem.right
             leftMargin: 6
             right: parent.right
-            verticalCenter: parent.verticalCenter
+            top: parent.top
+            bottom: parent.bottom
         }
-        enabled: root.available
         opacity: root.available ? 1 : 0.45
-        from: 0
-        to: 1
-        value: root.value
-        onMoved: root.moved(value)
 
-        background: Rectangle {
-            x: slider.leftPadding
-            y: slider.topPadding + slider.availableHeight / 2 - height / 2
-            width: slider.availableWidth
+        Rectangle {
+            anchors {
+                left: parent.left
+                right: parent.right
+                verticalCenter: parent.verticalCenter
+            }
             height: 2
             color: Style.inactiveWorkspaceColor
             opacity: 0.45
 
             Rectangle {
-                width: parent.width * slider.visualPosition
+                width: parent.width * Math.max(0, Math.min(1, root.value))
                 height: parent.height
                 color: Style.foregroundColor
             }
         }
 
-        handle: Rectangle {
-            x: slider.leftPadding + slider.visualPosition * (slider.availableWidth - width)
-            y: slider.topPadding + slider.availableHeight / 2 - height / 2
+        Rectangle {
+            id: handle
+
+            x: Math.round(Math.max(0, Math.min(1, root.value)) * (parent.width - width))
+            anchors.verticalCenter: parent.verticalCenter
             width: 7
             height: 7
             radius: width / 2
             color: Style.foregroundColor
+        }
+
+        MouseArea {
+            id: dragArea
+
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton
+            cursorShape: Qt.PointingHandCursor
+            enabled: root.available
+            preventStealing: true
+
+            function moveTo(pointerX: real): void {
+                const travel = Math.max(1, width - handle.width);
+                root.moved(Math.max(0, Math.min(1,
+                    (pointerX - handle.width / 2) / travel)));
+            }
+
+            onPressed: mouse => moveTo(mouse.x)
+            onPositionChanged: mouse => {
+                if (pressed)
+                    moveTo(mouse.x);
+            }
         }
     }
 
