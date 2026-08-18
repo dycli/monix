@@ -26,6 +26,8 @@ Item {
         && (hoverOpen || transientVisible)
     readonly property string overviewMode: transientMode !== "" && !hoverOpen
         ? transientMode : hoverMode
+    readonly property bool powerAnchoredOverview: overviewMode === "battery"
+        || overviewMode === "profile"
     readonly property bool pinned: ownsMode
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
 
@@ -112,7 +114,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         scaleFactor: 1
         x: {
-            const previewOffset = root.overviewMode === "battery"
+            const previewOffset = root.powerAnchoredOverview
                 ? root.overviewProgress * (root.gap + overviewContent.implicitWidth)
                 : 0;
             const start = root.trayLead + previewOffset;
@@ -138,7 +140,7 @@ Item {
         id: overviewViewport
 
         anchors.verticalCenter: parent.verticalCenter
-        x: (root.overviewMode === "battery" ? powerButton.x : settingsButton.x)
+        x: (root.powerAnchoredOverview ? powerButton.x : settingsButton.x)
             - root.gap - width
         width: overviewContent.implicitWidth * root.overviewProgress * (1 - root.detailProgress)
         height: 24
