@@ -16,11 +16,9 @@ Item {
     readonly property string requestedMode: ownsMode ? BarModeService.activeMode : ""
     readonly property bool controlDetail: ownsMode
         && (requestedMode === "network" || requestedMode === "bluetooth")
-    readonly property bool powerDetail: ownsMode && requestedMode === "power"
     readonly property bool sessionDetail: ownsMode && requestedMode === "session"
     readonly property bool clipboardDetail: ownsMode && requestedMode === "clipboard"
-    readonly property bool detailVisible: controlDetail || powerDetail || sessionDetail || clipboardDetail
-    readonly property bool powerDetailVisual: displayedDetailMode === "power"
+    readonly property bool detailVisible: controlDetail || sessionDetail || clipboardDetail
     readonly property bool sessionDetailVisual: displayedDetailMode === "session"
     readonly property bool overviewVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientVisible)
@@ -43,9 +41,7 @@ Item {
         idleWidth + gap + overviewContent.implicitWidth)
     readonly property real endControlWidth: sessionDetailVisual
         ? 0
-        : (powerDetailVisual
-            ? powerButton.width
-            : (detailEndLoader.item ? detailEndLoader.item.implicitWidth : settingsButton.width))
+        : (detailEndLoader.item ? detailEndLoader.item.implicitWidth : settingsButton.width)
     readonly property real endControlGap: endControlWidth > 0 ? gap : 0
     readonly property real selectedStatusStartX: controlDetail
         ? trayLead + powerButton.width + gap
@@ -118,8 +114,6 @@ Item {
                 ? root.overviewProgress * (root.gap + overviewContent.implicitWidth)
                 : 0;
             const start = root.trayLead + previewOffset;
-            if (root.powerDetailVisual)
-                return start + root.detailProgress * (root.width - width - start);
             return start + root.detailProgress * (-width - root.gap - start);
         }
         onHoveredChanged: {
@@ -128,11 +122,6 @@ Item {
                 root.hoverMode = "battery";
                 root.hoverOpen = true;
             }
-        }
-        onMenuToggleRequested: {
-            root.hoverOpen = false;
-            ClockPanelService.close();
-            BarModeService.toggle("power", root.screenName, false);
         }
     }
 
@@ -281,8 +270,6 @@ Item {
                     return networkMode;
                 case "bluetooth":
                     return bluetoothMode;
-                case "power":
-                    return powerMode;
                 case "session":
                     return sessionMode;
                 case "clipboard":
@@ -300,7 +287,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         x: root.selectedStatusStartX + root.detailProgress
             * (root.width - width - root.selectedStatusStartX)
-        enabled: root.detailVisible && !root.powerDetail
+        enabled: root.detailVisible
         opacity: root.detailProgress
         sourceComponent: {
             switch (root.displayedDetailMode) {
@@ -364,12 +351,6 @@ Item {
         id: bluetoothMode
 
         BluetoothBarMenu {}
-    }
-
-    Component {
-        id: powerMode
-
-        PowerBarMenu {}
     }
 
     Component {

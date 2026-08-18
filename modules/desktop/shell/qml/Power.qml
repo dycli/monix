@@ -5,8 +5,6 @@ import QtQuick
 Item {
     id: root
 
-    signal menuToggleRequested
-
     property real scaleFactor: 1
 
     readonly property bool hovered: pointer.containsMouse
@@ -70,7 +68,7 @@ Item {
     MouseArea {
         id: pointer
 
-        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+        acceptedButtons: Qt.MiddleButton | Qt.RightButton
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
         hoverEnabled: true
@@ -81,8 +79,6 @@ Item {
             } else if (event.button === Qt.RightButton) {
                 PowerService.cycleProfile();
                 OsdService.showPowerProfile();
-            } else {
-                root.menuToggleRequested();
             }
         }
     }
