@@ -50,7 +50,7 @@ Row {
             Canvas {
                 id: workspaceShape
 
-                width: Math.round(12 * root.scaleFactor)
+                width: Math.round(14 * root.scaleFactor)
                 height: width
                 anchors.centerIn: parent
                 antialiasing: true
@@ -94,11 +94,12 @@ Row {
                             maximumY = Math.max(maximumY, y);
                         }
 
-                        const offsetX = center - (minimumX + maximumX) / 2;
-                        const offsetY = center - (minimumY + maximumY) / 2;
+                        const boundsCenterX = (minimumX + maximumX) / 2;
+                        const boundsCenterY = (minimumY + maximumY) / 2;
+                        const shapeScale = (height - inset * 2) / (maximumY - minimumY);
                         for (let side = 0; side < points.length; side++) {
-                            const x = points[side].x + offsetX;
-                            const y = points[side].y + offsetY;
+                            const x = center + (points[side].x - boundsCenterX) * shapeScale;
+                            const y = center + (points[side].y - boundsCenterY) * shapeScale;
                             if (side === 0)
                                 context.moveTo(x, y);
                             else
