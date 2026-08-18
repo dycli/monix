@@ -13,6 +13,7 @@ Item {
     property real value: 0
     property bool available: true
     property bool iconAvailable: available
+    property bool iconLeftAligned: false
 
     implicitWidth: 82
     implicitHeight: 24
@@ -30,7 +31,7 @@ Item {
         Text {
             id: iconItem
 
-            anchors.centerIn: parent
+            anchors.fill: parent
             color: Style.foregroundColor
             font {
                 family: Style.fontFamily
@@ -40,6 +41,8 @@ Item {
             renderType: Text.NativeRendering
             text: root.icon
             opacity: root.iconAvailable ? 1 : 0.45
+            horizontalAlignment: root.iconLeftAligned ? Text.AlignLeft : Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
         }
 
         MouseArea {
