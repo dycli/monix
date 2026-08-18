@@ -50,7 +50,9 @@ ShellRoot {
         target: "clipboard"
 
         function toggle(): void {
-            BarModeService.toggle("clipboard", OsdService.focusedScreenName, true);
+            BarModeService.close();
+            ClockPanelService.close();
+            ClipboardPanelService.toggle(OsdService.focusedScreenName);
         }
     }
 }

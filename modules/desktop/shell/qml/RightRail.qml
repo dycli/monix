@@ -17,8 +17,7 @@ Item {
     readonly property bool controlDetail: ownsMode
         && (requestedMode === "network" || requestedMode === "bluetooth")
     readonly property bool sessionDetail: ownsMode && requestedMode === "session"
-    readonly property bool clipboardDetail: ownsMode && requestedMode === "clipboard"
-    readonly property bool detailVisible: controlDetail || sessionDetail || clipboardDetail
+    readonly property bool detailVisible: controlDetail || sessionDetail
     readonly property bool sessionDetailVisual: displayedDetailMode === "session"
     readonly property bool overviewVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientVisible)
@@ -287,8 +286,6 @@ Item {
                     return bluetoothMode;
                 case "session":
                     return sessionMode;
-                case "clipboard":
-                    return clipboardMode;
                 default:
                     return null;
                 }
@@ -310,8 +307,6 @@ Item {
                 return networkEndMode;
             case "bluetooth":
                 return bluetoothEndMode;
-            case "clipboard":
-                return clipboardEndMode;
             default:
                 return null;
             }
@@ -347,12 +342,18 @@ Item {
         onClicked: {
             root.hoverOpen = false;
             BarModeService.close();
+            ClipboardPanelService.close();
             ClockPanelService.toggle(root.screenName);
         }
     }
 
     ClockPopout {
         anchorItem: clock
+        screenName: root.screenName
+    }
+
+    ClipboardPopout {
+        anchorItem: settingsButton
         screenName: root.screenName
     }
 
@@ -372,12 +373,6 @@ Item {
         id: sessionMode
 
         SessionBarMenu {}
-    }
-
-    Component {
-        id: clipboardMode
-
-        ClipboardBarMenu {}
     }
 
     Component {
@@ -406,12 +401,4 @@ Item {
         }
     }
 
-    Component {
-        id: clipboardEndMode
-
-        BarModeButton {
-            icon: ""
-            onActivated: BarModeService.close()
-        }
-    }
 }

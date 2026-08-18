@@ -61,7 +61,7 @@ QtObject {
         for (const entry of entries) {
             if (needle.length === 0 || entry.preview.toLowerCase().includes(needle))
                 matches.push({ "entryId": entry.entryId, "preview": entry.preview });
-            if (matches.length >= 4)
+            if (matches.length >= 50)
                 break;
         }
         return matches;
@@ -70,7 +70,7 @@ QtObject {
     function paste(entryId: string): void {
         if (!/^\d+$/.test(entryId) || decodeProcess.running)
             return;
-        BarModeService.close();
+        ClipboardPanelService.close();
         decodeProcess.command = [
             "sh", "-c",
             "printf '%s' \"$1\" | cliphist decode | wl-copy",

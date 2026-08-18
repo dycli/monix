@@ -271,15 +271,25 @@ PopupWindow {
                         required property string summary
                         required property string body
 
+                        property bool expanded: false
+
                         width: ListView.view.width
-                        height: body.length > 0 ? 72 : 52
+                        height: Math.max(notificationRow.body.length > 0 ? 72 : 52,
+                            notificationContent.implicitHeight + 16)
+
+                        Behavior on height {
+                            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+                        }
 
                         Column {
+                            id: notificationContent
+
                             anchors {
                                 left: parent.left
                                 right: closeButton.left
                                 rightMargin: 8
-                                verticalCenter: parent.verticalCenter
+                                top: parent.top
+                                topMargin: 8
                             }
                             spacing: 2
 
@@ -298,26 +308,30 @@ PopupWindow {
                             Text {
                                 width: parent.width
                                 color: Style.foregroundColor
-                                elide: Text.ElideRight
+                                elide: notificationRow.expanded ? Text.ElideNone : Text.ElideRight
                                 font {
                                     family: Style.fontFamily
                                     pixelSize: Style.panelFontSize
                                     weight: Style.fontWeight
                                 }
+                                maximumLineCount: notificationRow.expanded ? 1000 : 1
                                 text: notificationRow.summary
+                                wrapMode: notificationRow.expanded ? Text.Wrap : Text.NoWrap
                             }
 
                             Text {
                                 width: parent.width
                                 color: Style.panelMutedColor
-                                elide: Text.ElideRight
+                                elide: notificationRow.expanded ? Text.ElideNone : Text.ElideRight
                                 font {
                                     family: Style.fontFamily
                                     pixelSize: 10
                                     weight: Style.fontWeight
                                 }
+                                maximumLineCount: notificationRow.expanded ? 1000 : 1
                                 text: notificationRow.body
-                                visible: body.length > 0
+                                visible: notificationRow.body.length > 0
+                                wrapMode: notificationRow.expanded ? Text.Wrap : Text.NoWrap
                             }
                         }
 
@@ -352,7 +366,7 @@ PopupWindow {
                                 bottom: parent.bottom
                             }
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: NotificationState.invokeDefault(notificationRow.index)
+                            onClicked: notificationRow.expanded = !notificationRow.expanded
                         }
 
                         Rectangle {

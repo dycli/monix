@@ -130,22 +130,6 @@ QtObject {
         historyModel.remove(index);
     }
 
-    function invokeDefault(index: int): void {
-        if (index < 0 || index >= historyModel.count)
-            return;
-        const row = historyModel.get(index);
-        const ref = liveRefs[row.id];
-        if (ref) {
-            try {
-                const action = ref.actions.find(candidate => candidate.identifier === "default");
-                if (action)
-                    action.invoke();
-            } catch (error) {
-            }
-        }
-        dismiss(index);
-    }
-
     function clear(): void {
         for (let index = historyModel.count - 1; index >= 0; index -= 1)
             dismiss(index);
