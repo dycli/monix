@@ -15,6 +15,7 @@
     in
     {
       environment.systemPackages = singleton pkgs.quickshell;
+      hardware.i2c.enable = true;
 
       systemd.user.tmpfiles.rules = singleton "d %h/.local/state/kestrel 0700 - - -";
 
@@ -25,6 +26,7 @@
           pkgs.bluez-tools
           pkgs.brightnessctl
           pkgs.cliphist
+          pkgs.ddcutil
           pkgs.quickshell
           pkgs.uwsm
           pkgs.wl-clipboard
