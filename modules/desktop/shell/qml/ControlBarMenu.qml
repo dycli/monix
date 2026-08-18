@@ -45,10 +45,4 @@ Row {
         onIconActivated: NightModeState.toggle()
         onMoved: value => BrightnessState.setLevel(value)
     }
-
-    BarModeButton {
-        icon: "󰚥"
-        visible: !PowerService.hasBattery
-        onActivated: root.modeRequested("session")
-    }
 }
