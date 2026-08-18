@@ -7,24 +7,9 @@ Row {
     id: root
 
     required property string screenName
-    property int fontPixelSize: Style.textFontSize
     property real scaleFactor: 1
 
     spacing: 0
-
-    readonly property var workspaceNames: [
-        "",
-        "One",
-        "Two",
-        "Three",
-        "Four",
-        "Five",
-        "Six",
-        "Seven",
-        "Eight",
-        "Nine",
-        "Ten"
-    ]
 
     readonly property int activeWorkspaceId: {
         const monitors = Hyprland.monitors?.values || [];
@@ -58,23 +43,56 @@ Row {
             readonly property int workspaceId: modelData
             readonly property bool active: workspaceId === root.activeWorkspaceId
 
-            width: workspaceLabel.implicitWidth + Math.round(12 * root.scaleFactor)
+            width: Math.round(22 * root.scaleFactor)
             height: Math.round(24 * root.scaleFactor)
             color: "transparent"
 
-            Text {
-                id: workspaceLabel
+            Canvas {
+                id: workspaceShape
 
+                width: Math.round(10 * root.scaleFactor)
+                height: width
                 anchors.centerIn: parent
-                color: workspace.active ? Style.foregroundColor : Style.inactiveWorkspaceColor
-                font {
-                    family: Style.fontFamily
-                    pixelSize: root.fontPixelSize
-                    weight: workspace.active ? Style.fontWeight : Font.Normal
+                antialiasing: true
+
+                onPaint: {
+                    const context = getContext("2d");
+                    const inset = workspace.active ? 1.25 : 1.5;
+                    const center = width / 2;
+                    const radius = center - inset;
+
+                    context.reset();
+                    context.strokeStyle = workspace.active
+                        ? Style.foregroundColor : Style.inactiveWorkspaceColor;
+                    context.lineWidth = workspace.active ? 2 : 1;
+                    context.lineCap = "round";
+                    context.lineJoin = "round";
+                    context.beginPath();
+
+                    if (workspace.workspaceId === 1) {
+                        context.arc(center, center, radius, 0, Math.PI * 2);
+                    } else if (workspace.workspaceId === 2) {
+                        context.moveTo(inset, height - inset);
+                        context.lineTo(width - inset, inset);
+                    } else {
+                        const sides = workspace.workspaceId;
+                        for (let side = 0; side < sides; side++) {
+                            const angle = -Math.PI / 2 + side * Math.PI * 2 / sides;
+                            const x = center + radius * Math.cos(angle);
+                            const y = center + radius * Math.sin(angle);
+                            if (side === 0)
+                                context.moveTo(x, y);
+                            else
+                                context.lineTo(x, y);
+                        }
+                        context.closePath();
+                    }
+
+                    context.stroke();
                 }
-                renderType: Text.NativeRendering
-                text: root.workspaceNames[workspace.workspaceId]
             }
+
+            onActiveChanged: workspaceShape.requestPaint()
 
             MouseArea {
                 anchors.fill: parent

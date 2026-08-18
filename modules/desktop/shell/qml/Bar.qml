@@ -67,14 +67,12 @@ Variants {
             id: leftGroup
 
             anchors {
-                left: parent.left
-                leftMargin: Math.round(12 * window.scaleFactor)
+                horizontalCenter: parent.horizontalCenter
                 verticalCenter: parent.verticalCenter
             }
             visible: !launcher.active
 
             Workspaces {
-                fontPixelSize: window.barFontSize
                 scaleFactor: window.scaleFactor
                 screenName: window.modelData.name
             }
