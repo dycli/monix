@@ -9,10 +9,7 @@ Item {
 
     readonly property bool active: BarModeService.activeMode === "launcher"
         && BarModeService.screenName === screenName
-    readonly property int resultWidth: 132
-    readonly property int resultLimit: Math.max(1,
-        Math.floor((width - searchBox.width - 8) / resultWidth))
-    readonly property var results: LauncherService.results(search.text, resultLimit)
+    readonly property var results: LauncherService.results(search.text, 20)
 
     property int selectedIndex: 0
 
@@ -22,12 +19,14 @@ Item {
         if (active) {
             search.text = "";
             selectedIndex = 0;
+            resultsView.contentX = 0;
             focusTimer.restart();
         }
     }
 
     onResultsChanged: selectedIndex = Math.min(selectedIndex,
         Math.max(0, results.length - 1))
+    onSelectedIndexChanged: Qt.callLater(() => resultsView.reveal(selectedIndex))
 
     function moveSelection(offset: int): void {
         if (results.length === 0)
@@ -70,7 +69,10 @@ Item {
                 selectionColor: Style.foregroundColor
                 selectedTextColor: "#000000"
                 verticalAlignment: TextInput.AlignVCenter
-                onTextChanged: root.selectedIndex = 0
+                onTextChanged: {
+                    root.selectedIndex = 0;
+                    resultsView.contentX = 0;
+                }
 
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Right || event.key === Qt.Key_Down
@@ -100,38 +102,56 @@ Item {
             height: parent.height
             clip: true
 
-            Row {
+            Flickable {
+                id: resultsView
+
                 anchors.fill: parent
-                spacing: 0
+                contentWidth: resultsRow.implicitWidth
+                contentHeight: height
+                interactive: false
 
-                Repeater {
-                    model: root.results
+                function reveal(index: int): void {
+                    const item = resultRepeater.itemAt(index);
+                    if (!item) {
+                        contentX = 0;
+                        return;
+                    }
+                    if (item.x < contentX)
+                        contentX = item.x;
+                    else if (item.x + item.width > contentX + width)
+                        contentX = item.x + item.width - width;
+                }
 
-                    delegate: MouseArea {
-                        id: result
+                Row {
+                    id: resultsRow
 
-                        required property int index
-                        required property var modelData
+                    height: parent.height
+                    spacing: 10
 
-                        width: root.resultWidth
-                        height: parent.height
-                        cursorShape: Qt.PointingHandCursor
-                        hoverEnabled: true
-                        onEntered: root.selectedIndex = index
-                        onClicked: LauncherService.launch(modelData)
+                    Repeater {
+                        id: resultRepeater
 
-                        Row {
-                            anchors {
-                                left: parent.left
-                                right: parent.right
-                                verticalCenter: parent.verticalCenter
-                            }
+                        model: root.results
+
+                        delegate: MouseArea {
+                            id: result
+
+                            required property int index
+                            required property var modelData
+
+                            width: appName.implicitWidth
+                            height: parent.height
+                            cursorShape: Qt.PointingHandCursor
+                            hoverEnabled: true
+                            onEntered: root.selectedIndex = index
+                            onClicked: LauncherService.launch(modelData)
+
                             Text {
-                                width: parent.width
+                                id: appName
+
                                 anchors.verticalCenter: parent.verticalCenter
                                 color: result.index === root.selectedIndex
                                     ? Style.foregroundColor : Style.inactiveWorkspaceColor
-                                elide: Text.ElideRight
                                 font {
                                     family: Style.fontFamily
                                     pixelSize: Style.textFontSize
@@ -143,19 +163,19 @@ Item {
                             }
                         }
                     }
-                }
 
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: Style.inactiveWorkspaceColor
-                    font {
-                        family: Style.fontFamily
-                        pixelSize: Style.textFontSize
-                        weight: Style.fontWeight
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: Style.inactiveWorkspaceColor
+                        font {
+                            family: Style.fontFamily
+                            pixelSize: Style.textFontSize
+                            weight: Style.fontWeight
+                        }
+                        renderType: Text.NativeRendering
+                        text: "No applications"
+                        visible: root.results.length === 0
                     }
-                    renderType: Text.NativeRendering
-                    text: "No applications"
-                    visible: root.results.length === 0
                 }
             }
         }
