@@ -63,8 +63,19 @@ Variants {
             }
         }
 
+        LeftRail {
+            id: leftRail
+
+            anchors {
+                left: parent.left
+                leftMargin: Math.round(12 * window.scaleFactor)
+                verticalCenter: parent.verticalCenter
+            }
+            visible: !launcher.active
+        }
+
         Row {
-            id: leftGroup
+            id: workspaceGroup
 
             anchors {
                 horizontalCenter: parent.horizontalCenter
@@ -86,7 +97,7 @@ Variants {
                 rightMargin: Math.round(12 * window.scaleFactor)
                 verticalCenter: parent.verticalCenter
             }
-            maximumWidth: Math.max(0, window.width - leftGroup.width - 48)
+            maximumWidth: Math.max(0, window.width - workspaceGroup.width - 48)
             screenName: window.modelData.name
             visible: !launcher.active
         }
@@ -95,7 +106,7 @@ Variants {
             id: tickerLane
 
             anchors {
-                left: leftGroup.right
+                left: workspaceGroup.right
                 leftMargin: 12
                 right: rightRail.left
                 rightMargin: 12

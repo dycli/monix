@@ -34,7 +34,13 @@
         after = singleton "graphical-session.target";
         wantedBy = singleton "graphical-session.target";
 
-        environment.XDG_DATA_DIRS = "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
+        environment = {
+          XDG_DATA_DIRS = "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
+          KESTREL_BROWSER = getExe pkgs.brave;
+          KESTREL_EMAIL = getExe pkgs.thunderbird;
+          KESTREL_MESSENGER = getExe pkgs.signal-desktop;
+          KESTREL_TERMINAL = getExe pkgs.ghostty;
+        };
 
         serviceConfig = {
           ExecStart = "${getExe pkgs.quickshell} -p ${./qml}";
