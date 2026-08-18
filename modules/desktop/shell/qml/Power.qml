@@ -19,23 +19,6 @@ Item {
         anchors.centerIn: parent
         spacing: 4
 
-        Text {
-            width: 12
-            height: 12
-            anchors.verticalCenter: parent.verticalCenter
-            color: Style.foregroundColor
-            font {
-                family: Style.fontFamily
-                pixelSize: 10
-                weight: 500
-            }
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            renderType: Text.NativeRendering
-            text: ""
-            visible: PowerService.idleInhibited
-        }
-
         BatteryIcon {
             anchors.verticalCenter: parent.verticalCenter
             color: root.batteryColor
@@ -48,18 +31,13 @@ Item {
     MouseArea {
         id: pointer
 
-        acceptedButtons: Qt.MiddleButton | Qt.RightButton
+        acceptedButtons: Qt.RightButton
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
         hoverEnabled: true
-        onClicked: event => {
-            if (event.button === Qt.MiddleButton) {
-                PowerService.idleInhibited = !PowerService.idleInhibited;
-                OsdService.showIdleInhibit();
-            } else if (event.button === Qt.RightButton) {
-                PowerService.cycleProfile();
-                OsdService.showPowerProfile();
-            }
+        onClicked: {
+            PowerService.cycleProfile();
+            OsdService.showPowerProfile();
         }
     }
 }

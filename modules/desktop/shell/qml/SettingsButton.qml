@@ -14,6 +14,7 @@ Item {
         width: 15
         height: 14
         anchors.centerIn: parent
+        visible: !PowerService.idleInhibited
 
         Rectangle {
             width: parent.width
@@ -48,12 +49,37 @@ Item {
         }
     }
 
+    Text {
+        width: 15
+        height: 14
+        anchors.centerIn: parent
+        visible: PowerService.idleInhibited
+        text: ""
+        color: Style.foregroundColor
+        font {
+            family: Style.fontFamily
+            pixelSize: 10
+            weight: 500
+        }
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+        renderType: Text.NativeRendering
+    }
+
     MouseArea {
         id: pointer
 
+        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
         hoverEnabled: true
-        onClicked: root.menuToggleRequested()
+        onClicked: event => {
+            if (event.button === Qt.MiddleButton) {
+                PowerService.idleInhibited = !PowerService.idleInhibited;
+                OsdService.showIdleInhibit();
+            } else {
+                root.menuToggleRequested();
+            }
+        }
     }
 }
