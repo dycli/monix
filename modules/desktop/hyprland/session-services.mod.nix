@@ -1,5 +1,4 @@
-# Native Hyprland session services. DMS remains available for shell surfaces
-# that Kestrel has not replaced, but no longer owns session policy.
+# Native Hyprland session services.
 { self, ... }:
 {
   flake.nixosModules.hyprland = {

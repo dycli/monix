@@ -1,4 +1,4 @@
-# The Kestrel desktop shell. DMS stays running only as a bottom testing bar.
+# The Kestrel desktop shell.
 { self, ... }:
 {
   flake.nixosModules.desktop = self.nixosModules.ship-shell;
@@ -32,7 +32,6 @@
         ];
         partOf = singleton "graphical-session.target";
         after = singleton "graphical-session.target";
-        before = singleton "dms.service";
         wantedBy = singleton "graphical-session.target";
 
         environment.XDG_DATA_DIRS = "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";

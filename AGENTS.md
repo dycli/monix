@@ -40,7 +40,7 @@ Current bundles:
 
 - `default`  — universal aspects; every host gets it from `lib.ship.host`.
 - `desktop`  — a graphical workstation, independent of session choice.
-- `hyprland` — the Hyprland/DMS session. A sibling (e.g. `kde`) is the seam
+- `hyprland` — the Hyprland/Kestrel session. A sibling (e.g. `kde`) is the seam
   for a host that runs a different session.
 - `dev`      — the authoring toolchain and agent CLIs, for hosts where a
   human or the seat develops. A desktop is not automatically one.

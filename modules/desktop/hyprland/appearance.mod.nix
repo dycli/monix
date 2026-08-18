@@ -95,10 +95,6 @@
 
         layer_rule = [
           {
-            match.namespace = "^(dms)$";
-            no_anim = true;
-          }
-          {
             match.namespace = "^(kestrel:bar)$";
             blur_popups = true;
           }

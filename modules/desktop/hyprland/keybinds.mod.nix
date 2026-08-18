@@ -91,10 +91,6 @@
           { }
         )
 
-        (mkBind "SUPER + SHIFT + SPACE" ''hl.dsp.exec_cmd("dms ipc call bar toggle index 0")'' "Toggle bar"
-          { }
-        )
-
         (mkBind "SUPER + Q" "hl.dsp.window.close()" "Close window" { })
 
         (mkBind "SUPER + ESCAPE" ''hl.dsp.exec_cmd("${getExe' pkgs.systemd "loginctl"} lock-session")''

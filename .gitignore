@@ -24,7 +24,7 @@
 !*.nu.in
 !*.qml
 
-# Assets: docs diagrams and the DMS-referenced wallpaper.
+# Assets: docs diagrams and the desktop wallpaper.
 !*.svg
 !*.jpg
 

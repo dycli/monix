@@ -31,13 +31,6 @@
     inputs.darwin.follows = "";
   };
 
-  # master: the stable tag predates the Hyprland 0.55 Lua command socket
-  # fixes DMS workspace clicking requires.
-  inputs.dank-material-shell = {
-    url = "github:AvengeMedia/DankMaterialShell";
-    inputs.nixpkgs.follows = "nixpkgs";
-  };
-
   # Built from source against this flake's hyprland: a plugin ABI must match
   # the running compositor exactly, so upstream's own pin is unusable.
   inputs.gloview = {
