@@ -32,6 +32,14 @@ ShellRoot {
     }
 
     IpcHandler {
+        target: "launcher"
+
+        function toggle(): void {
+            LauncherService.toggle(OsdService.focusedScreenName);
+        }
+    }
+
+    IpcHandler {
         target: "session"
 
         function toggle(): void {

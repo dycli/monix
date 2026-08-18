@@ -1,5 +1,4 @@
-# The Kestrel desktop shell. DMS stays running as a bottom bar and provides
-# features not yet aboard Kestrel.
+# The Kestrel desktop shell. DMS stays running only as a bottom testing bar.
 { self, ... }:
 {
   flake.nixosModules.desktop = self.nixosModules.ship-shell;
@@ -16,6 +15,8 @@
     in
     {
       environment.systemPackages = singleton pkgs.quickshell;
+
+      systemd.user.tmpfiles.rules = singleton "d %h/.local/state/kestrel 0700 - - -";
 
       # systemd user units do not inherit the session's XDG_DATA_DIRS.
       systemd.user.services.ship-shell = {

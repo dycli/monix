@@ -30,7 +30,8 @@ Variants {
 
         WlrLayershell.layer: WlrLayer.Top
         WlrLayershell.namespace: "kestrel:bar"
-        WlrLayershell.keyboardFocus: BarModeService.wantsKeyboard && rightRail.pinned
+        WlrLayershell.keyboardFocus: BarModeService.wantsKeyboard
+            && BarModeService.isActive(window.modelData.name)
             ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
         IdleInhibitor {
@@ -47,8 +48,14 @@ Variants {
         TapHandler {
             acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
             onTapped: eventPoint => {
-                if (!rightRail.pinned)
+                if (!BarModeService.isActive(window.modelData.name))
                     return;
+                if (launcher.active) {
+                    const launcherPoint = launcher.mapFromItem(window.contentItem,
+                        eventPoint.position.x, eventPoint.position.y);
+                    if (launcher.contains(launcherPoint))
+                        return;
+                }
                 const point = rightRail.mapFromItem(window.contentItem,
                     eventPoint.position.x, eventPoint.position.y);
                 if (!rightRail.contains(point))
@@ -97,9 +104,17 @@ Variants {
             }
             clip: true
 
+            Launcher {
+                id: launcher
+
+                anchors.fill: parent
+                screenName: window.modelData.name
+            }
+
             NotificationTicker {
                 anchors.fill: parent
                 screenName: window.modelData.name
+                visible: !launcher.active
             }
         }
 

@@ -1,4 +1,4 @@
-# Transitional desktop shell surfaces: launcher and the bottom testing bar.
+# Transitional DMS bottom testing bar.
 { self, inputs, ... }:
 {
   flake.nixosModules.hyprland = self.nixosModules.dank;
@@ -19,7 +19,6 @@
           (old: {
             postInstall = (old.postInstall or "") + ''
               substituteInPlace $out/share/quickshell/dms/DMSShell.qml \
-                --replace-fail "id: dankLauncherV2ModalLoader" "id: dankLauncherV2ModalLoader; loading: true" \
                 --replace-fail "active: root.osdSurfacesLoaded" 'active: root.osdSurfacesLoaded && Quickshell.env("DMS_DISABLE_OSD") !== "1"'
               substituteInPlace $out/share/quickshell/dms/Services/IdleService.qml \
                 --replace-fail "property bool enabled: true" 'property bool enabled: Quickshell.env("DMS_DISABLE_IDLE") !== "1"'
@@ -53,8 +52,7 @@
       # Quickshell's battery service reads UPower.
       services.upower.enable = true;
 
-      # systemd user units do not inherit the session's XDG_DATA_DIRS, and the
-      # launcher then finds no .desktop entries.
+      # systemd user units do not inherit the session's XDG_DATA_DIRS.
       systemd.user.services.dms.environment = {
         XDG_DATA_DIRS = "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
         DMS_DISABLE_IDLE = "1";

@@ -68,7 +68,11 @@
           "Copy (send Ctrl+Insert to focused window)"
           { }
         )
-        (mkBind "SUPER + D" ''hl.dsp.exec_cmd("dms ipc call spotlight toggle")'' "App launcher" { })
+        (mkBind "SUPER + D"
+          ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call launcher toggle")''
+          "App launcher"
+          { }
+        )
         (mkBind "SUPER + E" ''hl.dsp.exec_cmd("${email}")'' "Open email" { })
         (mkBind "SUPER + N" ''hl.dsp.exec_cmd("${terminal} -e ${editor}")'' "Open editor" { })
         (mkBind "SUPER + R" ''hl.dsp.exec_cmd("${terminal} -e lf")'' "Open file manager" { })
