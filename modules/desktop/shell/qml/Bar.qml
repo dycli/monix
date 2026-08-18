@@ -71,6 +71,7 @@ Variants {
                 leftMargin: Math.round(12 * window.scaleFactor)
                 verticalCenter: parent.verticalCenter
             }
+            visible: !launcher.active
 
             Workspaces {
                 fontPixelSize: window.barFontSize
@@ -89,6 +90,7 @@ Variants {
             }
             maximumWidth: Math.max(0, window.width - leftGroup.width - 48)
             screenName: window.modelData.name
+            visible: !launcher.active
         }
 
         Item {
@@ -103,19 +105,26 @@ Variants {
                 bottom: parent.bottom
             }
             clip: true
-
-            Launcher {
-                id: launcher
-
-                anchors.fill: parent
-                screenName: window.modelData.name
-            }
+            visible: !launcher.active
 
             NotificationTicker {
                 anchors.fill: parent
                 screenName: window.modelData.name
-                visible: !launcher.active
             }
+        }
+
+        Launcher {
+            id: launcher
+
+            anchors {
+                left: parent.left
+                leftMargin: 12
+                right: parent.right
+                rightMargin: 12
+                top: parent.top
+                bottom: parent.bottom
+            }
+            screenName: window.modelData.name
         }
 
     }

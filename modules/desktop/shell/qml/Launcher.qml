@@ -1,9 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Effects
-import Quickshell
-import Quickshell.Widgets
 
 Item {
     id: root
@@ -14,7 +11,7 @@ Item {
         && BarModeService.screenName === screenName
     readonly property int resultWidth: 132
     readonly property int resultLimit: Math.max(1,
-        Math.min(7, Math.floor((width - searchBox.width - 8) / resultWidth)))
+        Math.floor((width - searchBox.width - 8) / resultWidth))
     readonly property var results: LauncherService.results(search.text, resultLimit)
 
     property int selectedIndex: 0
@@ -59,22 +56,6 @@ Item {
             width: Math.min(180, Math.max(120, root.width * 0.28))
             height: parent.height
 
-            Text {
-                anchors {
-                    left: parent.left
-                    verticalCenter: parent.verticalCenter
-                }
-                color: Style.inactiveWorkspaceColor
-                font {
-                    family: Style.fontFamily
-                    pixelSize: Style.textFontSize
-                    weight: Style.fontWeight
-                }
-                renderType: Text.NativeRendering
-                text: "Launch"
-                visible: search.text.length === 0
-            }
-
             TextInput {
                 id: search
 
@@ -112,17 +93,6 @@ Item {
                     }
                 }
             }
-
-            Rectangle {
-                anchors {
-                    left: parent.left
-                    right: parent.right
-                    bottom: parent.bottom
-                    bottomMargin: 3
-                }
-                height: 1
-                color: Style.foregroundColor
-            }
         }
 
         Item {
@@ -156,29 +126,8 @@ Item {
                                 right: parent.right
                                 verticalCenter: parent.verticalCenter
                             }
-                            spacing: 5
-
-                            IconImage {
-                                id: appIcon
-
-                                width: 14
-                                height: 14
-                                source: Quickshell.iconPath(result.modelData.icon,
-                                    "application-x-executable")
-                                asynchronous: true
-                                smooth: true
-                                mipmap: true
-                                layer.enabled: true
-                                layer.effect: MultiEffect {
-                                    saturation: -1
-                                    colorization: 1
-                                    colorizationColor: result.index === root.selectedIndex
-                                        ? Style.foregroundColor : Style.inactiveWorkspaceColor
-                                }
-                            }
-
                             Text {
-                                width: Math.max(0, parent.width - appIcon.width - parent.spacing)
+                                width: parent.width
                                 anchors.verticalCenter: parent.verticalCenter
                                 color: result.index === root.selectedIndex
                                     ? Style.foregroundColor : Style.inactiveWorkspaceColor
