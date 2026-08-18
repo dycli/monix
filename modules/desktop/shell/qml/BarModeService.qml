@@ -11,6 +11,7 @@ QtObject {
     property string transientMode: ""
     property string transientScreenName: ""
     property bool transientVisible: false
+    property int transientGeneration: 0
 
     property Timer transientTimer: Timer {
         interval: 1300
@@ -56,6 +57,7 @@ QtObject {
         transientMode = mode;
         transientScreenName = targetScreen;
         transientVisible = true;
+        transientGeneration++;
         transientClearTimer.stop();
         transientTimer.restart();
     }

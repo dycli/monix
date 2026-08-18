@@ -22,7 +22,8 @@ Item {
     readonly property bool sessionDetailVisual: displayedDetailMode === "session"
     readonly property bool overviewVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientVisible)
-    readonly property string overviewMode: transientMode !== "" && !hoverOpen
+    readonly property string overviewMode: transientVisible
+        && (transientMode === "profile" || !hoverOpen)
         ? transientMode : hoverMode
     readonly property bool powerAnchoredOverview: overviewMode === "battery"
         || overviewMode === "profile"
@@ -147,11 +148,11 @@ Item {
             height: implicitHeight
             implicitWidth: {
                 switch (root.overviewMode) {
-                case "battery": return batteryOverview.implicitWidth;
+                case "battery": return powerOverview.implicitWidth;
                 case "volume": return volumeOsd.implicitWidth;
                 case "brightness": return brightnessOsd.implicitWidth;
                 case "microphone": return microphoneOsd.implicitWidth;
-                case "profile": return profileOsd.implicitWidth;
+                case "profile": return powerOverview.implicitWidth;
                 case "inhibit": return inhibitOsd.implicitWidth;
                 default: return controlMenu.implicitWidth;
                 }
@@ -170,11 +171,15 @@ Item {
                 }
             }
 
-            BatteryBarStatus {
-                id: batteryOverview
+            PowerOverviewCarousel {
+                id: powerOverview
 
                 anchors.right: parent.right
-                visible: root.overviewMode === "battery"
+                generation: BarModeService.transientGeneration
+                mode: root.overviewMode === "profile" ? "profile" : "battery"
+                profileLabel: PowerService.profilesAvailable
+                    ? PowerService.profileName(PowerProfiles.profile) : "Power"
+                visible: root.overviewMode === "battery" || root.overviewMode === "profile"
             }
 
             BarSlider {
@@ -221,17 +226,6 @@ Item {
                     AudioState.toggleSourceMute();
                     BarModeService.flash("microphone", root.screenName);
                 }
-            }
-
-            BarModeButton {
-                id: profileOsd
-
-                anchors.right: parent.right
-                icon: "󰓅"
-                label: PowerService.profilesAvailable
-                    ? PowerService.profileName(PowerProfiles.profile) : "Power"
-                visible: root.overviewMode === "profile"
-                interactive: false
             }
 
             BarModeButton {
