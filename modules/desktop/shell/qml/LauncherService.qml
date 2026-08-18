@@ -140,8 +140,17 @@ QtObject {
     }
 
     function launch(app): void {
-        if (!app)
+        if (!app || !app.command || app.command.length === 0)
             return;
+
+        let command = app.command;
+        if (app.runInTerminal) {
+            const terminal = Quickshell.env("KESTREL_TERMINAL");
+            if (!terminal)
+                return;
+            command = [terminal, "-e"].concat(command);
+        }
+
         const nextUsage = Object.assign({}, usage);
         const record = nextUsage[app.id] || { "count": 0, "lastUsed": 0 };
         nextUsage[app.id] = {
@@ -151,6 +160,9 @@ QtObject {
         usage = nextUsage;
         saveHistory();
         BarModeService.close();
-        app.execute();
+        Quickshell.execDetached({
+            "command": ["uwsm", "app", "--"].concat(command),
+            "workingDirectory": app.workingDirectory || Quickshell.env("HOME")
+        });
     }
 }
