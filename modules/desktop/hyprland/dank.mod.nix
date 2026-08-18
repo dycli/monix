@@ -9,12 +9,7 @@
       pkgs,
       ...
     }:
-    let
-      inherit (lib.lists) singleton;
-    in
     {
-      imports = singleton inputs.dank-greeter.nixosModules.default;
-
       programs.dms-shell.enable = true;
 
       # DMS remains for shell surfaces Kestrel has not replaced. These small
@@ -47,24 +42,12 @@
         user = config.primaryUser;
       };
 
-      programs.dms-greeter = {
+      services.greetd = {
         enable = true;
-        compositor.name = "hyprland";
-
-        # greetd's preStart copies this home's DMS settings and referenced
-        # wallpapers into the greeter cache on every start.
-        configHome = "/home/${config.primaryUser}";
-
-        # customConfig replaces the greeter's default config entirely, so that
-        # default is reproduced here with disable_splash_rendering added.
-        compositor.customConfig = ''
-          env = DMS_RUN_GREETER,1
-
-          misc {
-              disable_hyprland_logo = true
-              disable_splash_rendering = true
-          }
-        '';
+        settings.default_session = {
+          command = "${lib.meta.getExe pkgs.tuigreet} --time --remember --remember-session --sessions ${config.services.displayManager.sessionData.desktops}/share/wayland-sessions";
+          user = "greeter";
+        };
       };
 
       # Quickshell's battery service reads UPower.

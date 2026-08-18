@@ -38,11 +38,6 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  inputs.dank-greeter = {
-    url = "github:AvengeMedia/dank-greeter";
-    inputs.nixpkgs.follows = "nixpkgs";
-  };
-
   # Built from source against this flake's hyprland: a plugin ABI must match
   # the running compositor exactly, so upstream's own pin is unusable.
   inputs.gloview = {
