@@ -58,7 +58,11 @@
           "Open floating terminal"
           { }
         )
-        (mkBind "SUPER + BACKSPACE" ''hl.dsp.exec_cmd("dms ipc call powermenu toggle")'' "Power menu" { })
+        (mkBind "SUPER + BACKSPACE"
+          ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call session toggle")''
+          "Power menu"
+          { }
+        )
         (mkBind "SUPER + SLASH" ''hl.dsp.exec_cmd("${passwordManager}")'' "Open password manager" { })
         (mkBind "SUPER + C" ''hl.dsp.send_shortcut({ mods = "CTRL", key = "Insert" })''
           "Copy (send Ctrl+Insert to focused window)"
@@ -96,10 +100,6 @@
         (mkBind "SUPER + SHIFT + ESCAPE" "hl.dsp.exit()" "Exit Hyprland" { })
         (mkBind "SUPER + CTRL + ESCAPE" ''hl.dsp.exec_cmd("reboot")'' "Reboot" { })
         (mkBind "SUPER + SHIFT + CTRL + ESCAPE" ''hl.dsp.exec_cmd("systemctl poweroff")'' "Power off" { })
-        (mkBind "SUPER + SHIFT + SLASH" ''hl.dsp.exec_cmd("dms ipc call keybinds toggle hyprland")''
-          "Show keybindings"
-          { }
-        )
         (mkBind "SUPER + I"
           ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call power toggleIdleInhibit")''
           "Toggle idle inhibit"
@@ -217,46 +217,57 @@
         )
         (mkBind "SUPER + PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprpicker} -a")'' "Pick color" { })
 
-        (mkBind "CTRL + SUPER + V" ''hl.dsp.exec_cmd("dms ipc call clipboard toggle")'' "Clipboard history"
+        (mkBind "CTRL + SUPER + V"
+          ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call clipboard toggle")''
+          "Clipboard history"
           { }
         )
 
         (mkBind "SUPER + mouse:272" "hl.dsp.window.drag()" "Move window" { mouse = true; })
         (mkBind "SUPER + mouse:273" "hl.dsp.window.resize()" "Resize window" { mouse = true; })
 
-        (mkBind "XF86AudioRaiseVolume" ''hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+")''
+        (mkBind "XF86AudioRaiseVolume"
+          ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call osd volumeUp")''
           "Volume up"
           {
             locked = true;
             repeating = true;
           }
         )
-        (mkBind "XF86AudioLowerVolume" ''hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-")''
+        (mkBind "XF86AudioLowerVolume"
+          ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call osd volumeDown")''
           "Volume down"
           {
             locked = true;
             repeating = true;
           }
         )
-        (mkBind "XF86AudioMute" ''hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle")'' "Mute" {
-          locked = true;
-          repeating = true;
-        })
-        (mkBind "XF86AudioMicMute" ''hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle")''
+        (mkBind "XF86AudioMute"
+          ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call osd toggleMute")''
+          "Mute"
+          {
+            locked = true;
+            repeating = true;
+          }
+        )
+        (mkBind "XF86AudioMicMute"
+          ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call osd toggleMicMute")''
           "Mic mute"
           {
             locked = true;
             repeating = true;
           }
         )
-        (mkBind "XF86MonBrightnessUp" ''hl.dsp.exec_cmd("${getExe pkgs.brightnessctl} set 655+")''
+        (mkBind "XF86MonBrightnessUp"
+          ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call osd brightnessUp")''
           "Brightness up"
           {
             locked = true;
             repeating = true;
           }
         )
-        (mkBind "XF86MonBrightnessDown" ''hl.dsp.exec_cmd("${getExe pkgs.brightnessctl} set 655-")''
+        (mkBind "XF86MonBrightnessDown"
+          ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call osd brightnessDown")''
           "Brightness down"
           {
             locked = true;

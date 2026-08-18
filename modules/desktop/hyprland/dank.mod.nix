@@ -1,5 +1,4 @@
-# Transitional desktop shell surfaces: launcher, power menu, keybind overlay,
-# clipboard history and the bottom testing bar.
+# Transitional desktop shell surfaces: launcher and the bottom testing bar.
 { self, inputs, ... }:
 {
   flake.nixosModules.hyprland = self.nixosModules.dank;
@@ -25,7 +24,8 @@
           (old: {
             postInstall = (old.postInstall or "") + ''
               substituteInPlace $out/share/quickshell/dms/DMSShell.qml \
-                --replace-fail "id: dankLauncherV2ModalLoader" "id: dankLauncherV2ModalLoader; loading: true"
+                --replace-fail "id: dankLauncherV2ModalLoader" "id: dankLauncherV2ModalLoader; loading: true" \
+                --replace-fail "active: root.osdSurfacesLoaded" 'active: root.osdSurfacesLoaded && Quickshell.env("DMS_DISABLE_OSD") !== "1"'
               substituteInPlace $out/share/quickshell/dms/Services/IdleService.qml \
                 --replace-fail "property bool enabled: true" 'property bool enabled: Quickshell.env("DMS_DISABLE_IDLE") !== "1"'
               substituteInPlace $out/share/quickshell/dms/shell.qml \
@@ -76,6 +76,7 @@
         XDG_DATA_DIRS = "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
         DMS_DISABLE_IDLE = "1";
         DMS_DISABLE_LOCK_LISTENER = "1";
+        DMS_DISABLE_OSD = "1";
         DMS_DISABLE_POLKIT = "1";
         DMS_DISABLE_WALLPAPER = "1";
         DMS_EXTERNAL_LOCKER = lib.meta.getExe pkgs.hyprlock;

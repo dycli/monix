@@ -8,21 +8,30 @@ QtObject {
     property string activeMode: ""
     property string screenName: ""
     property bool wantsKeyboard: false
+    property string transientMode: ""
+    property string transientScreenName: ""
 
-    function open(mode: string, targetScreen: string): void {
-        activeMode = mode;
-        screenName = targetScreen;
-        wantsKeyboard = false;
+    property Timer transientTimer: Timer {
+        interval: 1300
+        onTriggered: root.closeTransient()
     }
 
-    function toggle(mode: string, targetScreen: string): void {
+    function open(mode: string, targetScreen: string, keyboard: bool): void {
+        closeTransient();
+        activeMode = mode;
+        screenName = targetScreen;
+        wantsKeyboard = keyboard || false;
+    }
+
+    function toggle(mode: string, targetScreen: string, keyboard: bool): void {
         if (activeMode === mode && screenName === targetScreen)
             close();
         else
-            open(mode, targetScreen);
+            open(mode, targetScreen, keyboard);
     }
 
     function close(): void {
+        closeTransient();
         activeMode = "";
         screenName = "";
         wantsKeyboard = false;
@@ -30,5 +39,23 @@ QtObject {
 
     function isActive(targetScreen: string): bool {
         return activeMode !== "" && screenName === targetScreen;
+    }
+
+    function flash(mode: string, targetScreen: string): void {
+        if (activeMode !== "")
+            return;
+        transientMode = mode;
+        transientScreenName = targetScreen;
+        transientTimer.restart();
+    }
+
+    function closeTransient(): void {
+        transientTimer.stop();
+        transientMode = "";
+        transientScreenName = "";
+    }
+
+    function transientFor(targetScreen: string): string {
+        return transientScreenName === targetScreen ? transientMode : "";
     }
 }

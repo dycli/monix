@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell.Services.UPower
 
 Item {
     id: root
@@ -10,13 +11,18 @@ Item {
 
     readonly property real gap: 10
     readonly property bool ownsMode: BarModeService.isActive(screenName)
+    readonly property string transientMode: BarModeService.transientFor(screenName)
+    readonly property string requestedMode: ownsMode ? BarModeService.activeMode : ""
     readonly property bool controlDetail: ownsMode
-        && (BarModeService.activeMode === "network" || BarModeService.activeMode === "bluetooth")
-    readonly property bool powerDetail: ownsMode && BarModeService.activeMode === "power"
-    readonly property bool detailVisible: controlDetail || powerDetail
+        && (requestedMode === "network" || requestedMode === "bluetooth")
+    readonly property bool powerDetail: ownsMode && requestedMode === "power"
+    readonly property bool sessionDetail: ownsMode && requestedMode === "session"
+    readonly property bool clipboardDetail: ownsMode && requestedMode === "clipboard"
+    readonly property bool detailVisible: controlDetail || powerDetail || sessionDetail || clipboardDetail
     readonly property bool powerDetailVisual: displayedDetailMode === "power"
-    readonly property bool overviewVisible: !detailVisible && hoverOpen
-        && BarModeService.activeMode === ""
+    readonly property bool overviewVisible: !detailVisible && BarModeService.activeMode === ""
+        && (hoverOpen || transientMode !== "")
+    readonly property string overviewMode: transientMode !== "" ? transientMode : "control"
     readonly property bool pinned: ownsMode
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
 
@@ -28,12 +34,14 @@ Item {
     readonly property real idleWidth: trayLead + powerButton.width + gap + settingsButton.width
         + gap + clock.width
     readonly property real overviewWidth: Math.min(maximumWidth,
-        idleWidth + gap + controlMenu.implicitWidth)
+        idleWidth + gap + overviewContent.implicitWidth)
     readonly property real endControlWidth: powerDetailVisual
         ? powerButton.width
         : (detailEndLoader.item ? detailEndLoader.item.implicitWidth : settingsButton.width)
-    readonly property real selectedStatusStartX: trayLead + powerButton.width + gap
-        + (displayedDetailMode === "bluetooth" ? controlMenu.bluetoothItemX : controlMenu.networkItemX)
+    readonly property real selectedStatusStartX: controlDetail
+        ? trayLead + powerButton.width + gap
+            + (displayedDetailMode === "bluetooth" ? controlMenu.bluetoothItemX : controlMenu.networkItemX)
+        : settingsButton.x
     readonly property real availableDetailWidth: Math.max(0, maximumWidth - endControlWidth - gap)
     readonly property real requestedDetailWidth: detailLoader.item
         ? detailLoader.item.implicitWidth : controlMenu.implicitWidth
@@ -104,7 +112,7 @@ Item {
         onMenuToggleRequested: {
             root.hoverOpen = false;
             ClockPanelService.close();
-            BarModeService.toggle("power", root.screenName);
+            BarModeService.toggle("power", root.screenName, false);
         }
     }
 
@@ -113,22 +121,109 @@ Item {
 
         anchors.verticalCenter: parent.verticalCenter
         x: settingsButton.x - root.gap - width
-        width: controlMenu.implicitWidth * root.overviewProgress * (1 - root.detailProgress)
+        width: overviewContent.implicitWidth * root.overviewProgress * (1 - root.detailProgress)
         height: 24
         clip: true
         enabled: root.overviewVisible
 
-        ControlBarMenu {
-            id: controlMenu
+        Item {
+            id: overviewContent
 
             anchors {
                 right: parent.right
                 verticalCenter: parent.verticalCenter
             }
-            onModeRequested: mode => {
-                root.hoverOpen = false;
-                ClockPanelService.close();
-                BarModeService.open(mode, root.screenName);
+            width: implicitWidth
+            height: implicitHeight
+            implicitWidth: {
+                switch (root.overviewMode) {
+                case "volume": return volumeOsd.implicitWidth;
+                case "brightness": return brightnessOsd.implicitWidth;
+                case "microphone": return microphoneOsd.implicitWidth;
+                case "profile": return profileOsd.implicitWidth;
+                case "inhibit": return inhibitOsd.implicitWidth;
+                default: return controlMenu.implicitWidth;
+                }
+            }
+            implicitHeight: 24
+
+            ControlBarMenu {
+                id: controlMenu
+
+                anchors.right: parent.right
+                visible: root.overviewMode === "control"
+                onModeRequested: mode => {
+                    root.hoverOpen = false;
+                    ClockPanelService.close();
+                    BarModeService.open(mode, root.screenName, false);
+                }
+            }
+
+            BarSlider {
+                id: volumeOsd
+
+                anchors.right: parent.right
+                available: AudioState.available
+                icon: AudioState.icon
+                value: AudioState.volume / 100
+                visible: root.overviewMode === "volume"
+                onMoved: value => {
+                    AudioState.setVolume(value);
+                    BarModeService.flash("volume", root.screenName);
+                }
+                onSecondaryActivated: {
+                    AudioState.toggleMute();
+                    BarModeService.flash("volume", root.screenName);
+                }
+            }
+
+            BarSlider {
+                id: brightnessOsd
+
+                anchors.right: parent.right
+                available: BrightnessState.available
+                icon: BrightnessState.icon
+                value: BrightnessState.level
+                visible: root.overviewMode === "brightness"
+                onMoved: value => {
+                    BrightnessState.setLevel(value);
+                    BarModeService.flash("brightness", root.screenName);
+                }
+            }
+
+            BarModeButton {
+                id: microphoneOsd
+
+                anchors.right: parent.right
+                enabled: AudioState.sourceAvailable
+                icon: AudioState.sourceIcon
+                label: AudioState.sourceMuted ? "Muted" : "Live"
+                visible: root.overviewMode === "microphone"
+                onActivated: {
+                    AudioState.toggleSourceMute();
+                    BarModeService.flash("microphone", root.screenName);
+                }
+            }
+
+            BarModeButton {
+                id: profileOsd
+
+                anchors.right: parent.right
+                icon: "󰓅"
+                label: PowerService.profilesAvailable
+                    ? PowerService.profileName(PowerProfiles.profile) : "Power"
+                visible: root.overviewMode === "profile"
+                interactive: false
+            }
+
+            BarModeButton {
+                id: inhibitOsd
+
+                anchors.right: parent.right
+                icon: ""
+                label: PowerService.idleInhibited ? "Inhibited" : "Idle enabled"
+                visible: root.overviewMode === "inhibit"
+                interactive: false
             }
         }
     }
@@ -159,6 +254,10 @@ Item {
                     return bluetoothMode;
                 case "power":
                     return powerMode;
+                case "session":
+                    return sessionMode;
+                case "clipboard":
+                    return clipboardMode;
                 default:
                     return null;
                 }
@@ -172,7 +271,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         x: root.selectedStatusStartX + root.detailProgress
             * (root.width - width - root.selectedStatusStartX)
-        enabled: root.controlDetail
+        enabled: root.detailVisible && !root.powerDetail
         opacity: root.detailProgress
         sourceComponent: {
             switch (root.displayedDetailMode) {
@@ -180,6 +279,10 @@ Item {
                 return networkEndMode;
             case "bluetooth":
                 return bluetoothEndMode;
+            case "session":
+                return sessionEndMode;
+            case "clipboard":
+                return clipboardEndMode;
             default:
                 return null;
             }
@@ -241,6 +344,18 @@ Item {
     }
 
     Component {
+        id: sessionMode
+
+        SessionBarMenu {}
+    }
+
+    Component {
+        id: clipboardMode
+
+        ClipboardBarMenu {}
+    }
+
+    Component {
         id: networkEndMode
 
         NetworkStatusButton {
@@ -263,6 +378,24 @@ Item {
                 else
                     BarModeService.close();
             }
+        }
+    }
+
+    Component {
+        id: sessionEndMode
+
+        BarModeButton {
+            icon: ""
+            onActivated: BarModeService.close()
+        }
+    }
+
+    Component {
+        id: clipboardEndMode
+
+        BarModeButton {
+            icon: ""
+            onActivated: BarModeService.close()
         }
     }
 }

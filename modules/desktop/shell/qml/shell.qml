@@ -12,10 +12,38 @@ ShellRoot {
 
         function toggleIdleInhibit(): void {
             PowerService.idleInhibited = !PowerService.idleInhibited;
+            OsdService.showIdleInhibit();
         }
 
         function idleInhibited(): bool {
             return PowerService.idleInhibited;
+        }
+    }
+
+    IpcHandler {
+        target: "osd"
+
+        function volumeUp(): void { OsdService.volumeUp(); }
+        function volumeDown(): void { OsdService.volumeDown(); }
+        function toggleMute(): void { OsdService.toggleMute(); }
+        function toggleMicMute(): void { OsdService.toggleMicMute(); }
+        function brightnessUp(): void { OsdService.brightnessUp(); }
+        function brightnessDown(): void { OsdService.brightnessDown(); }
+    }
+
+    IpcHandler {
+        target: "session"
+
+        function toggle(): void {
+            BarModeService.toggle("session", OsdService.focusedScreenName, false);
+        }
+    }
+
+    IpcHandler {
+        target: "clipboard"
+
+        function toggle(): void {
+            BarModeService.toggle("clipboard", OsdService.focusedScreenName, true);
         }
     }
 }

@@ -23,8 +23,11 @@
         path = [
           pkgs.bluez-tools
           pkgs.brightnessctl
+          pkgs.cliphist
           pkgs.quickshell
-          config.programs.dms-shell.package
+          pkgs.uwsm
+          pkgs.wl-clipboard
+          pkgs.wtype
         ];
         partOf = singleton "graphical-session.target";
         after = singleton "graphical-session.target";
