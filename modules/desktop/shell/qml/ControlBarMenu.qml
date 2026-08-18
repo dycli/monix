@@ -35,8 +35,11 @@ Row {
 
     BarSlider {
         available: BrightnessState.available
-        icon: BrightnessState.icon
+        icon: NightModeState.enabled
+            ? "󰖔" : (BrightnessState.available ? BrightnessState.icon : "󰃠")
+        iconAvailable: true
         value: BrightnessState.level
+        onIconActivated: NightModeState.toggle()
         onMoved: value => BrightnessState.setLevel(value)
     }
 }
