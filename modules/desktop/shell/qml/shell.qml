@@ -34,6 +34,9 @@ ShellRoot {
         target: "launcher"
 
         function toggle(): void {
+            SettingsPanelService.close();
+            ClipboardPanelService.close();
+            ClockPanelService.close();
             LauncherService.toggle(OsdService.focusedScreenName);
         }
     }
@@ -42,6 +45,9 @@ ShellRoot {
         target: "session"
 
         function toggle(): void {
+            SettingsPanelService.close();
+            ClipboardPanelService.close();
+            ClockPanelService.close();
             BarModeService.toggle("session", OsdService.focusedScreenName, true);
         }
     }
@@ -52,6 +58,7 @@ ShellRoot {
         function toggle(): void {
             BarModeService.close();
             ClockPanelService.close();
+            SettingsPanelService.close();
             ClipboardPanelService.toggle(OsdService.focusedScreenName);
         }
     }

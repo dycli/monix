@@ -320,15 +320,18 @@ Item {
         x: root.width - clock.width - root.gap - width
             + root.detailProgress * (clock.width + root.gap + width + root.gap)
         onHoveredChanged: {
-            if (hovered && !root.detailVisible && BarModeService.activeMode === "") {
+            if (hovered && !root.detailVisible && BarModeService.activeMode === ""
+                    && !SettingsPanelService.isOpen(root.screenName)) {
                 root.hoverMode = "control";
                 root.hoverOpen = true;
             }
         }
         onMenuToggleRequested: {
+            root.hoverOpen = false;
+            BarModeService.close();
             ClockPanelService.close();
-            if (!root.detailVisible && BarModeService.activeMode === "")
-                root.hoverOpen = true;
+            ClipboardPanelService.close();
+            SettingsPanelService.toggle(root.screenName);
         }
     }
 
@@ -343,6 +346,7 @@ Item {
             root.hoverOpen = false;
             BarModeService.close();
             ClipboardPanelService.close();
+            SettingsPanelService.close();
             ClockPanelService.toggle(root.screenName);
         }
     }
@@ -353,6 +357,11 @@ Item {
     }
 
     ClipboardPopout {
+        anchorItem: settingsButton
+        screenName: root.screenName
+    }
+
+    SettingsPopout {
         anchorItem: settingsButton
         screenName: root.screenName
     }
