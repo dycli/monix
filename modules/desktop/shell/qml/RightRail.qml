@@ -107,7 +107,7 @@ Item {
     Timer {
         id: hoverCloseTimer
 
-        interval: 2000
+        interval: 1000
         onTriggered: {
             if (!railHover.hovered)
                 root.hoverOpen = false;
