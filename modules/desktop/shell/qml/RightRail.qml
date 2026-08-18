@@ -33,6 +33,9 @@ Item {
         || overviewMode === "profile"
     readonly property bool pinned: ownsMode
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
+    readonly property real privacyLead: privacy.width > 0 ? privacy.width + gap : 0
+    readonly property real powerLead: powerButton.visible ? powerButton.width + gap : 0
+    readonly property real leadingControlsWidth: trayLead + privacyLead + powerLead
 
     property bool hoverOpen: false
     property string hoverMode: "control"
@@ -40,8 +43,7 @@ Item {
     property real overviewProgress: overviewVisible ? 1 : 0
     property real detailProgress: detailVisible ? 1 : 0
 
-    readonly property real idleWidth: trayLead + powerButton.width + gap + settingsButton.width
-        + gap + clock.width
+    readonly property real idleWidth: leadingControlsWidth + settingsButton.width + gap + clock.width
     readonly property real overviewWidth: Math.min(maximumWidth,
         idleWidth + gap + overviewContent.implicitWidth)
     readonly property real endControlWidth: sessionDetailVisual
@@ -49,8 +51,9 @@ Item {
         : (detailEndLoader.item ? detailEndLoader.item.implicitWidth : settingsButton.width)
     readonly property real endControlGap: endControlWidth > 0 ? gap : 0
     readonly property real selectedStatusStartX: controlDetail
-        ? trayLead + powerButton.width + gap
-            + (displayedDetailMode === "bluetooth" ? controlMenu.bluetoothItemX : controlMenu.networkItemX)
+        ? leadingControlsWidth
+            + (displayedDetailMode === "bluetooth"
+                ? controlMenu.bluetoothItemX : controlMenu.networkItemX)
         : settingsButton.x
     readonly property real availableDetailWidth: Math.max(0,
         maximumWidth - endControlWidth - endControlGap)
@@ -109,6 +112,14 @@ Item {
         opacity: 1 - root.detailProgress
     }
 
+    PrivacyIndicator {
+        id: privacy
+
+        anchors.verticalCenter: parent.verticalCenter
+        x: root.trayLead + root.detailProgress * (-width - root.gap - root.trayLead)
+        opacity: 1 - root.detailProgress
+    }
+
     Power {
         id: powerButton
 
@@ -117,7 +128,7 @@ Item {
             const previewOffset = root.powerAnchoredOverview
                 ? root.overviewProgress * (root.gap + overviewContent.implicitWidth)
                 : 0;
-            const start = root.trayLead + previewOffset;
+            const start = root.trayLead + root.privacyLead + previewOffset;
             return start + root.detailProgress * (-width - root.gap - start);
         }
         onHoveredChanged: {

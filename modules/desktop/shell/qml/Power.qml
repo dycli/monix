@@ -11,6 +11,7 @@ Item {
 
     width: content.implicitWidth
     height: 24
+    visible: PowerService.hasBattery
 
     Row {
         id: content
@@ -41,24 +42,6 @@ Item {
             percentage: PowerService.percentage
             charging: PowerService.charging
             full: PowerService.full
-            visible: PowerService.hasBattery
-        }
-
-        Text {
-            width: 16
-            height: 16
-            anchors.verticalCenter: parent.verticalCenter
-            color: Style.foregroundColor
-            font {
-                family: Style.fontFamily
-                pixelSize: Style.iconFontSize
-                weight: Style.fontWeight
-            }
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            renderType: Text.NativeRendering
-            text: "󰚥"
-            visible: !PowerService.hasBattery
         }
     }
 
