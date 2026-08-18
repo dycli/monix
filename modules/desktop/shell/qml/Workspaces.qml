@@ -70,9 +70,9 @@ Row {
                         context.arc(center, center, radius, 0, Math.PI * 2);
                     } else if (workspace.workspaceId === 2) {
                         const thickness = 3;
-                        context.moveTo(inset, height - inset - thickness);
+                        context.moveTo(inset, height - inset);
                         context.lineTo(inset + thickness, height - inset);
-                        context.lineTo(width - inset, inset + thickness);
+                        context.lineTo(width - inset, inset);
                         context.lineTo(width - inset - thickness, inset);
                         context.closePath();
                     } else {
