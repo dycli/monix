@@ -9,6 +9,7 @@ Item {
 
     property real scaleFactor: 1
 
+    readonly property bool hovered: pointer.containsMouse
     readonly property color batteryColor: PowerService.percentage <= 15 && !PowerService.charging
         ? Style.lowBatteryColor : Style.foregroundColor
 
@@ -67,9 +68,12 @@ Item {
     }
 
     MouseArea {
+        id: pointer
+
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
+        hoverEnabled: true
         onClicked: event => {
             if (event.button === Qt.MiddleButton) {
                 PowerService.idleInhibited = !PowerService.idleInhibited;

@@ -25,11 +25,12 @@ Item {
     readonly property bool overviewVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientVisible)
     readonly property string overviewMode: transientMode !== "" && !hoverOpen
-        ? transientMode : "control"
+        ? transientMode : hoverMode
     readonly property bool pinned: ownsMode
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
 
     property bool hoverOpen: false
+    property string hoverMode: "control"
     property string displayedDetailMode: ""
     property real overviewProgress: overviewVisible ? 1 : 0
     property real detailProgress: detailVisible ? 1 : 0
@@ -116,6 +117,13 @@ Item {
                 return start + root.detailProgress * (root.width - width - start);
             return start + root.detailProgress * (-width - root.gap - start);
         }
+        onHoveredChanged: {
+            if (hovered && PowerService.hasBattery && !root.detailVisible
+                    && BarModeService.activeMode === "") {
+                root.hoverMode = "battery";
+                root.hoverOpen = true;
+            }
+        }
         onMenuToggleRequested: {
             root.hoverOpen = false;
             ClockPanelService.close();
@@ -144,6 +152,7 @@ Item {
             height: implicitHeight
             implicitWidth: {
                 switch (root.overviewMode) {
+                case "battery": return batteryOverview.implicitWidth;
                 case "volume": return volumeOsd.implicitWidth;
                 case "brightness": return brightnessOsd.implicitWidth;
                 case "microphone": return microphoneOsd.implicitWidth;
@@ -164,6 +173,13 @@ Item {
                     ClockPanelService.close();
                     BarModeService.open(mode, root.screenName, false);
                 }
+            }
+
+            BatteryBarStatus {
+                id: batteryOverview
+
+                anchors.right: parent.right
+                visible: root.overviewMode === "battery"
             }
 
             BarSlider {
@@ -301,8 +317,10 @@ Item {
         x: root.width - clock.width - root.gap - width
             + root.detailProgress * (clock.width + root.gap + width + root.gap)
         onHoveredChanged: {
-            if (hovered && !root.detailVisible && BarModeService.activeMode === "")
+            if (hovered && !root.detailVisible && BarModeService.activeMode === "") {
+                root.hoverMode = "control";
                 root.hoverOpen = true;
+            }
         }
         onMenuToggleRequested: {
             ClockPanelService.close();
