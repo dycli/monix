@@ -1,6 +1,12 @@
 # The interactive agent seat: Claude Code over tmux/SSH and opencode web as
 # interchangeable frontends to one fenced `bridge` account.
 { inputs, self, ... }:
+let
+  browserTargets = {
+    earth = "dylan@earth";
+    fire = "zuko@fire";
+  };
+in
 {
   flake.homeModules.lab = self.homeModules.cockpit;
   flake.homeModules.cockpit =
@@ -13,7 +19,7 @@
     }:
     let
       inherit (lib.ship) guide opencode topology;
-      inherit (lib.attrsets) genAttrs;
+      inherit (lib.attrsets) genAttrs mapAttrs;
       inherit (lib.lists) concatMap map;
       inherit (lib.meta) getExe';
       inherit (lib.modules) mkForce mkIf;
@@ -30,6 +36,20 @@
       legacyMemoryDir = "${cockpitDir}/archive/state-memory";
       rootGuide = guide.system + guide.pilot;
       isBridge = config.home.username == "bridge";
+      browserMcp =
+        browserTargets
+        |> mapAttrs (
+          _: target: {
+            type = "local";
+            command = [
+              (lib.meta.getExe pkgs.tailscale)
+              "ssh"
+              target
+              "/run/current-system/sw/bin/kestrel-browser-mcp"
+            ];
+            enabled = true;
+          }
+        );
       gitReadCommands = [
         "status*"
         "diff*"
@@ -206,7 +226,8 @@
           text = toJSON (
             {
               "$schema" = "https://opencode.ai/config.json";
-              inherit (opencode) lsp mcp;
+              inherit (opencode) lsp;
+              mcp = opencode.mcp // browserMcp;
               permission = opencodePermissions;
               agent.plan.permission = opencodePlanPermissions;
               agent.explore.permission = opencodeExplorePermissions;
@@ -267,14 +288,41 @@
       ...
     }:
     let
-      inherit (lib.attrsets) mapAttrsToList;
+      inherit (lib.attrsets) mapAttrs mapAttrsToList;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
+      inherit (lib.strings) toJSON;
 
       # Fixed uid: the fence below is a drop-in on user-<uid>.slice.
       seatUid = 1001;
 
       inherit (lib.ship) fences opencode topology;
+
+      browserServers =
+        browserTargets
+        |> mapAttrs (
+          _: target: {
+            command = getExe pkgs.tailscale;
+            args = [
+              "ssh"
+              target
+              "/run/current-system/sw/bin/kestrel-browser-mcp"
+            ];
+          }
+        );
+      codexConfig = (pkgs.formats.toml { }).generate "codex-system-config.toml" {
+        mcp_servers =
+          browserServers
+          |> mapAttrs (
+            _: server:
+            server
+            // {
+              default_tools_approval_mode = "writes";
+              startup_timeout_sec = 20;
+              tool_timeout_sec = 120;
+            }
+          );
+      };
     in
     {
       config = {
@@ -338,6 +386,14 @@
           pkgs.python3
           pkgs.jq
         ];
+
+        # Authentication, project trust and session state remain per-user;
+        # host-owned MCP endpoints are immutable layers shared by every
+        # cockpit frontend.
+        environment.etc."codex/config.toml".source = codexConfig;
+        environment.etc."claude-code/managed-mcp.json".text = toJSON {
+          mcpServers = browserServers |> mapAttrs (_: server: server // { type = "stdio"; });
+        };
 
         # A system service, so it sits outside the seat's user slice and
         # carries its own fence. nginx serves it with no application auth.
