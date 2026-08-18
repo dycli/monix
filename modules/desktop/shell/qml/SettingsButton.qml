@@ -14,7 +14,6 @@ Item {
         width: 15
         height: 14
         anchors.centerIn: parent
-        visible: !PowerService.idleInhibited
 
         Rectangle {
             width: parent.width
@@ -47,23 +46,6 @@ Item {
             radius: 2
             color: Style.foregroundColor
         }
-    }
-
-    Text {
-        width: 15
-        height: 14
-        anchors.centerIn: parent
-        visible: PowerService.idleInhibited
-        text: ""
-        color: Style.foregroundColor
-        font {
-            family: Style.fontFamily
-            pixelSize: 10
-            weight: 500
-        }
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
-        renderType: Text.NativeRendering
     }
 
     MouseArea {

@@ -34,7 +34,10 @@ Item {
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
     readonly property real privacyLead: privacy.width > 0 ? privacy.width + gap : 0
     readonly property real powerLead: powerButton.visible ? powerButton.width + gap : 0
+    readonly property real idleIndicatorLead: idleIndicator.visible
+        ? idleIndicator.width + gap : 0
     readonly property real leadingControlsWidth: trayLead + privacyLead + powerLead
+        + idleIndicatorLead
 
     property bool hoverOpen: false
     property string hoverMode: "control"
@@ -154,6 +157,17 @@ Item {
                 root.hoverOpen = true;
             }
         }
+    }
+
+    IdleIndicator {
+        id: idleIndicator
+
+        anchors.verticalCenter: parent.verticalCenter
+        x: {
+            const start = root.trayLead + root.privacyLead + root.powerLead;
+            return start + root.detailProgress * (-width - root.gap - start);
+        }
+        opacity: 1 - root.detailProgress
     }
 
     Item {
