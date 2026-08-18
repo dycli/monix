@@ -7,7 +7,7 @@ BarModeButton {
 
     signal detailRequested
 
-    active: NetworkState.connected
+    active: NetworkState.connected && NetworkState.primaryType !== "ethernet"
     icon: NetworkState.primaryIcon
     interactive: NetworkState.available
         && (NetworkState.wiredDevice !== null || NetworkState.wifiHardwareEnabled)

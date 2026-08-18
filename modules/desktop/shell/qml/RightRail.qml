@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell
 import Quickshell.Services.UPower
 
 Item {
@@ -42,6 +43,11 @@ Item {
     property string displayedDetailMode: ""
     property real overviewProgress: overviewVisible ? 1 : 0
     property real detailProgress: detailVisible ? 1 : 0
+
+    function scheduleHoverClose(): void {
+        if (hoverOpen && !railHover.hovered && !graceHover.hovered)
+            hoverCloseTimer.restart();
+    }
 
     readonly property real idleWidth: leadingControlsWidth + settingsButton.width + gap + clock.width
     readonly property real overviewWidth: Math.min(maximumWidth,
@@ -92,8 +98,50 @@ Item {
         id: railHover
 
         onHoveredChanged: {
-            if (!hovered)
+            if (hovered)
+                hoverCloseTimer.stop();
+            else
+                root.scheduleHoverClose();
+        }
+    }
+
+    Timer {
+        id: hoverCloseTimer
+
+        interval: 2000
+        onTriggered: {
+            if (!railHover.hovered && !graceHover.hovered)
                 root.hoverOpen = false;
+        }
+    }
+
+    PopupWindow {
+        id: hoverGraceWindow
+
+        color: "transparent"
+        implicitWidth: root.width
+        implicitHeight: 28
+        grabFocus: false
+        visible: root.hoverOpen && root.hoverMode === "control"
+            && !root.detailVisible && BarModeService.activeMode === ""
+
+        anchor {
+            window: root.QsWindow.window
+            item: root
+            edges: Edges.Bottom
+            gravity: Edges.Bottom
+            adjustment: PopupAdjustment.SlideX
+        }
+
+        HoverHandler {
+            id: graceHover
+
+            onHoveredChanged: {
+                if (hovered)
+                    hoverCloseTimer.stop();
+                else
+                    root.scheduleHoverClose();
+            }
         }
     }
 
