@@ -17,4 +17,5 @@ QtObject {
     readonly property int textFontSize: 10
     readonly property int panelFontSize: 12
     readonly property int panelTitleFontSize: 15
+    readonly property int rightSectionGap: 12
 }

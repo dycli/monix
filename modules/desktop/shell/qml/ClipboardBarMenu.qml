@@ -26,7 +26,7 @@ Item {
         id: content
 
         height: 24
-        spacing: 4
+        spacing: Style.rightSectionGap
 
         Item {
             width: 150

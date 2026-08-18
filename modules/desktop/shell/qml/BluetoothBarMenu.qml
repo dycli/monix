@@ -7,7 +7,7 @@ Row {
     id: root
 
     height: 24
-    spacing: 4
+    spacing: Style.rightSectionGap
 
     Component.onCompleted: BluetoothState.startScan()
     Component.onDestruction: BluetoothState.stopScan()

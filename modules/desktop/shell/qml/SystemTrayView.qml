@@ -10,7 +10,7 @@ Item {
     id: root
 
     readonly property real itemSize: 16
-    readonly property real itemGap: 12
+    readonly property real itemGap: Style.rightSectionGap
 
     implicitWidth: trayRow.implicitWidth
     implicitHeight: 24

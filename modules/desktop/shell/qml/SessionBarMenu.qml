@@ -6,7 +6,7 @@ Row {
     id: root
 
     height: 24
-    spacing: 4
+    spacing: Style.rightSectionGap
     focus: true
 
     Component.onCompleted: Qt.callLater(() => forceActiveFocus())
