@@ -13,6 +13,9 @@ BarModeButton {
         && (NetworkState.wiredDevice !== null || NetworkState.wifiHardwareEnabled)
     label: NetworkState.primaryType === "ethernet" ? "" : NetworkState.primaryLabel
     secondaryInteractive: NetworkState.available
+        && NetworkState.primaryType !== "ethernet"
+        && NetworkState.wifiDevice !== null
+        && NetworkState.wifiEnabled
     onActivated: root.detailRequested()
-    onSecondaryActivated: NetworkState.disablePrimary()
+    onSecondaryActivated: NetworkState.disableWifi()
 }

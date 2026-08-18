@@ -391,7 +391,10 @@ Item {
 
         NetworkStatusButton {
             onDetailRequested: {
-                if (!NetworkState.wifiEnabled && NetworkState.wifiDevice !== null)
+                if (NetworkState.primaryType === "ethernet"
+                        && !NetworkState.wiredConnected)
+                    NetworkState.connectWired();
+                else if (!NetworkState.wifiEnabled && NetworkState.wifiDevice !== null)
                     NetworkState.toggleWifi();
                 else
                     BarModeService.close();

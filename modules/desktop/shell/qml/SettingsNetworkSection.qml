@@ -73,7 +73,7 @@ Column {
         label: "Ethernet"
         detail: NetworkState.wiredConnected ? "Connected" : "Disconnected"
         visible: NetworkState.wiredDevice !== null
-        onActivated: NetworkState.activateWired()
+        onActivated: NetworkState.connectWired()
     }
 
     Text {
