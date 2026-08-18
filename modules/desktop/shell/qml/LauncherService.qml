@@ -12,19 +12,15 @@ QtObject {
     readonly property var applications: DesktopEntries.applications.values
     property var usage: ({})
     property bool historyLoaded: false
-    property bool savingHistory: false
 
     property FileView historyFile: FileView {
         path: StandardPaths.writableLocation(StandardPaths.GenericStateLocation)
             + "/kestrel/launcher-history.json"
         blockLoading: true
         blockWrites: true
-        watchChanges: true
+        watchChanges: false
 
-        onLoaded: {
-            if (!root.savingHistory)
-                root.loadHistory(text());
-        }
+        onLoaded: root.loadHistory(text())
 
         onLoadFailed: root.historyLoaded = true
     }
@@ -42,9 +38,7 @@ QtObject {
     function saveHistory(): void {
         if (!historyLoaded)
             return;
-        savingHistory = true;
         historyFile.setText(JSON.stringify({ "usage": usage }, null, 2));
-        savingHistory = false;
     }
 
     function normalize(value): string {

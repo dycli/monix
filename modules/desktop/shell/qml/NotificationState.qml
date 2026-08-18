@@ -2,6 +2,7 @@ pragma Singleton
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Services.Notifications
 
@@ -16,6 +17,7 @@ QtObject {
     property ListModel historyModel: ListModel {}
 
     readonly property int historyLimit: 50
+    readonly property int tickerLimit: 10
 
     property NotificationServer server: NotificationServer {
         actionsSupported: true
@@ -38,14 +40,20 @@ QtObject {
             app: plainText(notification.appName) || "Notification",
             summary: plainText(notification.summary),
             body: plainText(notification.body),
-            timestamp: Date.now(),
             urgency: notification.urgency
         };
 
         liveRefs[row.id] = notification;
         notification.closed.connect(() => {
-            if (root.liveRefs[row.id] === notification)
-                delete root.liveRefs[row.id];
+            if (root.liveRefs[row.id] !== notification)
+                return;
+            delete root.liveRefs[row.id];
+            root.tickerQueue = root.tickerQueue.filter(entry => entry.id !== row.id);
+            if (root.currentTicker && root.currentTicker.id === row.id) {
+                root.currentTicker = null;
+                root.tickerGeneration += 1;
+                Qt.callLater(() => root.showNextTicker());
+            }
         });
 
         removeHistoryId(row.id);
@@ -53,9 +61,24 @@ QtObject {
         while (historyModel.count > historyLimit)
             historyModel.remove(historyModel.count - 1);
 
-        tickerQueue = tickerQueue.concat([row]);
+        if (currentTicker && currentTicker.id === row.id) {
+            currentTicker = row;
+            tickerGeneration += 1;
+        } else {
+            enqueueTicker(row);
+        }
         if (!currentTicker)
             showNextTicker();
+    }
+
+    function enqueueTicker(row): void {
+        const queue = tickerQueue.filter(entry => entry.id !== row.id);
+        queue.push(row);
+        while (queue.length > tickerLimit) {
+            const nonCritical = queue.findIndex(entry => entry.urgency !== NotificationUrgency.Critical);
+            queue.splice(nonCritical >= 0 ? nonCritical : 0, 1);
+        }
+        tickerQueue = queue;
     }
 
     function removeHistoryId(id): void {
@@ -72,7 +95,9 @@ QtObject {
         }
         currentTicker = tickerQueue[0];
         tickerQueue = tickerQueue.slice(1);
-        tickerScreenName = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "";
+        tickerScreenName = Hyprland.focusedMonitor
+            ? Hyprland.focusedMonitor.name
+            : (Quickshell.screens.length > 0 ? Quickshell.screens[0].name : "");
         tickerGeneration += 1;
     }
 
@@ -81,13 +106,14 @@ QtObject {
             return;
         const ref = liveRefs[currentTicker.id];
         if (ref) {
+            delete liveRefs[currentTicker.id];
             try {
                 ref.expire();
             } catch (error) {
             }
         }
         currentTicker = null;
-        Qt.callLater(showNextTicker);
+        Qt.callLater(() => root.showNextTicker());
     }
 
     function dismiss(index: int): void {

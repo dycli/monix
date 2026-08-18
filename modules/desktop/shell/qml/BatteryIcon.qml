@@ -9,16 +9,15 @@ Item {
     property bool charging: false
     property bool full: false
     property color color: Style.foregroundColor
-    property real scaleFactor: 1
 
-    implicitWidth: Math.round(21 * scaleFactor)
-    implicitHeight: Math.round(12 * scaleFactor)
+    implicitWidth: 21
+    implicitHeight: 12
 
     Item {
         id: body
 
-        width: Math.round(20 * root.scaleFactor)
-        height: Math.round(10 * root.scaleFactor)
+        width: 20
+        height: 10
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
 
@@ -27,7 +26,7 @@ Item {
 
             readonly property real fillWidth: width * root.percentage / 100
             readonly property color fillColor: root.color
-            readonly property real cornerRadius: 2.5 * root.scaleFactor
+            readonly property real cornerRadius: 2.5
 
             anchors.fill: parent
 
@@ -64,7 +63,7 @@ Item {
             color: Style.panelColor
             font {
                 family: Style.fontFamily
-                pixelSize: Math.max(2, Math.round(8 * root.scaleFactor / 2) * 2)
+                pixelSize: 8
                 weight: 500
             }
             horizontalAlignment: Text.AlignHCenter
@@ -76,11 +75,11 @@ Item {
     }
 
     Rectangle {
-        width: Math.max(1, Math.round(root.scaleFactor))
-        height: Math.round(4 * root.scaleFactor)
+        width: 1
+        height: 4
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        radius: 0.5 * root.scaleFactor
+        radius: 0.5
         color: root.color
     }
 }

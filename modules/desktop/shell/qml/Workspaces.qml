@@ -7,7 +7,6 @@ Row {
     id: root
 
     required property string screenName
-    property real scaleFactor: 1
 
     spacing: 0
 
@@ -43,14 +42,14 @@ Row {
             readonly property int workspaceId: modelData
             readonly property bool active: workspaceId === root.activeWorkspaceId
 
-            width: Math.round(28 * root.scaleFactor)
-            height: Math.round(24 * root.scaleFactor)
+            width: 28
+            height: 24
             color: "transparent"
 
             Canvas {
                 id: workspaceShape
 
-                width: Math.round(14 * root.scaleFactor)
+                width: 14
                 height: width
                 anchors.centerIn: parent
                 antialiasing: true

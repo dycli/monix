@@ -22,9 +22,13 @@ Item {
     readonly property bool sessionDetailVisual: displayedDetailMode === "session"
     readonly property bool overviewVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientVisible)
-    readonly property string overviewMode: transientVisible
-        && (transientMode === "profile" || !hoverOpen)
-        ? transientMode : hoverMode
+    readonly property string overviewMode: {
+        if (transientVisible)
+            return transientMode === "profile" || !hoverOpen ? transientMode : hoverMode;
+        if (hoverOpen)
+            return hoverMode;
+        return transientMode !== "" ? transientMode : hoverMode;
+    }
     readonly property bool powerAnchoredOverview: overviewMode === "battery"
         || overviewMode === "profile"
     readonly property bool pinned: ownsMode
@@ -109,7 +113,6 @@ Item {
         id: powerButton
 
         anchors.verticalCenter: parent.verticalCenter
-        scaleFactor: 1
         x: {
             const previewOffset = root.powerAnchoredOverview
                 ? root.overviewProgress * (root.gap + overviewContent.implicitWidth)

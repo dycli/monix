@@ -5,29 +5,27 @@ import QtQuick
 Item {
     id: root
 
-    property real scaleFactor: 1
-
     readonly property bool hovered: pointer.containsMouse
     readonly property color batteryColor: PowerService.percentage <= 15 && !PowerService.charging
         ? Style.lowBatteryColor : Style.foregroundColor
 
     width: content.implicitWidth
-    height: Math.round(24 * scaleFactor)
+    height: 24
 
     Row {
         id: content
 
         anchors.centerIn: parent
-        spacing: Math.round(4 * root.scaleFactor)
+        spacing: 4
 
         Text {
-            width: Math.round(12 * root.scaleFactor)
-            height: Math.round(12 * root.scaleFactor)
+            width: 12
+            height: 12
             anchors.verticalCenter: parent.verticalCenter
             color: Style.foregroundColor
             font {
                 family: Style.fontFamily
-                pixelSize: Math.round(10 * root.scaleFactor)
+                pixelSize: 10
                 weight: 500
             }
             horizontalAlignment: Text.AlignHCenter
@@ -43,18 +41,17 @@ Item {
             percentage: PowerService.percentage
             charging: PowerService.charging
             full: PowerService.full
-            scaleFactor: root.scaleFactor
             visible: PowerService.hasBattery
         }
 
         Text {
-            width: Math.round(16 * root.scaleFactor)
-            height: Math.round(16 * root.scaleFactor)
+            width: 16
+            height: 16
             anchors.verticalCenter: parent.verticalCenter
             color: Style.foregroundColor
             font {
                 family: Style.fontFamily
-                pixelSize: Math.round(Style.iconFontSize * root.scaleFactor)
+                pixelSize: Style.iconFontSize
                 weight: Style.fontWeight
             }
             horizontalAlignment: Text.AlignHCenter

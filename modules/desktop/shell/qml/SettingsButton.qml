@@ -5,46 +5,45 @@ Item {
 
     signal menuToggleRequested
 
-    property real scaleFactor: 1
     readonly property bool hovered: pointer.containsMouse
 
-    width: Math.round(28 * scaleFactor)
-    height: Math.round(24 * scaleFactor)
+    width: 28
+    height: 24
 
     Item {
-        width: Math.round(15 * root.scaleFactor)
-        height: Math.round(14 * root.scaleFactor)
+        width: 15
+        height: 14
         anchors.centerIn: parent
 
         Rectangle {
             width: parent.width
-            height: Math.max(1, Math.round(root.scaleFactor))
-            y: 4 * root.scaleFactor
+            height: 1
+            y: 4
             color: Style.foregroundColor
         }
 
         Rectangle {
-            width: 4 * root.scaleFactor
-            height: 4 * root.scaleFactor
-            x: 3 * root.scaleFactor
-            y: 2.5 * root.scaleFactor
-            radius: 2 * root.scaleFactor
+            width: 4
+            height: 4
+            x: 3
+            y: 2.5
+            radius: 2
             color: Style.foregroundColor
         }
 
         Rectangle {
             width: parent.width
-            height: Math.max(1, Math.round(root.scaleFactor))
-            y: 10 * root.scaleFactor
+            height: 1
+            y: 10
             color: Style.foregroundColor
         }
 
         Rectangle {
-            width: 4 * root.scaleFactor
-            height: 4 * root.scaleFactor
-            x: 9 * root.scaleFactor
-            y: 8.5 * root.scaleFactor
-            radius: 2 * root.scaleFactor
+            width: 4
+            height: 4
+            x: 9
+            y: 8.5
+            radius: 2
             color: Style.foregroundColor
         }
     }

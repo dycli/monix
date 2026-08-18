@@ -19,8 +19,13 @@ PopupWindow {
     visible: ClockPanelService.isOpen(screenName)
 
     onVisibleChanged: {
-        if (!visible && ClockPanelService.isOpen(screenName))
+        if (visible) {
+            const now = new Date();
+            shownMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            selectedDate = now;
+        } else if (ClockPanelService.isOpen(screenName)) {
             ClockPanelService.close();
+        }
     }
 
     Shortcut {

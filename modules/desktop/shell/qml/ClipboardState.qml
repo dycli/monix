@@ -8,8 +8,7 @@ import Quickshell.Io
 QtObject {
     id: root
 
-    property ListModel entries: ListModel {}
-    property int revision: 0
+    property var entries: []
 
     property Process listProcess: Process {
         command: ["cliphist", "list"]
@@ -41,7 +40,7 @@ QtObject {
     }
 
     function applyList(output: string): void {
-        entries.clear();
+        const nextEntries = [];
         const lines = output.split("\n");
         for (const line of lines) {
             const separator = line.indexOf("\t");
@@ -51,17 +50,15 @@ QtObject {
             if (!/^\d+$/.test(id))
                 continue;
             const preview = line.slice(separator + 1).replace(/\s+/g, " ").trim();
-            entries.append({ "entryId": id, "preview": preview || "Clipboard item" });
+            nextEntries.push({ "entryId": id, "preview": preview || "Clipboard item" });
         }
-        revision += 1;
+        entries = nextEntries;
     }
 
     function filtered(query: string): var {
-        const ignored = revision;
         const needle = query.trim().toLowerCase();
         const matches = [];
-        for (let index = 0; index < entries.count; index += 1) {
-            const entry = entries.get(index);
+        for (const entry of entries) {
             if (needle.length === 0 || entry.preview.toLowerCase().includes(needle))
                 matches.push({ "entryId": entry.entryId, "preview": entry.preview });
             if (matches.length >= 4)

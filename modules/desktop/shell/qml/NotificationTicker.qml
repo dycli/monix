@@ -9,8 +9,7 @@ Item {
     required property string screenName
 
     readonly property bool ownsTicker: NotificationState.currentTicker !== null
-        && (NotificationState.tickerScreenName.length === 0
-            || NotificationState.tickerScreenName === screenName)
+        && NotificationState.tickerScreenName === screenName
     readonly property int generation: NotificationState.tickerGeneration
     readonly property var ticker: ownsTicker ? NotificationState.currentTicker : null
     readonly property real contentLeft: tickerText.x
@@ -27,13 +26,21 @@ Item {
             return 80;
         }
     }
+    property int runGeneration: 0
 
     visible: ownsTicker
 
-    onGenerationChanged: {
-        if (ownsTicker)
-            tickerAnimation.restart();
+    function startTicker(): void {
+        if (!ownsTicker) {
+            tickerAnimation.stop();
+            return;
+        }
+        runGeneration = generation;
+        tickerAnimation.restart();
     }
+
+    onGenerationChanged: startTicker()
+    onOwnsTickerChanged: startTicker()
 
     Text {
         id: tickerText
@@ -51,7 +58,8 @@ Item {
             if (!root.ticker)
                 return "";
             const detail = root.ticker.body ? " — " + root.ticker.body : "";
-            return root.ticker.app + "  " + root.ticker.summary + detail;
+            const message = root.ticker.app + "  " + root.ticker.summary + detail;
+            return message.length > 300 ? message.slice(0, 299) + "…" : message;
         }
         x: parent.width
     }
@@ -65,6 +73,6 @@ Item {
         to: -tickerText.implicitWidth
         duration: Math.max(5000, Math.round(
             (root.width + tickerText.implicitWidth) / root.pixelsPerSecond * 1000))
-        onFinished: NotificationState.finishTicker(root.generation)
+        onFinished: NotificationState.finishTicker(root.runGeneration)
     }
 }

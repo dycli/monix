@@ -13,9 +13,9 @@ Variants {
 
         required property var modelData
 
-        readonly property real scaleFactor: 1
         readonly property int barHeight: 28
-        readonly property int barFontSize: 10
+        readonly property bool railOverlapsWorkspaces: rightRail.visible
+            && rightRail.x < workspaceGroup.x + workspaceGroup.width + Style.barItemGap
 
         screen: modelData
         color: "transparent"
@@ -68,7 +68,7 @@ Variants {
 
             anchors {
                 left: parent.left
-                leftMargin: Math.round(12 * window.scaleFactor)
+                leftMargin: 12
                 verticalCenter: parent.verticalCenter
             }
             visible: !launcher.active && !tickerLane.overlaps(leftRail)
@@ -82,9 +82,9 @@ Variants {
                 verticalCenter: parent.verticalCenter
             }
             visible: !launcher.active && !tickerLane.overlaps(workspaceGroup)
+                && !window.railOverlapsWorkspaces
 
             Workspaces {
-                scaleFactor: window.scaleFactor
                 screenName: window.modelData.name
             }
         }
@@ -94,7 +94,7 @@ Variants {
 
             anchors {
                 right: parent.right
-                rightMargin: Math.round(12 * window.scaleFactor)
+                rightMargin: 12
                 verticalCenter: parent.verticalCenter
             }
             maximumWidth: Math.max(0, window.width - workspaceGroup.width - 48)

@@ -12,6 +12,7 @@ QtObject {
     property real level: 0
     property real pendingLevel: 0
     property bool setQueued: false
+    property int refreshFailures: 0
 
     readonly property string icon: !available
         ? "󰛩"
@@ -35,7 +36,7 @@ QtObject {
     }
 
     property Timer refreshTimer: Timer {
-        interval: 3000
+        interval: root.refreshFailures >= 3 ? 60000 : 3000
         repeat: true
         running: true
         triggeredOnStart: true
@@ -53,8 +54,10 @@ QtObject {
         if (fields.length < 2 || !Number.isFinite(percent)) {
             available = false;
             device = "";
+            refreshFailures += 1;
             return;
         }
+        refreshFailures = 0;
         available = true;
         device = fields[0].trim();
         if (!setProcess.running && !setQueued)
