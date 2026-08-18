@@ -9,16 +9,21 @@
       ...
     }:
     {
-      services.displayManager.autoLogin = {
-        enable = true;
-        user = config.primaryUser;
-      };
-
       services.greetd = {
         enable = true;
-        settings.default_session = {
-          command = "${lib.meta.getExe pkgs.tuigreet} --time --remember --remember-session --sessions ${config.services.displayManager.sessionData.desktops}/share/wayland-sessions";
-          user = "greeter";
+        settings = {
+          # greetd does not consume displayManager.autoLogin itself. Its
+          # initial session runs once at service start; after logout, the
+          # interactive default session below takes over.
+          initial_session = {
+            command = "${lib.meta.getExe pkgs.uwsm} start -F -D Hyprland -- ${lib.meta.getExe' pkgs.hyprland "start-hyprland"}";
+            user = config.primaryUser;
+          };
+
+          default_session = {
+            command = "${lib.meta.getExe pkgs.tuigreet} --time --remember --remember-session --sessions ${config.services.displayManager.sessionData.desktops}/share/wayland-sessions";
+            user = "greeter";
+          };
         };
       };
 
