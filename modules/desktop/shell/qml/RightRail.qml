@@ -22,11 +22,12 @@ Item {
     readonly property bool powerDetailVisual: displayedDetailMode === "power"
     readonly property bool overviewVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientMode !== "")
-    readonly property string overviewMode: transientMode !== "" ? transientMode : "control"
+    readonly property string requestedOverviewMode: transientMode !== "" ? transientMode : "control"
     readonly property bool pinned: ownsMode
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
 
     property bool hoverOpen: false
+    property string displayedOverviewMode: "control"
     property string displayedDetailMode: ""
     property real overviewProgress: overviewVisible ? 1 : 0
     property real detailProgress: detailVisible ? 1 : 0
@@ -59,6 +60,23 @@ Item {
     onDetailVisibleChanged: {
         if (detailVisible)
             displayedDetailMode = BarModeService.activeMode;
+    }
+
+    onOverviewVisibleChanged: {
+        if (overviewVisible)
+            displayedOverviewMode = requestedOverviewMode;
+    }
+
+    onTransientModeChanged: {
+        if (transientMode !== "")
+            displayedOverviewMode = transientMode;
+        else if (hoverOpen)
+            displayedOverviewMode = "control";
+    }
+
+    onOverviewProgressChanged: {
+        if (!overviewVisible && overviewProgress <= 0)
+            displayedOverviewMode = "control";
     }
 
     onDetailProgressChanged: {
@@ -136,7 +154,7 @@ Item {
             width: implicitWidth
             height: implicitHeight
             implicitWidth: {
-                switch (root.overviewMode) {
+                switch (root.displayedOverviewMode) {
                 case "volume": return volumeOsd.implicitWidth;
                 case "brightness": return brightnessOsd.implicitWidth;
                 case "microphone": return microphoneOsd.implicitWidth;
@@ -151,7 +169,7 @@ Item {
                 id: controlMenu
 
                 anchors.right: parent.right
-                visible: root.overviewMode === "control"
+                visible: root.displayedOverviewMode === "control"
                 onModeRequested: mode => {
                     root.hoverOpen = false;
                     ClockPanelService.close();
@@ -166,7 +184,7 @@ Item {
                 available: AudioState.available
                 icon: AudioState.icon
                 value: AudioState.volume / 100
-                visible: root.overviewMode === "volume"
+                visible: root.displayedOverviewMode === "volume"
                 onMoved: value => {
                     AudioState.setVolume(value);
                     BarModeService.flash("volume", root.screenName);
@@ -184,7 +202,7 @@ Item {
                 available: BrightnessState.available
                 icon: BrightnessState.icon
                 value: BrightnessState.level
-                visible: root.overviewMode === "brightness"
+                visible: root.displayedOverviewMode === "brightness"
                 onMoved: value => {
                     BrightnessState.setLevel(value);
                     BarModeService.flash("brightness", root.screenName);
@@ -198,7 +216,7 @@ Item {
                 enabled: AudioState.sourceAvailable
                 icon: AudioState.sourceIcon
                 label: AudioState.sourceMuted ? "Muted" : "Live"
-                visible: root.overviewMode === "microphone"
+                visible: root.displayedOverviewMode === "microphone"
                 onActivated: {
                     AudioState.toggleSourceMute();
                     BarModeService.flash("microphone", root.screenName);
@@ -212,7 +230,7 @@ Item {
                 icon: "󰓅"
                 label: PowerService.profilesAvailable
                     ? PowerService.profileName(PowerProfiles.profile) : "Power"
-                visible: root.overviewMode === "profile"
+                visible: root.displayedOverviewMode === "profile"
                 interactive: false
             }
 
@@ -222,7 +240,7 @@ Item {
                 anchors.right: parent.right
                 icon: ""
                 label: PowerService.idleInhibited ? "Inhibited" : "Idle enabled"
-                visible: root.overviewMode === "inhibit"
+                visible: root.displayedOverviewMode === "inhibit"
                 interactive: false
             }
         }
