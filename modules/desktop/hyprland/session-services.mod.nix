@@ -36,6 +36,8 @@
         enable = true;
         settings = {
           general = {
+            # Use the compositor's preferred scale independently per output.
+            fractional_scaling = 1;
             hide_cursor = true;
             ignore_empty_input = true;
           };
