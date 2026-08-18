@@ -33,11 +33,10 @@ Item {
     readonly property bool pinned: ownsMode
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
     readonly property real privacyLead: privacy.width > 0 ? privacy.width + gap : 0
-    readonly property real powerLead: powerButton.visible ? powerButton.width + gap : 0
-    readonly property real idleIndicatorLead: idleIndicator.visible
-        ? idleIndicator.width + gap : 0
-    readonly property real leadingControlsWidth: trayLead + privacyLead + powerLead
-        + idleIndicatorLead
+    readonly property real externalControlsWidth: trayLead + privacyLead
+    readonly property real pinnedControlsLead: pinnedControls.implicitWidth > 0
+        ? pinnedControls.implicitWidth + gap : 0
+    readonly property real leadingControlsWidth: externalControlsWidth + pinnedControlsLead
 
     property bool hoverOpen: false
     property string hoverMode: "control"
@@ -63,11 +62,12 @@ Item {
                 ? controlMenu.bluetoothItemX : controlMenu.networkItemX)
         : settingsButton.x
     readonly property real availableDetailWidth: Math.max(0,
-        maximumWidth - endControlWidth - endControlGap)
+        maximumWidth - pinnedControlsLead - endControlWidth - endControlGap)
     readonly property real requestedDetailWidth: detailLoader.item
         ? detailLoader.item.implicitWidth : controlMenu.implicitWidth
     readonly property real detailContentWidth: Math.min(availableDetailWidth, requestedDetailWidth)
-    readonly property real detailWidth: detailContentWidth + endControlGap + endControlWidth
+    readonly property real detailWidth: pinnedControlsLead + detailContentWidth
+        + endControlGap + endControlWidth
     readonly property real restingWidth: idleWidth
         + overviewProgress * (overviewWidth - idleWidth)
     readonly property real targetWidth: restingWidth
@@ -139,19 +139,19 @@ Item {
         opacity: 1 - root.detailProgress
     }
 
-    Power {
-        id: powerButton
+    PinnedControlItems {
+        id: pinnedControls
 
         anchors.verticalCenter: parent.verticalCenter
         x: {
             const previewOffset = root.powerAnchoredOverview
                 ? root.overviewProgress * (root.gap + overviewContent.implicitWidth)
                 : 0;
-            const start = root.trayLead + root.privacyLead + previewOffset;
-            return start + root.detailProgress * (-width - root.gap - start);
+            return (root.externalControlsWidth + previewOffset)
+                * (1 - root.detailProgress);
         }
-        onHoveredChanged: {
-            if (hovered && PowerService.hasBattery && !root.detailVisible
+        onPowerHoveredChanged: {
+            if (powerHovered && PowerService.hasBattery && !root.detailVisible
                     && BarModeService.activeMode === "") {
                 root.hoverMode = "battery";
                 root.hoverOpen = true;
@@ -159,24 +159,14 @@ Item {
         }
     }
 
-    IdleIndicator {
-        id: idleIndicator
-
-        anchors.verticalCenter: parent.verticalCenter
-        x: {
-            const start = root.trayLead + root.privacyLead + root.powerLead;
-            return start + root.detailProgress * (-width - root.gap - start);
-        }
-        opacity: 1 - root.detailProgress
-    }
-
     Item {
         id: overviewViewport
 
         anchors.verticalCenter: parent.verticalCenter
-        x: (root.powerAnchoredOverview ? powerButton.x : settingsButton.x)
+        x: (root.powerAnchoredOverview
+            ? pinnedControls.x + pinnedControls.powerX : settingsButton.x)
             - root.gap - width
-        width: overviewContent.implicitWidth * root.overviewProgress * (1 - root.detailProgress)
+        width: overviewContent.implicitWidth
         height: 24
         clip: true
         enabled: root.overviewVisible
@@ -184,10 +174,8 @@ Item {
         Item {
             id: overviewContent
 
-            anchors {
-                right: parent.right
-                verticalCenter: parent.verticalCenter
-            }
+            anchors.verticalCenter: parent.verticalCenter
+            x: implicitWidth * (1 - root.overviewProgress)
             width: implicitWidth
             height: implicitHeight
             implicitWidth: {
