@@ -275,7 +275,19 @@ PopupWindow {
 
                         width: ListView.view.width
                         height: Math.max(notificationRow.body.length > 0 ? 72 : 52,
-                            notificationContent.implicitHeight + 16)
+                            notificationContent.height + 16)
+
+                        onExpandedChanged: {
+                            const view = notificationRow.ListView.view;
+                            if (!view)
+                                return;
+                            view.forceLayout();
+                            Qt.callLater(() => {
+                                view.forceLayout();
+                                view.positionViewAtIndex(notificationRow.index,
+                                    ListView.Contain);
+                            });
+                        }
 
                         Behavior on height {
                             NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
@@ -291,6 +303,7 @@ PopupWindow {
                                 top: parent.top
                                 topMargin: 8
                             }
+                            height: childrenRect.height
                             spacing: 2
 
                             Text {
@@ -314,9 +327,12 @@ PopupWindow {
                                     pixelSize: Style.panelFontSize
                                     weight: Style.fontWeight
                                 }
-                                maximumLineCount: notificationRow.expanded ? 1000 : 1
+                                height: notificationRow.expanded
+                                    ? Math.ceil(paintedHeight) : implicitHeight
+                                maximumLineCount: notificationRow.expanded ? 100000 : 1
                                 text: notificationRow.summary
-                                wrapMode: notificationRow.expanded ? Text.Wrap : Text.NoWrap
+                                wrapMode: notificationRow.expanded
+                                    ? Text.WrapAtWordBoundaryOrAnywhere : Text.NoWrap
                             }
 
                             Text {
@@ -328,10 +344,13 @@ PopupWindow {
                                     pixelSize: 10
                                     weight: Style.fontWeight
                                 }
-                                maximumLineCount: notificationRow.expanded ? 1000 : 1
+                                height: notificationRow.expanded
+                                    ? Math.ceil(paintedHeight) : implicitHeight
+                                maximumLineCount: notificationRow.expanded ? 100000 : 1
                                 text: notificationRow.body
                                 visible: notificationRow.body.length > 0
-                                wrapMode: notificationRow.expanded ? Text.Wrap : Text.NoWrap
+                                wrapMode: notificationRow.expanded
+                                    ? Text.WrapAtWordBoundaryOrAnywhere : Text.NoWrap
                             }
                         }
 
