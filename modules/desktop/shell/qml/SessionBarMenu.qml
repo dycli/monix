@@ -71,7 +71,7 @@ Row {
 
     BarModeButton {
         icon: ""
-        label: "Off"
+        label: "Poweroff"
         onActivated: SessionService.powerOff()
     }
 }
