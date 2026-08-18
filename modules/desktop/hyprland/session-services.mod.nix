@@ -59,8 +59,8 @@
               text = "$TIME";
               color = "rgba(255, 255, 255, 1.0)";
               font_family = "ComicCodeLigatures Nerd Font";
-              font_size = 48;
-              position = "0, 100";
+              font_size = 96;
+              position = "0, 200";
               halign = "center";
               valign = "center";
             }
@@ -69,8 +69,8 @@
               text = "cmd[update:60000] date '+%A, %B %-d'";
               color = "rgba(255, 255, 255, 1.0)";
               font_family = "ComicCodeLigatures Nerd Font";
-              font_size = 14;
-              position = "0, 55";
+              font_size = 28;
+              position = "0, 110";
               halign = "center";
               valign = "center";
             }
@@ -79,17 +79,17 @@
           input-field = [
             {
               monitor = "";
-              size = "240, 42";
-              position = "0, -20";
+              size = "480, 84";
+              position = "0, -40";
               halign = "center";
               valign = "center";
               outline_thickness = 1;
-              rounding = 8;
+              rounding = 16;
               outer_color = "rgba(255, 255, 255, 0.8)";
               inner_color = "rgba(15, 15, 15, 0.7)";
               font_color = "rgba(255, 255, 255, 1.0)";
               font_family = "ComicCodeLigatures Nerd Font";
-              font_size = 12;
+              font_size = 24;
               placeholder_text = "Password";
               fail_text = "$FAIL";
               dots_center = true;
