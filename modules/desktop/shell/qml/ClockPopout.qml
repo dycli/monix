@@ -13,7 +13,7 @@ PopupWindow {
     property date selectedDate: new Date()
 
     color: "transparent"
-    implicitWidth: 410
+    implicitWidth: 316
     implicitHeight: 650
     grabFocus: true
     visible: ClockPanelService.isOpen(screenName)
