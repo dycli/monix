@@ -76,7 +76,6 @@ Item {
         onClicked: event => {
             if (event.button === Qt.MiddleButton) {
                 PowerService.idleInhibited = !PowerService.idleInhibited;
-                OsdService.showIdleInhibit();
             } else {
                 root.menuToggleRequested();
             }

@@ -12,7 +12,6 @@ ShellRoot {
 
         function toggleIdleInhibit(): void {
             PowerService.idleInhibited = !PowerService.idleInhibited;
-            OsdService.showIdleInhibit();
         }
 
         function idleInhibited(): bool {

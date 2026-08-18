@@ -167,7 +167,6 @@ Item {
                 case "brightness": return brightnessOsd.implicitWidth;
                 case "microphone": return microphoneOsd.implicitWidth;
                 case "profile": return powerOverview.implicitWidth;
-                case "inhibit": return inhibitOsd.implicitWidth;
                 default: return controlMenu.implicitWidth;
                 }
             }
@@ -242,15 +241,6 @@ Item {
                 }
             }
 
-            BarModeButton {
-                id: inhibitOsd
-
-                anchors.right: parent.right
-                icon: ""
-                label: PowerService.idleInhibited ? "Inhibited" : "Idle enabled"
-                visible: root.overviewMode === "inhibit"
-                interactive: false
-            }
         }
     }
 

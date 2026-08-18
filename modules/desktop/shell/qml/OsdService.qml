@@ -50,7 +50,4 @@ QtObject {
         flash("profile");
     }
 
-    function showIdleInhibit(): void {
-        flash("inhibit");
-    }
 }
