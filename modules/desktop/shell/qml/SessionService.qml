@@ -17,6 +17,10 @@ QtObject {
         run(["systemctl", "suspend"]);
     }
 
+    function hibernate(): void {
+        run(["systemctl", "hibernate"]);
+    }
+
     function logout(): void {
         run(["uwsm", "stop"]);
     }

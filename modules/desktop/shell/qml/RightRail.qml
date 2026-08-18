@@ -21,6 +21,7 @@ Item {
     readonly property bool clipboardDetail: ownsMode && requestedMode === "clipboard"
     readonly property bool detailVisible: controlDetail || powerDetail || sessionDetail || clipboardDetail
     readonly property bool powerDetailVisual: displayedDetailMode === "power"
+    readonly property bool sessionDetailVisual: displayedDetailMode === "session"
     readonly property bool overviewVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientVisible)
     readonly property string overviewMode: transientMode !== "" && !hoverOpen
@@ -37,18 +38,22 @@ Item {
         + gap + clock.width
     readonly property real overviewWidth: Math.min(maximumWidth,
         idleWidth + gap + overviewContent.implicitWidth)
-    readonly property real endControlWidth: powerDetailVisual
-        ? powerButton.width
-        : (detailEndLoader.item ? detailEndLoader.item.implicitWidth : settingsButton.width)
+    readonly property real endControlWidth: sessionDetailVisual
+        ? 0
+        : (powerDetailVisual
+            ? powerButton.width
+            : (detailEndLoader.item ? detailEndLoader.item.implicitWidth : settingsButton.width))
+    readonly property real endControlGap: endControlWidth > 0 ? gap : 0
     readonly property real selectedStatusStartX: controlDetail
         ? trayLead + powerButton.width + gap
             + (displayedDetailMode === "bluetooth" ? controlMenu.bluetoothItemX : controlMenu.networkItemX)
         : settingsButton.x
-    readonly property real availableDetailWidth: Math.max(0, maximumWidth - endControlWidth - gap)
+    readonly property real availableDetailWidth: Math.max(0,
+        maximumWidth - endControlWidth - endControlGap)
     readonly property real requestedDetailWidth: detailLoader.item
         ? detailLoader.item.implicitWidth : controlMenu.implicitWidth
     readonly property real detailContentWidth: Math.min(availableDetailWidth, requestedDetailWidth)
-    readonly property real detailWidth: detailContentWidth + gap + endControlWidth
+    readonly property real detailWidth: detailContentWidth + endControlGap + endControlWidth
     readonly property real restingWidth: idleWidth
         + overviewProgress * (overviewWidth - idleWidth)
     readonly property real targetWidth: restingWidth
@@ -234,7 +239,7 @@ Item {
         id: detailViewport
 
         anchors.verticalCenter: parent.verticalCenter
-        x: root.width - root.endControlWidth - root.gap - width
+        x: root.width - root.endControlWidth - root.endControlGap - width
         width: root.detailContentWidth
         height: 24
         clip: true
@@ -281,8 +286,6 @@ Item {
                 return networkEndMode;
             case "bluetooth":
                 return bluetoothEndMode;
-            case "session":
-                return sessionEndMode;
             case "clipboard":
                 return clipboardEndMode;
             default:
@@ -380,15 +383,6 @@ Item {
                 else
                     BarModeService.close();
             }
-        }
-    }
-
-    Component {
-        id: sessionEndMode
-
-        BarModeButton {
-            icon: ""
-            onActivated: BarModeService.close()
         }
     }
 

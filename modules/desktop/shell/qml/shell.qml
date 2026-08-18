@@ -43,7 +43,7 @@ ShellRoot {
         target: "session"
 
         function toggle(): void {
-            BarModeService.toggle("session", OsdService.focusedScreenName, false);
+            BarModeService.toggle("session", OsdService.focusedScreenName, true);
         }
     }
 
