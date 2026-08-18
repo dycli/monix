@@ -77,10 +77,28 @@ Row {
                         context.closePath();
                     } else {
                         const sides = workspace.workspaceId;
+                        const points = [];
+                        let minimumX = width;
+                        let maximumX = 0;
+                        let minimumY = height;
+                        let maximumY = 0;
+
                         for (let side = 0; side < sides; side++) {
                             const angle = -Math.PI / 2 + side * Math.PI * 2 / sides;
                             const x = center + radius * Math.cos(angle);
                             const y = center + radius * Math.sin(angle);
+                            points.push({ x, y });
+                            minimumX = Math.min(minimumX, x);
+                            maximumX = Math.max(maximumX, x);
+                            minimumY = Math.min(minimumY, y);
+                            maximumY = Math.max(maximumY, y);
+                        }
+
+                        const offsetX = center - (minimumX + maximumX) / 2;
+                        const offsetY = center - (minimumY + maximumY) / 2;
+                        for (let side = 0; side < points.length; side++) {
+                            const x = points[side].x + offsetX;
+                            const y = points[side].y + offsetY;
                             if (side === 0)
                                 context.moveTo(x, y);
                             else
