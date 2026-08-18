@@ -52,7 +52,7 @@ Item {
         Item {
             id: searchBox
 
-            width: Math.min(180, Math.max(120, root.width * 0.28))
+            width: Math.min(160, Math.max(120, root.width * 0.25))
             height: parent.height
 
             TextInput {
@@ -126,7 +126,7 @@ Item {
                     id: resultsRow
 
                     height: parent.height
-                    spacing: 10
+                    spacing: 12
 
                     Repeater {
                         id: resultRepeater
