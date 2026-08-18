@@ -20,6 +20,10 @@ QtObject {
     readonly property string label: available && !muted ? volume + "%" : ""
     readonly property string sourceIcon: sourceMuted ? "󰍭" : ""
 
+    property PwObjectTracker tracker: PwObjectTracker {
+        objects: Pipewire.nodes.values.filter(node => node.audio && !node.isStream)
+    }
+
     function mute(): void {
         if (available)
             sink.audio.muted = true;

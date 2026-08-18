@@ -45,11 +45,6 @@ QtObject {
         }
     }
 
-    property Timer setDebounce: Timer {
-        interval: 60
-        onTriggered: root.applyPendingLevel()
-    }
-
     function applyState(output: string): void {
         const line = output.split("\n").find(value => value.trim().length > 0) || "";
         const fields = line.split(",");
@@ -61,7 +56,7 @@ QtObject {
         }
         available = true;
         device = fields[0].trim();
-        if (!setDebounce.running && !setProcess.running)
+        if (!setProcess.running && !setQueued)
             level = Math.max(0, Math.min(1, percent / 100));
     }
 
@@ -70,7 +65,10 @@ QtObject {
             return;
         pendingLevel = Math.max(0.01, Math.min(1, value));
         level = pendingLevel;
-        setDebounce.restart();
+        if (setProcess.running)
+            setQueued = true;
+        else
+            applyPendingLevel();
     }
 
     function applyPendingLevel(): void {
