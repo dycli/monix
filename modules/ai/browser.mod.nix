@@ -59,6 +59,7 @@
           install -d -m 0700 "$profile" "$output"
 
           exec ${getExe playwrightMcp} \
+            --browser chrome \
             --executable-path ${getExe pkgs.brave} \
             --user-data-dir "$profile" \
             --output-dir "$output" \
