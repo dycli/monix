@@ -8,7 +8,7 @@ Row {
     property var passwordNetwork: null
 
     height: 24
-    spacing: Style.rightSectionGap
+    spacing: Style.barItemGap
 
     function chooseNetwork(network): void {
         if (NetworkState.activate(network))

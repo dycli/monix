@@ -71,7 +71,7 @@ Variants {
                 leftMargin: Math.round(12 * window.scaleFactor)
                 verticalCenter: parent.verticalCenter
             }
-            visible: !launcher.active
+            visible: !launcher.active && !tickerLane.overlaps(leftRail)
         }
 
         Row {
@@ -81,7 +81,7 @@ Variants {
                 horizontalCenter: parent.horizontalCenter
                 verticalCenter: parent.verticalCenter
             }
-            visible: !launcher.active
+            visible: !launcher.active && !tickerLane.overlaps(workspaceGroup)
 
             Workspaces {
                 scaleFactor: window.scaleFactor
@@ -105,11 +105,19 @@ Variants {
         Item {
             id: tickerLane
 
+            function overlaps(item: Item): bool {
+                if (!notificationTicker.visible)
+                    return false;
+
+                const contentLeft = x + notificationTicker.contentLeft;
+                const contentRight = x + notificationTicker.contentRight;
+                return contentLeft < item.x + item.width && contentRight > item.x;
+            }
+
             anchors {
-                left: workspaceGroup.right
-                leftMargin: 12
+                left: parent.left
                 right: rightRail.left
-                rightMargin: 12
+                rightMargin: Style.barItemGap
                 top: parent.top
                 bottom: parent.bottom
             }
@@ -117,6 +125,8 @@ Variants {
             visible: !launcher.active
 
             NotificationTicker {
+                id: notificationTicker
+
                 anchors.fill: parent
                 screenName: window.modelData.name
             }

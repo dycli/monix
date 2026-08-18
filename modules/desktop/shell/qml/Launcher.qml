@@ -126,7 +126,7 @@ Item {
                     id: resultsRow
 
                     height: parent.height
-                    spacing: 12
+                    spacing: Style.barItemGap
 
                     Repeater {
                         id: resultRepeater

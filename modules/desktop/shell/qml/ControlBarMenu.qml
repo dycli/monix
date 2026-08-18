@@ -11,7 +11,7 @@ Row {
     readonly property real bluetoothItemX: bluetoothButton.x
 
     height: 24
-    spacing: Style.rightSectionGap
+    spacing: Style.barItemGap
 
     NetworkStatusButton {
         id: networkButton

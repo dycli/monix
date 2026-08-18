@@ -7,7 +7,7 @@ Row {
     id: root
 
     height: 24
-    spacing: Style.rightSectionGap
+    spacing: Style.barItemGap
 
     Text {
         anchors.verticalCenter: parent.verticalCenter
@@ -77,7 +77,7 @@ Row {
 
     Row {
         height: parent.height
-        spacing: Style.rightSectionGap
+        spacing: Style.barItemGap
 
         Repeater {
             model: PowerService.availableProfiles

@@ -13,6 +13,8 @@ Item {
             || NotificationState.tickerScreenName === screenName)
     readonly property int generation: NotificationState.tickerGeneration
     readonly property var ticker: ownsTicker ? NotificationState.currentTicker : null
+    readonly property real contentLeft: tickerText.x
+    readonly property real contentRight: tickerText.x + tickerText.implicitWidth
     readonly property real pixelsPerSecond: {
         if (!ticker)
             return 80;

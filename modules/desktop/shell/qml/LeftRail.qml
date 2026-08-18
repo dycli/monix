@@ -8,7 +8,7 @@ Row {
 
     signal homeActivated
 
-    spacing: Style.rightSectionGap
+    spacing: Style.barItemGap
 
     Text {
         anchors.verticalCenter: parent.verticalCenter

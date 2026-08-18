@@ -9,7 +9,7 @@ Item {
     required property string screenName
     required property real maximumWidth
 
-    readonly property real gap: Style.rightSectionGap
+    readonly property real gap: Style.barItemGap
     readonly property bool ownsMode: BarModeService.isActive(screenName)
     readonly property string transientMode: BarModeService.transientFor(screenName)
     readonly property bool transientVisible: BarModeService.transientVisibleFor(screenName)
