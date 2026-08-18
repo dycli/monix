@@ -115,21 +115,6 @@
               icon = "󰖲",
               action = "hyprctl dispatch 'hl.dsp.window.float()'",
             })
-            -- Width steps work across the available tiled layouts.
-            hl.plugin.hyprbars.add_button({
-              bg_color = "rgba(00000000)",
-              fg_color = "rgb(222222)",
-              size = 20,
-              icon = "󰅁",
-              action = [=[hyprctl dispatch 'hl.dsp.window.resize({ x = -100, y = 0, relative = true })']=],
-            })
-            hl.plugin.hyprbars.add_button({
-              bg_color = "rgba(00000000)",
-              fg_color = "rgb(222222)",
-              size = 20,
-              icon = "󰅂",
-              action = [=[hyprctl dispatch 'hl.dsp.window.resize({ x = 100, y = 0, relative = true })']=],
-            })
           end
         '';
       };
