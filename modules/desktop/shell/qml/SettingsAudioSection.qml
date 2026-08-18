@@ -5,6 +5,9 @@ import QtQuick
 Column {
     id: root
 
+    property bool outputSelectorOpen: false
+    property bool inputSelectorOpen: false
+
     spacing: 8
 
     function nodeLabel(node): string {
@@ -36,25 +39,19 @@ Column {
         available: AudioState.available
         icon: AudioState.icon
         label: AudioState.available ? AudioState.displayName(AudioState.sink) : "No output"
+        selectorAvailable: AudioState.outputDevices.length > 0
+        selectorExpanded: root.outputSelectorOpen
         value: AudioState.volume / 100
         onIconActivated: AudioState.toggleMute()
         onMoved: value => AudioState.setVolume(value)
-    }
-
-    Text {
-        color: Style.panelMutedColor
-        font {
-            family: Style.fontFamily
-            pixelSize: Style.smallFontSize
-            weight: Style.fontWeight
+        onSelectorActivated: {
+            root.outputSelectorOpen = !root.outputSelectorOpen;
+            root.inputSelectorOpen = false;
         }
-        renderType: Text.NativeRendering
-        text: "Output device"
-        visible: AudioState.outputDevices.length > 0
     }
 
     Repeater {
-        model: AudioState.outputDevices
+        model: root.outputSelectorOpen ? AudioState.outputDevices : []
 
         delegate: SettingsChoiceButton {
             required property var modelData
@@ -64,7 +61,10 @@ Column {
             icon: "󰓃"
             label: AudioState.displayName(modelData)
             detail: active ? "Selected" : ""
-            onActivated: AudioState.setDefaultOutput(modelData)
+            onActivated: {
+                AudioState.setDefaultOutput(modelData);
+                root.outputSelectorOpen = false;
+            }
         }
     }
 
@@ -108,25 +108,19 @@ Column {
         icon: AudioState.sourceIcon
         label: AudioState.sourceAvailable
             ? AudioState.displayName(AudioState.source) : "No microphone"
+        selectorAvailable: AudioState.inputDevices.length > 0
+        selectorExpanded: root.inputSelectorOpen
         value: AudioState.sourceVolume / 100
         onIconActivated: AudioState.toggleSourceMute()
         onMoved: value => AudioState.setSourceVolume(value)
-    }
-
-    Text {
-        color: Style.panelMutedColor
-        font {
-            family: Style.fontFamily
-            pixelSize: Style.smallFontSize
-            weight: Style.fontWeight
+        onSelectorActivated: {
+            root.inputSelectorOpen = !root.inputSelectorOpen;
+            root.outputSelectorOpen = false;
         }
-        renderType: Text.NativeRendering
-        text: "Input device"
-        visible: AudioState.inputDevices.length > 0
     }
 
     Repeater {
-        model: AudioState.inputDevices
+        model: root.inputSelectorOpen ? AudioState.inputDevices : []
 
         delegate: SettingsChoiceButton {
             required property var modelData
@@ -136,7 +130,10 @@ Column {
             icon: ""
             label: AudioState.displayName(modelData)
             detail: active ? "Selected" : ""
-            onActivated: AudioState.setDefaultInput(modelData)
+            onActivated: {
+                AudioState.setDefaultInput(modelData);
+                root.inputSelectorOpen = false;
+            }
         }
     }
 

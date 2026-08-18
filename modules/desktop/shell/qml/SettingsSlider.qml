@@ -7,12 +7,15 @@ Item {
 
     signal moved(real value)
     signal iconActivated
+    signal selectorActivated
 
     property string icon: ""
     property string label: ""
     property real value: 0
     property bool available: true
     property bool iconAvailable: available
+    property bool selectorAvailable: false
+    property bool selectorExpanded: false
 
     implicitHeight: 52
     opacity: available || iconAvailable ? 1 : 0.45
@@ -58,23 +61,61 @@ Item {
             bottom: parent.bottom
         }
 
-        Text {
+        Item {
+            id: labelArea
+
             anchors {
                 left: parent.left
                 right: percentage.left
                 rightMargin: 8
                 top: parent.top
-                topMargin: 4
             }
-            color: Style.foregroundColor
-            elide: Text.ElideRight
-            font {
-                family: Style.fontFamily
-                pixelSize: Style.panelFontSize
-                weight: Style.fontWeight
+            height: 26
+
+            Text {
+                anchors {
+                    left: parent.left
+                    right: selectorIcon.left
+                    rightMargin: root.selectorAvailable ? 6 : 0
+                    verticalCenter: parent.verticalCenter
+                }
+                color: Style.foregroundColor
+                elide: Text.ElideRight
+                font {
+                    family: Style.fontFamily
+                    pixelSize: Style.panelFontSize
+                    weight: Style.fontWeight
+                }
+                renderType: Text.NativeRendering
+                text: root.label
             }
-            renderType: Text.NativeRendering
-            text: root.label
+
+            Text {
+                id: selectorIcon
+
+                anchors {
+                    right: parent.right
+                    verticalCenter: parent.verticalCenter
+                }
+                width: root.selectorAvailable ? 12 : 0
+                color: Style.panelMutedColor
+                font {
+                    family: Style.fontFamily
+                    pixelSize: Style.smallFontSize
+                    weight: Style.fontWeight
+                }
+                horizontalAlignment: Text.AlignHCenter
+                renderType: Text.NativeRendering
+                text: root.selectorExpanded ? "" : ""
+                visible: root.selectorAvailable
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: root.selectorAvailable ? Qt.PointingHandCursor : Qt.ArrowCursor
+                enabled: root.selectorAvailable
+                onClicked: root.selectorActivated()
+            }
         }
 
         Text {
