@@ -37,7 +37,8 @@ Item {
         id: tickerText
 
         anchors.verticalCenter: parent.verticalCenter
-        color: Style.foregroundColor
+        color: root.ticker && root.ticker.urgency === NotificationUrgency.Critical
+            ? Style.lowBatteryColor : Style.foregroundColor
         font {
             family: Style.fontFamily
             pixelSize: Style.textFontSize
