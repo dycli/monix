@@ -50,30 +50,31 @@ Row {
             Canvas {
                 id: workspaceShape
 
-                width: Math.round(10 * root.scaleFactor)
+                width: Math.round(12 * root.scaleFactor)
                 height: width
                 anchors.centerIn: parent
                 antialiasing: true
 
                 onPaint: {
                     const context = getContext("2d");
-                    const inset = workspace.active ? 1.25 : 1.5;
+                    const inset = 1;
                     const center = width / 2;
                     const radius = center - inset;
 
                     context.reset();
-                    context.strokeStyle = workspace.active
+                    context.fillStyle = workspace.active
                         ? Style.foregroundColor : Style.inactiveWorkspaceColor;
-                    context.lineWidth = workspace.active ? 2 : 1;
-                    context.lineCap = "round";
-                    context.lineJoin = "round";
                     context.beginPath();
 
                     if (workspace.workspaceId === 1) {
                         context.arc(center, center, radius, 0, Math.PI * 2);
                     } else if (workspace.workspaceId === 2) {
-                        context.moveTo(inset, height - inset);
-                        context.lineTo(width - inset, inset);
+                        const thickness = 3;
+                        context.moveTo(inset, height - inset - thickness);
+                        context.lineTo(inset + thickness, height - inset);
+                        context.lineTo(width - inset, inset + thickness);
+                        context.lineTo(width - inset - thickness, inset);
+                        context.closePath();
                     } else {
                         const sides = workspace.workspaceId;
                         for (let side = 0; side < sides; side++) {
@@ -88,7 +89,7 @@ Row {
                         context.closePath();
                     }
 
-                    context.stroke();
+                    context.fill();
                 }
             }
 
