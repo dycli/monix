@@ -112,7 +112,10 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         scaleFactor: 1
         x: {
-            const start = root.trayLead;
+            const previewOffset = root.overviewMode === "battery"
+                ? root.overviewProgress * (root.gap + overviewContent.implicitWidth)
+                : 0;
+            const start = root.trayLead + previewOffset;
             if (root.powerDetailVisual)
                 return start + root.detailProgress * (root.width - width - start);
             return start + root.detailProgress * (-width - root.gap - start);
@@ -135,7 +138,8 @@ Item {
         id: overviewViewport
 
         anchors.verticalCenter: parent.verticalCenter
-        x: settingsButton.x - root.gap - width
+        x: (root.overviewMode === "battery" ? powerButton.x : settingsButton.x)
+            - root.gap - width
         width: overviewContent.implicitWidth * root.overviewProgress * (1 - root.detailProgress)
         height: 24
         clip: true
