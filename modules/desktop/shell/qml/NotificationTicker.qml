@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell.Services.Notifications
 
 Item {
     id: root
@@ -12,6 +13,18 @@ Item {
             || NotificationState.tickerScreenName === screenName)
     readonly property int generation: NotificationState.tickerGeneration
     readonly property var ticker: ownsTicker ? NotificationState.currentTicker : null
+    readonly property real pixelsPerSecond: {
+        if (!ticker)
+            return 80;
+        switch (ticker.urgency) {
+        case NotificationUrgency.Low:
+            return 100;
+        case NotificationUrgency.Critical:
+            return 60;
+        default:
+            return 80;
+        }
+    }
 
     visible: ownsTicker
 
@@ -47,7 +60,8 @@ Item {
         property: "x"
         from: root.width
         to: -tickerText.implicitWidth
-        duration: Math.max(5000, Math.round((root.width + tickerText.implicitWidth) / 80 * 1000))
+        duration: Math.max(5000, Math.round(
+            (root.width + tickerText.implicitWidth) / root.pixelsPerSecond * 1000))
         onFinished: NotificationState.finishTicker(root.generation)
     }
 }
