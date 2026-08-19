@@ -16,6 +16,8 @@
 
       # Prism pins the Minecraft client to the water server's version.
       environment.systemPackages = [
+        pkgs.dolphin-emu
+        pkgs.pcsx2
         pkgs.prismlauncher
         pkgs.heroic
       ];
