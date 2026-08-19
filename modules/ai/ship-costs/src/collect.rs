@@ -1,4 +1,5 @@
 use crate::db::{Database, SourceStamp};
+use crate::go::GO_WINDOWS;
 use crate::model::{QuotaSample, UsageEvent, provider_of};
 use chrono::DateTime;
 use rusqlite::{Connection, OpenFlags};
@@ -103,22 +104,26 @@ fn go_quota_samples(
     response: GoUsageResponse,
     timestamp: i64,
 ) -> Result<Vec<QuotaSample>, Box<dyn Error>> {
-    let windows = [
-        ("rolling", 300, response.usage.rolling),
-        ("weekly", 10_080, response.usage.weekly),
-        ("monthly", 43_200, response.usage.monthly),
+    let usage = [
+        response.usage.rolling,
+        response.usage.weekly,
+        response.usage.monthly,
     ];
-    windows
-        .into_iter()
-        .map(|(name, minutes, window)| {
+    GO_WINDOWS
+        .iter()
+        .zip(usage)
+        .map(|(definition, window)| {
             let resets_at = parse_timestamp(&window.resets_at)
-                .ok_or_else(|| format!("invalid Go {name} reset timestamp"))?;
+                .ok_or_else(|| format!("invalid Go {} reset timestamp", definition.name))?;
             Ok(QuotaSample {
-                id: format!("opencode-go:{name}:{resets_at}:{}", window.percent),
+                id: format!(
+                    "opencode-go:{}:{resets_at}:{}",
+                    definition.name, window.percent
+                ),
                 timestamp,
                 provider: "opencode-go".into(),
                 plan: "go".into(),
-                window_minutes: minutes,
+                window_minutes: definition.minutes,
                 used_percent: window.percent,
                 resets_at: Some(resets_at),
                 limit_reached: window.status == "rate-limited" || window.percent >= 100.0,

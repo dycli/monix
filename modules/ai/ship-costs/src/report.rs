@@ -1,4 +1,5 @@
 use crate::db::Database;
+use crate::go::window_by_minutes;
 use crate::model::QuotaSample;
 use crate::pricing::PriceBook;
 use chrono::{DateTime, Utc};
@@ -179,7 +180,7 @@ fn print_quota(provider: &str, quotas: &[QuotaSample]) {
     if provider == "opencode-go" {
         for (minutes, samples) in by_window {
             if let Some(latest) = samples.iter().max_by_key(|sample| sample.timestamp) {
-                let limit = go_limit(minutes);
+                let limit = window_by_minutes(minutes).map_or(0.0, |window| window.limit_usd);
                 println!(
                     "  Quota {:<10} {:>5.1}% · ≈${:.2}/${:.0} weighted · resets {} · {}",
                     window_name(minutes),
@@ -314,15 +315,6 @@ fn window_name(minutes: i64) -> String {
         10_080 => "7 days".into(),
         minutes if minutes > 0 && minutes % 1_440 == 0 => format!("{} days", minutes / 1_440),
         minutes => format!("{minutes} min"),
-    }
-}
-
-fn go_limit(minutes: i64) -> f64 {
-    match minutes {
-        300 => 12.0,
-        10_080 => 30.0,
-        43_200 => 60.0,
-        _ => 0.0,
     }
 }
 

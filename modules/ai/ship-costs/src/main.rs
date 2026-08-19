@@ -1,5 +1,6 @@
 mod collect;
 mod db;
+mod go;
 mod model;
 mod pricing;
 mod report;
