@@ -9,9 +9,15 @@ PopupWindow {
     required property Item anchorItem
     required property string screenName
 
+    readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
+    readonly property real screenHeight: anchorWindow && anchorWindow.screen
+        ? anchorWindow.screen.height : 692
+    readonly property real desiredHeight: content.implicitHeight + 76
+    readonly property real maximumHeight: Math.max(320, screenHeight - 52)
+
     color: "transparent"
     implicitWidth: 520
-    implicitHeight: 640
+    implicitHeight: Math.min(desiredHeight, maximumHeight)
     grabFocus: true
     visible: SettingsPanelService.isOpen(screenName)
 
