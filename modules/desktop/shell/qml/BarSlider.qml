@@ -109,10 +109,7 @@ Item {
             }
 
             onPressed: mouse => moveTo(mouse.x)
-            onPositionChanged: mouse => {
-                if (pressed)
-                    moveTo(mouse.x);
-            }
+            onPositionChanged: mouse => moveTo(mouse.x)
         }
     }
 

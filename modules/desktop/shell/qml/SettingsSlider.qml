@@ -191,10 +191,7 @@ Item {
                 }
 
                 onPressed: event => moveTo(event.x)
-                onPositionChanged: event => {
-                    if (pressed)
-                        moveTo(event.x);
-                }
+                onPositionChanged: event => moveTo(event.x)
             }
         }
     }

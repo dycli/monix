@@ -13,6 +13,20 @@ QtObject {
     readonly property var applications: DesktopEntries.applications.values
     property var usage: ({})
     property bool historyLoaded: false
+    property var pendingWindowActions: []
+
+    property Connections hyprlandEvents: Connections {
+        target: Hyprland
+
+        function onRawEvent(event): void {
+            root.handleHyprlandEvent(event);
+        }
+    }
+
+    property Timer windowActionTimeout: Timer {
+        interval: 10000
+        onTriggered: root.pendingWindowActions = []
+    }
 
     property FileView historyFile: FileView {
         path: StandardPaths.writableLocation(StandardPaths.GenericStateLocation)
@@ -140,31 +154,72 @@ QtObject {
         }
     }
 
-    function shellQuote(value): string {
-        return "'" + String(value).replace(/'/g, "'\"'\"'") + "'";
+    function normalizeClass(value): string {
+        return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
     }
 
-    function launchCommand(command, mode: string, workingDirectory: string): void {
+    function startupClassForCommand(command): string {
+        if (!command || command.length === 0)
+            return "";
+        const executable = String(command[0]);
+        const app = applications.find(candidate => candidate.command
+            && candidate.command.length > 0
+            && String(candidate.command[0]) === executable);
+        return app ? app.startupClass : "";
+    }
+
+    function queueWindowAction(mode: string, startupClass: string): void {
+        pendingWindowActions = pendingWindowActions.concat([{
+            "mode": mode,
+            "startupClass": normalizeClass(startupClass)
+        }]);
+        windowActionTimeout.restart();
+    }
+
+    function handleHyprlandEvent(event): void {
+        if (!event || event.name !== "openwindow" || pendingWindowActions.length === 0)
+            return;
+
+        const fields = event.parse(4);
+        if (fields.length < 3)
+            return;
+        const windowClass = normalizeClass(fields[2]);
+        let index = pendingWindowActions.findIndex(action => action.startupClass === ""
+            || action.startupClass === windowClass
+            || action.startupClass.includes(windowClass)
+            || windowClass.includes(action.startupClass));
+        if (index < 0)
+            return;
+
+        const action = pendingWindowActions[index];
+        pendingWindowActions = pendingWindowActions.slice(0, index)
+            .concat(pendingWindowActions.slice(index + 1));
+        if (pendingWindowActions.length === 0)
+            windowActionTimeout.stop();
+
+        const address = "address:0x" + String(fields[0]).replace(/^0x/, "");
+        if (action.mode === "floating") {
+            Hyprland.dispatch("hl.dsp.window.float({ action = \"set\", window = "
+                + JSON.stringify(address) + " })");
+        } else {
+            Hyprland.dispatch("hl.dsp.window.move({ workspace = \"emptynm\", follow = true, window = "
+                + JSON.stringify(address) + " })");
+        }
+    }
+
+    function launchCommand(command, mode: string, workingDirectory: string,
+            startupClass: string): void {
         if (!command || command.length === 0 || !command[0])
             return;
 
         const wrapped = ["uwsm", "app", "--"].concat(command);
-        if (mode === "normal" || !mode) {
-            Quickshell.execDetached({
-                "command": wrapped,
-                "workingDirectory": workingDirectory || Quickshell.env("HOME")
-            });
-            return;
-        }
-
-        let shellCommand = "exec "
-            + wrapped.map(argument => shellQuote(argument)).join(" ");
-        if (workingDirectory)
-            shellCommand = "cd -- " + shellQuote(workingDirectory) + " && " + shellCommand;
-        const rules = mode === "floating"
-            ? "{ float = true }" : "{ workspace = \"emptynm\" }";
-        Hyprland.dispatch("hl.dsp.exec_cmd(" + JSON.stringify(shellCommand)
-            + ", " + rules + ")");
+        if (mode && mode !== "normal")
+            queueWindowAction(mode, startupClass
+                || startupClassForCommand(command));
+        Quickshell.execDetached({
+            "command": wrapped,
+            "workingDirectory": workingDirectory || Quickshell.env("HOME")
+        });
     }
 
     function launch(app, mode: string): void {
@@ -188,6 +243,7 @@ QtObject {
         usage = nextUsage;
         saveHistory();
         BarModeService.close();
-        launchCommand(command, mode || "normal", app.workingDirectory);
+        launchCommand(command, mode || "normal", app.workingDirectory,
+            app.startupClass);
     }
 }

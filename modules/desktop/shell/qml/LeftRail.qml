@@ -32,19 +32,23 @@ Row {
         model: [
             {
                 label: "Web",
-                command: [Quickshell.env("KESTREL_BROWSER"), "--new-window", "--ozone-platform=wayland"]
+                command: [Quickshell.env("KESTREL_BROWSER"), "--new-window", "--ozone-platform=wayland"],
+                startupClass: "brave-browser"
             },
             {
                 label: "Terminal",
-                command: [Quickshell.env("KESTREL_TERMINAL")]
+                command: [Quickshell.env("KESTREL_TERMINAL")],
+                startupClass: "com.mitchellh.ghostty"
             },
             {
                 label: "Email",
-                command: [Quickshell.env("KESTREL_EMAIL")]
+                command: [Quickshell.env("KESTREL_EMAIL")],
+                startupClass: "thunderbird"
             },
             {
                 label: "Signal",
-                command: [Quickshell.env("KESTREL_MESSENGER")]
+                command: [Quickshell.env("KESTREL_MESSENGER")],
+                startupClass: "signal"
             }
         ]
 
@@ -71,7 +75,8 @@ Row {
                     const mode = event.button === Qt.RightButton
                         ? "floating" : (event.button === Qt.MiddleButton
                             ? "workspace" : "normal");
-                    LauncherService.launchCommand(appButton.modelData.command, mode, "");
+                    LauncherService.launchCommand(appButton.modelData.command, mode, "",
+                        appButton.modelData.startupClass);
                 }
             }
         }
