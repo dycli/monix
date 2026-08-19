@@ -34,22 +34,6 @@ Column {
         text: "Sound"
     }
 
-    SettingsSlider {
-        width: parent.width
-        available: AudioState.available
-        icon: AudioState.icon
-        label: AudioState.available ? AudioState.displayName(AudioState.sink) : "No output"
-        selectorAvailable: AudioState.outputDevices.length > 0
-        selectorExpanded: root.outputSelectorOpen
-        value: AudioState.volume / 100
-        onIconActivated: AudioState.toggleMute()
-        onMoved: value => AudioState.setVolume(value)
-        onSelectorActivated: {
-            root.outputSelectorOpen = !root.outputSelectorOpen;
-            root.inputSelectorOpen = false;
-        }
-    }
-
     Repeater {
         model: root.outputSelectorOpen ? AudioState.outputDevices : []
 
@@ -68,16 +52,20 @@ Column {
         }
     }
 
-    Text {
-        color: Style.panelMutedColor
-        font {
-            family: Style.fontFamily
-            pixelSize: Style.smallFontSize
-            weight: Style.fontWeight
+    SettingsSlider {
+        width: parent.width
+        available: AudioState.available
+        icon: AudioState.icon
+        label: AudioState.available ? AudioState.displayName(AudioState.sink) : "No output"
+        selectorAvailable: AudioState.outputDevices.length > 0
+        selectorExpanded: root.outputSelectorOpen
+        value: AudioState.volume / 100
+        onIconActivated: AudioState.toggleMute()
+        onMoved: value => AudioState.setVolume(value)
+        onSelectorActivated: {
+            root.outputSelectorOpen = !root.outputSelectorOpen;
+            root.inputSelectorOpen = false;
         }
-        renderType: Text.NativeRendering
-        text: "Applications"
-        visible: AudioState.outputStreams.length > 0
     }
 
     Repeater {
@@ -102,23 +90,6 @@ Column {
         color: Style.panelBorderColor
     }
 
-    SettingsSlider {
-        width: parent.width
-        available: AudioState.sourceAvailable
-        icon: AudioState.sourceIcon
-        label: AudioState.sourceAvailable
-            ? AudioState.displayName(AudioState.source) : "No microphone"
-        selectorAvailable: AudioState.inputDevices.length > 0
-        selectorExpanded: root.inputSelectorOpen
-        value: AudioState.sourceVolume / 100
-        onIconActivated: AudioState.toggleSourceMute()
-        onMoved: value => AudioState.setSourceVolume(value)
-        onSelectorActivated: {
-            root.inputSelectorOpen = !root.inputSelectorOpen;
-            root.outputSelectorOpen = false;
-        }
-    }
-
     Repeater {
         model: root.inputSelectorOpen ? AudioState.inputDevices : []
 
@@ -137,16 +108,21 @@ Column {
         }
     }
 
-    Text {
-        color: Style.panelMutedColor
-        font {
-            family: Style.fontFamily
-            pixelSize: Style.smallFontSize
-            weight: Style.fontWeight
+    SettingsSlider {
+        width: parent.width
+        available: AudioState.sourceAvailable
+        icon: AudioState.sourceIcon
+        label: AudioState.sourceAvailable
+            ? AudioState.displayName(AudioState.source) : "No microphone"
+        selectorAvailable: AudioState.inputDevices.length > 0
+        selectorExpanded: root.inputSelectorOpen
+        value: AudioState.sourceVolume / 100
+        onIconActivated: AudioState.toggleSourceMute()
+        onMoved: value => AudioState.setSourceVolume(value)
+        onSelectorActivated: {
+            root.inputSelectorOpen = !root.inputSelectorOpen;
+            root.outputSelectorOpen = false;
         }
-        renderType: Text.NativeRendering
-        text: "Microphone applications"
-        visible: AudioState.inputStreams.length > 0
     }
 
     Repeater {
