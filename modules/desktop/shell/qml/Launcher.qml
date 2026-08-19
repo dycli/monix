@@ -141,10 +141,16 @@ Item {
 
                             width: appName.implicitWidth
                             height: parent.height
+                            acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                             cursorShape: Qt.PointingHandCursor
                             hoverEnabled: true
                             onEntered: root.selectedIndex = index
-                            onClicked: LauncherService.launch(modelData)
+                            onClicked: event => {
+                                const mode = event.button === Qt.RightButton
+                                    ? "floating" : (event.button === Qt.MiddleButton
+                                        ? "workspace" : "normal");
+                                LauncherService.launch(modelData, mode);
+                            }
 
                             Text {
                                 id: appName

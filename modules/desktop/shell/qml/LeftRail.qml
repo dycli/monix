@@ -65,8 +65,14 @@ Row {
 
             MouseArea {
                 anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                 cursorShape: Qt.PointingHandCursor
-                onClicked: Quickshell.execDetached(["uwsm", "app", "--"].concat(appButton.modelData.command))
+                onClicked: event => {
+                    const mode = event.button === Qt.RightButton
+                        ? "floating" : (event.button === Qt.MiddleButton
+                            ? "workspace" : "normal");
+                    LauncherService.launchCommand(appButton.modelData.command, mode, "");
+                }
             }
         }
     }

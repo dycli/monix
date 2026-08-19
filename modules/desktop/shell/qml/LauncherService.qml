@@ -4,6 +4,7 @@ pragma ComponentBehavior: Bound
 import QtCore
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 
 QtObject {
@@ -139,7 +140,34 @@ QtObject {
         }
     }
 
-    function launch(app): void {
+    function shellQuote(value): string {
+        return "'" + String(value).replace(/'/g, "'\"'\"'") + "'";
+    }
+
+    function launchCommand(command, mode: string, workingDirectory: string): void {
+        if (!command || command.length === 0 || !command[0])
+            return;
+
+        const wrapped = ["uwsm", "app", "--"].concat(command);
+        if (mode === "normal" || !mode) {
+            Quickshell.execDetached({
+                "command": wrapped,
+                "workingDirectory": workingDirectory || Quickshell.env("HOME")
+            });
+            return;
+        }
+
+        let shellCommand = "exec "
+            + wrapped.map(argument => shellQuote(argument)).join(" ");
+        if (workingDirectory)
+            shellCommand = "cd -- " + shellQuote(workingDirectory) + " && " + shellCommand;
+        const rules = mode === "floating"
+            ? "{ float = true }" : "{ workspace = \"emptynm\" }";
+        Hyprland.dispatch("hl.dsp.exec_cmd(" + JSON.stringify(shellCommand)
+            + ", " + rules + ")");
+    }
+
+    function launch(app, mode: string): void {
         if (!app || !app.command || app.command.length === 0)
             return;
 
@@ -160,9 +188,6 @@ QtObject {
         usage = nextUsage;
         saveHistory();
         BarModeService.close();
-        Quickshell.execDetached({
-            "command": ["uwsm", "app", "--"].concat(command),
-            "workingDirectory": app.workingDirectory || Quickshell.env("HOME")
-        });
+        launchCommand(command, mode || "normal", app.workingDirectory);
     }
 }
