@@ -40,7 +40,11 @@ pub struct QuotaSample {
 pub fn provider_of(provider_hint: &str, model: &str) -> &'static str {
     let provider = provider_hint.to_ascii_lowercase();
     let model = model.to_ascii_lowercase();
-    if provider == "local" || model.starts_with("local/") {
+    if provider == "opencode-go" {
+        "opencode-go"
+    } else if provider == "opencode" || provider == "zenmux" {
+        "opencode-zen"
+    } else if provider == "local" || model.starts_with("local/") {
         "local"
     } else if provider.contains("anthropic") || model.contains("claude") {
         "claude"
@@ -48,5 +52,17 @@ pub fn provider_of(provider_hint: &str, model: &str) -> &'static str {
         "chatgpt"
     } else {
         "other"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keeps_opencode_billing_pools_separate() {
+        assert_eq!(provider_of("opencode-go", "deepseek-v4-pro"), "opencode-go");
+        assert_eq!(provider_of("opencode", "gpt-5.6-sol"), "opencode-zen");
+        assert_eq!(provider_of("openai", "gpt-5.6-sol"), "chatgpt");
     }
 }

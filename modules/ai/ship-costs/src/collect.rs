@@ -2,12 +2,13 @@ use crate::db::{Database, SourceStamp};
 use crate::model::{QuotaSample, UsageEvent, provider_of};
 use chrono::DateTime;
 use rusqlite::{Connection, OpenFlags};
+use serde::Deserialize;
 use serde_json::Value;
 use std::error::Error;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 
 const FLEET_DIR: &str = match option_env!("SHIP_COSTS_FLEET_DIR") {
     Some(path) => path,
@@ -23,7 +24,7 @@ pub struct CollectStats {
     pub warnings: Vec<String>,
 }
 
-pub fn collect(database: &mut Database, home: &Path) -> CollectStats {
+pub fn collect(database: &mut Database, home: &Path, online: bool) -> CollectStats {
     let mut stats = CollectStats::default();
     collect_jsonl_tree(
         database,
@@ -39,7 +40,91 @@ pub fn collect(database: &mut Database, home: &Path) -> CollectStats {
     }
     collect_fleet(database, Path::new(FLEET_DIR), &mut stats);
     collect_opencode(database, &home.join(".local/share/opencode"), &mut stats);
+    if online {
+        collect_go_quota(database, home, &mut stats);
+    }
     stats
+}
+
+#[derive(Deserialize)]
+struct GoUsageResponse {
+    usage: GoUsageWindows,
+}
+
+#[derive(Deserialize)]
+struct GoUsageWindows {
+    rolling: GoUsageWindow,
+    weekly: GoUsageWindow,
+    monthly: GoUsageWindow,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GoUsageWindow {
+    status: String,
+    percent: f64,
+    resets_at: String,
+}
+
+fn collect_go_quota(database: &mut Database, home: &Path, stats: &mut CollectStats) {
+    let result = || -> Result<Vec<QuotaSample>, Box<dyn Error>> {
+        let auth_path = home.join(".local/share/opencode/auth.json");
+        let auth: Value = serde_json::from_reader(File::open(&auth_path)?)?;
+        let key = auth
+            .get("opencode-go")
+            .and_then(|entry| text(entry, "key"))
+            .ok_or("OpenCode Go key is absent")?;
+        let agent = ureq::AgentBuilder::new()
+            .timeout_connect(Duration::from_secs(3))
+            .timeout_read(Duration::from_secs(5))
+            .build();
+        let response: GoUsageResponse = agent
+            .get("https://opencode.ai/zen/go/v1/usage")
+            .set("Authorization", &format!("Bearer {key}"))
+            .call()?
+            .into_json()?;
+        go_quota_samples(response, chrono::Utc::now().timestamp())
+    }();
+
+    match result {
+        Ok(quotas) => {
+            stats.quota_samples_seen += quotas.len();
+            if let Err(error) = database.import(None, &[], &quotas) {
+                stats.warnings.push(format!("OpenCode Go quota: {error}"));
+            }
+        }
+        Err(error) => stats
+            .warnings
+            .push(format!("OpenCode Go quota unavailable: {error}")),
+    }
+}
+
+fn go_quota_samples(
+    response: GoUsageResponse,
+    timestamp: i64,
+) -> Result<Vec<QuotaSample>, Box<dyn Error>> {
+    let windows = [
+        ("rolling", 300, response.usage.rolling),
+        ("weekly", 10_080, response.usage.weekly),
+        ("monthly", 43_200, response.usage.monthly),
+    ];
+    windows
+        .into_iter()
+        .map(|(name, minutes, window)| {
+            let resets_at = parse_timestamp(&window.resets_at)
+                .ok_or_else(|| format!("invalid Go {name} reset timestamp"))?;
+            Ok(QuotaSample {
+                id: format!("opencode-go:{name}:{resets_at}:{}", window.percent),
+                timestamp,
+                provider: "opencode-go".into(),
+                plan: "go".into(),
+                window_minutes: minutes,
+                used_percent: window.percent,
+                resets_at: Some(resets_at),
+                limit_reached: window.status == "rate-limited" || window.percent >= 100.0,
+            })
+        })
+        .collect()
 }
 
 type Parser = fn(&Path) -> Result<(Vec<UsageEvent>, Vec<QuotaSample>), Box<dyn Error>>;
@@ -511,5 +596,18 @@ mod tests {
         assert_eq!(quotas[0].window_minutes, 10080);
         assert_eq!(quotas[0].used_percent, 41.0);
         assert_eq!(quotas[0].plan, "plus");
+    }
+
+    #[test]
+    fn parses_direct_go_quota_windows() {
+        let response: GoUsageResponse = serde_json::from_str(
+            r#"{"usage":{"rolling":{"status":"ok","percent":0,"resetsAt":"2026-08-19T18:48:11Z"},"weekly":{"status":"ok","percent":14,"resetsAt":"2026-08-24T00:00:00Z"},"monthly":{"status":"rate-limited","percent":100,"resetsAt":"2026-09-17T02:32:11Z"}}}"#,
+        )
+        .unwrap();
+        let quotas = go_quota_samples(response, 42).unwrap();
+        assert_eq!(quotas.len(), 3);
+        assert_eq!(quotas[1].window_minutes, 10_080);
+        assert_eq!(quotas[1].used_percent, 14.0);
+        assert!(quotas[2].limit_reached);
     }
 }

@@ -1,5 +1,5 @@
 use crate::model::UsageEvent;
-use chrono::Utc;
+use chrono::{DateTime, Timelike, Utc};
 use serde::Deserialize;
 use std::error::Error;
 
@@ -29,6 +29,12 @@ pub struct ModelPrice {
     pub long_cached_input: Option<f64>,
     pub long_cache_write: Option<f64>,
     pub long_output: Option<f64>,
+    #[serde(default)]
+    pub peak_hours_utc: Vec<u32>,
+    pub peak_input: Option<f64>,
+    pub peak_cached_input: Option<f64>,
+    pub peak_cache_write: Option<f64>,
+    pub peak_output: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,15 +52,20 @@ impl PriceBook {
 
     pub fn price_for<'a>(&'a self, event: &UsageEvent, date: &str) -> Option<&'a ModelPrice> {
         let model = event.model.rsplit('/').next().unwrap_or(&event.model);
+        let upstream_provider = match event.provider.as_str() {
+            "opencode-go" | "opencode-zen" if model.starts_with("claude") => "claude",
+            "opencode-go" | "opencode-zen" if model.starts_with("gpt") => "chatgpt",
+            _ => event.provider.as_str(),
+        };
         self.models
             .iter()
             .filter(|price| {
-                price.provider == event.provider
+                (price.provider == event.provider || price.provider == upstream_provider)
                     && model.starts_with(&price.prefix)
                     && price.from.as_str() <= date
                     && price.until.as_deref().is_none_or(|until| date <= until)
             })
-            .max_by_key(|price| price.prefix.len())
+            .max_by_key(|price| (price.provider == event.provider, price.prefix.len()))
     }
 
     pub fn cost(&self, event: &UsageEvent, date: &str) -> Option<f64> {
@@ -65,7 +76,17 @@ impl PriceBook {
         let long = price
             .long_context_tokens
             .is_some_and(|threshold| event.context_tokens > threshold);
-        let (input, cached, write_5m, write_1h, output) = if long {
+        let peak = DateTime::<Utc>::from_timestamp(event.timestamp, 0)
+            .is_some_and(|timestamp| price.peak_hours_utc.contains(&timestamp.hour()));
+        let (input, cached, write_5m, write_1h, output) = if peak {
+            (
+                price.peak_input.unwrap_or(price.input),
+                price.peak_cached_input.unwrap_or(price.cached_input),
+                price.peak_cache_write.unwrap_or(price.cache_write_5m),
+                price.peak_cache_write.unwrap_or(price.cache_write_1h),
+                price.peak_output.unwrap_or(price.output),
+            )
+        } else if long {
             (
                 price.long_input.unwrap_or(price.input),
                 price.long_cached_input.unwrap_or(price.cached_input),
@@ -139,5 +160,29 @@ mod tests {
     fn unknown_models_are_not_guessed() {
         let book = PriceBook::load().unwrap();
         assert_eq!(book.cost(&event("gpt-future", 0), "2026-08-19"), None);
+    }
+
+    #[test]
+    fn opencode_deepseek_uses_utc_peak_rates() {
+        let book = PriceBook::load().unwrap();
+        let mut usage = event("deepseek-v4-pro", 0);
+        usage.provider = "opencode-go".into();
+        usage.cache_read_tokens = 1_000_000;
+        usage.timestamp = DateTime::parse_from_rfc3339("2026-08-19T02:00:00Z")
+            .unwrap()
+            .timestamp();
+        assert_eq!(book.cost(&usage, "2026-08-19"), Some(5.324));
+        usage.timestamp = DateTime::parse_from_rfc3339("2026-08-19T12:00:00Z")
+            .unwrap()
+            .timestamp();
+        assert_eq!(book.cost(&usage, "2026-08-19"), Some(2.662));
+    }
+
+    #[test]
+    fn opencode_zen_reuses_identical_upstream_rates() {
+        let book = PriceBook::load().unwrap();
+        let mut usage = event("gpt-5.6-luna", 0);
+        usage.provider = "opencode-zen".into();
+        assert_eq!(book.cost(&usage, "2026-08-19"), Some(1.4));
     }
 }

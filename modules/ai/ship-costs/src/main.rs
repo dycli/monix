@@ -25,17 +25,18 @@ fn run() -> Result<(), Box<dyn Error>> {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
     match arguments.first().map(String::as_str) {
         None => {
-            run_collect(&mut database, &home, true);
+            run_collect(&mut database, &home, true, true);
             report::print_report(&database, &prices, 30)
         }
         Some("collect") => {
             let quiet = arguments.iter().any(|argument| argument == "--quiet");
-            run_collect(&mut database, &home, quiet);
+            let online = arguments.iter().any(|argument| argument == "--online");
+            run_collect(&mut database, &home, quiet, online);
             Ok(())
         }
         Some("report") => {
             let days = parse_days(&arguments[1..])?;
-            run_collect(&mut database, &home, true);
+            run_collect(&mut database, &home, true, true);
             report::print_report(&database, &prices, days)
         }
         Some("doctor") => doctor(&database, &prices, &home),
@@ -51,8 +52,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
 }
 
-fn run_collect(database: &mut Database, home: &Path, quiet: bool) {
-    let stats = collect(database, home);
+fn run_collect(database: &mut Database, home: &Path, quiet: bool, online: bool) {
+    let stats = collect(database, home, online);
     for warning in &stats.warnings {
         eprintln!("ship-costs: warning: {warning}");
     }
@@ -163,6 +164,6 @@ fn state_dir(home: &Path) -> PathBuf {
 fn usage() {
     println!(
         "ship-costs — local Claude and ChatGPT subscription-value ledger\n\n\
-         Usage:\n  ship-costs\n  ship-costs collect [--quiet]\n  ship-costs report [--days N]\n  ship-costs doctor\n  ship-costs prices"
+         Usage:\n  ship-costs\n  ship-costs collect [--quiet] [--online]\n  ship-costs report [--days N]\n  ship-costs doctor\n  ship-costs prices"
     );
 }

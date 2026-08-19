@@ -33,7 +33,10 @@ pub fn print_report(
     let date = PriceBook::today();
     let mut summaries: BTreeMap<String, ProviderSummary> = BTreeMap::new();
     for event in &events {
-        if !matches!(event.provider.as_str(), "claude" | "chatgpt") {
+        if !matches!(
+            event.provider.as_str(),
+            "claude" | "chatgpt" | "opencode-go" | "opencode-zen"
+        ) {
             continue;
         }
         if event.total_tokens() == 0 && event.web_searches == 0 {
@@ -75,14 +78,16 @@ pub fn print_report(
         return Ok(());
     }
 
-    for provider in ["claude", "chatgpt"] {
+    for provider in ["claude", "chatgpt", "opencode-go", "opencode-zen"] {
         let Some(summary) = summaries.get(provider) else {
             continue;
         };
-        let label = if provider == "claude" {
-            "CLAUDE"
-        } else {
-            "CHATGPT"
+        let label = match provider {
+            "claude" => "CLAUDE",
+            "chatgpt" => "CHATGPT",
+            "opencode-go" => "OPENCODE GO",
+            "opencode-zen" => "OPENCODE ZEN",
+            _ => provider,
         };
         let monthly = summary.cost * 30.0 / days as f64;
         println!("\n{label}");
@@ -134,10 +139,19 @@ pub fn print_report(
         }
 
         print_quota(provider, &quotas);
+        match provider {
+            "opencode-go" => println!(
+                "  Billing evidence     Go quota is direct; Zen balance fallback is not included"
+            ),
+            "opencode-zen" => {
+                println!("  Billing evidence     exact charges require the OpenCode console ledger")
+            }
+            _ => {}
+        }
         print_verdict(provider, monthly, &quotas);
     }
     println!(
-        "\nAPI-equivalent value cannot see ordinary claude.ai/chatgpt.com chats. Quota evidence, when present, is the tier-sizing signal."
+        "\nAPI-equivalent value cannot see ordinary claude.ai/chatgpt.com chats. Go quota is direct but rounded; exact Zen balance transactions remain in the OpenCode console."
     );
     Ok(())
 }
@@ -161,6 +175,23 @@ fn print_quota(provider: &str, quotas: &[QuotaSample]) {
             .entry(sample.window_minutes)
             .or_default()
             .push(sample);
+    }
+    if provider == "opencode-go" {
+        for (minutes, samples) in by_window {
+            if let Some(latest) = samples.iter().max_by_key(|sample| sample.timestamp) {
+                let limit = go_limit(minutes);
+                println!(
+                    "  Quota {:<10} {:>5.1}% · ≈${:.2}/${:.0} weighted · resets {} · {}",
+                    window_name(minutes),
+                    latest.used_percent,
+                    limit * latest.used_percent / 100.0,
+                    limit,
+                    reset_of(latest.resets_at),
+                    if latest.limit_reached { "capped" } else { "ok" }
+                );
+            }
+        }
+        return;
     }
     for (minutes, samples) in by_window {
         let mut values = samples
@@ -195,6 +226,12 @@ fn print_verdict(provider: &str, monthly: f64, quotas: &[QuotaSample]) {
         .filter(|sample| sample.provider == provider)
         .collect::<Vec<_>>();
     let label = "  Verdict             ";
+    if provider == "opencode-zen" {
+        println!(
+            "{label}pay as you go; compare this estimate with the authoritative Zen console ledger"
+        );
+        return;
+    }
     if provider_quotas.is_empty() {
         if monthly < 20.0 {
             println!(
@@ -227,6 +264,14 @@ fn print_verdict(provider: &str, monthly: f64, quotas: &[QuotaSample]) {
         })
         .collect::<BTreeSet<_>>()
         .len();
+    if provider == "opencode-go" {
+        if hits > 0 {
+            println!("{label}a Go limit was reached; requests may be spilling into Zen balance");
+        } else {
+            println!("{label}Go has direct measured headroom; no current limit is reached");
+        }
+        return;
+    }
     if hits > 0 || p95 >= 90.0 {
         println!("{label}current tier is tight; compare the next tier with overage credits");
     } else if p95 < 75.0 {
@@ -240,6 +285,13 @@ fn date_of(timestamp: Option<i64>) -> String {
     timestamp
         .and_then(|timestamp| DateTime::<Utc>::from_timestamp(timestamp, 0))
         .map(|timestamp| timestamp.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| "unknown".into())
+}
+
+fn reset_of(timestamp: Option<i64>) -> String {
+    timestamp
+        .and_then(|timestamp| DateTime::<Utc>::from_timestamp(timestamp, 0))
+        .map(|timestamp| timestamp.format("%Y-%m-%d %H:%MZ").to_string())
         .unwrap_or_else(|| "unknown".into())
 }
 
@@ -262,6 +314,15 @@ fn window_name(minutes: i64) -> String {
         10_080 => "7 days".into(),
         minutes if minutes > 0 && minutes % 1_440 == 0 => format!("{} days", minutes / 1_440),
         minutes => format!("{minutes} min"),
+    }
+}
+
+fn go_limit(minutes: i64) -> f64 {
+    match minutes {
+        300 => 12.0,
+        10_080 => 30.0,
+        43_200 => 60.0,
+        _ => 0.0,
     }
 }
 

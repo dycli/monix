@@ -4,7 +4,9 @@
     "https://platform.openai.com/pricing",
     "https://platform.claude.com/docs/en/about-claude/pricing",
     "https://claude.com/pricing",
-    "https://help.openai.com/en/articles/9793128-what-is-chatgpt-pro"
+    "https://help.openai.com/en/articles/9793128-what-is-chatgpt-pro",
+    "https://opencode.ai/docs/go/",
+    "https://opencode.ai/docs/zen/"
   ],
   "models": [
     {
@@ -119,6 +121,36 @@
       "web_search": 0.01
     },
     {
+      "provider": "opencode-go",
+      "prefix": "deepseek-v4-pro",
+      "from": "2026-08-01",
+      "input": 0.66,
+      "cached_input": 0.022,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "output": 1.98,
+      "peak_hours_utc": [1, 2, 3, 6, 7, 8, 9],
+      "peak_input": 1.32,
+      "peak_cached_input": 0.044,
+      "peak_cache_write": 0.0,
+      "peak_output": 3.96
+    },
+    {
+      "provider": "opencode-zen",
+      "prefix": "deepseek-v4-pro",
+      "from": "2026-08-01",
+      "input": 0.66,
+      "cached_input": 0.022,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "output": 1.98,
+      "peak_hours_utc": [1, 2, 3, 6, 7, 8, 9],
+      "peak_input": 1.32,
+      "peak_cached_input": 0.044,
+      "peak_cache_write": 0.0,
+      "peak_output": 3.96
+    },
+    {
       "provider": "chatgpt",
       "prefix": "gpt-5.6-sol",
       "from": "2026-07-30",
@@ -202,6 +234,8 @@
     { "provider": "claude", "name": "Max 20x", "monthly_usd": 200.0, "multiple": 20.0 },
     { "provider": "chatgpt", "name": "Plus", "monthly_usd": 20.0, "multiple": 1.0 },
     { "provider": "chatgpt", "name": "Pro 5x", "monthly_usd": 100.0, "multiple": 5.0 },
-    { "provider": "chatgpt", "name": "Pro 20x", "monthly_usd": 200.0, "multiple": 20.0 }
+    { "provider": "chatgpt", "name": "Pro 20x", "monthly_usd": 200.0, "multiple": 20.0 },
+    { "provider": "opencode-go", "name": "Go first month", "monthly_usd": 5.0, "multiple": 12.0 },
+    { "provider": "opencode-go", "name": "Go renewal", "monthly_usd": 10.0, "multiple": 6.0 }
   ]
 }
