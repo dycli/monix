@@ -13,7 +13,7 @@ Variants {
 
         required property var modelData
 
-        readonly property int barHeight: 28
+        readonly property int barHeight: Style.barHeight
         readonly property bool railOverlapsWorkspaces: rightRail.visible
             && rightRail.x < workspaceGroup.x + workspaceGroup.width + Style.barItemGap
 

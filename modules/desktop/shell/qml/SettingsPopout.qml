@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 
 PopupWindow {
     id: root
@@ -13,13 +14,24 @@ PopupWindow {
     readonly property real screenHeight: anchorWindow && anchorWindow.screen
         ? anchorWindow.screen.height : 692
     readonly property real desiredHeight: content.implicitHeight + 76
-    readonly property real maximumHeight: Math.max(320, screenHeight - 52)
+    readonly property real maximumHeight: Math.max(320, screenHeight
+        - Style.barHeight - Style.popupBarGap - Style.popupScreenMargin)
 
     color: "transparent"
     implicitWidth: 520
     implicitHeight: Math.min(desiredHeight, maximumHeight)
     grabFocus: true
     visible: SettingsPanelService.isOpen(screenName)
+    mask: Region {
+        width: root.width
+        height: root.height
+        radius: Style.popupRadius
+    }
+    HyprlandWindow.visibleMask: Region {
+        width: root.width
+        height: root.height
+        radius: Style.popupRadius
+    }
 
     onVisibleChanged: {
         if (!visible && SettingsPanelService.isOpen(screenName))
@@ -45,20 +57,13 @@ PopupWindow {
         onAnchoring: {
             if (!root.anchorItem || !window)
                 return;
-            const point = window.contentItem.mapFromItem(root.anchorItem,
-                root.anchorItem.width - root.implicitWidth, root.anchorItem.height + 6);
-            popupAnchor.rect.x = Math.max(8,
-                Math.min(point.x, window.width - root.implicitWidth - 8));
-            popupAnchor.rect.y = Math.round(point.y);
+            popupAnchor.rect.x = Math.round(window.width - root.implicitWidth
+                - Style.popupScreenMargin);
+            popupAnchor.rect.y = window.height + Style.popupBarGap;
         }
     }
 
-    Rectangle {
-        anchors.fill: parent
-        color: Style.popupBackgroundColor
-        border.color: Style.panelBorderColor
-        border.width: 1
-        radius: 12
+    PopupSurface {
 
         Item {
             anchors {
