@@ -33,6 +33,7 @@
         "modules/ai/agent-vm"
         "modules/ai/fleet-tool/fleet-cli"
         "modules/ai/memo/memo-cli"
+        "modules/ai/ship-costs"
         "modules/homelab/alerts/ship-alert"
       ];
 
@@ -58,6 +59,7 @@
         };
         fleet-cli = crate "modules/ai/fleet-tool/fleet-cli" { };
         memo = crate "modules/ai/memo/memo-cli" { };
+        ship-costs = crate "modules/ai/ship-costs" { };
         ship-alert = crate "modules/homelab/alerts/ship-alert" { };
 
         rustfmt =
