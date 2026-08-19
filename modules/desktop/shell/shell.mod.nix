@@ -27,6 +27,7 @@
           pkgs.brightnessctl
           pkgs.cliphist
           pkgs.ddcutil
+          config.programs.hyprland.package
           pkgs.quickshell
           pkgs.uwsm
           pkgs.wl-clipboard

@@ -11,6 +11,7 @@ Item {
 
     property string icon: ""
     property string label: ""
+    property string valueText: Math.round(Math.max(0, Math.min(1, value)) * 100) + "%"
     property real value: 0
     property bool available: true
     property bool iconAvailable: available
@@ -133,7 +134,7 @@ Item {
                 weight: Style.fontWeight
             }
             renderType: Text.NativeRendering
-            text: Math.round(Math.max(0, Math.min(1, root.value)) * 100) + "%"
+            text: root.valueText
         }
 
         Item {

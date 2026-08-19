@@ -173,6 +173,16 @@ PopupWindow {
                     SettingsDisplaySection {
                         width: parent.width
                     }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 1
+                        color: Style.panelBorderColor
+                    }
+
+                    SettingsInputSection {
+                        width: parent.width
+                    }
                 }
             }
         }
