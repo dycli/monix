@@ -12,8 +12,6 @@
       inherit (lib.options) mkOption;
 
       cfg = config.shipProxy;
-      inherit (lib.ship) fences topology;
-
       proxyTo = upstream: extra: {
         useACMEHost = cfg.domain;
         forceSSL = true;
@@ -103,8 +101,8 @@
           recommendedTlsSettings = true;
 
           # Per-service routes (subdomain + port) come from each service's
-          # own module via shipProxy.routes; the seat, dashboard and
-          # catch-alls stay here.
+          # own module via shipProxy.routes; the dashboard and catch-alls
+          # stay here.
           virtualHosts =
             (
               cfg.routes
@@ -119,24 +117,6 @@
                 )
               )
             )
-            # The web seat is shell-capable: without the source rules
-            # below, any local service reaches it by Host header.
-            // {
-              "ai.${cfg.domain}" = proxyTo "http://${topology.seatWebAddr}:${toString topology.seatWebPort}" {
-                # SSE responses must not be buffered.
-                extraConfig = ''
-                  proxy_buffering off;
-                  deny 127.0.0.0/8;
-                  deny ::1;
-                  deny ${topology.hostTailnetAddr};
-                  allow ${fences.tailnet};
-                  deny all;
-                  # Dedicated source address so the seat's fence can admit
-                  # nginx without admitting all of 127.0.0.1.
-                  proxy_bind ${topology.seatIngressAddr};
-                '';
-              };
-            }
             // optionalAttrs (cfg.dashboardHost != null && config.services.homepage-dashboard.enable) {
               ${cfg.dashboardHost} = proxy config.services.homepage-dashboard.listenPort { };
             }
@@ -152,8 +132,8 @@
               };
             }
             # The wildcard DNS record resolves every name. Without an
-            # explicit :443 default, nginx falls back to the alphabetically
-            # first vhost, the web seat.
+            # explicit :443 default, nginx falls back to an application
+            # vhost.
             // {
               https-catchall = {
                 serverName = "_";

@@ -1,5 +1,5 @@
-# The interactive agent seat: Claude Code over tmux/SSH and opencode web as
-# interchangeable frontends to one fenced `bridge` account.
+# The interactive agent seat: Claude Code, Codex and OpenCode share one
+# fenced `bridge` account and its project state.
 { inputs, self, ... }:
 let
   browserTargets = {
@@ -288,7 +288,7 @@ in
       ...
     }:
     let
-      inherit (lib.attrsets) mapAttrs mapAttrsToList;
+      inherit (lib.attrsets) mapAttrs;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
       inherit (lib.strings) toJSON;
@@ -296,7 +296,7 @@ in
       # Fixed uid: the fence below is a drop-in on user-<uid>.slice.
       seatUid = 1001;
 
-      inherit (lib.ship) fences opencode topology;
+      inherit (lib.ship) fences topology;
 
       browserServers =
         browserTargets
@@ -395,46 +395,6 @@ in
           mcpServers = browserServers |> mapAttrs (_: server: server // { type = "stdio"; });
         };
 
-        # A system service, so it sits outside the seat's user slice and
-        # carries its own fence. nginx serves it with no application auth.
-        systemd.services.opencode-web = {
-          description = "opencode web UI cockpit seat";
-          wantedBy = singleton "multi-user.target";
-          wants = singleton "network-online.target";
-          requires = singleton "home-manager-bridge.service";
-          after = [
-            "home-manager-bridge.service"
-            "network-online.target"
-          ];
-          # Privilege wrappers must precede the system profile, or sudo
-          # resolves to its non-setuid binary.
-          path = [
-            "/run/wrappers"
-            "/run/current-system/sw"
-            "/etc/profiles/per-user/bridge"
-          ];
-          serviceConfig = {
-            User = "bridge";
-            Group = "bridge";
-            # systemd filters addresses and not ports, so any service bound to
-            # 0.0.0.0 still answers on whatever is allowed here.
-            IPAddressAllow = [
-              "${topology.seatIngressAddr}/32"
-              "${topology.seatInferenceAddr}/32"
-            ];
-            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
-            Environment =
-              singleton "OPENCODE_CONFIG=/home/bridge/.config/opencode/opencode.jsonc"
-              ++ (opencode.environment |> mapAttrsToList (name: value: "${name}=${value}"));
-            WorkingDirectory = "/home/bridge/cockpit";
-            # The seat listener is the only socket this service may open.
-            SocketBindAllow = "tcp:${toString topology.seatWebPort}";
-            SocketBindDeny = "any";
-            ExecStart = "${getExe pkgs.opencode} web --hostname ${topology.seatWebAddr} --port ${toString topology.seatWebPort} --cors https://ai.${config.shipProxy.domain} --print-logs";
-            Restart = "always";
-            RestartSec = 3;
-          };
-        };
       };
     };
 }
