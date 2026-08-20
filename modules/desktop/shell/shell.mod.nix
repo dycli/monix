@@ -32,6 +32,7 @@
           pkgs.uwsm
           pkgs.wl-clipboard
           pkgs.wtype
+          config.system.path
           config.home-manager.users.${config.primaryUser}.home.path
         ];
         partOf = singleton "graphical-session.target";
