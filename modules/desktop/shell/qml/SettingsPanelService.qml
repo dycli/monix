@@ -23,6 +23,10 @@ QtObject {
         openSection(targetScreen, "display");
     }
 
+    function openPower(targetScreen: string): void {
+        openSection(targetScreen, "power");
+    }
+
     function close(): void {
         screenName = "";
     }

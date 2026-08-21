@@ -25,7 +25,8 @@ PopupWindow {
         available.push(
             { "key": "sound", "icon": "", "label": "Sound" },
             { "key": "display", "icon": "󰍹", "label": "Display" },
-            { "key": "input", "icon": "󰌌", "label": "Input" }
+            { "key": "input", "icon": "󰌌", "label": "Input" },
+            { "key": "power", "icon": "󰐥", "label": "Power" }
         );
         return available;
     }
@@ -220,6 +221,7 @@ PopupWindow {
                             case "sound": return soundPage;
                             case "display": return displayPage;
                             case "input": return inputPage;
+                            case "power": return powerPage;
                             default: return soundPage;
                             }
                         }
@@ -268,6 +270,14 @@ PopupWindow {
         id: inputPage
 
         SettingsInputSection {
+            width: pageLoader.width
+        }
+    }
+
+    Component {
+        id: powerPage
+
+        SettingsPowerSection {
             width: pageLoader.width
         }
     }

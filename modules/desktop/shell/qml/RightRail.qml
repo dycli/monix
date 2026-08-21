@@ -157,6 +157,13 @@ Item {
                 root.hoverOpen = true;
             }
         }
+        onPowerActivated: {
+            root.hoverOpen = false;
+            BarModeService.close();
+            ClockPanelService.close();
+            ClipboardPanelService.close();
+            SettingsPanelService.openPower(root.screenName);
+        }
     }
 
     Item {

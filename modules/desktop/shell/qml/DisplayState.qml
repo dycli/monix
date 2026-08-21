@@ -14,9 +14,12 @@ QtObject {
     property var profiles: ({})
     property var defaults: ({})
     property string mode: "single"
-    property string side: "right"
-    property string alignment: "center"
+    property int externalPositionX: 0
+    property int externalPositionY: 0
     property string topologyKey: ""
+    property string lastError: ""
+    property string applyOutput: ""
+    property string applyError: ""
     property bool settingsLoaded: false
     property bool applyQueued: false
 
@@ -51,7 +54,18 @@ QtObject {
     }
 
     property Process applyProcess: Process {
-        onExited: {
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: root.applyOutput = text.trim()
+        }
+        stderr: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: root.applyError = text.trim()
+        }
+        onExited: exitCode => {
+            const response = root.applyError || root.applyOutput;
+            if (exitCode !== 0 || /error|invalid|failed/i.test(response))
+                root.lastError = response || "Hyprland rejected the display change";
             refreshAfterApply.restart();
             if (root.applyQueued) {
                 root.applyQueued = false;
@@ -206,7 +220,7 @@ QtObject {
             mode = "mirror";
         else if (active.length > 1) {
             mode = "extend";
-            inferExtendedLayout(active);
+            inferExtendedPosition(active);
         } else if (active.length === 1)
             mode = active[0].internal ? "internal" : "external";
         else
@@ -217,9 +231,10 @@ QtObject {
         const profile = profiles[nextKey];
         if (profile && nextOutputs.length > 1) {
             mode = profile.mode || "extend";
-            side = profile.side === "left" ? "left" : "right";
-            alignment = ["top", "center", "bottom"].includes(profile.alignment)
-                ? profile.alignment : "center";
+            if (Number.isFinite(profile.x))
+                externalPositionX = Math.round(profile.x);
+            if (Number.isFinite(profile.y))
+                externalPositionY = Math.round(profile.y);
             applyCurrent();
         } else if (active.length === 0 && internalOutput) {
             mode = "internal";
@@ -227,22 +242,13 @@ QtObject {
         }
     }
 
-    function inferExtendedLayout(activeOutputs): void {
+    function inferExtendedPosition(activeOutputs): void {
         const internal = activeOutputs.find(output => output.internal);
         const external = activeOutputs.find(output => !output.internal);
         if (!internal || !external)
             return;
-        side = external.x < internal.x ? "left" : "right";
-
-        const internalHeight = internal.height / Math.max(0.1, internal.scale);
-        const externalHeight = external.height / Math.max(0.1, external.scale);
-        const topDistance = Math.abs(internal.y - external.y);
-        const centerDistance = Math.abs((internal.y + internalHeight / 2)
-            - (external.y + externalHeight / 2));
-        const bottomDistance = Math.abs((internal.y + internalHeight)
-            - (external.y + externalHeight));
-        alignment = topDistance <= centerDistance && topDistance <= bottomDistance
-            ? "top" : (bottomDistance <= centerDistance ? "bottom" : "center");
+        externalPositionX = Math.round(external.x - internal.x);
+        externalPositionY = Math.round(external.y - internal.y);
     }
 
     function saveProfile(): void {
@@ -251,8 +257,8 @@ QtObject {
         const nextProfiles = Object.assign({}, profiles);
         nextProfiles[topologyKey] = {
             "mode": mode,
-            "side": side,
-            "alignment": alignment
+            "x": externalPositionX,
+            "y": externalPositionY
         };
         profiles = nextProfiles;
         saveSettings();
@@ -266,19 +272,11 @@ QtObject {
         applyCurrent();
     }
 
-    function setSide(nextSide: string): void {
-        if (nextSide !== "left" && nextSide !== "right")
+    function setPosition(x: real, y: real): void {
+        if (!multipleDisplays)
             return;
-        side = nextSide;
-        mode = "extend";
-        saveProfile();
-        applyCurrent();
-    }
-
-    function setAlignment(nextAlignment: string): void {
-        if (!["top", "center", "bottom"].includes(nextAlignment))
-            return;
-        alignment = nextAlignment;
+        externalPositionX = Math.round(x);
+        externalPositionY = Math.round(y);
         mode = "extend";
         saveProfile();
         applyCurrent();
@@ -292,22 +290,36 @@ QtObject {
         };
     }
 
+    function luaString(value: string): string {
+        return "\"" + value.replace(/\\/g, "\\\\").replace(/\"/g, "\\\"") + "\"";
+    }
+
     function monitorRule(output, position: string, modeOverride: string,
             scaleOverride: real, mirrorTarget: string): string {
         const saved = defaultFor(output);
         const selectedMode = modeOverride || saved.mode || "preferred";
         const selectedScale = scaleOverride > 0 ? scaleOverride : (saved.scale || 1);
-        let rule = output.name + "," + selectedMode + "," + position + "," + selectedScale;
+        const fields = [
+            "output = " + luaString(output.name),
+            "disabled = false",
+            "mode = " + luaString(selectedMode),
+            "position = " + luaString(position),
+            "scale = " + selectedScale
+        ];
         if (!mirrorTarget && saved.vrr)
-            rule += ",vrr,1";
+            fields.push("vrr = 1");
         if (output.internal) {
-            const icc = Quickshell.env("KESTREL_INTERNAL_DISPLAY_ICC");
+            const icc = Quickshell.env("KESTREL_INTERNAL_DISPLAY_ICC") || "";
             if (icc.length > 0)
-                rule += ",icc," + icc;
+                fields.push("icc = " + luaString(icc));
         }
         if (mirrorTarget)
-            rule += ",mirror," + mirrorTarget;
-        return rule;
+            fields.push("mirror = " + luaString(mirrorTarget));
+        return "hl.monitor({ " + fields.join(", ") + " })";
+    }
+
+    function disableRule(output): string {
+        return "hl.monitor({ output = " + luaString(output.name) + ", disabled = true })";
     }
 
     function logicalSize(output): var {
@@ -322,29 +334,13 @@ QtObject {
     }
 
     function extendedPositions(): var {
-        const internalSize = logicalSize(internalOutput);
-        const externalSize = logicalSize(externalOutput);
-        let internalX = side === "left" ? externalSize.width : 0;
-        let externalX = side === "left" ? 0 : internalSize.width;
-        let internalY = 0;
-        let externalY = 0;
-        const difference = Math.abs(internalSize.height - externalSize.height);
-        if (alignment === "center") {
-            if (internalSize.height < externalSize.height)
-                internalY = Math.round(difference / 2);
-            else
-                externalY = Math.round(difference / 2);
-        } else if (alignment === "bottom") {
-            if (internalSize.height < externalSize.height)
-                internalY = difference;
-            else
-                externalY = difference;
-        }
+        const minimumX = Math.min(0, externalPositionX);
+        const minimumY = Math.min(0, externalPositionY);
         return {
-            "internalX": internalX,
-            "internalY": internalY,
-            "externalX": externalX,
-            "externalY": externalY
+            "internalX": -minimumX,
+            "internalY": -minimumY,
+            "externalX": externalPositionX - minimumX,
+            "externalY": externalPositionY - minimumY
         };
     }
 
@@ -406,38 +402,41 @@ QtObject {
         }
 
         const commands = [];
+        lastError = "";
+        applyOutput = "";
+        applyError = "";
         if (mode === "internal") {
-            commands.push("keyword monitor " + monitorRule(internalOutput, "0x0", "", 0, ""));
+            commands.push(monitorRule(internalOutput, "0x0", "", 0, ""));
             for (const output of externalOutputs)
-                commands.push("keyword monitor " + output.name + ",disable");
+                commands.push(disableRule(output));
         } else if (mode === "external") {
             let first = true;
             for (const output of externalOutputs) {
-                commands.push("keyword monitor " + monitorRule(output,
+                commands.push(monitorRule(output,
                     first ? "0x0" : "auto-right", "", 0, ""));
                 first = false;
             }
-            commands.push("keyword monitor " + internalOutput.name + ",disable");
+            commands.push(disableRule(internalOutput));
         } else if (mode === "mirror") {
             const shared = commonMirrorModes();
-            commands.push("keyword monitor " + monitorRule(internalOutput,
+            commands.push(monitorRule(internalOutput,
                 "0x0", shared.internal, 1, ""));
-            commands.push("keyword monitor " + monitorRule(externalOutput,
+            commands.push(monitorRule(externalOutput,
                 "0x0", shared.external, 1, internalOutput.name));
             for (let index = 1; index < externalOutputs.length; index++)
-                commands.push("keyword monitor " + externalOutputs[index].name + ",disable");
+                commands.push(disableRule(externalOutputs[index]));
         } else {
             const positions = extendedPositions();
-            commands.push("keyword monitor " + monitorRule(internalOutput,
+            commands.push(monitorRule(internalOutput,
                 positions.internalX + "x" + positions.internalY, "", 0, ""));
-            commands.push("keyword monitor " + monitorRule(externalOutput,
+            commands.push(monitorRule(externalOutput,
                 positions.externalX + "x" + positions.externalY, "", 0, ""));
             for (let index = 1; index < externalOutputs.length; index++)
-                commands.push("keyword monitor " + monitorRule(externalOutputs[index],
+                commands.push(monitorRule(externalOutputs[index],
                     "auto-right", "", 0, ""));
         }
 
-        applyProcess.command = ["hyprctl", "--batch", commands.join(" ; ")];
+        applyProcess.command = ["hyprctl", "eval", commands.join("; ")];
         applyProcess.running = true;
     }
 }

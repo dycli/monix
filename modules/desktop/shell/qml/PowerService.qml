@@ -18,6 +18,8 @@ QtObject {
     readonly property var availableProfiles: [PowerProfile.PowerSaver, PowerProfile.Balanced].concat(
         profilesAvailable && PowerProfiles.hasPerformanceProfile ? [PowerProfile.Performance] : []
     )
+    readonly property string currentProfileKey: profilesAvailable
+        ? profileKey(PowerProfiles.profile) : "default"
 
     property bool idleInhibited: false
 
@@ -78,9 +80,39 @@ QtObject {
         }
     }
 
+    function profileKey(profile): string {
+        switch (profile) {
+        case PowerProfile.PowerSaver:
+            return "power-saver";
+        case PowerProfile.Performance:
+            return "performance";
+        default:
+            return "balanced";
+        }
+    }
+
+    function profileForKey(key: string): var {
+        switch (key) {
+        case "power-saver":
+            return PowerProfile.PowerSaver;
+        case "performance":
+            return PowerProfile.Performance;
+        default:
+            return PowerProfile.Balanced;
+        }
+    }
+
     function setProfile(profile): void {
-        if (profilesAvailable && availableProfiles.indexOf(profile) !== -1)
+        if (profilesAvailable && availableProfiles.indexOf(profile) !== -1) {
             PowerProfiles.profile = profile;
+            PowerSettingsState.applyTimer.restart();
+        }
+    }
+
+    function setProfileByKey(key: string): void {
+        const profile = profileForKey(key);
+        if (profileKey(profile) === key)
+            setProfile(profile);
     }
 
     function cycleProfile(): void {

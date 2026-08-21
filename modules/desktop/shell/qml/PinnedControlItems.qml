@@ -5,6 +5,8 @@ import QtQuick
 Row {
     id: root
 
+    signal powerActivated
+
     readonly property bool powerHovered: powerButton.hovered
     readonly property real powerX: powerButton.x
 
@@ -13,6 +15,8 @@ Row {
 
     Power {
         id: powerButton
+
+        onActivated: root.powerActivated()
     }
 
     IdleIndicator {}
