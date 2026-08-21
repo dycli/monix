@@ -122,4 +122,18 @@ Column {
         onMoved: value => InputState.setTouchpadScrollFactor(
             root.rounded(0.25 + value * 2.75, 0.05))
     }
+
+    Text {
+        width: parent.width
+        color: Style.lowBatteryColor
+        font {
+            family: Style.fontFamily
+            pixelSize: Style.smallFontSize
+            weight: Style.fontWeight
+        }
+        renderType: Text.NativeRendering
+        text: InputState.lastError
+        visible: InputState.lastError.length > 0
+        wrapMode: Text.Wrap
+    }
 }

@@ -14,6 +14,9 @@ QtObject {
     property string accelerationProfile: "adaptive"
     property real mouseScrollFactor: 1
     property real touchpadScrollFactor: 1
+    property string lastError: ""
+    property string applyOutput: ""
+    property string applyError: ""
 
     property bool loaded: false
     property bool applyQueued: false
@@ -30,11 +33,22 @@ QtObject {
     }
 
     property Process applyProcess: Process {
-        onRunningChanged: {
-            if (running || !root.applyQueued)
-                return;
-            root.applyQueued = false;
-            root.applyNow();
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: root.applyOutput = text.trim()
+        }
+        stderr: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: root.applyError = text.trim()
+        }
+        onExited: exitCode => {
+            const response = root.applyError || root.applyOutput;
+            if (exitCode !== 0 || /error|invalid|failed/i.test(response))
+                root.lastError = response || "Hyprland rejected the input change";
+            if (root.applyQueued) {
+                root.applyQueued = false;
+                root.applyNow();
+            }
         }
     }
 
@@ -131,15 +145,17 @@ QtObject {
             return;
         }
 
-        const commands = [
-            "keyword input:repeat_rate " + repeatRate,
-            "keyword input:repeat_delay " + repeatDelay,
-            "keyword input:sensitivity " + pointerSpeed.toFixed(3),
-            "keyword input:accel_profile " + accelerationProfile,
-            "keyword input:scroll_factor " + mouseScrollFactor.toFixed(3),
-            "keyword input:touchpad:scroll_factor " + touchpadScrollFactor.toFixed(3)
-        ];
-        applyProcess.command = ["hyprctl", "--batch", commands.join(" ; ")];
+        lastError = "";
+        applyOutput = "";
+        applyError = "";
+        const command = "hl.config({ input = { repeat_rate = " + repeatRate
+            + ", repeat_delay = " + repeatDelay
+            + ", sensitivity = " + pointerSpeed.toFixed(3)
+            + ", accel_profile = " + JSON.stringify(accelerationProfile)
+            + ", scroll_factor = " + mouseScrollFactor.toFixed(3)
+            + ", touchpad = { scroll_factor = "
+            + touchpadScrollFactor.toFixed(3) + " } } })";
+        applyProcess.command = ["hyprctl", "eval", command];
         applyProcess.running = true;
     }
 }
