@@ -200,6 +200,13 @@ Item {
                     ClockPanelService.close();
                     BarModeService.open(mode, root.screenName, false);
                 }
+                onDisplayRequested: {
+                    root.hoverOpen = false;
+                    BarModeService.close();
+                    ClockPanelService.close();
+                    ClipboardPanelService.close();
+                    SettingsPanelService.openDisplay(root.screenName);
+                }
             }
 
             PowerOverviewCarousel {

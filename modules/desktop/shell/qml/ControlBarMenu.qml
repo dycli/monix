@@ -6,6 +6,7 @@ Row {
     id: root
 
     signal modeRequested(string mode)
+    signal displayRequested
 
     readonly property real networkItemX: networkButton.x
     readonly property real bluetoothItemX: bluetoothButton.x
@@ -44,5 +45,11 @@ Row {
         value: BrightnessState.level
         onIconActivated: NightModeState.toggle()
         onMoved: value => BrightnessState.setLevel(value)
+    }
+
+    BarModeButton {
+        enabled: DisplayState.multipleDisplays
+        icon: "󰍺"
+        onActivated: root.displayRequested()
     }
 }

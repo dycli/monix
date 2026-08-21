@@ -7,14 +7,10 @@ Column {
 
     required property bool panelVisible
 
-    property bool expanded: false
-
     spacing: 8
 
     onPanelVisibleChanged: {
-        if (!panelVisible)
-            expanded = false;
-        else
+        if (panelVisible)
             DisplayState.refresh();
     }
 
@@ -51,8 +47,9 @@ Column {
             width: 44
             height: 52
             radius: 8
-            color: root.expanded || displayPointer.containsMouse
-                ? Qt.rgba(1, 1, 1, root.expanded ? 0.11 : 0.06) : "transparent"
+            color: SettingsPanelService.displayExpanded || displayPointer.containsMouse
+                ? Qt.rgba(1, 1, 1, SettingsPanelService.displayExpanded ? 0.11 : 0.06)
+                : "transparent"
 
             Text {
                 anchors.centerIn: parent
@@ -75,8 +72,8 @@ Column {
                 enabled: DisplayState.multipleDisplays
                 hoverEnabled: true
                 onClicked: {
-                    root.expanded = !root.expanded;
-                    if (root.expanded)
+                    SettingsPanelService.displayExpanded = !SettingsPanelService.displayExpanded;
+                    if (SettingsPanelService.displayExpanded)
                         DisplayState.refresh();
                 }
             }
@@ -86,7 +83,7 @@ Column {
     Column {
         width: parent.width
         spacing: 8
-        visible: root.expanded && DisplayState.multipleDisplays
+        visible: SettingsPanelService.displayExpanded && DisplayState.multipleDisplays
 
         Text {
             color: Style.panelMutedColor
