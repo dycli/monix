@@ -153,6 +153,8 @@
           '';
         };
 
+        systemd.user.services.ship-shell.environment.KESTREL_INTERNAL_DISPLAY_ICC = "${./BOE0CB4.icc}";
+
         # SERVICES
         services.syncthing.enable = true;
         services.printing.enable = true;

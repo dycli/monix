@@ -183,6 +183,7 @@ PopupWindow {
 
                     SettingsDisplaySection {
                         width: parent.width
+                        panelVisible: root.visible
                     }
 
                     Rectangle {
