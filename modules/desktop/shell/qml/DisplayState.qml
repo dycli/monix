@@ -85,9 +85,18 @@ QtObject {
         target: Hyprland
 
         function onRawEvent(event): void {
+            if (event.name === "configreloaded") {
+                root.reapplyAfterConfigReload.restart();
+                return;
+            }
             if (/^monitor(?:added|removed)|^monitor\.(?:added|removed)/.test(event.name))
                 root.refreshAfterHotplug.restart();
         }
+    }
+
+    property Timer reapplyAfterConfigReload: Timer {
+        interval: 250
+        onTriggered: root.restoreProfile()
     }
 
     property Timer refreshAfterHotplug: Timer {
@@ -228,15 +237,7 @@ QtObject {
 
         if (!topologyChanged)
             return;
-        const profile = profiles[nextKey];
-        if (profile && nextOutputs.length > 1) {
-            mode = profile.mode || "extend";
-            if (Number.isFinite(profile.x))
-                externalPositionX = Math.round(profile.x);
-            if (Number.isFinite(profile.y))
-                externalPositionY = Math.round(profile.y);
-            applyCurrent();
-        } else if (active.length === 0 && internalOutput) {
+        if (!restoreProfile() && active.length === 0 && internalOutput) {
             mode = "internal";
             applyCurrent();
         }
@@ -262,6 +263,21 @@ QtObject {
         };
         profiles = nextProfiles;
         saveSettings();
+    }
+
+    function restoreProfile(): bool {
+        if (!settingsLoaded || !topologyKey || outputs.length < 2)
+            return false;
+        const profile = profiles[topologyKey];
+        if (!profile)
+            return false;
+        mode = profile.mode || "extend";
+        if (Number.isFinite(profile.x))
+            externalPositionX = Math.round(profile.x);
+        if (Number.isFinite(profile.y))
+            externalPositionY = Math.round(profile.y);
+        applyCurrent();
+        return true;
     }
 
     function setMode(nextMode: string): void {
