@@ -4,25 +4,27 @@ import QtQuick
 
 QtObject {
     property string screenName: ""
-    property bool displayExpanded: false
+    property string section: "network"
 
     function toggle(targetScreen: string): void {
         if (screenName === targetScreen) {
             close();
         } else {
             screenName = targetScreen;
-            displayExpanded = false;
         }
     }
 
-    function openDisplay(targetScreen: string): void {
+    function openSection(targetScreen: string, targetSection: string): void {
+        section = targetSection;
         screenName = targetScreen;
-        displayExpanded = true;
+    }
+
+    function openDisplay(targetScreen: string): void {
+        openSection(targetScreen, "display");
     }
 
     function close(): void {
         screenName = "";
-        displayExpanded = false;
     }
 
     function isOpen(targetScreen: string): bool {
