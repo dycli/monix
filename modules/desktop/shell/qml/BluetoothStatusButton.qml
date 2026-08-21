@@ -14,5 +14,5 @@ BarModeButton {
     label: BluetoothState.label
     secondaryInteractive: BluetoothState.available
     onActivated: root.detailRequested()
-    onSecondaryActivated: BluetoothState.disable()
+    onSecondaryActivated: BluetoothState.toggleEnabled()
 }

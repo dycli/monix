@@ -5,25 +5,24 @@ import QtQuick
 Row {
     id: root
 
-    signal modeRequested(string mode)
+    signal settingsRequested(string section)
     signal displayRequested
-
-    readonly property real networkItemX: networkButton.x
-    readonly property real bluetoothItemX: bluetoothButton.x
 
     height: 24
     spacing: Style.barItemGap
 
-    NetworkStatusButton {
-        id: networkButton
+    WifiStatusButton {
+        onDetailRequested: root.settingsRequested("network")
+    }
 
-        onDetailRequested: root.modeRequested("network")
+    EthernetStatusButton {
+        onDetailRequested: root.settingsRequested("network")
     }
 
     BluetoothStatusButton {
         id: bluetoothButton
 
-        onDetailRequested: root.modeRequested("bluetooth")
+        onDetailRequested: root.settingsRequested("bluetooth")
     }
 
     BarSlider {

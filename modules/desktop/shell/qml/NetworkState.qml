@@ -70,13 +70,17 @@ QtObject {
             Networking.wifiEnabled = !Networking.wifiEnabled;
     }
 
-    function disableWifi(): void {
-        if (available && wifiHardwareEnabled && wifiEnabled)
-            Networking.wifiEnabled = false;
-    }
-
     function connectWired(): void {
         if (wiredNetwork && !wiredNetwork.connected)
+            wiredNetwork.connect();
+    }
+
+    function toggleWired(): void {
+        if (!wiredNetwork)
+            return;
+        if (wiredNetwork.connected)
+            wiredNetwork.disconnect();
+        else
             wiredNetwork.connect();
     }
 

@@ -14,10 +14,8 @@ Item {
     readonly property string transientMode: BarModeService.transientFor(screenName)
     readonly property bool transientVisible: BarModeService.transientVisibleFor(screenName)
     readonly property string requestedMode: ownsMode ? BarModeService.activeMode : ""
-    readonly property bool controlDetail: ownsMode
-        && (requestedMode === "network" || requestedMode === "bluetooth")
     readonly property bool sessionDetail: ownsMode && requestedMode === "session"
-    readonly property bool detailVisible: controlDetail || sessionDetail
+    readonly property bool detailVisible: sessionDetail
     readonly property bool sessionDetailVisual: displayedDetailMode === "session"
     readonly property bool overviewVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientVisible)
@@ -52,15 +50,8 @@ Item {
     readonly property real idleWidth: leadingControlsWidth + settingsButton.width + gap + clock.width
     readonly property real overviewWidth: Math.min(maximumWidth,
         idleWidth + gap + overviewContent.implicitWidth)
-    readonly property real endControlWidth: sessionDetailVisual
-        ? 0
-        : (detailEndLoader.item ? detailEndLoader.item.implicitWidth : settingsButton.width)
+    readonly property real endControlWidth: sessionDetailVisual ? 0 : settingsButton.width
     readonly property real endControlGap: endControlWidth > 0 ? gap : 0
-    readonly property real selectedStatusStartX: controlDetail
-        ? leadingControlsWidth
-            + (displayedDetailMode === "bluetooth"
-                ? controlMenu.bluetoothItemX : controlMenu.networkItemX)
-        : settingsButton.x
     readonly property real availableDetailWidth: Math.max(0,
         maximumWidth - pinnedControlsLead - endControlWidth - endControlGap)
     readonly property real requestedDetailWidth: detailLoader.item
@@ -202,10 +193,12 @@ Item {
 
                 anchors.right: parent.right
                 visible: root.overviewMode === "control"
-                onModeRequested: mode => {
+                onSettingsRequested: section => {
                     root.hoverOpen = false;
+                    BarModeService.close();
                     ClockPanelService.close();
-                    BarModeService.open(mode, root.screenName, false);
+                    ClipboardPanelService.close();
+                    SettingsPanelService.openSection(root.screenName, section);
                 }
                 onDisplayRequested: {
                     root.hoverOpen = false;
@@ -296,35 +289,11 @@ Item {
             }
             sourceComponent: {
                 switch (root.displayedDetailMode) {
-                case "network":
-                    return networkMode;
-                case "bluetooth":
-                    return bluetoothMode;
                 case "session":
                     return sessionMode;
                 default:
                     return null;
                 }
-            }
-        }
-    }
-
-    Loader {
-        id: detailEndLoader
-
-        anchors.verticalCenter: parent.verticalCenter
-        x: root.selectedStatusStartX + root.detailProgress
-            * (root.width - width - root.selectedStatusStartX)
-        enabled: root.detailVisible
-        opacity: root.detailProgress
-        sourceComponent: {
-            switch (root.displayedDetailMode) {
-            case "network":
-                return networkEndMode;
-            case "bluetooth":
-                return bluetoothEndMode;
-            default:
-                return null;
             }
         }
     }
@@ -383,50 +352,9 @@ Item {
     }
 
     Component {
-        id: networkMode
-
-        NetworkBarMenu {}
-    }
-
-    Component {
-        id: bluetoothMode
-
-        BluetoothBarMenu {}
-    }
-
-    Component {
         id: sessionMode
 
         SessionBarMenu {}
-    }
-
-    Component {
-        id: networkEndMode
-
-        NetworkStatusButton {
-            onDetailRequested: {
-                if (NetworkState.primaryType === "ethernet"
-                        && !NetworkState.wiredConnected)
-                    NetworkState.connectWired();
-                else if (!NetworkState.wifiEnabled && NetworkState.wifiDevice !== null)
-                    NetworkState.toggleWifi();
-                else
-                    BarModeService.close();
-            }
-        }
-    }
-
-    Component {
-        id: bluetoothEndMode
-
-        BluetoothStatusButton {
-            onDetailRequested: {
-                if (!BluetoothState.enabled)
-                    BluetoothState.toggleEnabled();
-                else
-                    BarModeService.close();
-            }
-        }
     }
 
 }

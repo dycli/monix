@@ -200,10 +200,4 @@ QtObject {
             device.forget();
     }
 
-    function disable(): void {
-        if (available) {
-            stopScan();
-            adapter.enabled = false;
-        }
-    }
 }
