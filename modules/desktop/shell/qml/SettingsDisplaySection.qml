@@ -55,12 +55,11 @@ Column {
         available: true
         iconAvailable: true
         icon: NightModeState.enabled ? "󰖔" : "󰖨"
-        label: "Night light strength"
-        value: NightModeState.strength
-        valueText: NightModeState.enabled
-            ? Math.round(NightModeState.strength * 100) + "%" : "Off"
+        label: "Night light warmth"
+        value: 1 - NightModeState.strength
+        valueText: NightModeState.temperature + " K"
         onIconActivated: NightModeState.toggle()
-        onMoved: value => NightModeState.setStrength(value)
+        onMoved: value => NightModeState.setStrength(1 - value)
     }
 
     Column {
