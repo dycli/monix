@@ -21,7 +21,8 @@ Row {
         const workspaces = Hyprland.workspaces?.values || [];
 
         for (const workspace of workspaces) {
-            if (workspace.id > 0 && !ids.includes(workspace.id))
+            if (workspace.id > 0 && workspace.monitor?.name === root.screenName
+                    && !ids.includes(workspace.id))
                 ids.push(workspace.id);
         }
 
