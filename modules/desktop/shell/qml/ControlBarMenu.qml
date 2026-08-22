@@ -37,12 +37,11 @@ Row {
 
     BarSlider {
         available: BrightnessState.available
-        icon: NightModeState.enabled
-            ? "󰖔" : (BrightnessState.available ? BrightnessState.icon : "󰃠")
+        icon: BrightnessState.internalAvailable ? "󰌢" : "󰍹"
         iconAvailable: true
         iconLeftAligned: true
         value: BrightnessState.level
-        onIconActivated: NightModeState.toggle()
+        onIconActivated: root.displayRequested()
         onMoved: value => BrightnessState.setLevel(value)
     }
 
@@ -59,8 +58,8 @@ Row {
     }
 
     BarModeButton {
-        enabled: DisplayState.multipleDisplays
-        icon: "󰍺"
-        onActivated: root.displayRequested()
+        enabled: true
+        icon: NightModeState.enabled ? "󰖔" : "󰖨"
+        onActivated: NightModeState.toggle()
     }
 }
