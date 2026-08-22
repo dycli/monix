@@ -27,8 +27,7 @@ Rectangle {
     readonly property real layoutWidth: layoutMaximumX - layoutMinimumX
     readonly property real layoutHeight: layoutMaximumY - layoutMinimumY
     readonly property real layoutOriginX: (width - layoutWidth) / 2 - layoutMinimumX
-    readonly property real layoutOriginY: 30 + (height - 36 - layoutHeight) / 2
-        - layoutMinimumY
+    readonly property real layoutOriginY: (height - layoutHeight) / 2 - layoutMinimumY
 
     implicitHeight: 180
     radius: 8
@@ -80,22 +79,6 @@ Rectangle {
                 relativeX = rightAligned;
         }
         DisplayState.setPosition(relativeX, relativeY);
-    }
-
-    Text {
-        anchors {
-            left: parent.left
-            top: parent.top
-            margins: 10
-        }
-        color: Style.panelMutedColor
-        font {
-            family: Style.fontFamily
-            pixelSize: Style.smallFontSize
-            weight: Style.fontWeight
-        }
-        renderType: Text.NativeRendering
-        text: "Drag the external display to position it"
     }
 
     Rectangle {
@@ -195,7 +178,7 @@ Rectangle {
                     6, root.width - externalDisplay.width - 6);
                 externalDisplay.dragY = root.clamp(
                     externalDisplay.startY + translation.y,
-                    30, root.height - externalDisplay.height - 6);
+                    6, root.height - externalDisplay.height - 6);
             }
         }
     }
