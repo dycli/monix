@@ -46,6 +46,18 @@ Row {
         onMoved: value => BrightnessState.setLevel(value)
     }
 
+    BarSlider {
+        visible: BrightnessState.internalAvailable
+            && BrightnessState.externalAvailable
+        available: BrightnessState.externalAvailable
+        icon: "󰍹"
+        iconAvailable: true
+        iconLeftAligned: true
+        value: BrightnessState.externalLevel
+        onIconActivated: root.displayRequested()
+        onMoved: value => BrightnessState.setExternalLevel(value)
+    }
+
     BarModeButton {
         enabled: DisplayState.multipleDisplays
         icon: "󰍺"

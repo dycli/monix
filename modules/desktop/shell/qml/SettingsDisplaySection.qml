@@ -11,6 +11,7 @@ Column {
 
     onPanelVisibleChanged: {
         if (panelVisible) {
+            BrightnessState.refresh();
             DisplayState.refresh();
             NightModeState.refresh();
         }
@@ -29,12 +30,24 @@ Column {
 
     SettingsSlider {
         width: parent.width
-        available: BrightnessState.available
-        iconAvailable: BrightnessState.available
-        icon: BrightnessState.available ? BrightnessState.icon : "󰃠"
-        label: "Brightness"
-        value: BrightnessState.level
-        onMoved: value => BrightnessState.setLevel(value)
+        visible: BrightnessState.internalAvailable
+        available: BrightnessState.internalAvailable
+        iconAvailable: BrightnessState.internalAvailable
+        icon: BrightnessState.internalIcon
+        label: "Laptop display brightness"
+        value: BrightnessState.internalLevel
+        onMoved: value => BrightnessState.setInternalLevel(value)
+    }
+
+    SettingsSlider {
+        width: parent.width
+        visible: BrightnessState.externalAvailable
+        available: BrightnessState.externalAvailable
+        iconAvailable: BrightnessState.externalAvailable
+        icon: "󰍹"
+        label: DisplayState.externalLabel + " brightness"
+        value: BrightnessState.externalLevel
+        onMoved: value => BrightnessState.setExternalLevel(value)
     }
 
     SettingsSlider {
