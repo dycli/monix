@@ -32,9 +32,9 @@
               # Default 1; darkened so text stays legible on the glass.
               brightness = 0.7;
               popups = true;
-              # Popup buffers are rectangular; keep their transparent corners
-              # out of the blur mask so rounded shell panels stay rounded.
-              popups_ignorealpha = 0.5;
+              # Preserve the antialiased edge of Kestrel's translucent popup
+              # surfaces while excluding their fully transparent corners.
+              popups_ignorealpha = 0.05;
             };
           };
 

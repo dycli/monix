@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
 
 PopupWindow {
     id: root
@@ -28,12 +27,6 @@ PopupWindow {
         height: root.height
         radius: Style.popupRadius
     }
-    HyprlandWindow.visibleMask: Region {
-        width: root.width
-        height: root.height
-        radius: Style.popupRadius
-    }
-
     onVisibleChanged: {
         if (visible) {
             selectedIndex = 0;
