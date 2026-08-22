@@ -37,7 +37,7 @@ PopupWindow {
 
     color: "transparent"
     implicitWidth: 720
-    implicitHeight: Math.min(620, maximumHeight)
+    implicitHeight: Math.min(680, maximumHeight)
     grabFocus: true
     visible: SettingsPanelService.isOpen(screenName)
     mask: Region {

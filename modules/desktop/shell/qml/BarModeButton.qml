@@ -14,6 +14,7 @@ Item {
     property bool enabled: true
     property bool interactive: true
     property bool secondaryInteractive: false
+    property bool showActiveIndicator: true
     property real maximumWidth: 0
 
     readonly property real contentSpacing: icon.length > 0 && label.length > 0 ? 4 : 0
@@ -73,7 +74,7 @@ Item {
             horizontalCenter: parent.horizontalCenter
         }
         color: Style.foregroundColor
-        visible: root.active
+        visible: root.active && root.showActiveIndicator
     }
 
     MouseArea {

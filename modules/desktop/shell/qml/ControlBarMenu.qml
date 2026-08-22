@@ -12,16 +12,19 @@ Row {
     spacing: Style.barItemGap
 
     WifiStatusButton {
+        showActiveIndicator: false
         onDetailRequested: root.settingsRequested("network")
     }
 
     EthernetStatusButton {
+        showActiveIndicator: false
         onDetailRequested: root.settingsRequested("network")
     }
 
     BluetoothStatusButton {
         id: bluetoothButton
 
+        showActiveIndicator: false
         onDetailRequested: root.settingsRequested("bluetooth")
     }
 
@@ -60,6 +63,7 @@ Row {
     BarModeButton {
         enabled: true
         icon: NightModeState.enabled ? "󰖔" : "󰖨"
+        showActiveIndicator: false
         onActivated: NightModeState.toggle()
     }
 }
