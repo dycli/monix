@@ -24,7 +24,6 @@ QtObject {
     readonly property string icon: muted
         ? ""
         : (volume < 34 ? "" : (volume < 67 ? "" : ""))
-    readonly property string label: available && !muted ? volume + "%" : ""
     readonly property string sourceIcon: sourceMuted ? "󰍭" : ""
 
     property PwObjectTracker tracker: PwObjectTracker {
@@ -44,13 +43,6 @@ QtObject {
             return "";
         const properties = node.ready ? (node.properties || {}) : {};
         return properties["media.name"] || properties["media.title"] || "";
-    }
-
-    function iconName(node): string {
-        if (!node)
-            return "";
-        const properties = node.ready ? (node.properties || {}) : {};
-        return properties["application.icon-name"] || "";
     }
 
     function setNodeVolume(node, value: real): void {
@@ -75,11 +67,6 @@ QtObject {
     function setDefaultInput(node): void {
         if (node && !node.isStream && !node.isSink)
             Pipewire.preferredDefaultAudioSource = node;
-    }
-
-    function mute(): void {
-        if (available)
-            sink.audio.muted = true;
     }
 
     function toggleMute(): void {

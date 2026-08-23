@@ -71,10 +71,14 @@ QtObject {
         }
     }
 
-    property Connections batteryEvents: Connections {
-        target: UPower
+    property Connections powerEvents: Connections {
+        target: PowerService
 
-        function onOnBatteryChanged(): void {
+        function onHasBatteryChanged(): void {
+            root.applyAutomaticProfile();
+        }
+
+        function onPluggedInChanged(): void {
             root.applyAutomaticProfile();
         }
     }

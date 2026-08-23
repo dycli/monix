@@ -7,7 +7,11 @@ import Quickshell.Io
 import QtQuick
 
 ShellRoot {
-    Component.onCompleted: DisplayState.refresh()
+    Component.onCompleted: {
+        DisplayState.refresh();
+        InputState.applyNow();
+        PowerSettingsState.applyAutomaticProfile();
+    }
 
     Bar {}
 

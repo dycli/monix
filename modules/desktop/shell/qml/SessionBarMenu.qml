@@ -5,11 +5,16 @@ import QtQuick
 Row {
     id: root
 
+    required property bool active
+
     height: 24
     spacing: Style.barItemGap
-    focus: true
+    focus: active
 
-    Component.onCompleted: Qt.callLater(() => forceActiveFocus())
+    onActiveChanged: {
+        if (active)
+            Qt.callLater(() => forceActiveFocus());
+    }
 
     Keys.onPressed: event => {
         if (event.isAutoRepeat || event.modifiers !== Qt.NoModifier)

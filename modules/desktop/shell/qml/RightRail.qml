@@ -13,10 +13,8 @@ Item {
     readonly property bool ownsMode: BarModeService.isActive(screenName)
     readonly property string transientMode: BarModeService.transientFor(screenName)
     readonly property bool transientVisible: BarModeService.transientVisibleFor(screenName)
-    readonly property string requestedMode: ownsMode ? BarModeService.activeMode : ""
-    readonly property bool sessionDetail: ownsMode && requestedMode === "session"
+    readonly property bool sessionDetail: ownsMode && BarModeService.activeMode === "session"
     readonly property bool detailVisible: sessionDetail
-    readonly property bool sessionDetailVisual: displayedDetailMode === "session"
     readonly property bool overviewVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientVisible)
     readonly property string overviewMode: {
@@ -38,7 +36,7 @@ Item {
 
     property bool hoverOpen: false
     property string hoverMode: "control"
-    property string displayedDetailMode: ""
+    property bool sessionDetailVisual: false
     property real overviewProgress: overviewVisible ? 1 : 0
     property real detailProgress: detailVisible ? 1 : 0
 
@@ -54,8 +52,7 @@ Item {
     readonly property real endControlGap: endControlWidth > 0 ? gap : 0
     readonly property real availableDetailWidth: Math.max(0,
         maximumWidth - pinnedControlsLead - endControlWidth - endControlGap)
-    readonly property real requestedDetailWidth: detailLoader.item
-        ? detailLoader.item.implicitWidth : controlMenu.implicitWidth
+    readonly property real requestedDetailWidth: sessionMenu.implicitWidth
     readonly property real detailContentWidth: Math.min(availableDetailWidth, requestedDetailWidth)
     readonly property real detailWidth: pinnedControlsLead + detailContentWidth
         + endControlGap + endControlWidth
@@ -70,12 +67,12 @@ Item {
 
     onDetailVisibleChanged: {
         if (detailVisible)
-            displayedDetailMode = BarModeService.activeMode;
+            sessionDetailVisual = true;
     }
 
     onDetailProgressChanged: {
         if (!detailVisible && detailProgress <= 0)
-            displayedDetailMode = "";
+            sessionDetailVisual = false;
     }
 
     Behavior on overviewProgress {
@@ -280,21 +277,14 @@ Item {
         enabled: root.detailVisible
         opacity: root.detailProgress
 
-        Loader {
-            id: detailLoader
-
+        SessionBarMenu {
+            id: sessionMenu
+            active: root.detailVisible
             anchors {
                 right: parent.right
                 verticalCenter: parent.verticalCenter
             }
-            sourceComponent: {
-                switch (root.displayedDetailMode) {
-                case "session":
-                    return sessionMode;
-                default:
-                    return null;
-                }
-            }
+            visible: root.sessionDetailVisual
         }
     }
 
@@ -349,12 +339,6 @@ Item {
     SettingsPopout {
         anchorItem: settingsButton
         screenName: root.screenName
-    }
-
-    Component {
-        id: sessionMode
-
-        SessionBarMenu {}
     }
 
 }

@@ -8,7 +8,6 @@ BarModeButton {
     signal detailRequested
 
     visible: NetworkState.wifiDevice !== null
-    active: NetworkState.wifiEnabled
     icon: NetworkState.wifiEnabled ? "󰖩" : "󰖪"
     interactive: NetworkState.available && NetworkState.wifiHardwareEnabled
     label: NetworkState.connectedWifiNetwork

@@ -8,7 +8,6 @@ BarModeButton {
     signal detailRequested
 
     visible: BluetoothState.available
-    active: BluetoothState.connected
     interactive: BluetoothState.available
     icon: BluetoothState.icon
     label: BluetoothState.label

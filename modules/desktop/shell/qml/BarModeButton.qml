@@ -10,11 +10,9 @@ Item {
 
     property string icon: ""
     property string label: ""
-    property bool active: false
     property bool enabled: true
     property bool interactive: true
     property bool secondaryInteractive: false
-    property bool showActiveIndicator: true
     property real maximumWidth: 0
 
     readonly property real contentSpacing: icon.length > 0 && label.length > 0 ? 4 : 0
@@ -63,18 +61,6 @@ Item {
             text: root.label
             visible: root.label.length > 0
         }
-    }
-
-    Rectangle {
-        width: Math.min(root.naturalContentWidth, root.width - 10)
-        height: 1
-        anchors {
-            bottom: parent.bottom
-            bottomMargin: 3
-            horizontalCenter: parent.horizontalCenter
-        }
-        color: Style.foregroundColor
-        visible: root.active && root.showActiveIndicator
     }
 
     MouseArea {

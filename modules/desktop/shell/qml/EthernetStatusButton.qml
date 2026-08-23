@@ -8,7 +8,6 @@ BarModeButton {
     signal detailRequested
 
     visible: NetworkState.wiredDevice !== null
-    active: NetworkState.wiredConnected
     icon: NetworkState.wiredConnected ? "󰈀" : "󰈂"
     interactive: NetworkState.available
     secondaryInteractive: NetworkState.available && NetworkState.wiredNetwork !== null

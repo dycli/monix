@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 
 import QtCore
 import QtQuick
+import Quickshell.Hyprland
 import Quickshell.Io
 
 QtObject {
@@ -60,6 +61,20 @@ QtObject {
     property Timer saveTimer: Timer {
         interval: 250
         onTriggered: root.saveSettings()
+    }
+
+    property Connections hyprlandEvents: Connections {
+        target: Hyprland
+
+        function onRawEvent(event): void {
+            if (event.name === "configreloaded")
+                root.reapplyAfterConfigReload.restart();
+        }
+    }
+
+    property Timer reapplyAfterConfigReload: Timer {
+        interval: 250
+        onTriggered: root.applyNow()
     }
 
     function boundedNumber(value, fallback: real, minimum: real, maximum: real): real {

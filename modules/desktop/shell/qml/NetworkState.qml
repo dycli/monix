@@ -14,24 +14,11 @@ QtObject {
     readonly property var wiredNetwork: wiredDevice ? wiredDevice.network : null
     readonly property var networkObjects: wifiDevice && wifiDevice.networks ? wifiDevice.networks.values : []
     readonly property var networks: sortedNetworks()
-    readonly property var visibleNetworks: networks.slice(0, wiredConnected ? 5 : 6)
 
     readonly property bool wifiEnabled: Networking.wifiEnabled
     readonly property bool wifiHardwareEnabled: Networking.wifiHardwareEnabled
     readonly property var connectedWifiNetwork: networks.find(network => network.connected) || null
     readonly property bool wiredConnected: wiredDevice !== null && wiredDevice.connected
-    readonly property bool connected: wiredConnected || connectedWifiNetwork !== null
-    readonly property string primaryType: wiredConnected
-        ? "ethernet"
-        : (connectedWifiNetwork ? "wifi" : (wiredDevice !== null && wifiDevice === null ? "ethernet" : "none"))
-    readonly property string primaryIcon: wiredConnected
-        ? "󰈀"
-        : (connectedWifiNetwork ? "󰖩" : (primaryType === "ethernet" ? "󰈂" : "󰖪"))
-    readonly property string primaryLabel: primaryType === "ethernet"
-        ? (wiredConnected ? "Ethernet" : "")
-        : (connectedWifiNetwork
-            ? connectedWifiNetwork.name + " " + Math.round(connectedWifiNetwork.signalStrength * 100) + "%"
-            : "")
 
     function findDevice(type) {
         let fallback = null;
