@@ -46,10 +46,9 @@ Variants {
         }
 
         TapHandler {
+            enabled: BarModeService.isActive(window.modelData.name)
             acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
             onTapped: eventPoint => {
-                if (!BarModeService.isActive(window.modelData.name))
-                    return;
                 if (launcher.active) {
                     const launcherPoint = launcher.mapFromItem(window.contentItem,
                         eventPoint.position.x, eventPoint.position.y);
