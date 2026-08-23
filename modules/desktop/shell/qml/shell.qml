@@ -1,5 +1,6 @@
 //@ pragma AppId org.kestrel.shell
 //@ pragma Env QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+//@ pragma UseQApplication
 
 import Quickshell
 import Quickshell.Io
