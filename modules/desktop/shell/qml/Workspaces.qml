@@ -41,11 +41,49 @@ Row {
             required property int modelData
 
             readonly property int workspaceId: modelData
+            readonly property var hyprlandWorkspace: {
+                const workspaces = Hyprland.workspaces?.values || [];
+                return workspaces.find(candidate => candidate.id === workspaceId) || null;
+            }
             readonly property bool active: workspaceId === root.activeWorkspaceId
+            readonly property bool urgent: !active && (hyprlandWorkspace?.urgent || false)
 
             width: 28
             height: 24
             color: "transparent"
+
+            Rectangle {
+                id: attentionHalo
+
+                anchors.centerIn: parent
+                width: 20
+                height: width
+                radius: width / 2
+                color: "transparent"
+                border {
+                    color: Style.foregroundColor
+                    width: 1
+                }
+                opacity: 1
+                visible: workspace.urgent
+
+                SequentialAnimation on opacity {
+                    loops: Animation.Infinite
+                    paused: !workspace.urgent
+
+                    NumberAnimation {
+                        to: 0.2
+                        duration: 360
+                        easing.type: Easing.InOutSine
+                    }
+                    NumberAnimation {
+                        to: 1
+                        duration: 360
+                        easing.type: Easing.InOutSine
+                    }
+                    PauseAnimation { duration: 520 }
+                }
+            }
 
             Canvas {
                 id: workspaceShape
