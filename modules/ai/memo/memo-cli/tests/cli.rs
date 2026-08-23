@@ -254,6 +254,61 @@ fn zoom_and_corrupt_summary_recovery_match_upstream() {
 }
 
 #[test]
+fn ranked_find_is_incremental_bounded_and_rebuildable() {
+    let store = TempDir::new("find");
+    for text in [
+        "Fire inference context is now 144K",
+        "Fire hosts the local inference endpoint",
+        "the context menu opens beside the pointer",
+        "reunião sobre brilho da tela em São Paulo",
+    ] {
+        assert!(run(&store.0, &["note", text]).status.success());
+    }
+
+    let found = stdout(&run(&store.0, &["find", "Fire inference context"]));
+    assert!(found.lines().next().unwrap().starts_with("#0 "), "{found}");
+    assert!(store.0.join("SEARCH.sqlite").is_file());
+    assert!(stdout(&run(&store.0, &["find", "reuniao tela"])).contains("São Paulo"));
+    assert_eq!(
+        stdout(&run(&store.0, &["find", "no-such-memory"])),
+        "No match.\n"
+    );
+
+    assert!(
+        run(
+            &store.0,
+            &["note", "display luminance can be controlled independently"],
+        )
+        .status
+        .success()
+    );
+    let incremental = stdout(&run(&store.0, &["find", "luminance"]));
+    assert!(incremental.starts_with("#4 "), "{incremental}");
+
+    fs::write(store.0.join("SEARCH.sqlite"), b"not a sqlite database").unwrap();
+    let rebuilt = run(&store.0, &["find", "luminance"]);
+    assert!(rebuilt.status.success(), "{}", stderr(&rebuilt));
+    assert!(stdout(&rebuilt).starts_with("#4 "));
+
+    for i in 0..25 {
+        assert!(
+            run(
+                &store.0,
+                &["note", &format!("shared retrieval term item {i}")]
+            )
+            .status
+            .success()
+        );
+    }
+    let bounded = stdout(&run(&store.0, &["find", "shared"]));
+    assert_eq!(
+        bounded.lines().filter(|line| line.starts_with('#')).count(),
+        20
+    );
+    assert!(bounded.contains("Best 20 of 25 matches."), "{bounded}");
+}
+
+#[test]
 fn cli_end_to_end() {
     let store = TempDir::new("test");
 

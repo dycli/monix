@@ -1,4 +1,5 @@
 mod blocks;
+mod search;
 
 use regex::{Regex, RegexBuilder};
 use std::collections::{HashMap, VecDeque};
@@ -61,6 +62,7 @@ const USAGE: &str = r#"OptMem: a permanent, append-only memory for AI agents.
   memo note "..."          record one memory: one short line.
   memo nap [id "..."]      do the pending compressions.
   memo recall <regex>      search every memory ever recorded.
+  memo find "<words>"      rank raw memories by matching words.
   memo zoom <lo>-<hi>      open a tree node: its two halves.
   memo forget <lo>-<hi>    drop a bad summary; nap rebuilds it.
   memo config [NAME=N]     show this memory's sizes, or change one.
@@ -99,6 +101,9 @@ Never edit or delete anything under `{data}`: the tool manages it.
 ### When you need an old memory: search, or navigate
 
 `memo recall <regex>` searches every memory, word for word.
+`memo find "<words>"` ranks raw memories when you know the topic but not
+the exact wording. Treat summaries as historical navigation; use `find`
+before relying on a mutable fact found only in a summary.
 
 Your memories also form a binary tree: #0-1, #2-3 ... exist as one-line
 summaries, pairs of those as #0-3, and so on -- every `#a-b` line wake
@@ -899,6 +904,30 @@ fn cmd_recall(d: &Path, args: &[String], c: Config) -> Result<(), String> {
     Ok(())
 }
 
+fn cmd_find(d: &Path, args: &[String]) -> Result<(), String> {
+    if args.len() != 1 || args[0].trim().is_empty() {
+        return die("usage: memo find \"<plain words>\"");
+    }
+    let found = search::find(d, &args[0], 20)?;
+    if found.hits.is_empty() {
+        println!("No match.");
+        return Ok(());
+    }
+    for e in &found.hits {
+        println!("#{} {} {}", e.id, e.date, e.text);
+    }
+    if found.hits.len() < found.total {
+        println!(
+            "Best {} of {}. Narrow the words for fewer results.",
+            found.hits.len(),
+            plural(found.total, "match")
+        );
+    } else {
+        println!("{}.", plural(found.total, "match"));
+    }
+    Ok(())
+}
+
 /// The shape regex admits 2026-99-99; this checks the calendar, keeping
 /// the log's lexicographic ordering equivalent to chronological.
 fn valid_date(date: &str) -> bool {
@@ -1032,7 +1061,16 @@ fn run() -> Result<(), String> {
     }
     if !matches!(
         args[0].as_str(),
-        "init" | "wake" | "note" | "nap" | "recall" | "zoom" | "forget" | "config" | "import"
+        "init"
+            | "wake"
+            | "note"
+            | "nap"
+            | "recall"
+            | "find"
+            | "zoom"
+            | "forget"
+            | "config"
+            | "import"
     ) {
         eprintln!("No such command: {}\n", args[0]);
         eprintln!("{USAGE}");
@@ -1049,6 +1087,7 @@ fn run() -> Result<(), String> {
         "note" => cmd_note(&d, &args[1..], c),
         "nap" => cmd_nap(&d, &args[1..], c),
         "recall" => cmd_recall(&d, &args[1..], c),
+        "find" => cmd_find(&d, &args[1..]),
         "zoom" => cmd_zoom(&d, &args[1..]),
         "forget" => cmd_forget(&d, &args[1..]),
         "config" => cmd_config(&d, &args[1..]),

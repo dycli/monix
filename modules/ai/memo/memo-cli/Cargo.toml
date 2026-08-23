@@ -10,6 +10,7 @@ libc = "0.2"
 # Python's re.I case-folds Unicode. The full engine preserves that upstream
 # behavior while retaining Rust regex's linear-time guarantee.
 regex = "1"
+rusqlite = { version = "0.37", features = ["bundled"] }
 
 [profile.release]
 lto = "thin"

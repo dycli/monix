@@ -44,6 +44,9 @@
     ### When you need an old memory: search, or navigate
 
     `memo recall <regex>` searches every memory, word for word.
+    `memo find "<words>"` ranks raw memories when you know the topic but not
+    the exact wording. Treat summaries as historical navigation; use `find`
+    before relying on a mutable fact found only in a summary.
 
     Your memories also form a binary tree: #0-1, #2-3 ... exist as one-line
     summaries, pairs of those as #0-3, and so on -- every `#a-b` line wake
