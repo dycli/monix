@@ -4,8 +4,11 @@
 
 import Quickshell
 import Quickshell.Io
+import QtQuick
 
 ShellRoot {
+    Component.onCompleted: DisplayState.refresh()
+
     Bar {}
 
     IpcHandler {
