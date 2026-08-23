@@ -1,7 +1,9 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
 
+import QtCore
 import QtQuick
+import Quickshell.Io
 import Quickshell.Services.UPower
 
 QtObject {
@@ -22,6 +24,33 @@ QtObject {
         ? profileKey(PowerProfiles.profile) : "default"
 
     property bool idleInhibited: false
+    property bool idleStateLoaded: false
+
+    property FileView idleStateFile: FileView {
+        path: StandardPaths.writableLocation(StandardPaths.RuntimeLocation)
+            + "/kestrel-idle-inhibited"
+        blockLoading: true
+        blockWrites: true
+        watchChanges: false
+
+        onLoaded: {
+            root.idleInhibited = text().trim() === "true";
+            root.idleStateLoaded = true;
+        }
+        onLoadFailed: {
+            root.idleStateLoaded = true;
+            root.saveIdleState();
+        }
+    }
+
+    onIdleInhibitedChanged: {
+        if (idleStateLoaded)
+            saveIdleState();
+    }
+
+    function saveIdleState(): void {
+        idleStateFile.setText(idleInhibited ? "true\n" : "false\n");
+    }
 
     readonly property string status: {
         if (!hasBattery)
