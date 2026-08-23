@@ -10,9 +10,72 @@
 { self, inputs, ... }:
 {
   flake.nixosModules.hyprland = self.nixosModules.kde-integration;
-  flake.nixosModules.kde-integration = {
-    qt.enable = true;
-  };
+  flake.nixosModules.kde-integration =
+    { lib, pkgs, ... }:
+    let
+      inherit (lib.meta) getExe;
+
+      plasmaWorkspace = pkgs.kdePackages.plasma-workspace;
+      xembedSniProxyCmake = pkgs.writeText "xembed-sni-proxy-CMakeLists.txt" (
+        import ./xembed-sni-proxy-cmake.nix { inherit (plasmaWorkspace) version; }
+      );
+
+      # Qt 5 applications still publish tray icons through XEmbed. Build only
+      # Plasma's maintained XEmbed-to-StatusNotifier bridge instead of pulling
+      # the full Plasma Workspace closure into Kestrel.
+      xembedSniProxy = pkgs.stdenv.mkDerivation {
+        pname = "xembed-sni-proxy";
+        inherit (plasmaWorkspace) src version;
+        sourceRoot = "plasma-workspace-${plasmaWorkspace.version}/xembed-sni-proxy";
+
+        postPatch = ''
+          cp ${xembedSniProxyCmake} CMakeLists.txt
+        '';
+
+        nativeBuildInputs = [
+          pkgs.cmake
+          pkgs.kdePackages.extra-cmake-modules
+          pkgs.qt6.wrapQtAppsHook
+        ];
+
+        buildInputs = [
+          pkgs.kdePackages.kcoreaddons
+          pkgs.kdePackages.kcrash
+          pkgs.kdePackages.kdbusaddons
+          pkgs.kdePackages.kwindowsystem
+          pkgs.libXtst
+          pkgs.libxcb
+          pkgs.libxcb-image
+          pkgs.libxcb-util
+          pkgs.libxcb-wm
+          pkgs.qt6.qtbase
+        ];
+
+        meta = {
+          mainProgram = "xembedsniproxy";
+          platforms = lib.platforms.linux;
+        };
+      };
+    in
+    {
+      qt.enable = true;
+
+      systemd.user.services.xembed-sni-proxy = {
+        description = "Bridge legacy XEmbed tray icons to StatusNotifier";
+        partOf = [ "graphical-session.target" ];
+        after = [
+          "graphical-session.target"
+          "ship-shell.service"
+        ];
+        wantedBy = [ "graphical-session.target" ];
+
+        serviceConfig = {
+          ExecStart = getExe xembedSniProxy;
+          Restart = "on-failure";
+          RestartSec = 1;
+        };
+      };
+    };
 
   flake.homeModules.hyprland = self.homeModules.kde-integration;
 
