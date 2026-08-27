@@ -48,8 +48,5 @@
       remy.famlog.path = "/home/${config.primaryUser}/crate/sync/notes/famlog.md";
       remy.famlog.owner = config.primaryUser;
       remy.famlog.group = "syncthing";
-
-      curtisbot.guildId = "916523305362685952";
-      curtisbot.testGuildId = "1529484237210910753";
     };
 }

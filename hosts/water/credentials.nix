@@ -25,8 +25,6 @@ in
   remy.registrationEnvFile = config.secrets.matrix-registration-env.path;
   remy.calendar.credentialsFile = config.secrets.remy-caldav-json.path;
 
-  curtisbot.credentialsEnvFile = config.secrets.curtisbot-env.path;
-
   agentFleet.credentials = {
     claudeTokenFile = config.secrets.agent-claude-token.path;
     codexAuthFile = config.secrets.agent-codex-auth.path;
@@ -45,7 +43,6 @@ in
     };
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     matrix-alertbot-env.file = ./secrets/matrix-alertbot.env.age;
-    curtisbot-env.file = ./secrets/curtisbot.env.age;
     cloudflare-dns-token = {
       file = ./secrets/cloudflare-dns-token.env.age;
       owner = "acme";
@@ -63,7 +60,6 @@ in
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
   systemd.services.remy.restartTriggers = singleton ./secrets/matrix-remy.env.age;
-  systemd.services.curtisbot.restartTriggers = singleton ./secrets/curtisbot.env.age;
   systemd.services.fleet-log-stream.restartTriggers = singleton ./secrets/matrix-alertbot.env.age;
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;

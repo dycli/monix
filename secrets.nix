@@ -44,8 +44,6 @@ in
   "hosts/water/secrets/matrix-remy.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/remy-caldav.json.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-alertbot.env.age".publicKeys = singleton water ++ admin;
-  # DISCORD_TOKEN=...
-  "hosts/water/secrets/curtisbot.env.age".publicKeys = singleton water ++ admin;
   # INI merged over the declarative config at unit start.
   "hosts/water/secrets/sabnzbd-secrets.ini.age".publicKeys = singleton water ++ admin;
   # CLOUDFLARE_DNS_API_TOKEN=..., Zone→DNS→Edit on su.is, for DNS-01.
