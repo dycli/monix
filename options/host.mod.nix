@@ -5,12 +5,18 @@
     { lib, ... }:
     let
       inherit (lib.options) mkOption;
-      inherit (lib.types) listOf str;
+      inherit (lib.types) bool listOf str;
     in
     {
       options.primaryUser = mkOption {
         type = str;
         description = "Login name of the primary, human, admin user of the host.";
+      };
+
+      options.kestrel.allowSleep = mkOption {
+        type = bool;
+        default = true;
+        description = "Whether Kestrel may suspend or hibernate this host.";
       };
 
       options.unfreePackages = mkOption {

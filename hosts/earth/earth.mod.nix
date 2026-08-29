@@ -29,6 +29,11 @@
 
         primaryUser = "dylan";
 
+        services.displayManager.autoLogin = {
+          enable = true;
+          user = config.primaryUser;
+        };
+
         nixpkgs.hostPlatform = "x86_64-linux";
 
         # HARDWARE

@@ -23,6 +23,11 @@
 
         primaryUser = "zuko";
 
+        services.displayManager.autoLogin = {
+          enable = true;
+          user = config.primaryUser;
+        };
+
         services.paseo = {
           user = config.primaryUser;
           group = config.users.users.${config.primaryUser}.group;

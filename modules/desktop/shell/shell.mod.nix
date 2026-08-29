@@ -17,6 +17,13 @@
       environment.systemPackages = singleton pkgs.quickshell;
       hardware.i2c.enable = true;
 
+      systemd.sleep.settings.Sleep = lib.modules.mkIf (!config.kestrel.allowSleep) {
+        AllowSuspend = false;
+        AllowHibernation = false;
+        AllowSuspendThenHibernate = false;
+        AllowHybridSleep = false;
+      };
+
       systemd.user.tmpfiles.rules = singleton "d %h/.local/state/kestrel 0700 - - -";
 
       # systemd user units do not inherit the session's XDG_DATA_DIRS.
@@ -43,6 +50,7 @@
           XDG_DATA_DIRS = "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
           KESTREL_BROWSER = getExe pkgs.brave;
           KESTREL_EMAIL = getExe pkgs.thunderbird;
+          KESTREL_ALLOW_SLEEP = if config.kestrel.allowSleep then "true" else "false";
           KESTREL_MESSENGER = getExe pkgs.signal-desktop;
           KESTREL_TERMINAL = getExe pkgs.ghostty;
         };

@@ -12,13 +12,21 @@
     lib.ship.host "water" ({
       imports = [
         self.nixosModules.lab
+        self.nixosModules.desktop
+        self.nixosModules.hyprland
         self.nixosModules.dev
+        self.nixosModules.gaming
+        self.nixosModules.creative
         inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
         ./credentials.nix
       ];
 
       primaryUser = "katara";
       users.users.katara.uid = 1000;
+
+      # The homelab starts at boot; Hyprland starts only after a local login.
+      services.displayManager.autoLogin.enable = false;
+      kestrel.allowSleep = false;
 
       nixpkgs.hostPlatform = "x86_64-linux";
 
@@ -33,6 +41,9 @@
       ];
       boot.kernelModules = lib.lists.singleton "kvm-amd";
       hardware.enableRedistributableFirmware = true;
+      hardware.amdgpu.opencl.enable = true;
+
+      programs.gamemode.enable = true;
 
       # EcoFlow RIVER 3 Plus over USB HID (usbhid-ups, 3746:ffff).
       alerts.ups.enable = true;

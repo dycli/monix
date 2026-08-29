@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell
 import Quickshell.Services.UPower
 
 Column {
@@ -203,6 +204,7 @@ Column {
             PowerSettingsState.currentPolicy.suspendMinutes, 5, 120)
         valueText: PowerSettingsState.currentPolicy.suspendEnabled
             ? PowerSettingsState.currentPolicy.suspendMinutes + " min" : "Off"
+        visible: Quickshell.env("KESTREL_ALLOW_SLEEP") === "true"
         onIconActivated: PowerSettingsState.togglePolicyField("suspendEnabled")
         onMoved: value => PowerSettingsState.setTimeout("suspendMinutes", value, 5, 120)
     }

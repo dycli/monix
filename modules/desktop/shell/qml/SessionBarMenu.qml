@@ -1,11 +1,14 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell
 
 Row {
     id: root
 
     required property bool active
+
+    readonly property bool sleepAllowed: Quickshell.env("KESTREL_ALLOW_SLEEP") === "true"
 
     height: 24
     spacing: Style.barItemGap
@@ -24,9 +27,13 @@ Row {
             SessionService.lock();
             break;
         case Qt.Key_S:
+            if (!root.sleepAllowed)
+                return;
             SessionService.suspend();
             break;
         case Qt.Key_H:
+            if (!root.sleepAllowed)
+                return;
             SessionService.hibernate();
             break;
         case Qt.Key_X:
@@ -53,12 +60,14 @@ Row {
     BarModeButton {
         icon: "󰤄"
         label: "Suspend"
+        visible: root.sleepAllowed
         onActivated: SessionService.suspend()
     }
 
     BarModeButton {
         icon: ""
         label: "Hibernate"
+        visible: root.sleepAllowed
         onActivated: SessionService.hibernate()
     }
 

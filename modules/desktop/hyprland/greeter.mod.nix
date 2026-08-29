@@ -1,4 +1,5 @@
-# Login after logout. LUKS gates cold boots, so the desktop itself autologs in.
+# Graphical login. Desktop hosts may opt into one initial automatic session;
+# otherwise tuigreet waits without starting a compositor.
 { self, ... }:
 {
   flake.nixosModules.hyprland =
@@ -12,12 +13,11 @@
       services.greetd = {
         enable = true;
         settings = {
-          # greetd does not consume displayManager.autoLogin itself. Its
-          # initial session runs once at service start; after logout, the
-          # interactive default session below takes over.
-          initial_session = {
+          # greetd does not consume displayManager.autoLogin itself, so map
+          # the standard policy to its one-shot initial session explicitly.
+          initial_session = lib.modules.mkIf config.services.displayManager.autoLogin.enable {
             command = "${lib.meta.getExe pkgs.uwsm} start -F -D Hyprland -- ${lib.meta.getExe' pkgs.hyprland "start-hyprland"}";
-            user = config.primaryUser;
+            user = config.services.displayManager.autoLogin.user;
           };
 
           default_session = {
