@@ -25,6 +25,7 @@ in
 
   # Paid font, encrypted to every desktop host that ships it.
   "assets/fonts/comic-code.age".publicKeys = [
+    water
     earth
     fire
   ]

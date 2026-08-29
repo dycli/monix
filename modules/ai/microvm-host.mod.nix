@@ -11,6 +11,7 @@
     }:
     let
       inherit (lib.lists) singleton;
+      inherit (lib.modules) mkIf;
       inherit (lib.strings) concatStringsSep;
 
       cfg = config.agentFleet;
@@ -45,9 +46,14 @@
         systemd.tmpfiles.rules =
           cfg.workers |> map (w: "d ${config.microvm.stateDir}/${w.name} 0755 microvm kvm -");
 
-        # networkd is authoritative for every interface here; mixing in
-        # scripted dhcpcd can drop networking.
+        # networkd always owns the private fleet links. A headless lab host
+        # also gives it the uplink; a desktop leaves that link to
+        # NetworkManager so Kestrel can control it.
         networking.useNetworkd = true;
+        networking.networkmanager.unmanaged = mkIf config.networking.networkmanager.enable [
+          "interface-name:${bridge}"
+          "interface-name:vm-*"
+        ];
 
         boot.kernel.sysctl = {
           "net.ipv4.ip_forward" = 0;
@@ -59,7 +65,7 @@
           message = "br-agents must never be a trusted firewall interface";
         };
 
-        systemd.network.networks."10-uplink" = {
+        systemd.network.networks."10-uplink" = mkIf (!config.networking.networkmanager.enable) {
           matchConfig.Name = "en*";
           networkConfig.DHCP = "yes";
           linkConfig.RequiredForOnline = "routable";
