@@ -54,6 +54,10 @@
           "interface-name:${bridge}"
           "interface-name:vm-*"
         ];
+        # With NetworkManager on the uplink, networkd owns no online-required
+        # link and its waiter can never succeed. NetworkManager supplies the
+        # network-online target instead.
+        systemd.network.wait-online.enable = !config.networking.networkmanager.enable;
 
         boot.kernel.sysctl = {
           "net.ipv4.ip_forward" = 0;
