@@ -16,6 +16,7 @@
     }:
     let
       inherit (lib.meta) getExe getExe';
+      idle = osConfig.kestrel.idle;
       wallpaper = ../../../assets/wallpapers/Bierstadt-Among-the-Sierra-Nevada-Mountains.jpg;
       kestrelHypridle = pkgs.writeShellApplication {
         name = "kestrel-hypridle";
@@ -76,10 +77,10 @@
             fi
           }
 
-          lock_enabled="$(read_enabled 'lockEnabled' false)"
-          lock_minutes="$(read_minutes 'lockMinutes' 5 1 60)"
-          display_enabled="$(read_enabled 'displayOffEnabled' false)"
-          display_minutes="$(read_minutes 'displayOffMinutes' 7 1 60)"
+          lock_enabled="$(read_enabled 'lockEnabled' '${lib.boolToString idle.lockEnabled}')"
+          lock_minutes="$(read_minutes 'lockMinutes' '${toString idle.lockMinutes}' 1 60)"
+          display_enabled="$(read_enabled 'displayOffEnabled' '${lib.boolToString idle.displayOffEnabled}')"
+          display_minutes="$(read_minutes 'displayOffMinutes' '${toString idle.displayOffMinutes}' 1 60)"
           suspend_enabled="false"
           ${lib.strings.optionalString osConfig.kestrel.allowSleep ''
             suspend_enabled="$(read_enabled 'suspendEnabled' true)"

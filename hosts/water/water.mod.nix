@@ -27,6 +27,12 @@
       # The homelab starts at boot; Hyprland starts only after a local login.
       services.displayManager.autoLogin.enable = false;
       kestrel.allowSleep = false;
+      kestrel.idle = {
+        lockEnabled = true;
+        lockMinutes = 10;
+        displayOffEnabled = true;
+        displayOffMinutes = 10;
+      };
 
       nixpkgs.hostPlatform = "x86_64-linux";
 

@@ -85,13 +85,25 @@ QtObject {
 
     function defaultPolicy(): var {
         return {
-            "lockEnabled": false,
-            "lockMinutes": 5,
-            "displayOffEnabled": false,
-            "displayOffMinutes": 7,
+            "lockEnabled": environmentBool("KESTREL_IDLE_LOCK_ENABLED", false),
+            "lockMinutes": environmentMinutes("KESTREL_IDLE_LOCK_MINUTES", 5),
+            "displayOffEnabled": environmentBool(
+                "KESTREL_IDLE_DISPLAY_OFF_ENABLED", false),
+            "displayOffMinutes": environmentMinutes(
+                "KESTREL_IDLE_DISPLAY_OFF_MINUTES", 7),
             "suspendEnabled": true,
             "suspendMinutes": 10
         };
+    }
+
+    function environmentBool(name: string, fallback: bool): bool {
+        const value = Quickshell.env(name);
+        return value === "true" ? true : value === "false" ? false : fallback;
+    }
+
+    function environmentMinutes(name: string, fallback: int): int {
+        const value = Quickshell.env(name);
+        return value === "" ? fallback : boundedMinutes(value, fallback, 1, 60);
     }
 
     function boundedMinutes(value, fallback: int, minimum: int, maximum: int): int {
@@ -102,11 +114,15 @@ QtObject {
 
     function cleanPolicy(value): var {
         const source = value && typeof value === "object" ? value : ({});
+        const defaults = defaultPolicy();
         return {
-            "lockEnabled": source.lockEnabled === true,
-            "lockMinutes": boundedMinutes(source.lockMinutes, 5, 1, 60),
-            "displayOffEnabled": source.displayOffEnabled === true,
-            "displayOffMinutes": boundedMinutes(source.displayOffMinutes, 7, 1, 60),
+            "lockEnabled": typeof source.lockEnabled === "boolean"
+                ? source.lockEnabled : defaults.lockEnabled,
+            "lockMinutes": boundedMinutes(source.lockMinutes, defaults.lockMinutes, 1, 60),
+            "displayOffEnabled": typeof source.displayOffEnabled === "boolean"
+                ? source.displayOffEnabled : defaults.displayOffEnabled,
+            "displayOffMinutes": boundedMinutes(
+                source.displayOffMinutes, defaults.displayOffMinutes, 1, 60),
             "suspendEnabled": source.suspendEnabled !== false,
             "suspendMinutes": boundedMinutes(source.suspendMinutes, 10, 5, 120)
         };

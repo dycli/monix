@@ -5,7 +5,12 @@
     { lib, ... }:
     let
       inherit (lib.options) mkOption;
-      inherit (lib.types) bool listOf str;
+      inherit (lib.types)
+        bool
+        ints
+        listOf
+        str
+        ;
     in
     {
       options.primaryUser = mkOption {
@@ -17,6 +22,29 @@
         type = bool;
         default = true;
         description = "Whether Kestrel may suspend or hibernate this host.";
+      };
+
+      options.kestrel.idle = {
+        lockEnabled = mkOption {
+          type = bool;
+          default = false;
+          description = "Whether a fresh Kestrel profile locks after inactivity.";
+        };
+        lockMinutes = mkOption {
+          type = ints.between 1 60;
+          default = 5;
+          description = "Default inactivity period before Kestrel locks.";
+        };
+        displayOffEnabled = mkOption {
+          type = bool;
+          default = false;
+          description = "Whether a fresh Kestrel profile powers displays off after inactivity.";
+        };
+        displayOffMinutes = mkOption {
+          type = ints.between 1 60;
+          default = 7;
+          description = "Default inactivity period before Kestrel powers displays off.";
+        };
       };
 
       options.unfreePackages = mkOption {
