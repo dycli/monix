@@ -4,7 +4,6 @@ Item {
     id: root
 
     property bool feathered: true
-    property bool expanded: true
 
     anchors.fill: parent
 
@@ -22,17 +21,8 @@ Item {
         anchors.fill: parent
         border.color: Style.panelBorderColor
         border.width: Style.popupBorderWidth
-        color: Style.popupBackgroundColor
+        color: Style.launcherBackgroundColor
         radius: Style.popupRadius
         visible: !root.feathered
-    }
-
-    opacity: expanded ? 1 : 0
-
-    Behavior on opacity {
-        NumberAnimation {
-            duration: 260
-            easing.type: Easing.InOutSine
-        }
     }
 }

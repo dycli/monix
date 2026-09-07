@@ -31,10 +31,9 @@
               passes = 3;
               # Default 1; darkened so text stays legible on the glass.
               brightness = 0.7;
-              ignore_opacity = false;
+              new_optimizations = true;
               popups = true;
-              popups_ignorealpha = 0;
-              xray = true;
+              popups_ignorealpha = 0.05;
             };
           };
 
@@ -100,8 +99,13 @@
           {
             match.namespace = "^(kestrel:bar)$";
             blur = true;
-            blur_popups = true;
             ignore_alpha = 0;
+          }
+          {
+            match.namespace = "^(kestrel:popout)$";
+            blur = true;
+            ignore_alpha = 0;
+            no_anim = true;
             xray = true;
           }
         ];

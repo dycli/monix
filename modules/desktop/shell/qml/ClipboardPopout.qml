@@ -2,8 +2,10 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
+import Quickshell.Wayland
 
-PopupWindow {
+PanelWindow {
     id: root
 
     required property Item anchorItem
@@ -19,13 +21,21 @@ PopupWindow {
     color: "transparent"
     implicitWidth: 420
     implicitHeight: Math.min(420, maximumHeight)
-    grabFocus: true
+    screen: anchorWindow ? anchorWindow.screen : null
     visible: ClipboardPanelService.isOpen(screenName)
-    mask: Region {
-        width: root.width
-        height: root.height
-        radius: Style.popupRadius
+
+    anchors {
+        top: true
+        right: true
     }
+    margins.top: Style.barHeight
+    exclusiveZone: 0
+
+    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.namespace: "kestrel:popout"
+    WlrLayershell.keyboardFocus: root.visible
+        ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+
     onVisibleChanged: {
         if (visible) {
             selectedIndex = 0;
@@ -50,27 +60,13 @@ PopupWindow {
         onTriggered: search.forceActiveFocus()
     }
 
-    anchor {
-        id: popupAnchor
-
-        window: root.anchorItem ? root.anchorItem.QsWindow.window : null
-        adjustment: PopupAdjustment.SlideY
-        edges: Edges.Top | Edges.Right
-        gravity: Edges.Bottom | Edges.Left
-        rect.width: 1
-        rect.height: 1
-
-        onAnchoring: {
-            if (!root.anchorItem || !window)
-                return;
-            popupAnchor.rect.x = window.width - 1;
-            popupAnchor.rect.y = window.height;
-        }
+    HyprlandFocusGrab {
+        active: root.visible
+        windows: [root]
+        onCleared: ClipboardPanelService.close()
     }
 
     PopupSurface {
-        expanded: root.visible
-
         Column {
             anchors {
                 fill: parent
