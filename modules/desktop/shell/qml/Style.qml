@@ -14,7 +14,6 @@ QtObject {
     readonly property color panelMutedColor: "#a9adb4"
     readonly property int popupRadius: 0
     readonly property int popupBorderWidth: 1
-    readonly property int popupRevealDuration: 320
     readonly property int barHeight: 28
     readonly property int iconFontSize: 14
     readonly property int smallFontSize: 10
