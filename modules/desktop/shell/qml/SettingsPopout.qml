@@ -46,7 +46,6 @@ PanelWindow {
         top: true
         right: true
     }
-    margins.top: Style.barHeight
     exclusiveZone: 0
 
     WlrLayershell.layer: WlrLayer.Top
