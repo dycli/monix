@@ -14,8 +14,7 @@ PopupWindow {
     readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
     readonly property real screenHeight: anchorWindow && anchorWindow.screen
         ? anchorWindow.screen.height : 698
-    readonly property real maximumHeight: Math.max(320, screenHeight
-        - Style.barHeight - Style.popupBarGap - Style.popupScreenMargin)
+    readonly property real maximumHeight: Math.max(320, screenHeight - Style.barHeight)
 
     color: "transparent"
     implicitWidth: 316
@@ -56,9 +55,8 @@ PopupWindow {
         onAnchoring: {
             if (!root.anchorItem || !window)
                 return;
-            popupAnchor.rect.x = Math.round(window.width - root.implicitWidth
-                - Style.popupScreenMargin);
-            popupAnchor.rect.y = window.height + Style.popupBarGap;
+            popupAnchor.rect.x = Math.round(window.width - root.implicitWidth);
+            popupAnchor.rect.y = window.height;
         }
     }
 
@@ -87,6 +85,7 @@ PopupWindow {
     }
 
     PopupSurface {
+        expanded: root.visible
 
         Column {
             anchors {

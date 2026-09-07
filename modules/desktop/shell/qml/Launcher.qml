@@ -45,7 +45,9 @@ Item {
         onTriggered: search.forceActiveFocus()
     }
 
-    PopupSurface {}
+    PopupSurface {
+        fadesDown: false
+    }
 
     Row {
         anchors {
