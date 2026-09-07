@@ -28,8 +28,9 @@
             shadow.enabled = false;
 
             blur = {
-              size = 1;
-              passes = 1;
+              passes = 3;
+              # Default 1; darkened so text stays legible on the glass.
+              brightness = 0.7;
               new_optimizations = true;
               popups = true;
               popups_ignorealpha = 0.05;
