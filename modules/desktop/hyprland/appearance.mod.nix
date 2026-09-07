@@ -28,8 +28,7 @@
             shadow.enabled = false;
 
             blur = {
-              size = 1;
-              passes = 1;
+              passes = 3;
               # Default 1; darkened so text stays legible on the glass.
               brightness = 0.7;
               new_optimizations = true;
@@ -100,14 +99,14 @@
           {
             match.namespace = "^(kestrel:bar)$";
             blur = true;
-            ignore_alpha = 0;
+            blur_popups = true;
+            ignore_alpha = 0.05;
           }
           {
             match.namespace = "^(kestrel:popout)$";
             blur = true;
-            ignore_alpha = 0;
+            ignore_alpha = 0.05;
             no_anim = true;
-            xray = true;
           }
         ];
       };
