@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="left" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="white" stop-opacity="0"/>
+      <stop offset="0.25" stop-color="white"/>
+    </linearGradient>
+    <linearGradient id="bottom" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.75" stop-color="white"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="left-mask">
+      <rect width="64" height="64" fill="url(#left)"/>
+    </mask>
+    <mask id="bottom-mask">
+      <rect width="64" height="64" fill="url(#bottom)"/>
+    </mask>
+  </defs>
+  <g mask="url(#left-mask)">
+    <rect width="64" height="64" fill="#282c34" fill-opacity="0.7"
+      mask="url(#bottom-mask)"/>
+  </g>
+</svg>

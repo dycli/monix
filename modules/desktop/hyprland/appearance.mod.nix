@@ -31,9 +31,9 @@
               passes = 3;
               # Default 1; darkened so text stays legible on the glass.
               brightness = 0.7;
+              ignore_opacity = false;
               popups = true;
-              # Keep fully transparent space outside Kestrel's surfaces clear.
-              popups_ignorealpha = 0.05;
+              popups_ignorealpha = 0;
             };
           };
 
@@ -100,7 +100,8 @@
             match.namespace = "^(kestrel:bar)$";
             blur = true;
             blur_popups = true;
-            ignore_alpha = 0.05;
+            ignore_alpha = 0;
+            xray = true;
           }
         ];
       };

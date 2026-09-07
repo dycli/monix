@@ -14,6 +14,9 @@ Variants {
         required property var modelData
 
         readonly property int barHeight: Style.barHeight
+        readonly property bool popoutOpen: ClockPanelService.isOpen(modelData.name)
+            || ClipboardPanelService.isOpen(modelData.name)
+            || SettingsPanelService.isOpen(modelData.name)
         readonly property bool railOverlapsWorkspaces: rightRail.visible
             && rightRail.x < workspaceGroup.x + workspaceGroup.width + Style.barItemGap
 
@@ -33,6 +36,19 @@ Variants {
         WlrLayershell.keyboardFocus: BarModeService.wantsKeyboard
             && BarModeService.isActive(window.modelData.name)
             ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+
+        Rectangle {
+            anchors.fill: parent
+            color: Style.popupBackgroundColor
+            opacity: window.popoutOpen ? 1 : 0
+
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 260
+                    easing.type: Easing.InOutSine
+                }
+            }
+        }
 
         IdleInhibitor {
             window: window

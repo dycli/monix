@@ -46,16 +46,16 @@ PopupWindow {
         id: popupAnchor
 
         window: root.anchorItem ? root.anchorItem.QsWindow.window : null
-        adjustment: PopupAdjustment.Slide
-        edges: Edges.Top | Edges.Left
-        gravity: Edges.Bottom | Edges.Right
+        adjustment: PopupAdjustment.SlideY
+        edges: Edges.Top | Edges.Right
+        gravity: Edges.Bottom | Edges.Left
         rect.width: 1
         rect.height: 1
 
         onAnchoring: {
             if (!root.anchorItem || !window)
                 return;
-            popupAnchor.rect.x = Math.round(window.width - root.implicitWidth);
+            popupAnchor.rect.x = window.width - 1;
             popupAnchor.rect.y = window.height;
         }
     }

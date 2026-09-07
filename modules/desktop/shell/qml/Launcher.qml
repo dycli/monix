@@ -46,7 +46,7 @@ Item {
     }
 
     PopupSurface {
-        fadesDown: false
+        feathered: false
     }
 
     Row {
