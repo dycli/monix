@@ -16,7 +16,7 @@
     </mask>
   </defs>
   <g mask="url(#left-mask)">
-    <rect width="64" height="64" fill="#282c34" fill-opacity="0.7"
+    <rect width="64" height="64" fill="#282c34" fill-opacity="0.45"
       mask="url(#bottom-mask)"/>
   </g>
 </svg>

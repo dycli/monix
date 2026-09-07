@@ -34,6 +34,7 @@
               ignore_opacity = false;
               popups = true;
               popups_ignorealpha = 0;
+              xray = true;
             };
           };
 
