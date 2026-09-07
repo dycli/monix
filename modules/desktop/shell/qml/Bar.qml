@@ -41,6 +41,13 @@ Variants {
             anchors.fill: parent
             color: Style.popupBackgroundColor
             opacity: window.popoutOpen ? 1 : 0
+
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: Style.popupFadeDuration
+                    easing.type: Easing.InOutSine
+                }
+            }
         }
 
         IdleInhibitor {

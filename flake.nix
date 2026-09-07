@@ -5,6 +5,21 @@
     url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
+  inputs.hyprland = {
+    url = "github:hyprwm/Hyprland";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  inputs.hy3 = {
+    url = "github:outfoxxed/hy3";
+    flake = false;
+  };
+
+  inputs.hyprland-plugins = {
+    url = "github:hyprwm/hyprland-plugins";
+    flake = false;
+  };
+
   inputs.nixos-hardware = {
     url = "github:NixOS/nixos-hardware/master";
   };
@@ -29,13 +44,6 @@
     inputs.nixpkgs.follows = "nixpkgs";
     inputs.home-manager.follows = "home-manager";
     inputs.darwin.follows = "";
-  };
-
-  # Built from source against this flake's hyprland: a plugin ABI must match
-  # the running compositor exactly, so upstream's own pin is unusable.
-  inputs.gloview = {
-    url = "github:fedsfarm/gloview";
-    flake = false;
   };
 
   # Follows so the platform-theme plugin builds against the same Qt as

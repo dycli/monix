@@ -1,5 +1,6 @@
 # Hyprland compositor and session at the system level, session core at the home
 # level. Sibling files in this folder merge into flake.homeModules.hyprland.
+{ inputs, ... }:
 {
   flake.nixosModules.hyprland =
     { lib, pkgs, ... }:
@@ -9,6 +10,11 @@
       inherit (lib.meta) getExe getExe';
     in
     {
+      nixpkgs.overlays = [
+        inputs.hyprland.overlays.hyprland-packages
+        inputs.hyprland.overlays.hyprland-extras
+      ];
+
       programs.hyprland.enable = true;
 
       # In this nixpkgs pin withUWSM only flips programs.uwsm.enable; it

@@ -168,9 +168,6 @@
 
         (mkBind "SUPER + COMMA" ''hl.dsp.focus({ workspace = "-1" })'' "Previous workspace" { })
         (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
-        # A closure, not a bare hl.plugin.gloview.toggle reference: the plugin
-        # is nil during the first config pass.
-        (mkBind "SUPER + O" "function() hl.plugin.gloview.toggle() end" "Workspace overview" { })
 
         (mkBind "SUPER + SHIFT + LEFT" (moveDirection "l") "Move window left" { })
         (mkBind "SUPER + SHIFT + RIGHT" (moveDirection "r") "Move window right" { })

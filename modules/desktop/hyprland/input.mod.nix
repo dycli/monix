@@ -1,10 +1,7 @@
 # Hyprland input: keyboard, touchpad, and touch gestures.
 {
   flake.homeModules.hyprland =
-    { lib, ... }:
-    let
-      inherit (lib.generators) mkLuaInline;
-    in
+    { ... }:
     {
       wayland.windowManager.hyprland.settings = {
         config.input = {
@@ -34,18 +31,6 @@
             fingers = 4;
             direction = "horizontal";
             action = "workspace";
-          }
-          # Closures, not bare references: hl.plugin.gloview is nil during the
-          # first config pass, so indexing must wait until the gesture fires.
-          {
-            fingers = 3;
-            direction = "up";
-            action = mkLuaInline "function() hl.plugin.gloview.open() end";
-          }
-          {
-            fingers = 3;
-            direction = "down";
-            action = mkLuaInline "function() hl.plugin.gloview.close() end";
           }
           {
             fingers = 3;

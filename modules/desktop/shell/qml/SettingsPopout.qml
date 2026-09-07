@@ -75,6 +75,8 @@ PanelWindow {
     }
 
     PopupSurface {
+        expanded: root.visible
+
         Item {
             anchors {
                 fill: parent
