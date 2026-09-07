@@ -12,10 +12,6 @@
     let
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
-
-      appmenuHelper = pkgs.writers.writePython3Bin "kestrel-appmenu-helper" {
-        libraries = singleton pkgs.python3Packages.dbus-next;
-      } (lib.trivial.readFile ./appmenu-helper.py);
     in
     {
       environment.systemPackages = singleton pkgs.quickshell;
@@ -55,7 +51,6 @@
           KESTREL_BROWSER = getExe pkgs.brave;
           KESTREL_EMAIL = getExe pkgs.thunderbird;
           KESTREL_ALLOW_SLEEP = if config.kestrel.allowSleep then "true" else "false";
-          KESTREL_APPMENU_HELPER = getExe appmenuHelper;
           KESTREL_IDLE_LOCK_ENABLED = lib.boolToString config.kestrel.idle.lockEnabled;
           KESTREL_IDLE_LOCK_MINUTES = toString config.kestrel.idle.lockMinutes;
           KESTREL_IDLE_DISPLAY_OFF_ENABLED = lib.boolToString config.kestrel.idle.displayOffEnabled;
