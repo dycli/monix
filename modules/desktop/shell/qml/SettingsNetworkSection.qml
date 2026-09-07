@@ -44,15 +44,55 @@ Column {
         restoreMode: Binding.RestoreBindingOrValue
     }
 
-    Text {
-        color: Style.foregroundColor
-        font {
-            family: Style.fontFamily
-            pixelSize: Style.panelTitleFontSize
-            weight: Style.fontWeight
+    Item {
+        width: parent.width
+        height: networkTitle.implicitHeight
+
+        Text {
+            id: networkTitle
+
+            anchors.left: parent.left
+            color: Style.foregroundColor
+            font {
+                family: Style.fontFamily
+                pixelSize: Style.panelTitleFontSize
+                weight: Style.fontWeight
+            }
+            renderType: Text.NativeRendering
+            text: "Network"
         }
-        renderType: Text.NativeRendering
-        text: "Network"
+
+        Row {
+            anchors {
+                right: parent.right
+                verticalCenter: parent.verticalCenter
+            }
+            spacing: 18
+
+            Text {
+                color: Style.panelMutedColor
+                font {
+                    family: Style.fontFamily
+                    pixelSize: Style.smallFontSize
+                    weight: Style.fontWeight
+                }
+                renderType: Text.NativeRendering
+                text: "↓ " + (NetworkState.trafficReady
+                    ? NetworkState.formatRate(NetworkState.downloadBytesPerSecond) : "—")
+            }
+
+            Text {
+                color: Style.panelMutedColor
+                font {
+                    family: Style.fontFamily
+                    pixelSize: Style.smallFontSize
+                    weight: Style.fontWeight
+                }
+                renderType: Text.NativeRendering
+                text: "↑ " + (NetworkState.trafficReady
+                    ? NetworkState.formatRate(NetworkState.uploadBytesPerSecond) : "—")
+            }
+        }
     }
 
     SettingsChoiceButton {

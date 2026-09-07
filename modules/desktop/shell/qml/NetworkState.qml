@@ -2,6 +2,7 @@ pragma Singleton
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell.Io
 import Quickshell.Networking
 
 QtObject {
@@ -19,6 +20,39 @@ QtObject {
     readonly property bool wifiHardwareEnabled: Networking.wifiHardwareEnabled
     readonly property var connectedWifiNetwork: networks.find(network => network.connected) || null
     readonly property bool wiredConnected: wiredDevice !== null && wiredDevice.connected
+
+    property real downloadBytesPerSecond: 0
+    property real uploadBytesPerSecond: 0
+    property bool trafficReady: false
+    property real lastReceivedBytes: 0
+    property real lastTransmittedBytes: 0
+    property real lastSampleTime: 0
+    property string lastDeviceKey: ""
+    property string pendingDeviceKey: ""
+
+    property Process trafficProcess: Process {
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: root.applyTrafficSample(text)
+        }
+        onExited: exitCode => {
+            if (exitCode !== 0)
+                root.resetTraffic();
+        }
+    }
+
+    property Timer trafficTimer: Timer {
+        interval: 1000
+        repeat: true
+        running: SettingsPanelService.screenName.length > 0
+            && SettingsPanelService.section === "network"
+        triggeredOnStart: true
+        onRunningChanged: {
+            if (!running)
+                root.resetTraffic();
+        }
+        onTriggered: root.sampleTraffic()
+    }
 
     function findDevice(type) {
         let fallback = null;
@@ -50,6 +84,96 @@ QtObject {
                 return left.known ? -1 : 1;
             return right.signalStrength - left.signalStrength;
         });
+    }
+
+    function connectedDeviceNames(): var {
+        const names = [];
+        for (const device of devices) {
+            if (device && device.connected
+                    && (device.type === DeviceType.Wifi || device.type === DeviceType.Wired))
+                names.push(device.name);
+        }
+        return names.sort();
+    }
+
+    function sampleTraffic(): void {
+        if (trafficProcess.running)
+            return;
+        const names = connectedDeviceNames();
+        if (names.length === 0) {
+            resetTraffic();
+            trafficReady = true;
+            return;
+        }
+        pendingDeviceKey = names.join("\n");
+        trafficProcess.command = [
+            "sh", "-c",
+            "rx=0; tx=0; for interface do "
+                + "rx_file=\"/sys/class/net/$interface/statistics/rx_bytes\"; "
+                + "tx_file=\"/sys/class/net/$interface/statistics/tx_bytes\"; "
+                + "[ -r \"$rx_file\" ] || continue; "
+                + "read -r value < \"$rx_file\" || continue; rx=$((rx + value)); "
+                + "read -r value < \"$tx_file\" || continue; tx=$((tx + value)); "
+                + "done; printf '%s %s\\n' \"$rx\" \"$tx\"",
+            "kestrel-network-traffic"
+        ].concat(names);
+        trafficProcess.running = true;
+    }
+
+    function applyTrafficSample(output: string): void {
+        if (!trafficTimer.running) {
+            resetTraffic();
+            return;
+        }
+        const fields = output.trim().split(/\s+/);
+        const received = fields.length === 2 ? Number(fields[0]) : NaN;
+        const transmitted = fields.length === 2 ? Number(fields[1]) : NaN;
+        if (!Number.isFinite(received) || !Number.isFinite(transmitted)) {
+            resetTraffic();
+            return;
+        }
+
+        const now = Date.now();
+        if (lastDeviceKey === pendingDeviceKey && lastSampleTime > 0
+                && received >= lastReceivedBytes
+                && transmitted >= lastTransmittedBytes) {
+            const elapsedSeconds = (now - lastSampleTime) / 1000;
+            if (elapsedSeconds > 0) {
+                downloadBytesPerSecond = (received - lastReceivedBytes) / elapsedSeconds;
+                uploadBytesPerSecond = (transmitted - lastTransmittedBytes) / elapsedSeconds;
+                trafficReady = true;
+            }
+        } else {
+            trafficReady = false;
+        }
+
+        lastReceivedBytes = received;
+        lastTransmittedBytes = transmitted;
+        lastSampleTime = now;
+        lastDeviceKey = pendingDeviceKey;
+    }
+
+    function resetTraffic(): void {
+        downloadBytesPerSecond = 0;
+        uploadBytesPerSecond = 0;
+        trafficReady = false;
+        lastReceivedBytes = 0;
+        lastTransmittedBytes = 0;
+        lastSampleTime = 0;
+        lastDeviceKey = "";
+        pendingDeviceKey = "";
+    }
+
+    function formatRate(bytesPerSecond: real): string {
+        const units = ["B/s", "KiB/s", "MiB/s", "GiB/s"];
+        let value = Math.max(0, bytesPerSecond);
+        let unit = 0;
+        while (value >= 1024 && unit < units.length - 1) {
+            value /= 1024;
+            unit += 1;
+        }
+        const digits = value >= 100 || unit === 0 ? 0 : (value >= 10 ? 1 : 2);
+        return value.toFixed(digits) + " " + units[unit];
     }
 
     function toggleWifi(): void {
