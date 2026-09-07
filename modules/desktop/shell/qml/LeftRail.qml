@@ -10,16 +10,14 @@ Row {
 
     spacing: Style.barItemGap
 
-    Text {
+    Image {
         anchors.verticalCenter: parent.verticalCenter
-        color: Style.foregroundColor
-        font {
-            family: Style.fontFamily
-            pixelSize: Style.iconFontSize
-            weight: Style.fontWeight
-        }
-        renderType: Text.NativeRendering
-        text: ""
+        width: 18
+        height: 18
+        fillMode: Image.PreserveAspectFit
+        mipmap: true
+        smooth: true
+        source: "assets/dylanc-favicon.svg"
 
         MouseArea {
             anchors.fill: parent
