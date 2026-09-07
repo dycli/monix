@@ -6,6 +6,8 @@ import Quickshell
 Row {
     id: root
 
+    required property var panelWindow
+
     signal homeActivated
 
     spacing: Style.barItemGap
@@ -81,5 +83,9 @@ Row {
                 }
             }
         }
+    }
+
+    AppMenuView {
+        panelWindow: root.panelWindow
     }
 }

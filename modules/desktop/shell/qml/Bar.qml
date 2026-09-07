@@ -14,6 +14,8 @@ Variants {
         required property var modelData
 
         readonly property int barHeight: Style.barHeight
+        readonly property bool leftRailOverlapsWorkspaces:
+            leftRail.x + leftRail.width + Style.barItemGap > workspaceGroup.x
         readonly property bool railOverlapsWorkspaces: rightRail.visible
             && rightRail.x < workspaceGroup.x + workspaceGroup.width + Style.barItemGap
 
@@ -65,6 +67,8 @@ Variants {
         LeftRail {
             id: leftRail
 
+            panelWindow: window
+
             anchors {
                 left: parent.left
                 leftMargin: 12
@@ -81,7 +85,7 @@ Variants {
                 verticalCenter: parent.verticalCenter
             }
             visible: !launcher.active && !tickerLane.overlaps(workspaceGroup)
-                && !window.railOverlapsWorkspaces
+                && !window.leftRailOverlapsWorkspaces && !window.railOverlapsWorkspaces
 
             Workspaces {
                 screenName: window.modelData.name
