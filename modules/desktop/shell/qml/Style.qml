@@ -12,7 +12,7 @@ QtObject {
     readonly property color popupBackgroundColor: Qt.rgba(40 / 255, 44 / 255, 52 / 255, 0.7)
     readonly property color panelBorderColor: "#343434"
     readonly property color panelMutedColor: "#a9adb4"
-    readonly property int popupRadius: 16
+    readonly property int popupRadius: 0
     readonly property int popupBorderWidth: 1
     readonly property int popupScreenMargin: 12
     readonly property int popupBarGap: 8

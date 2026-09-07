@@ -32,8 +32,7 @@
               # Default 1; darkened so text stays legible on the glass.
               brightness = 0.7;
               popups = true;
-              # Preserve the antialiased edge of Kestrel's translucent popup
-              # surfaces while excluding their fully transparent corners.
+              # Keep fully transparent space outside Kestrel's surfaces clear.
               popups_ignorealpha = 0.05;
             };
           };
@@ -99,7 +98,9 @@
         layer_rule = [
           {
             match.namespace = "^(kestrel:bar)$";
+            blur = true;
             blur_popups = true;
+            ignore_alpha = 0.05;
           }
         ];
       };

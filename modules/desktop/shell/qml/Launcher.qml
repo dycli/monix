@@ -45,8 +45,14 @@ Item {
         onTriggered: search.forceActiveFocus()
     }
 
+    PopupSurface {}
+
     Row {
-        anchors.fill: parent
+        anchors {
+            fill: parent
+            leftMargin: 10
+            rightMargin: 10
+        }
         spacing: 8
 
         Item {
