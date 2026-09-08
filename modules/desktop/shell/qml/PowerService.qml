@@ -14,6 +14,7 @@ QtObject {
     readonly property bool hasBattery: device !== null
     readonly property int percentage: hasBattery ? Math.round(device.percentage * 100) : 0
     readonly property bool charging: hasBattery && device.state === UPowerDeviceState.Charging
+    readonly property bool discharging: hasBattery && device.state === UPowerDeviceState.Discharging
     readonly property bool full: hasBattery && (device.state === UPowerDeviceState.FullyCharged || percentage >= 100)
     readonly property bool pluggedIn: !UPower.onBattery
     readonly property bool profilesAvailable: typeof PowerProfiles !== "undefined"
