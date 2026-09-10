@@ -162,7 +162,6 @@
 
         # SERVICES
         services.syncthing.enable = true;
-        services.printing.enable = true;
 
         # Rotate with `mkpasswd -m yescrypt` into the .age file;
         # users.mutableUsers = false means `passwd` does not stick.
