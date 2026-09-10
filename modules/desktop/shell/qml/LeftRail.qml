@@ -6,26 +6,31 @@ import Quickshell
 Row {
     id: root
 
-    signal homeActivated
+    signal systemMenuToggleRequested
 
     spacing: Style.barItemGap
 
-    Text {
-        anchors.verticalCenter: parent.verticalCenter
-        color: Style.foregroundColor
-        font {
-            family: Style.fontFamily
-            pixelSize: 16
-            weight: Style.fontWeight
+    Item {
+        width: 20
+        height: Style.barHeight
+
+        Text {
+            anchors.centerIn: parent
+            color: Style.foregroundColor
+            font {
+                family: Style.fontFamily
+                pixelSize: 16
+                weight: Style.fontWeight
+            }
+            renderType: Text.NativeRendering
+            rotation: 180
+            text: ""
         }
-        renderType: Text.NativeRendering
-        rotation: 180
-        text: ""
 
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: root.homeActivated()
+            onClicked: root.systemMenuToggleRequested()
         }
     }
 

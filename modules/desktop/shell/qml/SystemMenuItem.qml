@@ -1,0 +1,42 @@
+pragma ComponentBehavior: Bound
+
+import QtQuick
+
+Rectangle {
+    id: root
+
+    signal activated
+
+    required property string label
+
+    implicitHeight: 30
+    color: pointer.containsMouse ? Qt.rgba(1, 1, 1, 0.09) : "transparent"
+
+    Text {
+        anchors {
+            left: parent.left
+            leftMargin: 12
+            right: parent.right
+            rightMargin: 12
+            verticalCenter: parent.verticalCenter
+        }
+        color: Style.foregroundColor
+        elide: Text.ElideRight
+        font {
+            family: Style.fontFamily
+            pixelSize: Style.panelFontSize
+            weight: Style.fontWeight
+        }
+        renderType: Text.NativeRendering
+        text: root.label
+    }
+
+    MouseArea {
+        id: pointer
+
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        hoverEnabled: true
+        onClicked: root.activated()
+    }
+}

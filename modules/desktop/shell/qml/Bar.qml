@@ -71,6 +71,18 @@ Variants {
                 verticalCenter: parent.verticalCenter
             }
             visible: !launcher.active
+            onSystemMenuToggleRequested: {
+                BarModeService.close();
+                ClockPanelService.close();
+                ClipboardPanelService.close();
+                SettingsPanelService.close();
+                SystemMenuService.toggle(window.modelData.name);
+            }
+        }
+
+        SystemMenuPopout {
+            anchorItem: leftRail
+            screenName: window.modelData.name
         }
 
         Row {

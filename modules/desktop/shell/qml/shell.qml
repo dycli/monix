@@ -42,6 +42,7 @@ ShellRoot {
         target: "launcher"
 
         function toggle(): void {
+            SystemMenuService.close();
             SettingsPanelService.close();
             ClipboardPanelService.close();
             ClockPanelService.close();
@@ -53,6 +54,7 @@ ShellRoot {
         target: "session"
 
         function toggle(): void {
+            SystemMenuService.close();
             SettingsPanelService.close();
             ClipboardPanelService.close();
             ClockPanelService.close();
@@ -64,6 +66,7 @@ ShellRoot {
         target: "clipboard"
 
         function toggle(): void {
+            SystemMenuService.close();
             BarModeService.close();
             ClockPanelService.close();
             SettingsPanelService.close();
