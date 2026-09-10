@@ -30,8 +30,8 @@ Column {
             icon: "󰁹"
             interactive: false
             label: PowerService.status
-            detail: (PowerService.discharging ? PowerService.rate + " · " : "")
-                + PowerService.time + " · " + PowerService.percentage + "%"
+            detail: (PowerService.full ? "" : PowerService.rate + " · "
+                + PowerService.time + " · ") + PowerService.percentage + "%"
         }
 
         SettingsChoiceButton {
