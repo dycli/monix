@@ -8,6 +8,7 @@ Rectangle {
     signal activated
 
     required property string label
+    property string detail: ""
 
     implicitHeight: 30
     color: pointer.containsMouse ? Qt.rgba(1, 1, 1, 0.09) : "transparent"
@@ -16,7 +17,7 @@ Rectangle {
         anchors {
             left: parent.left
             leftMargin: 12
-            right: parent.right
+            right: detailItem.left
             rightMargin: 12
             verticalCenter: parent.verticalCenter
         }
@@ -29,6 +30,25 @@ Rectangle {
         }
         renderType: Text.NativeRendering
         text: root.label
+    }
+
+    Text {
+        id: detailItem
+
+        anchors {
+            right: parent.right
+            rightMargin: 12
+            verticalCenter: parent.verticalCenter
+        }
+        color: Style.panelMutedColor
+        font {
+            family: Style.fontFamily
+            pixelSize: Style.smallFontSize
+            weight: Style.fontWeight
+        }
+        renderType: Text.NativeRendering
+        text: root.detail
+        visible: root.detail.length > 0
     }
 
     MouseArea {

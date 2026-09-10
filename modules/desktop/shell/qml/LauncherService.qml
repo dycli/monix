@@ -14,6 +14,7 @@ QtObject {
     property var usage: ({})
     property bool historyLoaded: false
     property var pendingWindowActions: []
+    property string screenName: ""
 
     property Connections hyprlandEvents: Connections {
         target: Hyprland
@@ -140,18 +141,31 @@ QtObject {
         return matches.slice(0, Math.max(1, limit)).map(match => match.app);
     }
 
+    function recent(limit: int): var {
+        return applications.filter(app => app && app.id && usage[app.id])
+            .sort((left, right) => usage[right.id].lastUsed - usage[left.id].lastUsed)
+            .slice(0, Math.max(1, limit));
+    }
+
     function open(targetScreen: string): void {
-        ClockPanelService.close();
-        BarModeService.open("launcher", targetScreen, true);
+        screenName = targetScreen;
     }
 
     function toggle(targetScreen: string): void {
-        if (BarModeService.activeMode === "launcher"
-                && BarModeService.screenName === targetScreen) {
+        if (screenName === targetScreen) {
             BarModeService.close();
+            close();
         } else {
             open(targetScreen);
         }
+    }
+
+    function close(): void {
+        screenName = "";
+    }
+
+    function isOpen(targetScreen: string): bool {
+        return screenName === targetScreen;
     }
 
     function normalizeClass(value): string {
@@ -242,7 +256,7 @@ QtObject {
         };
         usage = nextUsage;
         saveHistory();
-        BarModeService.close();
+        close();
         launchCommand(command, mode || "normal", app.workingDirectory,
             app.startupClass);
     }

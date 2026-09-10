@@ -7,10 +7,18 @@ Row {
     id: root
 
     signal systemMenuToggleRequested
+    signal findMenuToggleRequested
+    signal editMenuToggleRequested
+
+    property alias systemMenuAnchor: systemButton
+    property alias findMenuAnchor: findButton
+    property alias editMenuAnchor: editButton
 
     spacing: Style.barItemGap
 
     Item {
+        id: systemButton
+
         width: 20
         height: Style.barHeight
 
@@ -34,6 +42,48 @@ Row {
         }
     }
 
+    Text {
+        id: findButton
+
+        anchors.verticalCenter: parent.verticalCenter
+        color: Style.foregroundColor
+        font {
+            family: Style.fontFamily
+            pixelSize: Style.textFontSize
+            weight: Style.fontWeight
+        }
+        renderType: Text.NativeRendering
+        text: "Find"
+
+        MouseArea {
+            anchors.fill: parent
+            anchors.margins: -4
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.findMenuToggleRequested()
+        }
+    }
+
+    Text {
+        id: editButton
+
+        anchors.verticalCenter: parent.verticalCenter
+        color: Style.foregroundColor
+        font {
+            family: Style.fontFamily
+            pixelSize: Style.textFontSize
+            weight: Style.fontWeight
+        }
+        renderType: Text.NativeRendering
+        text: "Edit"
+
+        MouseArea {
+            anchors.fill: parent
+            anchors.margins: -4
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.editMenuToggleRequested()
+        }
+    }
+
     Repeater {
         model: [
             {
@@ -45,16 +95,6 @@ Row {
                 label: "Terminal",
                 command: [Quickshell.env("KESTREL_TERMINAL")],
                 startupClass: "com.mitchellh.ghostty"
-            },
-            {
-                label: "Email",
-                command: [Quickshell.env("KESTREL_EMAIL")],
-                startupClass: "thunderbird"
-            },
-            {
-                label: "Signal",
-                command: [Quickshell.env("KESTREL_MESSENGER")],
-                startupClass: "signal"
             }
         ]
 

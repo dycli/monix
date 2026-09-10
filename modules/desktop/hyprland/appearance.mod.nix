@@ -105,7 +105,7 @@
           {
             match.namespace = "^(kestrel:popout)$";
             blur = true;
-            ignore_alpha = 0.05;
+            ignore_alpha = 0;
             no_anim = true;
           }
         ];

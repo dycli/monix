@@ -70,7 +70,7 @@
         )
         (mkBind "SUPER + D"
           ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call launcher toggle")''
-          "App launcher"
+          "Find applications"
           { }
         )
         (mkBind "SUPER + E" ''hl.dsp.exec_cmd("${email}")'' "Open email" { })
@@ -216,7 +216,7 @@
 
         (mkBind "CTRL + SUPER + V"
           ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call clipboard toggle")''
-          "Clipboard history"
+          "Edit menu and clipboard history"
           { }
         )
 

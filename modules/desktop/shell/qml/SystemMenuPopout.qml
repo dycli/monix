@@ -29,6 +29,7 @@ PanelWindow {
         top: true
         left: true
     }
+    margins.left: anchorItem ? Math.round(anchorItem.mapToItem(null, 0, 0).x) : 0
     exclusiveZone: 0
 
     WlrLayershell.layer: WlrLayer.Top
@@ -65,7 +66,7 @@ PanelWindow {
             }
             spacing: 2
 
-            SystemMenuItem {
+            MenuItem {
                 width: parent.width
                 label: "About This Kestrel"
                 onActivated: root.closeAndRun(() => LauncherService.launchCommand([
@@ -83,16 +84,10 @@ PanelWindow {
                 color: Style.panelBorderColor
             }
 
-            SystemMenuItem {
+            MenuItem {
                 width: parent.width
                 label: "System Settings…"
                 onActivated: root.closeAndRun(() => SettingsPanelService.toggle(root.screenName))
-            }
-
-            SystemMenuItem {
-                width: parent.width
-                label: "Find…"
-                onActivated: root.closeAndRun(() => LauncherService.open(root.screenName))
             }
 
             Rectangle {
@@ -101,32 +96,32 @@ PanelWindow {
                 color: Style.panelBorderColor
             }
 
-            SystemMenuItem {
+            MenuItem {
                 width: parent.width
                 label: "Sleep"
                 visible: root.sleepAllowed
                 onActivated: root.closeAndRun(() => SessionService.suspend())
             }
 
-            SystemMenuItem {
+            MenuItem {
                 width: parent.width
                 label: "Restart"
                 onActivated: root.closeAndRun(() => SessionService.reboot())
             }
 
-            SystemMenuItem {
+            MenuItem {
                 width: parent.width
                 label: "Shut Down"
                 onActivated: root.closeAndRun(() => SessionService.powerOff())
             }
 
-            SystemMenuItem {
+            MenuItem {
                 width: parent.width
                 label: "Lock Screen"
                 onActivated: root.closeAndRun(() => SessionService.lock())
             }
 
-            SystemMenuItem {
+            MenuItem {
                 width: parent.width
                 label: "Log Out"
                 onActivated: root.closeAndRun(() => SessionService.logout())

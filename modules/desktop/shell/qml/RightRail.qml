@@ -147,6 +147,8 @@ Item {
         }
         onPowerActivated: {
             root.hoverOpen = false;
+            SystemMenuService.close();
+            LauncherService.close();
             BarModeService.close();
             ClockPanelService.close();
             ClipboardPanelService.close();
@@ -192,6 +194,8 @@ Item {
                 visible: root.overviewMode === "control"
                 onSettingsRequested: section => {
                     root.hoverOpen = false;
+                    SystemMenuService.close();
+                    LauncherService.close();
                     BarModeService.close();
                     ClockPanelService.close();
                     ClipboardPanelService.close();
@@ -199,6 +203,8 @@ Item {
                 }
                 onDisplayRequested: {
                     root.hoverOpen = false;
+                    SystemMenuService.close();
+                    LauncherService.close();
                     BarModeService.close();
                     ClockPanelService.close();
                     ClipboardPanelService.close();
@@ -303,6 +309,8 @@ Item {
         }
         onMenuToggleRequested: {
             root.hoverOpen = false;
+            SystemMenuService.close();
+            LauncherService.close();
             BarModeService.close();
             ClockPanelService.close();
             ClipboardPanelService.close();
@@ -319,6 +327,8 @@ Item {
         format: "ddd MMM d h:mm AP"
         onClicked: {
             root.hoverOpen = false;
+            SystemMenuService.close();
+            LauncherService.close();
             BarModeService.close();
             ClipboardPanelService.close();
             SettingsPanelService.close();
@@ -328,11 +338,6 @@ Item {
 
     ClockPopout {
         anchorItem: clock
-        screenName: root.screenName
-    }
-
-    ClipboardPopout {
-        anchorItem: settingsButton
         screenName: root.screenName
     }
 

@@ -5,6 +5,6 @@ Rectangle {
     antialiasing: true
     border.color: Style.panelBorderColor
     border.width: Style.popupBorderWidth
-    color: Style.popupBackgroundColor
+    color: "#01ffffff"
     radius: Style.popupRadius
 }

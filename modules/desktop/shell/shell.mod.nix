@@ -49,13 +49,11 @@
         environment = {
           XDG_DATA_DIRS = "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
           KESTREL_BROWSER = getExe pkgs.brave;
-          KESTREL_EMAIL = getExe pkgs.thunderbird;
           KESTREL_ALLOW_SLEEP = if config.kestrel.allowSleep then "true" else "false";
           KESTREL_IDLE_LOCK_ENABLED = lib.boolToString config.kestrel.idle.lockEnabled;
           KESTREL_IDLE_LOCK_MINUTES = toString config.kestrel.idle.lockMinutes;
           KESTREL_IDLE_DISPLAY_OFF_ENABLED = lib.boolToString config.kestrel.idle.displayOffEnabled;
           KESTREL_IDLE_DISPLAY_OFF_MINUTES = toString config.kestrel.idle.displayOffMinutes;
-          KESTREL_MESSENGER = getExe pkgs.signal-desktop;
           KESTREL_MICROFETCH = getExe pkgs.microfetch;
           KESTREL_TERMINAL = getExe pkgs.ghostty;
         };

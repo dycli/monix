@@ -49,12 +49,6 @@ Variants {
             enabled: BarModeService.isActive(window.modelData.name)
             acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
             onTapped: eventPoint => {
-                if (launcher.active) {
-                    const launcherPoint = launcher.mapFromItem(window.contentItem,
-                        eventPoint.position.x, eventPoint.position.y);
-                    if (launcher.contains(launcherPoint))
-                        return;
-                }
                 const point = rightRail.mapFromItem(window.contentItem,
                     eventPoint.position.x, eventPoint.position.y);
                 if (!rightRail.contains(point))
@@ -70,18 +64,44 @@ Variants {
                 leftMargin: 12
                 verticalCenter: parent.verticalCenter
             }
-            visible: !launcher.active
             onSystemMenuToggleRequested: {
                 BarModeService.close();
                 ClockPanelService.close();
                 ClipboardPanelService.close();
                 SettingsPanelService.close();
+                LauncherService.close();
                 SystemMenuService.toggle(window.modelData.name);
+            }
+            onFindMenuToggleRequested: {
+                SystemMenuService.close();
+                ClipboardPanelService.close();
+                SettingsPanelService.close();
+                ClockPanelService.close();
+                BarModeService.close();
+                LauncherService.toggle(window.modelData.name);
+            }
+            onEditMenuToggleRequested: {
+                SystemMenuService.close();
+                LauncherService.close();
+                SettingsPanelService.close();
+                ClockPanelService.close();
+                BarModeService.close();
+                ClipboardPanelService.toggle(window.modelData.name);
             }
         }
 
         SystemMenuPopout {
-            anchorItem: leftRail
+            anchorItem: leftRail.systemMenuAnchor
+            screenName: window.modelData.name
+        }
+
+        FindPopout {
+            anchorItem: leftRail.findMenuAnchor
+            screenName: window.modelData.name
+        }
+
+        EditPopout {
+            anchorItem: leftRail.editMenuAnchor
             screenName: window.modelData.name
         }
 
@@ -92,8 +112,7 @@ Variants {
                 horizontalCenter: parent.horizontalCenter
                 verticalCenter: parent.verticalCenter
             }
-            visible: !launcher.active && !tickerLane.overlaps(workspaceGroup)
-                && !window.railOverlapsWorkspaces
+            visible: !tickerLane.overlaps(workspaceGroup) && !window.railOverlapsWorkspaces
 
             Workspaces {
                 screenName: window.modelData.name
@@ -110,7 +129,6 @@ Variants {
             }
             maximumWidth: Math.max(0, window.width - workspaceGroup.width - 48)
             screenName: window.modelData.name
-            visible: !launcher.active
         }
 
         Item {
@@ -134,7 +152,6 @@ Variants {
                 bottom: parent.bottom
             }
             clip: true
-            visible: !launcher.active
 
             NotificationTicker {
                 id: notificationTicker
@@ -142,20 +159,6 @@ Variants {
                 anchors.fill: parent
                 screenName: window.modelData.name
             }
-        }
-
-        Launcher {
-            id: launcher
-
-            anchors {
-                left: parent.left
-                leftMargin: 12
-                right: parent.right
-                rightMargin: 12
-                top: parent.top
-                bottom: parent.bottom
-            }
-            screenName: window.modelData.name
         }
 
     }

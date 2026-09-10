@@ -46,6 +46,7 @@ ShellRoot {
             SettingsPanelService.close();
             ClipboardPanelService.close();
             ClockPanelService.close();
+            BarModeService.close();
             LauncherService.toggle(OsdService.focusedScreenName);
         }
     }
@@ -55,6 +56,7 @@ ShellRoot {
 
         function toggle(): void {
             SystemMenuService.close();
+            LauncherService.close();
             SettingsPanelService.close();
             ClipboardPanelService.close();
             ClockPanelService.close();
@@ -67,6 +69,7 @@ ShellRoot {
 
         function toggle(): void {
             SystemMenuService.close();
+            LauncherService.close();
             BarModeService.close();
             ClockPanelService.close();
             SettingsPanelService.close();
