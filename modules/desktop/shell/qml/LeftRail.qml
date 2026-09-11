@@ -30,7 +30,7 @@ Row {
                 pixelSize: 16
                 weight: Style.fontWeight
             }
-            renderType: Text.NativeRendering
+            renderType: Text.QtRendering
             rotation: 180
             text: ""
         }

@@ -38,7 +38,7 @@ PanelWindow {
     }
 
     color: "transparent"
-    implicitWidth: 720
+    implicitWidth: 680
     implicitHeight: Math.min(680, maximumHeight)
     screen: anchorWindow ? anchorWindow.screen : null
     visible: SettingsPanelService.isOpen(screenName)
@@ -48,6 +48,7 @@ PanelWindow {
         right: true
     }
     margins.top: Style.popupGap
+    margins.right: 4
     exclusiveZone: 0
 
     WlrLayershell.layer: WlrLayer.Top
