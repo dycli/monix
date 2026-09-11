@@ -3,7 +3,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
-import Quickshell.Io
 import Quickshell.Wayland
 
 PanelWindow {
@@ -15,12 +14,9 @@ PanelWindow {
     required property int popupTop
 
     function setLayout(layout: string): void {
+        Hyprland.dispatch("function() hl.config({ general = { layout = "
+            + JSON.stringify(layout) + " } }) end");
         ViewMenuService.close();
-        hyprlandCommand.command = [
-            "hyprctl", "eval",
-            "hl.config({ general = { layout = '" + layout + "' } })"
-        ];
-        hyprlandCommand.running = true;
     }
 
     color: "transparent"
@@ -43,10 +39,6 @@ PanelWindow {
     WlrLayershell.namespace: "kestrel:popout"
     WlrLayershell.keyboardFocus: root.visible
         ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-
-    Process {
-        id: hyprlandCommand
-    }
 
     PopupSurface {
         Column {

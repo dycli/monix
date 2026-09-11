@@ -3,7 +3,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
-import Quickshell.Io
 import Quickshell.Wayland
 
 PanelWindow {
@@ -17,10 +16,24 @@ PanelWindow {
     readonly property int layoutPopupTop: Style.popupGap + menu.y + layoutItem.y
     readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
 
-    function run(command: var): void {
+    function dispatch(luaDispatcher: string): void {
+        Hyprland.dispatch(luaDispatcher);
         ViewMenuService.close();
-        hyprlandCommand.command = command;
-        hyprlandCommand.running = true;
+    }
+
+    function toggleFloatAll(): void {
+        const monitor = JSON.stringify(screenName);
+        dispatch("function() "
+            + "local ws = hl.get_active_workspace(" + monitor + "); "
+            + "if not ws then return end; "
+            + "local windows = ws:get_windows(); "
+            + "local should_float = false; "
+            + "for _, window in ipairs(windows) do "
+            + "if not window.floating then should_float = true; break end end; "
+            + "local action = should_float and 'enable' or 'disable'; "
+            + "for _, window in ipairs(windows) do "
+            + "hl.dispatch(hl.dsp.window.float({ action = action, window = window })) "
+            + "end end");
     }
 
     color: "transparent"
@@ -53,10 +66,6 @@ PanelWindow {
         }
     }
 
-    Process {
-        id: hyprlandCommand
-    }
-
     Shortcut {
         enabled: root.visible
         sequence: "Escape"
@@ -87,9 +96,7 @@ PanelWindow {
                 width: parent.width
                 label: "Float All"
                 onHoveredChanged: if (hovered) ViewMenuService.hideLayout()
-                onActivated: root.run([
-                    "hyprctl", "dispatch", "workspaceopt", "allfloat"
-                ])
+                onActivated: root.toggleFloatAll()
             }
 
             MenuItem {
@@ -119,10 +126,8 @@ PanelWindow {
                 width: parent.width
                 label: "Magic Workspace"
                 onHoveredChanged: if (hovered) ViewMenuService.hideLayout()
-                onActivated: root.run([
-                    "hyprctl", "eval",
-                    "hl.dispatch(hl.dsp.workspace.toggle_special('magic'))"
-                ])
+                onActivated: root.dispatch(
+                    "hl.dsp.workspace.toggle_special('magic')")
             }
         }
     }
