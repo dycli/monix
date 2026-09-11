@@ -152,7 +152,7 @@ Row {
                 weight: Style.fontWeight
             }
             renderType: Text.NativeRendering
-            text: "Tools"
+            text: "Use"
         }
 
         MouseArea {
