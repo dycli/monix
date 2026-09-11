@@ -14,6 +14,7 @@ PopupWindow {
     property string pendingModifiers: ""
     property string pendingKey: ""
 
+    readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
     readonly property var results: ClipboardState.filtered(search.text)
 
     function sendShortcut(modifiers: string, key: string): void {
@@ -24,10 +25,10 @@ PopupWindow {
     }
 
     color: "transparent"
-    width: 330
+    width: 300
     height: 420
     visible: ClipboardPanelService.isOpen(screenName)
-    grabFocus: true
+    grabFocus: false
 
     anchor.item: anchorItem
     anchor.rect.y: anchorItem ? anchorItem.height + Style.popupGap : 0
@@ -47,6 +48,12 @@ PopupWindow {
         enabled: root.visible
         sequence: "Escape"
         onActivated: ClipboardPanelService.close()
+    }
+
+    HyprlandFocusGrab {
+        active: root.visible
+        windows: root.anchorWindow ? [root, root.anchorWindow] : [root]
+        onCleared: ClipboardPanelService.close()
     }
 
     Timer {
@@ -81,12 +88,12 @@ PopupWindow {
 
                 Repeater {
                     model: [
-                        { "label": "Undo", "detail": "Ctrl+Z", "mods": "CTRL", "key": "Z" },
-                        { "label": "Redo", "detail": "Ctrl+Shift+Z", "mods": "CTRL SHIFT", "key": "Z" },
-                        { "label": "Cut", "detail": "Ctrl+X", "mods": "CTRL", "key": "X" },
-                        { "label": "Copy", "detail": "Ctrl+Insert", "mods": "CTRL", "key": "Insert" },
-                        { "label": "Paste", "detail": "Shift+Insert", "mods": "SHIFT", "key": "Insert" },
-                        { "label": "Select All", "detail": "Ctrl+A", "mods": "CTRL", "key": "A" }
+                        { "label": "Undo", "mods": "CTRL", "key": "Z" },
+                        { "label": "Redo", "mods": "CTRL SHIFT", "key": "Z" },
+                        { "label": "Cut", "mods": "CTRL", "key": "X" },
+                        { "label": "Copy", "mods": "CTRL", "key": "Insert" },
+                        { "label": "Paste", "mods": "SHIFT", "key": "Insert" },
+                        { "label": "Select All", "mods": "CTRL", "key": "A" }
                     ]
 
                     delegate: MenuItem {
@@ -94,7 +101,6 @@ PopupWindow {
 
                         width: commands.width
                         label: modelData.label
-                        detail: modelData.detail
                         onActivated: root.sendShortcut(modelData.mods, modelData.key)
                     }
                 }

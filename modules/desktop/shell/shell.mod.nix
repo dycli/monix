@@ -49,7 +49,6 @@
         environment = {
           XDG_DATA_DIRS = "/etc/profiles/per-user/${config.primaryUser}/share:/run/current-system/sw/share";
           KESTREL_ALLOW_SLEEP = if config.kestrel.allowSleep then "true" else "false";
-          KESTREL_BROWSER = getExe pkgs.brave;
           KESTREL_COLOR_PICKER = getExe pkgs.hyprpicker;
           KESTREL_IDLE_LOCK_ENABLED = lib.boolToString config.kestrel.idle.lockEnabled;
           KESTREL_IDLE_LOCK_MINUTES = toString config.kestrel.idle.lockMinutes;

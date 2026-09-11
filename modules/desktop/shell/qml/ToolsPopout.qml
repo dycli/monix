@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 
 PopupWindow {
     id: root
@@ -9,16 +10,18 @@ PopupWindow {
     required property Item anchorItem
     required property string screenName
 
+    readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
+
     function closeAndLaunch(command: var): void {
         ToolsMenuService.close();
         LauncherService.launchCommand(command, "normal", "", "");
     }
 
     color: "transparent"
-    width: 205
+    width: 300
     height: menu.implicitHeight + 10
     visible: ToolsMenuService.isOpen(screenName)
-    grabFocus: true
+    grabFocus: false
 
     anchor.item: anchorItem
     anchor.rect.y: anchorItem ? anchorItem.height + Style.popupGap : 0
@@ -33,6 +36,12 @@ PopupWindow {
         enabled: root.visible
         sequence: "Escape"
         onActivated: ToolsMenuService.close()
+    }
+
+    HyprlandFocusGrab {
+        active: root.visible
+        windows: root.anchorWindow ? [root, root.anchorWindow] : [root]
+        onCleared: ToolsMenuService.close()
     }
 
     PopupSurface {
@@ -58,7 +67,6 @@ PopupWindow {
             MenuItem {
                 width: parent.width
                 label: "Color Picker"
-                detail: "Super+Print"
                 onActivated: root.closeAndLaunch([
                     Quickshell.env("KESTREL_COLOR_PICKER"), "-a"
                 ])
@@ -67,7 +75,6 @@ PopupWindow {
             MenuItem {
                 width: parent.width
                 label: "Screenshot"
-                detail: "Print"
                 onActivated: root.closeAndLaunch([
                     Quickshell.env("KESTREL_SCREENSHOT"), "-m", "region"
                 ])
@@ -82,7 +89,6 @@ PopupWindow {
             MenuItem {
                 width: parent.width
                 label: "System Monitor"
-                detail: "Super+Shift+R"
                 onActivated: root.closeAndLaunch([
                     Quickshell.env("KESTREL_TERMINAL"),
                     "-e",

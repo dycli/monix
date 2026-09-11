@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 
 PopupWindow {
     id: root
@@ -9,6 +10,7 @@ PopupWindow {
     required property Item anchorItem
     required property string screenName
 
+    readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
     readonly property bool sleepAllowed: Quickshell.env("KESTREL_ALLOW_SLEEP") === "true"
 
     function closeAndRun(action): void {
@@ -17,10 +19,10 @@ PopupWindow {
     }
 
     color: "transparent"
-    width: 205
+    width: 300
     height: menu.implicitHeight + 10
     visible: SystemMenuService.isOpen(screenName)
-    grabFocus: true
+    grabFocus: false
 
     anchor.item: anchorItem
     anchor.rect.y: anchorItem ? anchorItem.height + Style.popupGap : 0
@@ -35,6 +37,12 @@ PopupWindow {
         enabled: root.visible
         sequence: "Escape"
         onActivated: SystemMenuService.close()
+    }
+
+    HyprlandFocusGrab {
+        active: root.visible
+        windows: root.anchorWindow ? [root, root.anchorWindow] : [root]
+        onCleared: SystemMenuService.close()
     }
 
     PopupSurface {
