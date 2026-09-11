@@ -194,7 +194,10 @@ PanelWindow {
                     onTextChanged: root.selectedIndex = 0
 
                     Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Down && root.results.length > 0) {
+                        if (event.key === Qt.Key_Escape) {
+                            ClipboardPanelService.close();
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Down && root.results.length > 0) {
                             root.selectedIndex = Math.min(root.results.length - 1,
                                 root.selectedIndex + 1);
                             entries.positionViewAtIndex(root.selectedIndex, ListView.Contain);

@@ -157,7 +157,10 @@ PanelWindow {
                     onTextChanged: grid.currentIndex = 0
 
                     Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Right && root.results.length > 0) {
+                        if (event.key === Qt.Key_Escape) {
+                            ClipboardPanelService.close();
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Right && root.results.length > 0) {
                             grid.currentIndex = Math.min(root.results.length - 1,
                                 grid.currentIndex + 1);
                             event.accepted = true;
