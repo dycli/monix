@@ -49,35 +49,6 @@ Row {
     }
 
     Item {
-        id: findButton
-
-        width: findLabel.implicitWidth + 8
-        height: Style.barHeight
-
-        Text {
-            id: findLabel
-
-            anchors.centerIn: parent
-            color: Style.foregroundColor
-            font {
-                family: Style.fontFamily
-                pixelSize: Style.textFontSize
-                weight: Style.fontWeight
-            }
-            renderType: Text.NativeRendering
-            text: "Find"
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            hoverEnabled: true
-            onClicked: root.findMenuToggleRequested()
-            onEntered: root.menuHovered("find")
-        }
-    }
-
-    Item {
         id: editButton
 
         width: editLabel.implicitWidth + 8
@@ -161,6 +132,35 @@ Row {
             hoverEnabled: true
             onClicked: root.viewMenuToggleRequested()
             onEntered: root.menuHovered("view")
+        }
+    }
+
+    Item {
+        id: findButton
+
+        width: findLabel.implicitWidth + 8
+        height: Style.barHeight
+
+        Text {
+            id: findLabel
+
+            anchors.centerIn: parent
+            color: Style.foregroundColor
+            font {
+                family: Style.fontFamily
+                pixelSize: Style.textFontSize
+                weight: Style.fontWeight
+            }
+            renderType: Text.NativeRendering
+            text: "Launch"
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
+            onClicked: root.findMenuToggleRequested()
+            onEntered: root.menuHovered("find")
         }
     }
 
