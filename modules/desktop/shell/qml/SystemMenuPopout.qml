@@ -9,6 +9,9 @@ PopupWindow {
     required property Item anchorItem
     required property string screenName
 
+    property bool guardTracking: false
+    property real guardPointerX: 0
+    property real guardPointerY: 0
     property bool menuReady: false
 
     readonly property bool sleepAllowed: Quickshell.env("KESTREL_ALLOW_SLEEP") === "true"
@@ -28,21 +31,10 @@ PopupWindow {
     anchor.rect.y: anchorItem ? anchorItem.height + Style.popupGap : 0
 
     onVisibleChanged: {
+        guardTracking = false;
         menuReady = false;
-        if (visible) {
-            menuActivationDelay.restart();
-        } else {
-            menuActivationDelay.stop();
-            if (SystemMenuService.isOpen(screenName))
-                SystemMenuService.close();
-        }
-    }
-
-    Timer {
-        id: menuActivationDelay
-
-        interval: 400
-        onTriggered: root.menuReady = true
+        if (!visible && SystemMenuService.isOpen(screenName))
+            SystemMenuService.close();
     }
 
     Shortcut {
@@ -55,6 +47,19 @@ PopupWindow {
         MouseArea {
             anchors.fill: parent
             enabled: !root.menuReady
+            hoverEnabled: true
+            onEntered: {
+                root.guardPointerX = mouseX;
+                root.guardPointerY = mouseY;
+                root.guardTracking = true;
+            }
+            onExited: root.guardTracking = false
+            onPositionChanged: event => {
+                if (root.guardTracking
+                        && (Math.abs(event.x - root.guardPointerX) >= 4
+                            || Math.abs(event.y - root.guardPointerY) >= 4))
+                    root.menuReady = true;
+            }
             onClicked: SystemMenuService.close()
             z: 1
         }

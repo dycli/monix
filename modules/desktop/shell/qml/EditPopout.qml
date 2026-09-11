@@ -115,6 +115,8 @@ PopupWindow {
                 Text {
                     anchors {
                         left: parent.left
+                        right: clearButton.left
+                        rightMargin: 12
                         verticalCenter: parent.verticalCenter
                     }
                     color: Style.panelMutedColor
@@ -131,7 +133,13 @@ PopupWindow {
                 TextInput {
                     id: search
 
-                    anchors.fill: parent
+                    anchors {
+                        left: parent.left
+                        right: clearButton.left
+                        rightMargin: 12
+                        top: parent.top
+                        bottom: parent.bottom
+                    }
                     color: Style.foregroundColor
                     clip: true
                     font {
@@ -159,6 +167,31 @@ PopupWindow {
                             ClipboardState.paste(root.results[root.selectedIndex].entryId);
                             event.accepted = true;
                         }
+                    }
+                }
+
+                Text {
+                    id: clearButton
+
+                    anchors {
+                        right: parent.right
+                        verticalCenter: parent.verticalCenter
+                    }
+                    color: Style.panelMutedColor
+                    font {
+                        family: Style.fontFamily
+                        pixelSize: Style.smallFontSize
+                        weight: Style.fontWeight
+                    }
+                    renderType: Text.NativeRendering
+                    text: "Clear"
+                    visible: ClipboardState.entries.length > 0
+
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -6
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: ClipboardState.clear()
                     }
                 }
 

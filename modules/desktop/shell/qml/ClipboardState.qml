@@ -29,6 +29,10 @@ QtObject {
         onExited: root.refresh()
     }
 
+    property Process wipeProcess: Process {
+        onExited: root.refresh()
+    }
+
     property Timer pasteTimer: Timer {
         interval: 80
         onTriggered: Quickshell.execDetached(["wtype", "-M", "ctrl", "v", "-m", "ctrl"])
@@ -84,5 +88,12 @@ QtObject {
             return;
         deleteProcess.command = ["cliphist", "delete-query", entryId];
         deleteProcess.running = true;
+    }
+
+    function clear(): void {
+        if (wipeProcess.running)
+            return;
+        wipeProcess.command = ["cliphist", "wipe"];
+        wipeProcess.running = true;
     }
 }
