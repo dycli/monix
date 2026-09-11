@@ -9,6 +9,8 @@ PopupWindow {
     required property Item anchorItem
     required property string screenName
 
+    property bool menuReady: false
+
     readonly property bool sleepAllowed: Quickshell.env("KESTREL_ALLOW_SLEEP") === "true"
 
     function closeAndRun(action): void {
@@ -26,8 +28,21 @@ PopupWindow {
     anchor.rect.y: anchorItem ? anchorItem.height + Style.popupGap : 0
 
     onVisibleChanged: {
-        if (!visible && SystemMenuService.isOpen(screenName))
-            SystemMenuService.close();
+        menuReady = false;
+        if (visible) {
+            menuActivationDelay.restart();
+        } else {
+            menuActivationDelay.stop();
+            if (SystemMenuService.isOpen(screenName))
+                SystemMenuService.close();
+        }
+    }
+
+    Timer {
+        id: menuActivationDelay
+
+        interval: 400
+        onTriggered: root.menuReady = true
     }
 
     Shortcut {
@@ -37,6 +52,13 @@ PopupWindow {
     }
 
     PopupSurface {
+        MouseArea {
+            anchors.fill: parent
+            enabled: !root.menuReady
+            onClicked: SystemMenuService.close()
+            z: 1
+        }
+
         Column {
             id: menu
 
@@ -46,6 +68,7 @@ PopupWindow {
                 top: parent.top
                 margins: 5
             }
+            enabled: root.menuReady
             spacing: 2
 
             MenuItem {
