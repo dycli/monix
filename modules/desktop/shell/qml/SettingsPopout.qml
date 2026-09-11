@@ -38,7 +38,7 @@ PanelWindow {
     }
 
     color: "transparent"
-    implicitWidth: 680
+    implicitWidth: 512
     implicitHeight: Math.min(680, maximumHeight)
     screen: anchorWindow ? anchorWindow.screen : null
     visible: SettingsPanelService.isOpen(screenName)
@@ -148,7 +148,7 @@ PanelWindow {
                         top: parent.top
                         bottom: parent.bottom
                     }
-                    width: 154
+                    width: 130
 
                     Column {
                         width: parent.width
