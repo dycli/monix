@@ -30,6 +30,7 @@ PanelWindow {
         right: true
     }
     margins.top: Style.popupGap
+    margins.right: 4
     exclusiveZone: 0
 
     WlrLayershell.layer: WlrLayer.Top

@@ -31,7 +31,7 @@
               passes = 3;
               # Default 1; darkened so text stays legible on the glass.
               brightness = 0.7;
-              new_optimizations = true;
+              new_optimizations = false;
               popups = true;
               popups_ignorealpha = 0;
             };
