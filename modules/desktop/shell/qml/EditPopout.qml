@@ -63,12 +63,6 @@ PanelWindow {
         }
     }
 
-    Shortcut {
-        enabled: root.visible
-        sequence: "Escape"
-        onActivated: ClipboardPanelService.close()
-    }
-
     HyprlandFocusGrab {
         active: root.visible
         windows: root.anchorWindow

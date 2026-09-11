@@ -66,12 +66,6 @@ PanelWindow {
         }
     }
 
-    Shortcut {
-        enabled: root.visible
-        sequence: "Escape"
-        onActivated: LauncherService.close()
-    }
-
     HyprlandFocusGrab {
         active: root.visible
         windows: root.anchorWindow ? [root, root.anchorWindow] : [root]

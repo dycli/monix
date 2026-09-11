@@ -98,12 +98,6 @@ PanelWindow {
         }
     }
 
-    Shortcut {
-        enabled: root.visible
-        sequence: "Escape"
-        onActivated: ClipboardPanelService.close()
-    }
-
     Timer {
         id: focusTimer
 
