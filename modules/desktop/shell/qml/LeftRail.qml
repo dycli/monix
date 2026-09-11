@@ -42,43 +42,55 @@ Row {
         }
     }
 
-    Text {
+    Item {
         id: findButton
 
-        anchors.verticalCenter: parent.verticalCenter
-        color: Style.foregroundColor
-        font {
-            family: Style.fontFamily
-            pixelSize: Style.textFontSize
-            weight: Style.fontWeight
+        width: findLabel.implicitWidth + 8
+        height: Style.barHeight
+
+        Text {
+            id: findLabel
+
+            anchors.centerIn: parent
+            color: Style.foregroundColor
+            font {
+                family: Style.fontFamily
+                pixelSize: Style.textFontSize
+                weight: Style.fontWeight
+            }
+            renderType: Text.NativeRendering
+            text: "Find"
         }
-        renderType: Text.NativeRendering
-        text: "Find"
 
         MouseArea {
             anchors.fill: parent
-            anchors.margins: -4
             cursorShape: Qt.PointingHandCursor
             onClicked: root.findMenuToggleRequested()
         }
     }
 
-    Text {
+    Item {
         id: editButton
 
-        anchors.verticalCenter: parent.verticalCenter
-        color: Style.foregroundColor
-        font {
-            family: Style.fontFamily
-            pixelSize: Style.textFontSize
-            weight: Style.fontWeight
+        width: editLabel.implicitWidth + 8
+        height: Style.barHeight
+
+        Text {
+            id: editLabel
+
+            anchors.centerIn: parent
+            color: Style.foregroundColor
+            font {
+                family: Style.fontFamily
+                pixelSize: Style.textFontSize
+                weight: Style.fontWeight
+            }
+            renderType: Text.NativeRendering
+            text: "Edit"
         }
-        renderType: Text.NativeRendering
-        text: "Edit"
 
         MouseArea {
             anchors.fill: parent
-            anchors.margins: -4
             cursorShape: Qt.PointingHandCursor
             onClicked: root.editMenuToggleRequested()
         }

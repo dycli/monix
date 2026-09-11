@@ -2,10 +2,8 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
-import Quickshell.Wayland
 
-PanelWindow {
+PopupWindow {
     id: root
 
     required property Item anchorItem
@@ -13,10 +11,6 @@ PanelWindow {
 
     property int selectedIndex: 0
 
-    readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
-    readonly property real screenHeight: anchorWindow && anchorWindow.screen
-        ? anchorWindow.screen.height : 468
-    readonly property real maximumHeight: Math.max(300, screenHeight - Style.barHeight)
     readonly property bool searching: search.text.trim().length > 0
     readonly property var results: searching
         ? LauncherService.results(search.text, 30) : LauncherService.recent(12)
@@ -34,22 +28,13 @@ PanelWindow {
     }
 
     color: "transparent"
-    implicitWidth: 360
-    implicitHeight: Math.min(430, maximumHeight)
-    screen: anchorWindow ? anchorWindow.screen : null
+    width: 300
+    height: 320
     visible: LauncherService.isOpen(screenName)
+    grabFocus: true
 
-    anchors {
-        top: true
-        left: true
-    }
-    margins.left: anchorItem ? Math.round(anchorItem.mapToItem(null, 0, 0).x) : 0
-    exclusiveZone: 0
-
-    WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.namespace: "kestrel:popout"
-    WlrLayershell.keyboardFocus: root.visible
-        ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    anchor.item: anchorItem
+    anchor.rect.y: anchorItem ? anchorItem.height + Style.popupGap : 0
 
     onResultsChanged: selectedIndex = Math.min(selectedIndex,
         Math.max(0, results.length - 1))
@@ -76,23 +61,17 @@ PanelWindow {
         onTriggered: search.forceActiveFocus()
     }
 
-    HyprlandFocusGrab {
-        active: root.visible
-        windows: [root]
-        onCleared: LauncherService.close()
-    }
-
     PopupSurface {
         Column {
             anchors {
                 fill: parent
-                margins: 10
+                margins: 8
             }
-            spacing: 8
+            spacing: 6
 
             Item {
                 width: parent.width
-                height: 34
+                height: 30
 
                 Text {
                     anchors {
@@ -155,7 +134,7 @@ PanelWindow {
                 id: entries
 
                 width: parent.width
-                height: parent.height - 42
+                height: parent.height - 36
                 clip: true
                 spacing: 2
                 model: root.results
@@ -167,7 +146,7 @@ PanelWindow {
                     required property var modelData
 
                     width: ListView.view.width
-                    height: 34
+                    height: 30
                     color: index === root.selectedIndex
                         ? Qt.rgba(1, 1, 1, 0.09) : "transparent"
 

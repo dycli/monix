@@ -3,9 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
-import Quickshell.Wayland
 
-PanelWindow {
+PopupWindow {
     id: root
 
     required property Item anchorItem
@@ -16,10 +15,6 @@ PanelWindow {
     property string pendingKey: ""
 
     readonly property var results: ClipboardState.filtered(search.text)
-    readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
-    readonly property real screenHeight: anchorWindow && anchorWindow.screen
-        ? anchorWindow.screen.height : 620
-    readonly property real maximumHeight: Math.max(420, screenHeight - Style.barHeight)
 
     function sendShortcut(modifiers: string, key: string): void {
         pendingModifiers = modifiers;
@@ -29,22 +24,13 @@ PanelWindow {
     }
 
     color: "transparent"
-    implicitWidth: 420
-    implicitHeight: Math.min(560, maximumHeight)
-    screen: anchorWindow ? anchorWindow.screen : null
+    width: 330
+    height: 420
     visible: ClipboardPanelService.isOpen(screenName)
+    grabFocus: true
 
-    anchors {
-        top: true
-        left: true
-    }
-    margins.left: anchorItem ? Math.round(anchorItem.mapToItem(null, 0, 0).x) : 0
-    exclusiveZone: 0
-
-    WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.namespace: "kestrel:popout"
-    WlrLayershell.keyboardFocus: root.visible
-        ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    anchor.item: anchorItem
+    anchor.rect.y: anchorItem ? anchorItem.height + Style.popupGap : 0
 
     onVisibleChanged: {
         if (visible) {
@@ -79,17 +65,11 @@ PanelWindow {
             + JSON.stringify(root.pendingKey) + " })")
     }
 
-    HyprlandFocusGrab {
-        active: root.visible
-        windows: [root]
-        onCleared: ClipboardPanelService.close()
-    }
-
     PopupSurface {
         Column {
             anchors {
                 fill: parent
-                margins: 8
+                margins: 6
             }
             spacing: 6
 
@@ -130,7 +110,7 @@ PanelWindow {
                 id: searchBox
 
                 width: parent.width
-                height: 34
+                height: 30
 
                 Text {
                     anchors {
@@ -212,7 +192,7 @@ PanelWindow {
                     required property var modelData
 
                     width: ListView.view.width
-                    height: 36
+                    height: 30
                     color: index === root.selectedIndex
                         ? Qt.rgba(1, 1, 1, 0.09) : "transparent"
 

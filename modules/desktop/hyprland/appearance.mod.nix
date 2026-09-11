@@ -33,7 +33,7 @@
               brightness = 0.7;
               new_optimizations = true;
               popups = true;
-              popups_ignorealpha = 0.05;
+              popups_ignorealpha = 0;
             };
           };
 

@@ -16,7 +16,8 @@ PanelWindow {
     readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
     readonly property real screenHeight: anchorWindow && anchorWindow.screen
         ? anchorWindow.screen.height : 698
-    readonly property real maximumHeight: Math.max(320, screenHeight - Style.barHeight)
+    readonly property real maximumHeight: Math.max(320,
+        screenHeight - Style.barHeight - Style.popupGap)
 
     color: "transparent"
     implicitWidth: 316
@@ -28,6 +29,7 @@ PanelWindow {
         top: true
         right: true
     }
+    margins.top: Style.popupGap
     exclusiveZone: 0
 
     WlrLayershell.layer: WlrLayer.Top

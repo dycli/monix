@@ -2,16 +2,13 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
-import Quickshell.Hyprland
-import Quickshell.Wayland
 
-PanelWindow {
+PopupWindow {
     id: root
 
     required property Item anchorItem
     required property string screenName
 
-    readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
     readonly property bool sleepAllowed: Quickshell.env("KESTREL_ALLOW_SLEEP") === "true"
 
     function closeAndRun(action): void {
@@ -20,22 +17,13 @@ PanelWindow {
     }
 
     color: "transparent"
-    implicitWidth: 238
-    implicitHeight: menu.implicitHeight + 12
-    screen: anchorWindow ? anchorWindow.screen : null
+    width: 205
+    height: menu.implicitHeight + 10
     visible: SystemMenuService.isOpen(screenName)
+    grabFocus: true
 
-    anchors {
-        top: true
-        left: true
-    }
-    margins.left: anchorItem ? Math.round(anchorItem.mapToItem(null, 0, 0).x) : 0
-    exclusiveZone: 0
-
-    WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.namespace: "kestrel:popout"
-    WlrLayershell.keyboardFocus: root.visible
-        ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    anchor.item: anchorItem
+    anchor.rect.y: anchorItem ? anchorItem.height + Style.popupGap : 0
 
     onVisibleChanged: {
         if (!visible && SystemMenuService.isOpen(screenName))
@@ -48,12 +36,6 @@ PanelWindow {
         onActivated: SystemMenuService.close()
     }
 
-    HyprlandFocusGrab {
-        active: root.visible
-        windows: [root]
-        onCleared: SystemMenuService.close()
-    }
-
     PopupSurface {
         Column {
             id: menu
@@ -62,7 +44,7 @@ PanelWindow {
                 left: parent.left
                 right: parent.right
                 top: parent.top
-                margins: 6
+                margins: 5
             }
             spacing: 2
 

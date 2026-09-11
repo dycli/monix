@@ -10,15 +10,15 @@ Rectangle {
     required property string label
     property string detail: ""
 
-    implicitHeight: 30
+    implicitHeight: 26
     color: pointer.containsMouse ? Qt.rgba(1, 1, 1, 0.09) : "transparent"
 
     Text {
         anchors {
             left: parent.left
-            leftMargin: 12
+            leftMargin: 10
             right: detailItem.left
-            rightMargin: 12
+            rightMargin: 10
             verticalCenter: parent.verticalCenter
         }
         color: Style.foregroundColor
@@ -37,7 +37,7 @@ Rectangle {
 
         anchors {
             right: parent.right
-            rightMargin: 12
+            rightMargin: 10
             verticalCenter: parent.verticalCenter
         }
         color: Style.panelMutedColor
