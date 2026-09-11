@@ -33,7 +33,7 @@ PanelWindow {
     }
     margins {
         left: popupLeft
-        top: Style.barHeight + Style.popupGap
+        top: Style.popupGap
     }
     exclusiveZone: 0
 

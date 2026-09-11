@@ -9,6 +9,7 @@ Rectangle {
 
     required property string label
     property string detail: ""
+    readonly property bool hovered: pointer.containsMouse
 
     implicitHeight: 26
     color: pointer.containsMouse ? Qt.rgba(1, 1, 1, 0.09) : "transparent"

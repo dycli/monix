@@ -149,6 +149,7 @@ Item {
             root.hoverOpen = false;
             SystemMenuService.close();
             ToolsMenuService.close();
+            ViewMenuService.close();
             LauncherService.close();
             BarModeService.close();
             ClockPanelService.close();
@@ -197,6 +198,7 @@ Item {
                     root.hoverOpen = false;
                     SystemMenuService.close();
                     ToolsMenuService.close();
+                    ViewMenuService.close();
                     LauncherService.close();
                     BarModeService.close();
                     ClockPanelService.close();
@@ -207,6 +209,7 @@ Item {
                     root.hoverOpen = false;
                     SystemMenuService.close();
                     ToolsMenuService.close();
+                    ViewMenuService.close();
                     LauncherService.close();
                     BarModeService.close();
                     ClockPanelService.close();
@@ -314,6 +317,7 @@ Item {
             root.hoverOpen = false;
             SystemMenuService.close();
             ToolsMenuService.close();
+            ViewMenuService.close();
             LauncherService.close();
             BarModeService.close();
             ClockPanelService.close();
@@ -333,6 +337,7 @@ Item {
             root.hoverOpen = false;
             SystemMenuService.close();
             ToolsMenuService.close();
+            ViewMenuService.close();
             LauncherService.close();
             BarModeService.close();
             ClipboardPanelService.close();

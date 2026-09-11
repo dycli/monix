@@ -8,12 +8,14 @@ Row {
     signal systemMenuToggleRequested
     signal findMenuToggleRequested
     signal editMenuToggleRequested
+    signal viewMenuToggleRequested
     signal toolsMenuToggleRequested
     signal menuHovered(string menu)
 
     property alias systemMenuAnchor: systemButton
     property alias findMenuAnchor: findButton
     property alias editMenuAnchor: editButton
+    property alias viewMenuAnchor: viewButton
     property alias toolsMenuAnchor: toolsButton
 
     spacing: Style.barItemGap
@@ -101,6 +103,35 @@ Row {
             hoverEnabled: true
             onClicked: root.editMenuToggleRequested()
             onEntered: root.menuHovered("edit")
+        }
+    }
+
+    Item {
+        id: viewButton
+
+        width: viewLabel.implicitWidth + 8
+        height: Style.barHeight
+
+        Text {
+            id: viewLabel
+
+            anchors.centerIn: parent
+            color: Style.foregroundColor
+            font {
+                family: Style.fontFamily
+                pixelSize: Style.textFontSize
+                weight: Style.fontWeight
+            }
+            renderType: Text.NativeRendering
+            text: "View"
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
+            onClicked: root.viewMenuToggleRequested()
+            onEntered: root.menuHovered("view")
         }
     }
 

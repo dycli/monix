@@ -47,6 +47,7 @@ ShellRoot {
             ClipboardPanelService.close();
             ClockPanelService.close();
             ToolsMenuService.close();
+            ViewMenuService.close();
             BarModeService.close();
             LauncherService.toggle(OsdService.focusedScreenName);
         }
@@ -62,6 +63,7 @@ ShellRoot {
             ClipboardPanelService.close();
             ClockPanelService.close();
             ToolsMenuService.close();
+            ViewMenuService.close();
             BarModeService.toggle("session", OsdService.focusedScreenName, true);
         }
     }
@@ -76,6 +78,7 @@ ShellRoot {
             ClockPanelService.close();
             SettingsPanelService.close();
             ToolsMenuService.close();
+            ViewMenuService.close();
             ClipboardPanelService.toggle(OsdService.focusedScreenName);
         }
     }

@@ -17,6 +17,7 @@ Variants {
         readonly property bool menuBarOpen: SystemMenuService.isOpen(modelData.name)
             || LauncherService.isOpen(modelData.name)
             || ClipboardPanelService.isOpen(modelData.name)
+            || ViewMenuService.isOpen(modelData.name)
             || ToolsMenuService.isOpen(modelData.name)
         readonly property bool railOverlapsWorkspaces: rightRail.visible
             && rightRail.x < workspaceGroup.x + workspaceGroup.width + Style.barItemGap
@@ -26,12 +27,14 @@ Variants {
                     || (menu === "system" && SystemMenuService.isOpen(window.modelData.name))
                     || (menu === "find" && LauncherService.isOpen(window.modelData.name))
                     || (menu === "edit" && ClipboardPanelService.isOpen(window.modelData.name))
+                    || (menu === "view" && ViewMenuService.isOpen(window.modelData.name))
                     || (menu === "tools" && ToolsMenuService.isOpen(window.modelData.name)))
                 return;
 
             SystemMenuService.close();
             LauncherService.close();
             ClipboardPanelService.close();
+            ViewMenuService.close();
             ToolsMenuService.close();
 
             switch (menu) {
@@ -43,6 +46,9 @@ Variants {
                 break;
             case "edit":
                 ClipboardPanelService.toggle(window.modelData.name);
+                break;
+            case "view":
+                ViewMenuService.toggle(window.modelData.name);
                 break;
             case "tools":
                 ToolsMenuService.toggle(window.modelData.name);
@@ -103,6 +109,7 @@ Variants {
                 ClipboardPanelService.close();
                 SettingsPanelService.close();
                 LauncherService.close();
+                ViewMenuService.close();
                 ToolsMenuService.close();
                 SystemMenuService.toggle(window.modelData.name);
             }
@@ -112,6 +119,7 @@ Variants {
                 SettingsPanelService.close();
                 ClockPanelService.close();
                 BarModeService.close();
+                ViewMenuService.close();
                 ToolsMenuService.close();
                 LauncherService.toggle(window.modelData.name);
             }
@@ -121,8 +129,19 @@ Variants {
                 SettingsPanelService.close();
                 ClockPanelService.close();
                 BarModeService.close();
+                ViewMenuService.close();
                 ToolsMenuService.close();
                 ClipboardPanelService.toggle(window.modelData.name);
+            }
+            onViewMenuToggleRequested: {
+                SystemMenuService.close();
+                LauncherService.close();
+                ClipboardPanelService.close();
+                SettingsPanelService.close();
+                ClockPanelService.close();
+                BarModeService.close();
+                ToolsMenuService.close();
+                ViewMenuService.toggle(window.modelData.name);
             }
             onToolsMenuToggleRequested: {
                 SystemMenuService.close();
@@ -131,6 +150,7 @@ Variants {
                 SettingsPanelService.close();
                 ClockPanelService.close();
                 BarModeService.close();
+                ViewMenuService.close();
                 ToolsMenuService.toggle(window.modelData.name);
             }
             onMenuHovered: menu => window.switchMenu(menu)
@@ -149,6 +169,23 @@ Variants {
         EditPopout {
             anchorItem: leftRail.editMenuAnchor
             screenName: window.modelData.name
+        }
+
+        ViewPopout {
+            id: viewPopout
+
+            anchorItem: leftRail.viewMenuAnchor
+            layoutWindow: layoutPopout
+            screenName: window.modelData.name
+        }
+
+        LayoutPopout {
+            id: layoutPopout
+
+            popupLeft: viewPopout.popupLeft + viewPopout.implicitWidth + Style.popupGap
+            popupTop: viewPopout.layoutPopupTop
+            screenName: window.modelData.name
+            targetScreen: window.modelData
         }
 
         ToolsPopout {
