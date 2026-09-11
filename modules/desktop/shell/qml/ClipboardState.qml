@@ -25,6 +25,13 @@ QtObject {
         }
     }
 
+    property Process textProcess: Process {
+        onExited: exitCode => {
+            if (exitCode === 0)
+                root.pasteTimer.restart();
+        }
+    }
+
     property Process deleteProcess: Process {
         onExited: root.refresh()
     }
@@ -81,6 +88,18 @@ QtObject {
             "kestrel-clipboard", entryId
         ];
         decodeProcess.running = true;
+    }
+
+    function pasteText(text: string): void {
+        if (!text || textProcess.running)
+            return;
+        ClipboardPanelService.close();
+        textProcess.command = [
+            "sh", "-c",
+            "printf '%s' \"$1\" | wl-copy",
+            "kestrel-emoji", text
+        ];
+        textProcess.running = true;
     }
 
     function remove(entryId: string): void {

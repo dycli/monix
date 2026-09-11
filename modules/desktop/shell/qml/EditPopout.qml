@@ -10,6 +10,7 @@ PanelWindow {
 
     required property Item anchorItem
     required property string screenName
+    required property var emojiWindow
 
     property int selectedIndex: 0
     property int popupLeft: 0
@@ -18,6 +19,8 @@ PanelWindow {
 
     readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
     readonly property var results: ClipboardState.filtered(search.text)
+    readonly property int emojiPopupTop: Style.popupGap + content.y
+        + commands.y + emojiItem.y
 
     function sendShortcut(modifiers: string, key: string): void {
         pendingModifiers = modifiers;
@@ -68,7 +71,9 @@ PanelWindow {
 
     HyprlandFocusGrab {
         active: root.visible
-        windows: root.anchorWindow ? [root, root.anchorWindow] : [root]
+        windows: root.anchorWindow
+            ? [root, root.emojiWindow, root.anchorWindow]
+            : [root, root.emojiWindow]
         onCleared: ClipboardPanelService.close()
     }
 
@@ -90,6 +95,8 @@ PanelWindow {
 
     PopupSurface {
         Column {
+            id: content
+
             anchors {
                 fill: parent
                 margins: 6
@@ -117,8 +124,20 @@ PanelWindow {
 
                         width: commands.width
                         label: modelData.label
+                        onHoveredChanged: if (hovered) ClipboardPanelService.hideEmoji()
                         onActivated: root.sendShortcut(modelData.mods, modelData.key)
                     }
+                }
+
+                MenuItem {
+                    id: emojiItem
+
+                    width: parent.width
+                    label: "Emoji"
+                    detail: "›"
+                    onHoveredChanged: if (hovered)
+                        ClipboardPanelService.showEmoji(root.screenName)
+                    onActivated: ClipboardPanelService.showEmoji(root.screenName)
                 }
             }
 

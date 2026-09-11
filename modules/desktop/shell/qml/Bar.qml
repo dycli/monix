@@ -167,8 +167,20 @@ Variants {
         }
 
         EditPopout {
+            id: editPopout
+
             anchorItem: leftRail.editMenuAnchor
+            emojiWindow: emojiPopout
             screenName: window.modelData.name
+        }
+
+        EmojiPopout {
+            id: emojiPopout
+
+            popupLeft: editPopout.popupLeft + editPopout.implicitWidth + Style.popupGap
+            popupTop: editPopout.emojiPopupTop
+            screenName: window.modelData.name
+            targetScreen: window.modelData
         }
 
         ViewPopout {
