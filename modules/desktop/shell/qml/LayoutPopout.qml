@@ -40,6 +40,12 @@ PanelWindow {
     WlrLayershell.keyboardFocus: root.visible
         ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
+    Shortcut {
+        enabled: root.visible
+        sequence: "Escape"
+        onActivated: ViewMenuService.close()
+    }
+
     PopupSurface {
         Column {
             id: menu
