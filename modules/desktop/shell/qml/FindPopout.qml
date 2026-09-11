@@ -3,14 +3,16 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Wayland
 
-PopupWindow {
+PanelWindow {
     id: root
 
     required property Item anchorItem
     required property string screenName
 
     property int selectedIndex: 0
+    property int popupLeft: 0
 
     readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
     readonly property bool searching: search.text.trim().length > 0
@@ -30,18 +32,32 @@ PopupWindow {
     }
 
     color: "transparent"
-    width: 300
-    height: 320
+    implicitWidth: 250
+    implicitHeight: 320
+    screen: anchorWindow ? anchorWindow.screen : null
     visible: LauncherService.isOpen(screenName)
-    grabFocus: false
 
-    anchor.item: anchorItem
-    anchor.rect.y: anchorItem ? anchorItem.height + Style.popupGap : 0
+    anchors {
+        top: true
+        left: true
+    }
+    margins {
+        left: popupLeft
+        top: Style.barHeight + Style.popupGap
+    }
+    exclusiveZone: 0
+
+    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.namespace: "kestrel:popout"
+    WlrLayershell.keyboardFocus: root.visible
+        ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
     onResultsChanged: selectedIndex = Math.min(selectedIndex,
         Math.max(0, results.length - 1))
     onVisibleChanged: {
         if (visible) {
+            if (anchorWindow)
+                popupLeft = Math.round(anchorWindow.itemPosition(anchorItem).x);
             search.text = "";
             selectedIndex = 0;
             focusTimer.start();

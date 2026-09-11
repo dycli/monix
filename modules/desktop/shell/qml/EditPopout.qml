@@ -3,14 +3,16 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Wayland
 
-PopupWindow {
+PanelWindow {
     id: root
 
     required property Item anchorItem
     required property string screenName
 
     property int selectedIndex: 0
+    property int popupLeft: 0
     property string pendingModifiers: ""
     property string pendingKey: ""
 
@@ -25,16 +27,30 @@ PopupWindow {
     }
 
     color: "transparent"
-    width: 300
-    height: 420
+    implicitWidth: 250
+    implicitHeight: 420
+    screen: anchorWindow ? anchorWindow.screen : null
     visible: ClipboardPanelService.isOpen(screenName)
-    grabFocus: false
 
-    anchor.item: anchorItem
-    anchor.rect.y: anchorItem ? anchorItem.height + Style.popupGap : 0
+    anchors {
+        top: true
+        left: true
+    }
+    margins {
+        left: popupLeft
+        top: Style.barHeight + Style.popupGap
+    }
+    exclusiveZone: 0
+
+    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.namespace: "kestrel:popout"
+    WlrLayershell.keyboardFocus: root.visible
+        ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
     onVisibleChanged: {
         if (visible) {
+            if (anchorWindow)
+                popupLeft = Math.round(anchorWindow.itemPosition(anchorItem).x);
             selectedIndex = 0;
             search.text = "";
             ClipboardState.refresh();

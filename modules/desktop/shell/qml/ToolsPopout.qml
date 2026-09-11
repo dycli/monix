@@ -3,12 +3,15 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Wayland
 
-PopupWindow {
+PanelWindow {
     id: root
 
     required property Item anchorItem
     required property string screenName
+
+    property int popupLeft: 0
 
     readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
 
@@ -18,18 +21,33 @@ PopupWindow {
     }
 
     color: "transparent"
-    width: 300
-    height: menu.implicitHeight + 10
+    implicitWidth: 250
+    implicitHeight: menu.implicitHeight + 10
+    screen: anchorWindow ? anchorWindow.screen : null
     visible: ToolsMenuService.isOpen(screenName)
-    grabFocus: false
 
-    anchor.item: anchorItem
-    anchor.rect.y: anchorItem ? anchorItem.height + Style.popupGap : 0
+    anchors {
+        top: true
+        left: true
+    }
+    margins {
+        left: popupLeft
+        top: Style.barHeight + Style.popupGap
+    }
+    exclusiveZone: 0
+
+    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.namespace: "kestrel:popout"
+    WlrLayershell.keyboardFocus: root.visible
+        ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
     onVisibleChanged: {
-        menuGuard.reset();
-        if (!visible && ToolsMenuService.isOpen(screenName))
+        if (visible) {
+            if (anchorWindow)
+                popupLeft = Math.round(anchorWindow.itemPosition(anchorItem).x);
+        } else if (ToolsMenuService.isOpen(screenName)) {
             ToolsMenuService.close();
+        }
     }
 
     Shortcut {
@@ -45,13 +63,6 @@ PopupWindow {
     }
 
     PopupSurface {
-        PopupMenuGuard {
-            id: menuGuard
-
-            anchors.fill: parent
-            onDismissed: ToolsMenuService.close()
-        }
-
         Column {
             id: menu
 
@@ -61,7 +72,6 @@ PopupWindow {
                 top: parent.top
                 margins: 5
             }
-            enabled: menuGuard.armed
             spacing: 2
 
             MenuItem {
