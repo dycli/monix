@@ -107,35 +107,6 @@ Row {
     }
 
     Item {
-        id: viewButton
-
-        width: viewLabel.implicitWidth + 8
-        height: Style.barHeight
-
-        Text {
-            id: viewLabel
-
-            anchors.centerIn: parent
-            color: Style.foregroundColor
-            font {
-                family: Style.fontFamily
-                pixelSize: Style.textFontSize
-                weight: Style.fontWeight
-            }
-            renderType: Text.NativeRendering
-            text: "View"
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            hoverEnabled: true
-            onClicked: root.viewMenuToggleRequested()
-            onEntered: root.menuHovered("view")
-        }
-    }
-
-    Item {
         id: toolsButton
 
         width: toolsLabel.implicitWidth + 8
@@ -161,6 +132,35 @@ Row {
             hoverEnabled: true
             onClicked: root.toolsMenuToggleRequested()
             onEntered: root.menuHovered("tools")
+        }
+    }
+
+    Item {
+        id: viewButton
+
+        width: viewLabel.implicitWidth + 8
+        height: Style.barHeight
+
+        Text {
+            id: viewLabel
+
+            anchors.centerIn: parent
+            color: Style.foregroundColor
+            font {
+                family: Style.fontFamily
+                pixelSize: Style.textFontSize
+                weight: Style.fontWeight
+            }
+            renderType: Text.NativeRendering
+            text: "View"
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
+            onClicked: root.viewMenuToggleRequested()
+            onEntered: root.menuHovered("view")
         }
     }
 
