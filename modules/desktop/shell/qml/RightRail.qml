@@ -148,6 +148,7 @@ Item {
         onPowerActivated: {
             root.hoverOpen = false;
             SystemMenuService.close();
+            ToolsMenuService.close();
             LauncherService.close();
             BarModeService.close();
             ClockPanelService.close();
@@ -195,6 +196,7 @@ Item {
                 onSettingsRequested: section => {
                     root.hoverOpen = false;
                     SystemMenuService.close();
+                    ToolsMenuService.close();
                     LauncherService.close();
                     BarModeService.close();
                     ClockPanelService.close();
@@ -204,6 +206,7 @@ Item {
                 onDisplayRequested: {
                     root.hoverOpen = false;
                     SystemMenuService.close();
+                    ToolsMenuService.close();
                     LauncherService.close();
                     BarModeService.close();
                     ClockPanelService.close();
@@ -310,6 +313,7 @@ Item {
         onMenuToggleRequested: {
             root.hoverOpen = false;
             SystemMenuService.close();
+            ToolsMenuService.close();
             LauncherService.close();
             BarModeService.close();
             ClockPanelService.close();
@@ -328,6 +332,7 @@ Item {
         onClicked: {
             root.hoverOpen = false;
             SystemMenuService.close();
+            ToolsMenuService.close();
             LauncherService.close();
             BarModeService.close();
             ClipboardPanelService.close();

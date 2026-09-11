@@ -14,8 +14,41 @@ Variants {
         required property var modelData
 
         readonly property int barHeight: Style.barHeight
+        readonly property bool menuBarOpen: SystemMenuService.isOpen(modelData.name)
+            || LauncherService.isOpen(modelData.name)
+            || ClipboardPanelService.isOpen(modelData.name)
+            || ToolsMenuService.isOpen(modelData.name)
         readonly property bool railOverlapsWorkspaces: rightRail.visible
             && rightRail.x < workspaceGroup.x + workspaceGroup.width + Style.barItemGap
+
+        function switchMenu(menu: string): void {
+            if (!window.menuBarOpen
+                    || (menu === "system" && SystemMenuService.isOpen(window.modelData.name))
+                    || (menu === "find" && LauncherService.isOpen(window.modelData.name))
+                    || (menu === "edit" && ClipboardPanelService.isOpen(window.modelData.name))
+                    || (menu === "tools" && ToolsMenuService.isOpen(window.modelData.name)))
+                return;
+
+            SystemMenuService.close();
+            LauncherService.close();
+            ClipboardPanelService.close();
+            ToolsMenuService.close();
+
+            switch (menu) {
+            case "system":
+                SystemMenuService.toggle(window.modelData.name);
+                break;
+            case "find":
+                LauncherService.open(window.modelData.name);
+                break;
+            case "edit":
+                ClipboardPanelService.toggle(window.modelData.name);
+                break;
+            case "tools":
+                ToolsMenuService.toggle(window.modelData.name);
+                break;
+            }
+        }
 
         screen: modelData
         color: "transparent"
@@ -70,6 +103,7 @@ Variants {
                 ClipboardPanelService.close();
                 SettingsPanelService.close();
                 LauncherService.close();
+                ToolsMenuService.close();
                 SystemMenuService.toggle(window.modelData.name);
             }
             onFindMenuToggleRequested: {
@@ -78,6 +112,7 @@ Variants {
                 SettingsPanelService.close();
                 ClockPanelService.close();
                 BarModeService.close();
+                ToolsMenuService.close();
                 LauncherService.toggle(window.modelData.name);
             }
             onEditMenuToggleRequested: {
@@ -86,8 +121,19 @@ Variants {
                 SettingsPanelService.close();
                 ClockPanelService.close();
                 BarModeService.close();
+                ToolsMenuService.close();
                 ClipboardPanelService.toggle(window.modelData.name);
             }
+            onToolsMenuToggleRequested: {
+                SystemMenuService.close();
+                LauncherService.close();
+                ClipboardPanelService.close();
+                SettingsPanelService.close();
+                ClockPanelService.close();
+                BarModeService.close();
+                ToolsMenuService.toggle(window.modelData.name);
+            }
+            onMenuHovered: menu => window.switchMenu(menu)
         }
 
         SystemMenuPopout {
@@ -102,6 +148,11 @@ Variants {
 
         EditPopout {
             anchorItem: leftRail.editMenuAnchor
+            screenName: window.modelData.name
+        }
+
+        ToolsPopout {
+            anchorItem: leftRail.toolsMenuAnchor
             screenName: window.modelData.name
         }
 

@@ -9,11 +9,6 @@ PopupWindow {
     required property Item anchorItem
     required property string screenName
 
-    property bool guardTracking: false
-    property real guardPointerX: 0
-    property real guardPointerY: 0
-    property bool menuReady: false
-
     readonly property bool sleepAllowed: Quickshell.env("KESTREL_ALLOW_SLEEP") === "true"
 
     function closeAndRun(action): void {
@@ -31,8 +26,7 @@ PopupWindow {
     anchor.rect.y: anchorItem ? anchorItem.height + Style.popupGap : 0
 
     onVisibleChanged: {
-        guardTracking = false;
-        menuReady = false;
+        menuGuard.reset();
         if (!visible && SystemMenuService.isOpen(screenName))
             SystemMenuService.close();
     }
@@ -44,24 +38,11 @@ PopupWindow {
     }
 
     PopupSurface {
-        MouseArea {
+        PopupMenuGuard {
+            id: menuGuard
+
             anchors.fill: parent
-            enabled: !root.menuReady
-            hoverEnabled: true
-            onEntered: {
-                root.guardPointerX = mouseX;
-                root.guardPointerY = mouseY;
-                root.guardTracking = true;
-            }
-            onExited: root.guardTracking = false
-            onPositionChanged: event => {
-                if (root.guardTracking
-                        && (Math.abs(event.x - root.guardPointerX) >= 4
-                            || Math.abs(event.y - root.guardPointerY) >= 4))
-                    root.menuReady = true;
-            }
-            onClicked: SystemMenuService.close()
-            z: 1
+            onDismissed: SystemMenuService.close()
         }
 
         Column {
@@ -73,7 +54,7 @@ PopupWindow {
                 top: parent.top
                 margins: 5
             }
-            enabled: root.menuReady
+            enabled: menuGuard.armed
             spacing: 2
 
             MenuItem {

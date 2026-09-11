@@ -9,10 +9,13 @@ Row {
     signal systemMenuToggleRequested
     signal findMenuToggleRequested
     signal editMenuToggleRequested
+    signal toolsMenuToggleRequested
+    signal menuHovered(string menu)
 
     property alias systemMenuAnchor: systemButton
     property alias findMenuAnchor: findButton
     property alias editMenuAnchor: editButton
+    property alias toolsMenuAnchor: toolsButton
 
     spacing: Style.barItemGap
 
@@ -38,7 +41,9 @@ Row {
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
             onClicked: root.systemMenuToggleRequested()
+            onEntered: root.menuHovered("system")
         }
     }
 
@@ -65,7 +70,9 @@ Row {
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
             onClicked: root.findMenuToggleRequested()
+            onEntered: root.menuHovered("find")
         }
     }
 
@@ -92,7 +99,38 @@ Row {
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
             onClicked: root.editMenuToggleRequested()
+            onEntered: root.menuHovered("edit")
+        }
+    }
+
+    Item {
+        id: toolsButton
+
+        width: toolsLabel.implicitWidth + 8
+        height: Style.barHeight
+
+        Text {
+            id: toolsLabel
+
+            anchors.centerIn: parent
+            color: Style.foregroundColor
+            font {
+                family: Style.fontFamily
+                pixelSize: Style.textFontSize
+                weight: Style.fontWeight
+            }
+            renderType: Text.NativeRendering
+            text: "Tools"
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
+            onClicked: root.toolsMenuToggleRequested()
+            onEntered: root.menuHovered("tools")
         }
     }
 
