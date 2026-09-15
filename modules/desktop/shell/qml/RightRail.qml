@@ -13,11 +13,14 @@ Item {
     readonly property bool ownsMode: BarModeService.isActive(screenName)
     readonly property string transientMode: BarModeService.transientFor(screenName)
     readonly property bool transientVisible: BarModeService.transientVisibleFor(screenName)
+    readonly property bool settingsOpen: SettingsPanelService.isOpen(screenName)
     readonly property bool sessionDetail: ownsMode && BarModeService.activeMode === "session"
     readonly property bool detailVisible: sessionDetail
     readonly property bool overviewVisible: !detailVisible && BarModeService.activeMode === ""
-        && (hoverOpen || transientVisible)
+        && (hoverOpen || transientVisible || settingsOpen)
     readonly property string overviewMode: {
+        if (settingsOpen)
+            return "control";
         if (transientVisible)
             return transientMode === "profile" || !hoverOpen ? transientMode : hoverMode;
         if (hoverOpen)
