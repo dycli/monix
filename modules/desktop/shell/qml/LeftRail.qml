@@ -26,17 +26,12 @@ Row {
         width: 20
         height: Style.barHeight
 
-        Text {
+        Image {
             anchors.centerIn: parent
-            color: Style.foregroundColor
-            font {
-                family: Style.fontFamily
-                pixelSize: 16
-                weight: Style.fontWeight
-            }
-            renderType: Text.QtRendering
-            rotation: 180
-            text: ""
+            width: 16
+            height: 16
+            source: "pear-logo.svg"
+            sourceSize: Qt.size(width, height)
         }
 
         MouseArea {
