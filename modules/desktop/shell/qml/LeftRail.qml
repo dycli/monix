@@ -28,8 +28,9 @@ Row {
 
         Image {
             anchors.centerIn: parent
-            width: 16
-            height: 16
+            width: 14
+            height: 18
+            fillMode: Image.PreserveAspectFit
             source: "pear-logo.svg"
             sourceSize: Qt.size(width, height)
         }
