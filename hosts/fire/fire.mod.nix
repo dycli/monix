@@ -16,6 +16,7 @@
           self.nixosModules.dev
           self.nixosModules.gaming
           self.nixosModules.creative
+          self.nixosModules.davinci-resolve
           self.nixosModules.inference-fire
           self.nixosModules.inference-client
           self.nixosModules.paseo

@@ -1,17 +1,10 @@
-# Creative applications for video, graphics, photography, and streaming.
-{ self, ... }:
+# Creative applications suited to every desktop, including laptops.
+{ ... }:
 {
-  flake.nixosModules.creative =
-    { lib, ... }:
-    {
-      unfreePackages = lib.lists.singleton "davinci-resolve";
-    };
-
   flake.homeModules.creative =
     { pkgs, ... }:
     {
       home.packages = [
-        pkgs.davinci-resolve
         pkgs.blender
         pkgs.inkscape
         pkgs.krita

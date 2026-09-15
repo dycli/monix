@@ -24,6 +24,7 @@
           self.nixosModules.hyprland
           self.nixosModules.dev
           self.nixosModules.gaming
+          self.nixosModules.creative
           inputs.nixos-hardware.nixosModules.framework-13-7040-amd
         ];
 

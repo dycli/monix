@@ -17,6 +17,7 @@
         self.nixosModules.dev
         self.nixosModules.gaming
         self.nixosModules.creative
+        self.nixosModules.davinci-resolve
         inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
         ./credentials.nix
       ];
