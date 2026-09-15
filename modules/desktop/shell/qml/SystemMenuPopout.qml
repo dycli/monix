@@ -58,9 +58,12 @@ PanelWindow {
     }
 
     HyprlandFocusGrab {
-        active: root.visible
+        active: root.visible && !SettingsPanelService.isOpen(root.screenName)
         windows: root.anchorWindow ? [root, root.anchorWindow] : [root]
-        onCleared: SystemMenuService.close()
+        onCleared: {
+            if (!SettingsPanelService.isOpen(root.screenName))
+                SystemMenuService.close();
+        }
     }
 
     PopupSurface {
@@ -96,7 +99,7 @@ PanelWindow {
             MenuItem {
                 width: parent.width
                 label: "System Settings…"
-                onActivated: root.closeAndRun(() => SettingsPanelService.toggle(root.screenName))
+                onActivated: SettingsPanelService.toggle(root.screenName)
             }
 
             Rectangle {
