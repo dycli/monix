@@ -29,6 +29,7 @@ Column {
             width: parent.width
             icon: "󰁹"
             interactive: false
+            opacity: 1
             label: PowerService.status
             detail: (PowerService.full ? "" : PowerService.rate + " · "
                 + PowerService.time + " · ") + PowerService.percentage + "%"
@@ -38,6 +39,7 @@ Column {
             width: parent.width
             icon: "󰂑"
             interactive: false
+            opacity: 1
             label: "Battery health"
             detail: PowerService.health + " · " + PowerService.capacity
         }
