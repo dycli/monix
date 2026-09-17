@@ -170,8 +170,18 @@ Variants {
             id: editPopout
 
             anchorItem: leftRail.editMenuAnchor
+            clipboardWindow: clipboardPopout
             emojiWindow: emojiPopout
             screenName: window.modelData.name
+        }
+
+        ClipboardPopout {
+            id: clipboardPopout
+
+            popupLeft: editPopout.popupLeft + editPopout.implicitWidth + Style.popupGap
+            popupTop: editPopout.clipboardPopupTop
+            screenName: window.modelData.name
+            targetScreen: window.modelData
         }
 
         EmojiPopout {

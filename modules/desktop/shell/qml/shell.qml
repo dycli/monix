@@ -79,7 +79,7 @@ ShellRoot {
             SettingsPanelService.close();
             ToolsMenuService.close();
             ViewMenuService.close();
-            ClipboardPanelService.toggle(OsdService.focusedScreenName);
+            ClipboardPanelService.toggleClipboard(OsdService.focusedScreenName);
         }
     }
 }
