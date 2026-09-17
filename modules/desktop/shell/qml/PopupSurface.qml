@@ -3,6 +3,6 @@ import QtQuick
 Rectangle {
     anchors.fill: parent
     antialiasing: true
-    color: "#01ffffff"
+    color: "#59000000"
     radius: Style.popupRadius
 }
