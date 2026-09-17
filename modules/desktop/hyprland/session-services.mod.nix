@@ -91,9 +91,9 @@
           {
             printf '%s\n' \
               'general {' \
-              '    lock_cmd = ${getExe' pkgs.procps "pidof"} hyprlock || ${getExe pkgs.hyprlock}' \
+              '    lock_cmd = ${getExe' pkgs.systemd "systemctl"} --user start hyprlock.service' \
               '    before_sleep_cmd = ${getExe' pkgs.systemd "loginctl"} lock-session' \
-              '    after_sleep_cmd = ${getExe' pkgs.hyprland "hyprctl"} dispatch dpms on' \
+              '    after_sleep_cmd = ${getExe' pkgs.hyprland "hyprctl"} dispatch "hl.dsp.dpms({ action = [[on]] })"' \
               '    ignore_dbus_inhibit = false' \
               '    ignore_systemd_inhibit = false' \
               '    ignore_wayland_inhibit = false' \
@@ -105,7 +105,7 @@
                 "$((lock_minutes * 60))" '${getExe' pkgs.systemd "loginctl"}'
             fi
             if [[ "$display_enabled" == "true" ]]; then
-              printf 'listener {\n    timeout = %s\n    on-timeout = %s dispatch dpms off\n    on-resume = %s dispatch dpms on\n}\n' \
+              printf 'listener {\n    timeout = %s\n    on-timeout = %s dispatch "hl.dsp.dpms({ action = [[off]] })"\n    on-resume = %s dispatch "hl.dsp.dpms({ action = [[on]] })"\n}\n' \
                 "$((display_minutes * 60))" '${getExe' pkgs.hyprland "hyprctl"}' \
                 '${getExe' pkgs.hyprland "hyprctl"}'
             fi
@@ -195,7 +195,6 @@
               inner_color = "rgba(15, 15, 15, 0.7)";
               font_color = "rgba(255, 255, 255, 1.0)";
               font_family = "ComicCodeLigatures Nerd Font";
-              font_size = 24;
               placeholder_text = "Password";
               fail_text = "$FAIL";
               dots_center = true;
@@ -212,5 +211,20 @@
       };
       systemd.user.services.hypridle.Service.ExecStart =
         lib.mkForce "${kestrelHypridle}/bin/kestrel-hypridle";
+
+      # Keep the active locker outside hypridle's cgroup. Power-policy changes
+      # restart hypridle, and systemd would otherwise kill its hyprlock child
+      # while Hyprland still holds the session lock.
+      systemd.user.services.hyprlock = {
+        Unit = {
+          Description = "Hyprland screen locker";
+          PartOf = [ "graphical-session.target" ];
+          After = [ "graphical-session.target" ];
+        };
+        Service = {
+          Type = "simple";
+          ExecStart = getExe pkgs.hyprlock;
+        };
+      };
     };
 }
