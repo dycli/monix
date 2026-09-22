@@ -77,7 +77,11 @@ PanelWindow {
             MenuItem {
                 width: parent.width
                 label: "Calculator"
-                onActivated: ToolsMenuService.close()
+                onActivated: root.closeAndLaunch([
+                    Quickshell.env("KESTREL_TERMINAL"),
+                    "-e",
+                    Quickshell.env("KESTREL_CALCULATOR")
+                ])
             }
 
             MenuItem {
