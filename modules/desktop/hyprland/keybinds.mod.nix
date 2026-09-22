@@ -48,6 +48,7 @@
       messenger = getExe config.desktopApps.messenger.package;
       passwordManager = getExe config.desktopApps.passwordManager.package;
       email = getExe config.desktopApps.email.package;
+      calculator = getExe pkgs.libqalculate;
       inherit (config.desktopApps) editor;
     in
     {
@@ -69,7 +70,12 @@
           { }
         )
         (mkBind "SUPER + SHIFT + C"
-          ''hl.dsp.exec_cmd("${terminal} --class=com.mitchellh.ghostty.floating -e ${getExe pkgs.libqalculate} --set 'autocalc on'")''
+          ''hl.dsp.exec_cmd("${terminal} --class=com.mitchellh.ghostty.floating -e ${calculator} --set 'autocalc on'")''
+          "Open calculator"
+          { }
+        )
+        (mkBind "XF86Calculator"
+          ''hl.dsp.exec_cmd("${terminal} --class=com.mitchellh.ghostty.floating -e ${calculator} --set 'autocalc on'")''
           "Open calculator"
           { }
         )
@@ -219,7 +225,7 @@
         )
         (mkBind "SUPER + PRINT" ''hl.dsp.exec_cmd("${getExe pkgs.hyprpicker} -a")'' "Pick color" { })
 
-        (mkBind "CTRL + SUPER + V"
+        (mkBind "SUPER + SHIFT + V"
           ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call clipboard toggle")''
           "Edit menu and clipboard history"
           { }
