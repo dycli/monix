@@ -56,6 +56,14 @@ Variants {
             }
         }
 
+        function closeMenuBar(): void {
+            SystemMenuService.close();
+            LauncherService.close();
+            ClipboardPanelService.close();
+            ViewMenuService.close();
+            ToolsMenuService.close();
+        }
+
         screen: modelData
         color: "transparent"
         implicitHeight: barHeight
@@ -93,6 +101,12 @@ Variants {
                 if (!rightRail.contains(point))
                     BarModeService.close();
             }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            enabled: window.menuBarOpen
+            onClicked: window.closeMenuBar()
         }
 
         LeftRail {
