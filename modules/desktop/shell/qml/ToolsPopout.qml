@@ -81,7 +81,9 @@ PanelWindow {
                     Quickshell.env("KESTREL_TERMINAL"),
                     "--class=com.mitchellh.ghostty.floating",
                     "-e",
-                    "qalc"
+                    "qalc",
+                    "--set",
+                    "autocalc on"
                 ])
             }
 
