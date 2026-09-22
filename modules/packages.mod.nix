@@ -79,6 +79,7 @@
         pkgs.cliphist
         pkgs.hyprpicker
         pkgs.hyprshot
+        pkgs.libqalculate
         pkgs.pavucontrol
         pkgs.playerctl
         pkgs.wl-clip-persist

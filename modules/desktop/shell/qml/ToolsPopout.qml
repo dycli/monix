@@ -79,8 +79,9 @@ PanelWindow {
                 label: "Calculator"
                 onActivated: root.closeAndLaunch([
                     Quickshell.env("KESTREL_TERMINAL"),
+                    "--class=com.mitchellh.ghostty.floating",
                     "-e",
-                    Quickshell.env("KESTREL_CALCULATOR")
+                    "qalc"
                 ])
             }
 
