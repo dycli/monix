@@ -8,6 +8,8 @@ Row {
     signal settingsRequested(string section)
     signal displayRequested
 
+    property bool settingsOpen: false
+
     height: 24
     spacing: Style.barItemGap
 
@@ -28,7 +30,12 @@ Row {
         icon: AudioState.icon
         iconLeftAligned: true
         value: AudioState.volume / 100
-        onIconActivated: AudioState.toggleMute()
+        onIconActivated: {
+            if (root.settingsOpen)
+                root.settingsRequested("sound");
+            else
+                AudioState.toggleMute();
+        }
         onMoved: value => AudioState.setVolume(value)
         onSecondaryActivated: AudioState.toggleMute()
     }
@@ -58,6 +65,11 @@ Row {
     BarModeButton {
         enabled: true
         icon: NightModeState.enabled ? "󰖔" : "󰖨"
-        onActivated: NightModeState.toggle()
+        onActivated: {
+            if (root.settingsOpen)
+                root.displayRequested();
+            else
+                NightModeState.toggle();
+        }
     }
 }

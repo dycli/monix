@@ -196,6 +196,7 @@ Item {
                 id: controlMenu
 
                 anchors.right: parent.right
+                settingsOpen: root.settingsOpen
                 visible: root.overviewMode === "control"
                 onSettingsRequested: section => {
                     root.hoverOpen = false;

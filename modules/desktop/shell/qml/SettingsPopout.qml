@@ -73,7 +73,7 @@ PanelWindow {
 
     HyprlandFocusGrab {
         active: root.visible
-        windows: [root]
+        windows: root.anchorWindow ? [root, root.anchorWindow] : [root]
         onCleared: SettingsPanelService.close()
     }
 
