@@ -68,6 +68,11 @@
           "Copy (send Ctrl+Insert to focused window)"
           { }
         )
+        (mkBind "SUPER + SHIFT + C"
+          ''hl.dsp.exec_cmd("${terminal} --class=com.mitchellh.ghostty.floating -e ${getExe pkgs.libqalculate} --set 'autocalc on'")''
+          "Open calculator"
+          { }
+        )
         (mkBind "SUPER + D"
           ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call launcher toggle")''
           "Find applications"
