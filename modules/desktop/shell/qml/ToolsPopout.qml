@@ -76,6 +76,12 @@ PanelWindow {
 
             MenuItem {
                 width: parent.width
+                label: "Calculator"
+                onActivated: ToolsMenuService.close()
+            }
+
+            MenuItem {
+                width: parent.width
                 label: "Color Picker"
                 onActivated: root.closeAndLaunch([
                     Quickshell.env("KESTREL_COLOR_PICKER"), "-a"
@@ -88,12 +94,6 @@ PanelWindow {
                 onActivated: root.closeAndLaunch([
                     Quickshell.env("KESTREL_SCREENSHOT"), "-m", "region"
                 ])
-            }
-
-            MenuItem {
-                width: parent.width
-                label: "Calculator"
-                onActivated: ToolsMenuService.close()
             }
 
             MenuItem {
