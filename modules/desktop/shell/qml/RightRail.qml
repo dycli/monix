@@ -33,7 +33,8 @@ Item {
     }
     readonly property bool powerAnchoredOverview: overviewMode === "battery"
         || overviewMode === "profile"
-        || (overviewMode === "control" && PowerService.hasBattery)
+    readonly property bool controlBatteryVisible: overviewMode === "control"
+        && PowerService.hasBattery
     readonly property bool pinned: ownsMode
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
     readonly property real privacyLead: privacy.width > 0 ? privacy.width + gap : 0
@@ -41,10 +42,6 @@ Item {
     readonly property real pinnedControlsLead: pinnedControls.implicitWidth > 0
         ? pinnedControls.implicitWidth + gap : 0
     readonly property real leadingControlsWidth: externalControlsWidth + pinnedControlsLead
-    readonly property real overviewRequestedWidth: overviewMode === "control"
-        ? controlMenu.implicitWidth
-            + (PowerService.hasBattery ? gap + batteryStatus.implicitWidth : 0)
-        : overviewContent.implicitWidth
 
     property bool hoverOpen: false
     property string hoverMode: "control"
@@ -71,7 +68,8 @@ Item {
 
     readonly property real idleWidth: leadingControlsWidth + settingsButton.width + gap + clock.width
     readonly property real overviewWidth: Math.min(maximumWidth,
-        idleWidth + gap + overviewRequestedWidth)
+        idleWidth + gap + overviewContent.implicitWidth
+            + (controlBatteryVisible ? gap + powerOverview.implicitWidth : 0))
     readonly property real endControlWidth: sessionDetailVisual ? 0 : settingsButton.width
     readonly property real endControlGap: endControlWidth > 0 ? gap : 0
     readonly property real availableDetailWidth: Math.max(0,
@@ -156,9 +154,10 @@ Item {
 
         anchors.verticalCenter: parent.verticalCenter
         x: {
-            const previewOffset = root.powerAnchoredOverview
-                ? root.overviewProgress * (root.gap + overviewContent.implicitWidth)
-                : 0;
+            const previewWidth = root.controlBatteryVisible
+                ? powerOverview.implicitWidth : overviewContent.implicitWidth;
+            const previewOffset = root.powerAnchoredOverview || root.controlBatteryVisible
+                ? root.overviewProgress * (root.gap + previewWidth) : 0;
             return (root.externalControlsWidth + previewOffset)
                 * (1 - root.detailProgress);
         }
@@ -199,27 +198,38 @@ Item {
                 case "brightness": return brightnessOsd.implicitWidth;
                 case "microphone": return microphoneOsd.implicitWidth;
                 case "profile": return powerOverview.implicitWidth;
-                default: return batteryStatus.implicitWidth;
+                default: return controlMenu.implicitWidth;
                 }
             }
             implicitHeight: 24
 
-            Item {
-                width: batteryStatus.implicitWidth
-                height: 24
+            ControlBarMenu {
+                id: controlMenu
+
                 anchors.right: parent.right
-                visible: root.overviewMode === "control" && PowerService.hasBattery
-
-                BatteryBarStatus {
-                    id: batteryStatus
-
-                    anchors.centerIn: parent
+                settingsOpen: root.settingsOpen
+                visible: root.overviewMode === "control"
+                onSettingsRequested: section => {
+                    root.hoverOpen = false;
+                    SystemMenuService.close();
+                    ToolsMenuService.close();
+                    ViewMenuService.close();
+                    LauncherService.close();
+                    BarModeService.close();
+                    ClockPanelService.close();
+                    ClipboardPanelService.close();
+                    SettingsPanelService.openSection(root.screenName, section);
                 }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.openPowerSettings()
+                onDisplayRequested: {
+                    root.hoverOpen = false;
+                    SystemMenuService.close();
+                    ToolsMenuService.close();
+                    ViewMenuService.close();
+                    LauncherService.close();
+                    BarModeService.close();
+                    ClockPanelService.close();
+                    ClipboardPanelService.close();
+                    SettingsPanelService.openDisplay(root.screenName);
                 }
             }
 
@@ -284,42 +294,34 @@ Item {
     }
 
     Item {
-        id: controlViewport
+        id: controlBatteryViewport
 
         anchors.verticalCenter: parent.verticalCenter
-        x: pinnedControls.x + pinnedControls.width + root.gap
-        width: controlMenu.implicitWidth
+        x: pinnedControls.x + pinnedControls.powerX - root.gap - width
+        width: powerOverview.implicitWidth
         height: 24
         clip: true
-        enabled: root.overviewVisible && root.overviewMode === "control"
-        visible: root.overviewMode === "control"
+        enabled: root.overviewVisible && root.controlBatteryVisible
+        visible: root.controlBatteryVisible
 
-        ControlBarMenu {
-            id: controlMenu
+        Item {
+            x: width * (1 - root.overviewProgress)
+            width: powerOverview.implicitWidth
+            height: 24
 
-            x: implicitWidth * (1 - root.overviewProgress)
-            settingsOpen: root.settingsOpen
-            onSettingsRequested: section => {
-                root.hoverOpen = false;
-                SystemMenuService.close();
-                ToolsMenuService.close();
-                ViewMenuService.close();
-                LauncherService.close();
-                BarModeService.close();
-                ClockPanelService.close();
-                ClipboardPanelService.close();
-                SettingsPanelService.openSection(root.screenName, section);
+            BatteryBarStatus {
+                id: batteryStatus
+
+                anchors {
+                    right: parent.right
+                    verticalCenter: parent.verticalCenter
+                }
             }
-            onDisplayRequested: {
-                root.hoverOpen = false;
-                SystemMenuService.close();
-                ToolsMenuService.close();
-                ViewMenuService.close();
-                LauncherService.close();
-                BarModeService.close();
-                ClockPanelService.close();
-                ClipboardPanelService.close();
-                SettingsPanelService.openDisplay(root.screenName);
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.openPowerSettings()
             }
         }
     }
