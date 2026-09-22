@@ -79,6 +79,13 @@ PanelWindow {
         onTriggered: search.forceActiveFocus()
     }
 
+    Shortcut {
+        enabled: root.visible
+        context: Qt.ApplicationShortcut
+        sequence: "Escape"
+        onActivated: LauncherService.close()
+    }
+
     PopupSurface {
         Column {
             anchors {
@@ -124,10 +131,7 @@ PanelWindow {
                     onTextChanged: root.selectedIndex = 0
 
                     Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Escape) {
-                            LauncherService.close();
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Down) {
+                        if (event.key === Qt.Key_Down) {
                             root.moveSelection(1);
                             event.accepted = true;
                         } else if (event.key === Qt.Key_Up) {
