@@ -29,6 +29,7 @@ Item {
     }
     readonly property bool powerAnchoredOverview: overviewMode === "battery"
         || overviewMode === "profile"
+        || (overviewMode === "control" && PowerService.hasBattery)
     readonly property bool pinned: ownsMode
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
     readonly property real privacyLead: privacy.width > 0 ? privacy.width + gap : 0
@@ -46,6 +47,18 @@ Item {
     function scheduleHoverClose(): void {
         if (hoverOpen && !railHover.hovered)
             hoverCloseTimer.restart();
+    }
+
+    function openPowerSettings(): void {
+        hoverOpen = false;
+        SystemMenuService.close();
+        ToolsMenuService.close();
+        ViewMenuService.close();
+        LauncherService.close();
+        BarModeService.close();
+        ClockPanelService.close();
+        ClipboardPanelService.close();
+        SettingsPanelService.openPower(screenName);
     }
 
     readonly property real idleWidth: leadingControlsWidth + settingsButton.width + gap + clock.width
@@ -143,22 +156,13 @@ Item {
         }
         onPowerHoveredChanged: {
             if (powerHovered && PowerService.hasBattery && !root.detailVisible
-                    && BarModeService.activeMode === "") {
+                    && BarModeService.activeMode === ""
+                    && !(root.overviewVisible && root.overviewMode === "control")) {
                 root.hoverMode = "battery";
                 root.hoverOpen = true;
             }
         }
-        onPowerActivated: {
-            root.hoverOpen = false;
-            SystemMenuService.close();
-            ToolsMenuService.close();
-            ViewMenuService.close();
-            LauncherService.close();
-            BarModeService.close();
-            ClockPanelService.close();
-            ClipboardPanelService.close();
-            SettingsPanelService.openPower(root.screenName);
-        }
+        onPowerActivated: root.openPowerSettings()
     }
 
     Item {
@@ -187,38 +191,63 @@ Item {
                 case "brightness": return brightnessOsd.implicitWidth;
                 case "microphone": return microphoneOsd.implicitWidth;
                 case "profile": return powerOverview.implicitWidth;
-                default: return controlMenu.implicitWidth;
+                default: return controlOverview.implicitWidth;
                 }
             }
             implicitHeight: 24
 
-            ControlBarMenu {
-                id: controlMenu
+            Row {
+                id: controlOverview
 
                 anchors.right: parent.right
-                settingsOpen: root.settingsOpen
+                height: 24
+                spacing: root.gap
                 visible: root.overviewMode === "control"
-                onSettingsRequested: section => {
-                    root.hoverOpen = false;
-                    SystemMenuService.close();
-                    ToolsMenuService.close();
-                    ViewMenuService.close();
-                    LauncherService.close();
-                    BarModeService.close();
-                    ClockPanelService.close();
-                    ClipboardPanelService.close();
-                    SettingsPanelService.openSection(root.screenName, section);
+
+                ControlBarMenu {
+                    id: controlMenu
+
+                    settingsOpen: root.settingsOpen
+                    onSettingsRequested: section => {
+                        root.hoverOpen = false;
+                        SystemMenuService.close();
+                        ToolsMenuService.close();
+                        ViewMenuService.close();
+                        LauncherService.close();
+                        BarModeService.close();
+                        ClockPanelService.close();
+                        ClipboardPanelService.close();
+                        SettingsPanelService.openSection(root.screenName, section);
+                    }
+                    onDisplayRequested: {
+                        root.hoverOpen = false;
+                        SystemMenuService.close();
+                        ToolsMenuService.close();
+                        ViewMenuService.close();
+                        LauncherService.close();
+                        BarModeService.close();
+                        ClockPanelService.close();
+                        ClipboardPanelService.close();
+                        SettingsPanelService.openDisplay(root.screenName);
+                    }
                 }
-                onDisplayRequested: {
-                    root.hoverOpen = false;
-                    SystemMenuService.close();
-                    ToolsMenuService.close();
-                    ViewMenuService.close();
-                    LauncherService.close();
-                    BarModeService.close();
-                    ClockPanelService.close();
-                    ClipboardPanelService.close();
-                    SettingsPanelService.openDisplay(root.screenName);
+
+                Item {
+                    width: batteryStatus.implicitWidth
+                    height: 24
+                    visible: PowerService.hasBattery
+
+                    BatteryBarStatus {
+                        id: batteryStatus
+
+                        anchors.centerIn: parent
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.openPowerSettings()
+                    }
                 }
             }
 
