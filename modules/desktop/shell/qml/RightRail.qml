@@ -42,6 +42,7 @@ Item {
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
     readonly property real privacyLead: privacy.width > 0 ? privacy.width + gap : 0
     readonly property real externalControlsWidth: mediaRestingLead + trayLead + privacyLead
+    readonly property real positionedExternalControlsWidth: mediaLead + trayLead + privacyLead
     readonly property real pinnedControlsLead: pinnedControls.implicitWidth > 0
         ? pinnedControls.implicitWidth + gap : 0
     readonly property real leadingControlsWidth: externalControlsWidth + pinnedControlsLead
@@ -202,7 +203,7 @@ Item {
                 ? powerOverview.implicitWidth : overviewContent.implicitWidth;
             const previewOffset = root.powerAnchoredOverview || root.controlBatteryVisible
                 ? root.overviewProgress * (root.gap + previewWidth) : 0;
-            return (root.externalControlsWidth + previewOffset)
+            return (root.positionedExternalControlsWidth + previewOffset)
                 * (1 - root.detailProgress);
         }
         onPowerHoveredChanged: {
