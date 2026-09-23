@@ -99,7 +99,7 @@
         pkgs.obsidian
         pkgs.element-desktop
         pkgs.signal-desktop
-        pkgs.spotify
+        (pkgs.spotify.override { deviceScaleFactor = 2; })
       ];
     };
 
