@@ -18,17 +18,6 @@
       inherit (lib.meta) getExe getExe';
       idle = osConfig.kestrel.idle;
       wallpaper = ../../../assets/wallpapers/Bierstadt-Among-the-Sierra-Nevada-Mountains.jpg;
-      lockBeforeSleep = pkgs.writeShellApplication {
-        name = "kestrel-lock-before-sleep";
-        runtimeInputs = [
-          pkgs.hyprland
-          pkgs.systemd
-        ];
-        text = ''
-          loginctl lock-session
-          hyprctl dispatch "hl.dsp.dpms({ action = [[off]] })"
-        '';
-      };
       kestrelHypridle = pkgs.writeShellApplication {
         name = "kestrel-hypridle";
         runtimeInputs = [
@@ -103,7 +92,7 @@
             printf '%s\n' \
               'general {' \
               '    lock_cmd = ${getExe' pkgs.systemd "systemctl"} --user start hyprlock.service' \
-              '    before_sleep_cmd = ${getExe lockBeforeSleep}' \
+              '    before_sleep_cmd = ${getExe' pkgs.systemd "loginctl"} lock-session' \
               '    after_sleep_cmd = ${getExe' pkgs.hyprland "hyprctl"} dispatch "hl.dsp.dpms({ action = [[on]] })"' \
               '    ignore_dbus_inhibit = false' \
               '    ignore_systemd_inhibit = false' \
