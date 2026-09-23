@@ -25,7 +25,6 @@ Item {
 
         BatteryIcon {
             anchors.verticalCenter: parent.verticalCenter
-            backgroundOpacity: root.lowBattery ? 1 : 0.3
             color: root.batteryColor
             percentage: PowerService.percentage
             charging: PowerService.charging
