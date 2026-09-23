@@ -54,7 +54,10 @@
   flake.nixosModules.desktop =
     { lib, ... }:
     {
-      unfreePackages = lib.lists.singleton "obsidian";
+      unfreePackages = [
+        "obsidian"
+        "spotify"
+      ];
     };
   flake.nixosModules.dev =
     { lib, ... }:
@@ -96,6 +99,7 @@
         pkgs.obsidian
         pkgs.element-desktop
         pkgs.signal-desktop
+        pkgs.spotify
       ];
     };
 
