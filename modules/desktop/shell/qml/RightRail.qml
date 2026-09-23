@@ -36,16 +36,23 @@ Item {
     readonly property bool controlBatteryVisible: overviewMode === "control"
         && PowerService.hasBattery
     readonly property bool pinned: ownsMode
+    readonly property real mediaRestingLead: media.visible
+        ? media.restingWidth + gap : 0
+    readonly property real mediaLead: media.visible ? media.width + gap : 0
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
     readonly property real privacyLead: privacy.width > 0 ? privacy.width + gap : 0
-    readonly property real externalControlsWidth: trayLead + privacyLead
+    readonly property real externalControlsWidth: mediaRestingLead + trayLead + privacyLead
     readonly property real pinnedControlsLead: pinnedControls.implicitWidth > 0
         ? pinnedControls.implicitWidth + gap : 0
     readonly property real leadingControlsWidth: externalControlsWidth + pinnedControlsLead
+    readonly property real nonMediaIdleWidth: trayLead + privacyLead + pinnedControlsLead
+        + settingsButton.width + gap + clock.width
 
     property bool hoverOpen: false
     property string hoverMode: "control"
+    property bool mediaOpen: false
     property bool sessionDetailVisual: false
+    property real mediaProgress: mediaOpen && media.visible && !detailVisible ? 1 : 0
     property real overviewProgress: overviewVisible ? 1 : 0
     property real detailProgress: detailVisible ? 1 : 0
 
@@ -82,6 +89,7 @@ Item {
         + overviewProgress * (overviewWidth - idleWidth)
     readonly property real targetWidth: restingWidth
         + detailProgress * (detailWidth - restingWidth)
+        + mediaProgress * media.revealedWidth * (1 - detailProgress)
 
     width: targetWidth
     height: 28
@@ -98,6 +106,10 @@ Item {
     }
 
     Behavior on overviewProgress {
+        NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+    }
+
+    Behavior on mediaProgress {
         NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
     }
 
@@ -126,17 +138,48 @@ Item {
         }
     }
 
+    Timer {
+        id: mediaCloseTimer
+
+        interval: 1000
+        onTriggered: {
+            if (!media.hovered)
+                root.mediaOpen = false;
+        }
+    }
+
     Shortcut {
         enabled: root.pinned
         sequence: "Escape"
         onActivated: BarModeService.close()
     }
 
+    MediaBar {
+        id: media
+
+        anchors.verticalCenter: parent.verticalCenter
+        maximumDetailsWidth: Math.max(0, root.maximumWidth - root.restingWidth)
+        x: -root.detailProgress * (width + root.gap)
+        revealProgress: root.mediaProgress
+        visible: MediaState.available && root.maximumWidth
+            >= root.nonMediaIdleWidth + restingWidth + root.gap
+            && restingWidth > 0
+        onHoveredChanged: {
+            if (hovered) {
+                mediaCloseTimer.stop();
+                root.mediaOpen = true;
+            } else {
+                mediaCloseTimer.restart();
+            }
+        }
+    }
+
     SystemTrayView {
         id: tray
 
         anchors.verticalCenter: parent.verticalCenter
-        x: -root.detailProgress * (width + root.gap)
+        x: root.mediaLead + root.detailProgress
+            * (-width - root.gap - root.mediaLead)
         enabled: !root.detailVisible
         opacity: 1 - root.detailProgress
     }
@@ -145,7 +188,8 @@ Item {
         id: privacy
 
         anchors.verticalCenter: parent.verticalCenter
-        x: root.trayLead + root.detailProgress * (-width - root.gap - root.trayLead)
+        x: root.mediaLead + root.trayLead + root.detailProgress
+            * (-width - root.gap - root.mediaLead - root.trayLead)
         opacity: 1 - root.detailProgress
     }
 

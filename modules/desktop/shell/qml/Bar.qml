@@ -229,21 +229,6 @@ Variants {
             screenName: window.modelData.name
         }
 
-        MediaBar {
-            id: mediaBar
-
-            anchors {
-                left: leftRail.right
-                leftMargin: Style.barItemGap
-                verticalCenter: parent.verticalCenter
-            }
-            maximumWidth: Math.max(0,
-                workspaceGroup.x - leftRail.x - leftRail.width
-                    - Style.barItemGap * 2)
-            visible: MediaState.available && !notificationTicker.visible
-                && maximumWidth >= minimumWidth
-        }
-
         Row {
             id: workspaceGroup
 
