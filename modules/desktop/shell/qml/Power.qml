@@ -8,7 +8,9 @@ Item {
     signal activated
 
     readonly property bool hovered: pointer.containsMouse
-    readonly property color batteryColor: PowerService.percentage <= 15 && !PowerService.charging
+    readonly property bool lowBattery: PowerService.percentage <= 15
+        && !PowerService.charging
+    readonly property color batteryColor: lowBattery
         ? Style.lowBatteryColor : Style.foregroundColor
 
     width: content.implicitWidth
@@ -23,6 +25,7 @@ Item {
 
         BatteryIcon {
             anchors.verticalCenter: parent.verticalCenter
+            backgroundOpacity: root.lowBattery ? 1 : 0.3
             color: root.batteryColor
             percentage: PowerService.percentage
             charging: PowerService.charging

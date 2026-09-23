@@ -32,8 +32,7 @@ Row {
 
     Text {
         anchors.verticalCenter: parent.verticalCenter
-        color: PowerService.percentage <= 15 && !PowerService.charging
-            ? Style.lowBatteryColor : Style.foregroundColor
+        color: Style.foregroundColor
         font {
             family: Style.fontFamily
             pixelSize: Style.textFontSize

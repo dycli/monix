@@ -9,6 +9,7 @@ Item {
     property bool charging: false
     property bool full: false
     property color color: Style.foregroundColor
+    property real backgroundOpacity: 0.3
 
     implicitWidth: 21
     implicitHeight: 12
@@ -50,7 +51,8 @@ Item {
                 context.quadraticCurveTo(0, 0, radius, 0);
                 context.closePath();
 
-                context.fillStyle = Qt.rgba(fillColor.r, fillColor.g, fillColor.b, 0.3);
+                context.fillStyle = Qt.rgba(fillColor.r, fillColor.g, fillColor.b,
+                    root.backgroundOpacity);
                 context.fill();
                 context.clip();
                 context.fillStyle = fillColor;
