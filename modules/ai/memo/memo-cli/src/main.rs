@@ -345,7 +345,11 @@ fn log_slice(d: &Path, lo: usize, hi: usize) -> Result<Vec<Entry>, String> {
         .map_err(|e| e.to_string())?;
     let mut buf = vec![0; (hi - lo) * LOG_REC];
     f.read_exact(&mut buf).map_err(|e| e.to_string())?;
-    buf.chunks_exact(LOG_REC).map(parse).collect()
+    buf.as_chunks::<LOG_REC>()
+        .0
+        .iter()
+        .map(|rec| parse(rec))
+        .collect()
 }
 
 fn tree_get(d: &Path, lo: usize, hi: usize) -> Result<Option<String>, String> {

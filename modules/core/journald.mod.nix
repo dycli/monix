@@ -6,8 +6,6 @@
   flake.nixosModules.journald =
     { lib, ... }:
     {
-      services.journald.extraConfig = lib.modules.mkDefault ''
-        SystemMaxUse=1G
-      '';
+      services.journald.settings.Journal.SystemMaxUse = lib.modules.mkDefault "1G";
     };
 }

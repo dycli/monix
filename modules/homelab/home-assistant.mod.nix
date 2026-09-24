@@ -30,7 +30,6 @@
 
         services.home-assistant = {
           enable = true;
-          openFirewall = false; # tailnet-only (UI/API on :8123)
 
           # Tapo C225 1.x firmware rejects plain-RSA key exchange and
           # python-kasa <= 0.10.2 offers only RSA-kx ciphers, so the TLS
