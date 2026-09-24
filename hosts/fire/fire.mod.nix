@@ -46,6 +46,10 @@
           "sd_mod"
         ];
         boot.kernelModules = lib.lists.singleton "kvm-amd";
+
+        # Enable OverDrive controls while preserving the current AMDGPU feature mask.
+        boot.kernelParams = lib.lists.singleton "amdgpu.ppfeaturemask=0xfff7ffff";
+
         hardware.enableRedistributableFirmware = true;
         hardware.cpu.amd.updateMicrocode = true;
         hardware.amdgpu.opencl.enable = true;
