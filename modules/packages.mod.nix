@@ -78,6 +78,7 @@
         config.desktopApps.imageViewer.package
         config.desktopApps.videoPlayer.package
 
+        pkgs.amdgpu_top
         pkgs.brightnessctl
         pkgs.cliphist
         pkgs.hyprpicker
