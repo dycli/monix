@@ -7,6 +7,12 @@
 
   inputs.hyprland = {
     url = "github:hyprwm/Hyprland/7ebf13abb3c391604c60c9f627c7a403bcec8d17";
+    # Keep the compatible hyprutils revision across lock updates.
+    inputs.hyprutils = {
+      url = "github:hyprwm/hyprutils/95983ee836ff205e615bba67d1f67098e1231941";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.systems.follows = "hyprland/systems";
+    };
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
