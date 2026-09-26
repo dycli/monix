@@ -75,6 +75,8 @@
         # directly and enables Adaptive Sync on it.
         home-manager.users.${config.primaryUser}.wayland.windowManager.hyprland.extraConfig =
           lib.modules.mkAfter ''
+            -- The ASPEED management output otherwise creates an unseen desktop.
+            hl.monitor({ output = "VGA-1", disabled = true })
             hl.monitor({ output = "DP-1", mode = "preferred", position = "auto", scale = 1, vrr = 1 })
           '';
 
