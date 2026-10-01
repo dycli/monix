@@ -10,6 +10,7 @@
     let
       inherit (lib.attrsets) mapAttrs' nameValuePair optionalAttrs;
       inherit (lib.options) mkOption;
+      inherit (lib.lists) singleton;
 
       cfg = config.shipProxy;
       proxyTo = upstream: extra: {
@@ -90,10 +91,16 @@
           certs.${cfg.domain} = {
             domain = "*.${cfg.domain}";
             dnsProvider = "cloudflare";
+            # LAN DNS interception refuses direct authoritative queries.
+            extraLegoFlags = singleton "--dns.propagation.disable-ans";
             environmentFile = cfg.acmeTokenFile;
             group = "nginx";
           };
         };
+
+        # Let recursive DNS caches expire before abandoning a fresh challenge.
+        systemd.services."acme-order-renew-${cfg.domain}".environment.CLOUDFLARE_PROPAGATION_TIMEOUT =
+          "600";
 
         services.nginx = {
           enable = true;
