@@ -5,17 +5,17 @@
   flake.nixosModules.lab =
     { lib, ... }:
     {
-      # More workers than typical demand, so a task finds an already-warm VM.
-      agentFleet.workers = lib.lists.imap1 (index: name: { inherit name index; }) [
-        "astrapia"
-        "cicinnurus"
-        "drepanornis"
-        "epimachus"
-        "lophorina"
-        "manucodia"
-        "paradisaea"
-        "seleucidis"
-      ];
+      agentFleet.workers =
+        lib.lists.imap1
+          (index: name: {
+            inherit name index;
+            mem = 4096;
+            vcpu = 4;
+          })
+          [
+            "astrapia"
+            "cicinnurus"
+          ];
 
       fleetLogStream.inviteUsers = lib.lists.singleton "@dylan:chat.su.is";
 

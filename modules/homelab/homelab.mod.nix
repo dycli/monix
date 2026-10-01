@@ -44,7 +44,8 @@
         "@gab:chat.su.is"
       ];
       remy.scratchpad.users = singleton "@dylan:chat.su.is";
-      remy.model = "qwen3.6-35b-a3b";
+      remy.model = "qwen3.8-27b-q4-k-m";
+      alerts.summary.model = "qwen3.8-27b-q4-k-m";
       remy.famlog.path = "/home/${config.primaryUser}/crate/sync/notes/famlog.md";
       remy.famlog.owner = config.primaryUser;
       remy.famlog.group = "syncthing";

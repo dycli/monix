@@ -87,7 +87,7 @@
 
       mkServer = serverProperties: {
         enable = true;
-        autoStart = true;
+        autoStart = false;
 
         package = serverPackage;
 
@@ -153,7 +153,7 @@
 
           servers.bta = {
             enable = true;
-            autoStart = true;
+            autoStart = false;
             package = btaServer;
 
             jvmOpts = "-Xms512M -Xmx2G";

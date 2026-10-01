@@ -1,9 +1,7 @@
-# water — Framework Desktop (Strix Halo, 128GB), headless server carrying the
-# homelab and ai roles (modules/{homelab,ai}). Tailnet-only except calibre-web
-# :8083 on the LAN. BIOS requires AMD SVM and restore-on-AC-power-loss.
+# water — Threadripper PRO 9965WX, 32GB RAM, Radeon 7900 XTX.
+# Always-on homelab with a manually started desktop session.
 {
   self,
-  inputs,
   lib,
   ...
 }:
@@ -18,7 +16,8 @@
         self.nixosModules.gaming
         self.nixosModules.creative
         self.nixosModules.davinci-resolve
-        inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
+        self.nixosModules.radeon-7900xtx
+        self.nixosModules.inference-radeon-24gb
         ./credentials.nix
       ];
 
@@ -37,18 +36,32 @@
 
       nixpkgs.hostPlatform = "x86_64-linux";
 
-      # CPU, GPU, pstate and microcode come from the nixos-hardware profile.
       boot.initrd.availableKernelModules = [
         "nvme"
         "xhci_pci"
-        "thunderbolt"
+        "ahci"
         "usbhid"
         "usb_storage"
         "sd_mod"
       ];
       boot.kernelModules = lib.lists.singleton "kvm-amd";
+      hardware.cpu.amd.updateMicrocode = true;
       hardware.enableRedistributableFirmware = true;
       hardware.amdgpu.opencl.enable = true;
+
+      # Keep build bursts within the server's 32GB RAM budget.
+      nix.settings.max-jobs = 1;
+      nix.settings.cores = 4;
+
+      inference.extraAllowedSubnets = lib.lists.singleton "10.100.0.0/24";
+
+      boot.loader.timeout = 5;
+
+      home-manager.users.katara.wayland.windowManager.hyprland.extraConfig = lib.modules.mkAfter ''
+        -- The ASPEED management output otherwise creates an unseen desktop.
+        hl.monitor({ output = "VGA-1", disabled = true })
+        hl.monitor({ output = "DP-1", mode = "preferred", position = "auto", scale = 1, vrr = 1 })
+      '';
 
       programs.gamemode.enable = true;
 
@@ -57,7 +70,7 @@
 
       # The e-reader cannot join the tailnet and pulls OPDS over the LAN.
       media.calibreWebLan = {
-        interface = "enp191s0";
+        interface = "enp209s0f0np0";
         subnet = "192.168.1.0/24";
       };
 
@@ -133,6 +146,11 @@
           };
         };
       };
+
+      # Both installed OS disks use disko's default partition labels.
+      fileSystems."/boot".device = lib.modules.mkForce "/dev/disk/by-uuid/019F-151C";
+      boot.initrd.luks.devices.cryptroot.device =
+        lib.modules.mkForce "/dev/disk/by-uuid/5063270c-0474-4da7-a772-ba2c2a4d8b23";
 
       system.stateVersion = "26.05";
     })

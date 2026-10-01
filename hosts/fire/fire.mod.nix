@@ -17,7 +17,8 @@
           self.nixosModules.gaming
           self.nixosModules.creative
           self.nixosModules.davinci-resolve
-          self.nixosModules.inference-fire
+          self.nixosModules.radeon-7900xtx
+          self.nixosModules.inference-radeon-24gb
           self.nixosModules.inference-client
           self.nixosModules.paseo
         ];
@@ -47,29 +48,9 @@
         ];
         boot.kernelModules = lib.lists.singleton "kvm-amd";
 
-        # Enable OverDrive controls while preserving the current AMDGPU feature mask.
-        boot.kernelParams = lib.lists.singleton "amdgpu.ppfeaturemask=0xfff7ffff";
-
         hardware.enableRedistributableFirmware = true;
         hardware.cpu.amd.updateMicrocode = true;
         hardware.amdgpu.opencl.enable = true;
-
-        services.lact = {
-          enable = true;
-          settings = {
-            version = 7;
-            daemon = {
-              log_level = "info";
-              admin_group = "wheel";
-            };
-            gpus."1002:744C-1EAE:7901-0000:f3:00.0" = {
-              power_cap = 294.0;
-              performance_level = "manual";
-              max_core_clock = 2600;
-              voltage_offset = -100;
-            };
-          };
-        };
 
         # The display advertises its native mode; Hyprland owns the output
         # directly and enables Adaptive Sync on it.
@@ -128,6 +109,11 @@
             };
           };
         };
+
+        # Both installed OS disks use disko's default partition labels.
+        fileSystems."/boot".device = lib.modules.mkForce "/dev/disk/by-uuid/5D88-6860";
+        boot.initrd.luks.devices.cryptroot.device =
+          lib.modules.mkForce "/dev/disk/by-uuid/0d38f79d-75f3-43c9-aad9-49f70c2e54e5";
 
         # SERVICES
         services.syncthing.enable = true;

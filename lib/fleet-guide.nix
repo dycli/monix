@@ -148,8 +148,8 @@
         model: <model-id>     # required. codex: e.g. gpt-5.6-sol. opencode: a slug —
                               #   opencode/<model> (Zen, metered), opencode-go/<model>
                               #   (Go subscription), or local/<name> from llama-swap
-                              #   catalog (free; currently local/qwen3.6-35b-a3b,
-                              #   local/qwen3.8-27b-q6-k and local/qwen3.8-27b-q8-0).
+                              #   catalog (free; currently local/qwen3.8-27b-q4-k-m
+                              #   and local/qwen3.8-27b-q5-k-s).
         guidance: cockpit     # optional; `cockpit` (the only value) routes
                               #   escalations to YOU: they surface in `fleet health`
                               #   and `fleet peek`, answer with `fleet answer` (drone

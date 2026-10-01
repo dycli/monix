@@ -21,37 +21,7 @@ let
   ];
 in
 {
-  flake.nixosModules.lab = self.nixosModules.inference-water;
-  flake.nixosModules.inference-water =
-    { ... }:
-    {
-      imports = [ self.nixosModules.inference ];
-
-      # Water's unified-memory GPU can map a large system-RAM GTT, and its
-      # fleet guests reach inference over the private bridge.
-      inference.gttSizeMiB = 98304;
-      inference.extraAllowedSubnets = [ "10.100.0.0/24" ];
-
-      # A cold load takes minutes; RAM held by a resident model is otherwise
-      # idle on this host, so eviction waits an hour rather than ten minutes.
-      inference.models."qwen3.6-35b-a3b" = {
-        file = "Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf";
-        flags = baseFlags;
-        ttl = 3600;
-      };
-      inference.models."qwen3.8-27b-q6-k" = {
-        file = "Qwen3.8-27B-Q6_K.gguf";
-        flags = baseFlags ++ mtpFlags;
-        ttl = 3600;
-      };
-      inference.models."qwen3.8-27b-q8-0" = {
-        file = "Qwen3.8-27B-Q8_0.gguf";
-        flags = baseFlags ++ mtpFlags;
-        ttl = 3600;
-      };
-    };
-
-  flake.nixosModules.inference-fire =
+  flake.nixosModules.inference-radeon-24gb =
     { ... }:
     let
       # qwen3.8 is hybrid SSM/attention (full attention every 4th layer), so
