@@ -44,6 +44,7 @@
       runtimeInputs = [
         pkgs.coreutils
         pkgs.nix
+        pkgs.kmod
         pkgs.util-linux
         pkgs.systemd
         pkgs.btrfs-progs
@@ -73,20 +74,32 @@
           ''
           + lib.strings.fileContents ./nas/backup.sh;
       };
+      migrationEnvironment = layoutEnvironment + ''
+        consumers=(${escapeShellArgs (map (name: "${name}.service") services)})
+        primary_user=${escapeShellArg config.primaryUser}
+      '';
       prepare = pkgs.writeShellApplication {
         name = "prepare-water-nas";
         runtimeInputs = runtimeInputs ++ singleton backup;
         text =
-          layoutEnvironment
-          + ''
-            consumers=(${escapeShellArgs (map (name: "${name}.service") services)})
-            primary_user=${escapeShellArg config.primaryUser}
-          ''
-          + lib.strings.fileContents ./nas/prepare.sh;
+          migrationEnvironment
+          + lib.strings.fileContents ./nas/prepare.sh
+          + "\n"
+          + lib.strings.fileContents ./nas/finish.sh;
+      };
+      resume = pkgs.writeShellApplication {
+        name = "resume-water-nas";
+        runtimeInputs = runtimeInputs ++ singleton backup;
+        text =
+          migrationEnvironment
+          + lib.strings.fileContents ./nas/resume.sh
+          + "\n"
+          + lib.strings.fileContents ./nas/finish.sh;
       };
     in
     {
       system.build.prepareNas = prepare;
+      system.build.resumeNas = resume;
       environment.systemPackages = [
         backup
         pkgs.restic

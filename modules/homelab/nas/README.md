@@ -94,3 +94,11 @@ requires stopping the affected services, removing their NAS bind mounts and
 switching to that saved system. Returning to the old originals discards access
 to post-migration changes unless those changes are first copied back; do not
 perform an automatic rollback over newer data.
+
+The October 1 setup stopped at the first HDD mount after formatting. The
+`system.build.resumeNas` package resumes that exact state: it checks the newly
+created LUKS, Btrfs and ext4 UUIDs and existing key, requires the service sources
+still to be on the OS, loads ext4, and mounts the HDD with an explicit type.
+It then runs the same copy/activation/backup phase, with no formatting or key
+creation. It requires the two SSD subvolumes still mounted, as they were at the
+failure; it is deliberately not a general recovery tool.
