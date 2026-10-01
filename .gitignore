@@ -20,6 +20,7 @@
 !*.rs
 !*.toml
 !*.py
+!*.sh
 !*.sql
 !*.nu.in
 !*.qml

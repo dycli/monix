@@ -20,6 +20,7 @@
           self.nixosModules.radeon-7900xtx
           self.nixosModules.inference-radeon-24gb
           ./credentials.nix
+          ./nas-storage.nix
         ];
 
         primaryUser = "katara";
