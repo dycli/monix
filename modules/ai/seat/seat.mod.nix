@@ -183,9 +183,7 @@ in
     {
       home.packages = singleton memo;
 
-      home.sessionVariables = opencode.environment // {
-        CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
-      };
+      home.sessionVariables = opencode.environment;
 
       home.file.".config/agents/AGENTS.md".text = mkForce (guide.system + guide.pilot);
       home.file."cockpit/FLEET.md" = {
@@ -341,6 +339,11 @@ in
       # host-owned MCP endpoints are immutable layers shared by every
       # agent frontend.
       environment.etc."codex/config.toml".source = codexConfig;
+      # OptMem is the only memory; Claude's own would be a second writable
+      # truth. Managed settings reach every launcher, Paseo included.
+      environment.etc."claude-code/managed-settings.json".text = toJSON {
+        autoMemoryEnabled = false;
+      };
       environment.etc."claude-code/managed-mcp.json".text = toJSON {
         mcpServers = browserServers pkgs |> mapAttrs (_: server: server // { type = "stdio"; });
       };
