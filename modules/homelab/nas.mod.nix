@@ -139,7 +139,7 @@
             "printing" = "bsd";
             "printcap name" = "/dev/null";
           };
-          Storage = {
+          storage = {
             path = "/srv/storage/shared";
             "valid users" = config.primaryUser;
             "read only" = "no";

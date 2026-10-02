@@ -35,7 +35,7 @@ the OS filesystem underneath the bind mounts; setup does not delete them.
 
 The first backup must finish and its restore checks must pass before the
 scheduled jobs are enabled. Finally, `smbpasswd` asks for katara's SMB password.
-Connect to `smb://water/Storage` over Tailscale or `smb://192.168.1.114/Storage`
+Connect to `smb://water/storage` over Tailscale or `smb://192.168.1.114/storage`
 on the LAN. Only `/srv/storage/shared` is exported; application data is private.
 
 Copy `/home/katara/water-nas-recovery.tar.gz` to a safe place **off this machine**.

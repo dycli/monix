@@ -72,4 +72,4 @@ touch /var/lib/nas/provisioning-complete
 echo 'Migration and first backup complete. OS originals remain under the bind mounts.'
 echo 'Set the SMB password for katara (it can be different from the login password):'
 smbpasswd -a "$primary_user"
-echo 'Open smb://water/Storage or smb://192.168.1.114/Storage as katara.'
+echo 'Open smb://water/storage or smb://192.168.1.114/storage as katara.'
