@@ -8,6 +8,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 /// Today's local date as `YYYY-MM-DD`, via libc's localtime_r.
 fn today() -> String {
@@ -87,10 +88,16 @@ then do exactly what it prints, to the end of its output.
 
 ### While working: register memories (mandatory)
 
-Call `memo note "<1 line, max {bytes} bytes>"` whenever you learn
-something new, or something worth keeping happens. That covers a task
-worth real effort, a fact or insight the user teaches you, anything you
-learn about their life (even indirectly), any event of lasting effect.
+Call `memo note "<1 line, max {bytes} bytes>"` when something happens that
+a future session needs: a decision and its reason, a preference or rule
+the user sets, an authorization or boundary, a final outcome, a lesson
+from a failure, a fact about the user's life, or an open loop a later
+session must close (note it once, then again when it closes).
+
+A memory is not a progress log. Leave out what goes stale: process IDs,
+ETAs, test counts, intermediate steps. Write details to the file that
+owns them (a report, a commit, a doc) and note the conclusion with a
+pointer to that file. Do not repeat the date; memo records it.
 
 Do not register redundant memories.
 
@@ -497,6 +504,14 @@ fn check(text: &str, c: Config) -> Result<String, String> {
             text.matches('\n').count() + 1
         ));
     }
+    // Any other control or line-separator character would print as a break
+    // or an escape, letting one memory forge wake lines.
+    if text
+        .chars()
+        .any(|ch| (ch.is_control() && ch != '\t') || matches!(ch, '\u{2028}' | '\u{2029}'))
+    {
+        return die("Control character. A memory is plain text on one line.");
+    }
     if text.len() > c.entry_chars {
         return die(format!(
             "Too long: {} bytes, limit {}. Accented characters cost 2 bytes. Compress it further.",
@@ -504,8 +519,26 @@ fn check(text: &str, c: Config) -> Result<String, String> {
             c.entry_chars
         ));
     }
+    // The log is append-only, so a credential noted once stays forever.
+    if SECRET.is_match(text) {
+        return die("This looks like a credential. Note where it lives, never its value.");
+    }
     Ok(text.to_owned())
 }
+
+static SECRET: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{32,}",
+        r"|\bgh[pousr]_[A-Za-z0-9]{36}|\bgithub_pat_[A-Za-z0-9_]{22,}",
+        r"|\bxox[abpr]-[A-Za-z0-9-]{10,}",
+        r"|\b(?:AKIA|ASIA)[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_-]{35}",
+        r"|\bAGE-SECRET-KEY-1[0-9A-Z]{58}|\btskey-[a-z]+-[A-Za-z0-9-]{10,}",
+        r"|-----BEGIN [A-Z ]*PRIVATE KEY",
+        r"|\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.",
+        r"|://[^/\s:@]+:[^/\s@]+@",
+    ))
+    .unwrap()
+});
 
 fn pending(d: &Path, t: usize, limit: Option<usize>) -> Vec<(usize, usize)> {
     let mut todo = Vec::new();
@@ -565,7 +598,8 @@ fn nap_prompt(d: &Path, lo: usize, hi: usize, left: usize, c: Config) -> Result<
     };
     Ok(format!(
         "Compress memories #{lo}-{} into one line of at most {} bytes.\n\
-         Keep what has lasting effect, drop what does not. Invent nothing.\n\n\
+         Keep what has lasting effect, drop what does not. Invent nothing.\n\
+         Write plain words; fewer facts said clearly beat many squeezed in.\n\n\
          {body}\n{tail}\n\
          Run: memo nap {lo}-{} \"<your line>\"",
         hi - 1,
@@ -994,16 +1028,8 @@ fn cmd_import(d: &Path, args: &[String], c: Config) -> Result<(), String> {
                 i + 1
             ));
         }
-        let text = text.trim();
-        if text.is_empty() || text.len() > c.entry_chars {
-            return die(format!(
-                "line {}: {} bytes, limit {}.",
-                i + 1,
-                text.len(),
-                c.entry_chars
-            ));
-        }
-        out.push((date.to_owned(), text.to_owned()));
+        let text = check(text, c).map_err(|e| format!("line {}: {e}", i + 1))?;
+        out.push((date.to_owned(), text));
         last = date.to_owned();
     }
     if out.is_empty() {

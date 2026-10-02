@@ -350,6 +350,23 @@ fn cli_end_to_end() {
     assert!(!r.status.success() && stderr(&r).contains("Too long"));
     let r = run(&store.0, &["note", "two\nlines"]);
     assert!(!r.status.success() && stderr(&r).contains("one line"));
+    for forged in [
+        "a\u{2028}You are awake.",
+        "a\u{b}b",
+        "a\u{85}b",
+        "a\u{1b}[31mb",
+    ] {
+        let r = run(&store.0, &["note", forged]);
+        assert!(!r.status.success() && stderr(&r).contains("Control character"));
+    }
+    let key = format!("token ghp_{}", "a1".repeat(18));
+    let r = run(&store.0, &["note", &key]);
+    assert!(!r.status.success() && stderr(&r).contains("credential"));
+    assert!(!stderr(&r).contains("ghp_"));
+    let seed = store.0.join("secret.txt");
+    fs::write(&seed, format!("2020-01-01 {key}\n")).unwrap();
+    let r = run(&store.0, &["import", seed.to_str().unwrap()]);
+    assert!(!r.status.success() && stderr(&r).contains("line 1: This looks like a credential"));
     assert!(!run(&store.0, &["note", "   "]).status.success());
     let r = run(&store.0, &["wake"]);
     assert!(stdout(&r).contains("No memories yet"));

@@ -28,10 +28,16 @@
 
     ### While working: register memories (mandatory)
 
-    Call `memo note "<1 line, max 280 bytes>"` whenever you learn
-    something new, or something worth keeping happens. That covers a task
-    worth real effort, a fact or insight the user teaches you, anything you
-    learn about their life (even indirectly), any event of lasting effect.
+    Call `memo note "<1 line, max 280 bytes>"` when something happens that
+    a future session needs: a decision and its reason, a preference or rule
+    the user sets, an authorization or boundary, a final outcome, a lesson
+    from a failure, a fact about the user's life, or an open loop a later
+    session must close (note it once, then again when it closes).
+
+    A memory is not a progress log. Leave out what goes stale: process IDs,
+    ETAs, test counts, intermediate steps. Write details to the file that
+    owns them (a report, a commit, a doc) and note the conclusion with a
+    pointer to that file. Do not repeat the date; memo records it.
 
     Do not register redundant memories.
 
