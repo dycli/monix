@@ -1,10 +1,9 @@
-# Claude Code's global instructions file. Only this file is managed; the rest
-# of ~/.claude is live mutable state.
+# One global instruction source, exposed through each harness's native loader.
 { self, ... }:
 {
-  flake.homeModules.dev = self.homeModules.claude;
-  flake.homeModules.claude = {
-    home.file.".claude/CLAUDE.md" = {
+  flake.homeModules.dev = self.homeModules.agent-instructions;
+  flake.homeModules.agent-instructions = { config, ... }: {
+    home.file.".config/agents/AGENTS.md" = {
       # Adopts a pre-existing hand-written file on first switch.
       force = true;
       text = ''
@@ -34,6 +33,20 @@
 
         Targets, by capability: haiku (mechanical, fully-specified), sonnet (routine implementation from a clear spec), GPT-5.6 Sol via Codex (substantial standalone coding, independent reviews, second opinions — bills to the ChatGPT pool, much better cost/performance than Fable; always request it explicitly, e.g. `codex exec -m gpt-5.6-sol`, and never edit `~/.codex/`), opus (strong-model work that must run inside the Claude agent loop with session context). Judgment over rules throughout.
       '';
+    };
+
+    home.file.".codex/AGENTS.md" = {
+      force = true;
+      source = config.home.file.".config/agents/AGENTS.md".source;
+    };
+    home.file.".config/opencode/AGENTS.md" = {
+      force = true;
+      source = config.home.file.".config/agents/AGENTS.md".source;
+    };
+    # Claude's AGENTS.md discovery is project-scoped; user rules load everywhere.
+    home.file.".claude/rules/AGENTS.md" = {
+      force = true;
+      source = config.home.file.".config/agents/AGENTS.md".source;
     };
   };
 }

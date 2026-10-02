@@ -200,20 +200,7 @@ in
             CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
           };
 
-        # Each frontend has its own global instruction location. Repositories
-        # then add narrower AGENTS.md files beneath this shared root layer.
-        home.file.".codex/AGENTS.md" = mkIf isBridge {
-          force = true;
-          text = rootGuide;
-        };
-        home.file.".config/opencode/AGENTS.md" = mkIf isBridge {
-          force = true;
-          text = rootGuide;
-        };
-        home.file.".claude/CLAUDE.md" = mkIf isBridge {
-          force = mkForce true;
-          text = mkForce rootGuide;
-        };
+        home.file.".config/agents/AGENTS.md".text = mkIf isBridge (mkForce rootGuide);
         home.file."cockpit/FLEET.md" = mkIf isBridge {
           force = true;
           text = guide.fleet;
