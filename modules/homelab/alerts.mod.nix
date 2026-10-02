@@ -133,8 +133,7 @@
 
         summary.model = mkOption {
           type = types.str;
-          default = "qwen3.6-35b-a3b";
-          description = "Model to summarize with.";
+          description = "inference.models catalog id to summarize with.";
         };
       };
 
