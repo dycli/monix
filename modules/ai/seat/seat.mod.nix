@@ -53,14 +53,10 @@ in
 
       # An append-only LOG.txt of one-line memories plus a TREE/ of
       # summaries. The store is mutable state, created once with `memo init`.
-      memo = pkgs.rustPlatform.buildRustPackage {
-        pname = "memo";
-        version = "0.1.0";
+      memo = lib.ship.rustTool pkgs {
         src = ./memo-cli;
-        cargoLock.lockFile = ./memo-cli/Cargo.lock;
         # A runtime MEMORY_DIR still overrides this.
         env.MEMO_MEMORY_DIR = memoryDir;
-        meta.mainProgram = "memo";
       };
 
       gitReadCommands = [

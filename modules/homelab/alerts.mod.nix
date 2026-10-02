@@ -30,11 +30,8 @@
         IPAddressDeny = "any";
       };
 
-      shipAlert = pkgs.rustPlatform.buildRustPackage {
-        pname = "ship-alert";
-        version = "0.1.0";
+      shipAlert = lib.ship.rustTool pkgs {
         src = ./alerts/ship-alert;
-        cargoLock.lockFile = ./alerts/ship-alert/Cargo.lock;
         env = {
           SHIP_ALERT_HOMESERVER = cfg.homeserverUrl;
           SHIP_ALERT_STATE_DIR = "/var/lib/alerts";
@@ -42,7 +39,6 @@
           SHIP_ALERT_SUMMARY_MODEL = cfg.summary.model;
           SHIP_ALERT_CURL = getExe' pkgs.curl "curl";
         };
-        meta.mainProgram = "ship-alert";
       };
 
       # smartd and the UPS relay do not inherit the Matrix credentials.

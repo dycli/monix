@@ -20,14 +20,7 @@
       inherit (topology) limits tasksDir;
       op = topology.operator;
       readers = topology.readersGroup;
-      agentDispatcher = pkgs.rustPlatform.buildRustPackage {
-        pname = "agent-dispatcher";
-        version = "0.1.0";
-        src = ./agent-dispatch;
-
-        cargoLock.lockFile = ./agent-dispatch/Cargo.lock;
-        meta.mainProgram = "agent-dispatcher";
-      };
+      agentDispatcher = lib.ship.rustTool pkgs { src = ./dispatch; };
 
       drainerFor =
         worker:

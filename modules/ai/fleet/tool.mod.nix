@@ -27,11 +27,8 @@
 
       # Baked in at build time with option_env!, so a caller's environment
       # cannot repoint the queue or the helpers across the sudo boundary.
-      fleet = pkgs.rustPlatform.buildRustPackage {
-        pname = "fleet";
-        version = "0.1.0";
-        src = ./fleet-tool/fleet-cli;
-        cargoLock.lockFile = ./fleet-tool/fleet-cli/Cargo.lock;
+      fleet = lib.ship.rustTool pkgs {
+        src = ./cli;
         env = {
           FLEET_TASKS_DIR = tasksDir;
           FLEET_CONTEXT_MAX_BYTES = toString topology.limits.taskContextMaxBytes;
@@ -43,7 +40,6 @@
           FLEET_ZSTD = "${pkgs.zstd}/bin/zstd";
           FLEET_SYSTEMCTL = "${pkgs.systemd}/bin/systemctl";
         };
-        meta.mainProgram = "fleet";
       };
 
     in

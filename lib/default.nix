@@ -12,6 +12,7 @@ nixpkgsLib.extend (
       guide = import ./fleet-guide.nix;
       keys = import ../keys.nix;
       opencode = import ./opencode.nix final;
+      rustTool = import ./rust-tool.nix final;
 
       # `ship.host "name" module` is a flake-parts module defining
       # nixosConfigurations.name. Every host gets the `default` bundle.

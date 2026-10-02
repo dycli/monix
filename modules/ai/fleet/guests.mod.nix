@@ -147,18 +147,7 @@
                 '';
               };
 
-              guestSupervisor = pkgs.rustPlatform.buildRustPackage {
-                pname = "fleet-guest-supervisor";
-                version = "0.1.0";
-                src = ./agent-vm;
-
-                cargoLock.lockFile = ./agent-vm/Cargo.lock;
-                nativeCheckInputs = [
-                  pkgs.jq
-                  pkgs.sqlite
-                ];
-                meta.mainProgram = "fleet-guest-supervisor";
-              };
+              guestSupervisor = lib.ship.rustTool pkgs { src = ./guest; };
             in
             {
               microvm = {
