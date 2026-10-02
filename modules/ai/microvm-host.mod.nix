@@ -44,7 +44,7 @@
         # An interrupted install-microvm leaves a state dir root-owned, and
         # microvm-set-booted then fails with EACCES and aborts activation.
         systemd.tmpfiles.rules =
-          cfg.workers |> map (w: "d ${config.microvm.stateDir}/${w.name} 0755 microvm kvm -");
+          cfg.workers |> map (name: "d ${config.microvm.stateDir}/${name} 0755 microvm kvm -");
 
         # networkd always owns the private fleet links. A headless lab host
         # also gives it the uplink; a desktop leaves that link to

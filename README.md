@@ -46,8 +46,7 @@ while the ship sleeps.
 
 ## The drones
 
-Eight empty shells wait in the **hangar**, kept warm: *astrapia, cicinnurus,
-drepanornis, epimachus, lophorina, manucodia, paradisaea, seleucidis*, named for the
+Empty shells wait in the **hangar**, kept warm, each named for one of the
 birds-of-paradise. When a mission comes down, the hangar decants a mind into a shell —
 chosen fresh for that one flight, hired off a distant star or grown in the ship's own
 bay — and hands it a single sealed credential and a capsule holding its orders and
@@ -70,7 +69,7 @@ and no memories. The fleet has flown more than a hundred and fifty missions.
 - **The engine bay** (`~/ark`) — the ship's own source.
 - **The cargo hold** (`~/hold`) — where projects ride while they prove they deserve a
   berth in the engine bay. Many don't.
-- **The hangar** — eight warm shells and the machinery that fills them, one mission at
+- **The hangar** — warm shells and the machinery that fills them, one mission at
   a time.
 - **The rec room** — a small private world for friends and family. Boarding is by the
   Captain's invitation and by no other means.

@@ -82,7 +82,7 @@ in
       # OpenCode has only static globs where Claude has a read-only
       # classifier, so this list exists for OpenCode alone.
       bashAllow = [
-        "sudo -n -u fleet-operator fleet *"
+        "sudo -n -u ${topology.operator} fleet *"
         "fleet dispatch *"
         # memo must never prompt.
         "memo"

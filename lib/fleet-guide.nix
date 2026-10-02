@@ -6,10 +6,8 @@
     # The ship THE KESTREL (water)
 
     water is **the KESTREL**. The **captain** (the human) decides; the **engineer**
-    (the model in the cockpit session) runs the ship and dispatches work to eight
-    **drones** — sandboxed worker microVMs named for birds-of-paradise (astrapia,
-    cicinnurus, drepanornis, epimachus, lophorina, manucodia, paradisaea,
-    seleucidis).
+    (the model in the cockpit session) runs the ship and dispatches work to
+    **drones** — sandboxed worker microVMs named for birds-of-paradise.
   ''
   + "\n";
 

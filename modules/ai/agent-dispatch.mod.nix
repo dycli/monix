@@ -14,14 +14,11 @@
       inherit (lib.attrsets) listToAttrs nameValuePair;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
-      inherit (lib.modules) mkIf;
-      inherit (lib.options) mkOption;
-      inherit (lib) types;
 
       cfg = config.agentFleet;
-      op = cfg.operatorUser;
       inherit (lib.ship) topology;
-      inherit (topology) tasksDir;
+      inherit (topology) limits tasksDir;
+      op = topology.operator;
       readers = topology.readersGroup;
       agentDispatcher = pkgs.rustPlatform.buildRustPackage {
         pname = "agent-dispatcher";
@@ -95,50 +92,19 @@
             FLEET_CREDS_DIR = creds;
             FLEET_CLAUDE_TOKEN_FILE = cfg.credentials.claudeTokenFile;
             FLEET_CODEX_AUTH_FILE = cfg.credentials.codexAuthFile;
-            FLEET_OPENCODE_KEY_FILE =
-              if cfg.credentials.opencodeKeyFile == null then "" else toString cfg.credentials.opencodeKeyFile;
+            FLEET_OPENCODE_KEY_FILE = cfg.credentials.opencodeKeyFile;
             FLEET_READERS = readers;
             FLEET_WORK_GROUP = topology.guestGroup;
-            FLEET_STALL_TIMEOUT = toString cfg.stallTimeout;
-            FLEET_WARM_MAX_AGE = toString cfg.warmMaxAge;
-            FLEET_TASK_TIMEOUT = toString cfg.taskTimeout;
-            FLEET_TASK_EXCHANGE_MAX_BYTES = toString cfg.taskExchangeMaxBytes;
-            FLEET_TASK_CONTEXT_MAX_BYTES = toString cfg.taskContextMaxBytes;
+            FLEET_STALL_TIMEOUT = toString limits.stallTimeout;
+            FLEET_WARM_MAX_AGE = toString limits.warmMaxAge;
+            FLEET_TASK_TIMEOUT = toString limits.taskTimeout;
+            FLEET_TASK_EXCHANGE_MAX_BYTES = toString limits.taskExchangeMaxBytes;
+            FLEET_TASK_CONTEXT_MAX_BYTES = toString limits.taskContextMaxBytes;
           };
         };
     in
     {
-      options.agentFleet.stallTimeout = mkOption {
-        type = types.int;
-        default = 120;
-        description = "seconds with no guest heartbeat before a task is treated as stalled/dead and killed";
-      };
-
-      options.agentFleet.warmMaxAge = mkOption {
-        type = types.int;
-        default = 7200;
-        description = "seconds an idle warm VM may live before it is preventively destroyed and rebooted";
-      };
-
-      options.agentFleet.taskTimeout = mkOption {
-        type = types.int;
-        default = 21600;
-        description = "absolute max seconds a task may run before the worker is stopped and the task filed as failed, regardless of progress";
-      };
-
-      options.agentFleet.taskExchangeMaxBytes = mkOption {
-        type = types.int;
-        default = 805306368;
-        description = "maximum total bytes in one live worker task exchange before the task is stopped";
-      };
-
-      options.agentFleet.taskContextMaxBytes = mkOption {
-        type = types.int;
-        default = 536870912;
-        description = "maximum compressed context capsule bytes accepted for one task";
-      };
-
-      config = mkIf (cfg.workers != [ ]) {
+      config = {
         systemd.tmpfiles.rules = [
           "d ${tasksDir} 0755 root root -"
           "d ${tasksDir}/queue 0770 root ${op} -"
@@ -157,7 +123,7 @@
         ];
 
         systemd.services =
-          cfg.workers |> map (w: nameValuePair "agent-dispatch-${w.name}" (drainerFor w.name)) |> listToAttrs;
+          cfg.workers |> map (name: nameValuePair "agent-dispatch-${name}" (drainerFor name)) |> listToAttrs;
       };
     };
 }

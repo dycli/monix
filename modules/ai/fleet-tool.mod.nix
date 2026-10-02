@@ -13,15 +13,12 @@
     }:
     let
       inherit (lib.lists) singleton;
-      inherit (lib.modules) mkIf;
-      inherit (lib.options) mkOption;
-      inherit (lib.strings) concatMapStringsSep;
-      inherit (lib) types;
+      inherit (lib.strings) concatStringsSep;
 
       cfg = config.agentFleet;
       inherit (lib.ship) topology;
       inherit (topology) seat tasksDir;
-      op = cfg.operatorUser;
+      op = topology.operator;
       readers = topology.readersGroup;
 
       # sudo matches the command as invoked, so the rule names this stable
@@ -37,11 +34,11 @@
         cargoLock.lockFile = ./fleet-tool/fleet-cli/Cargo.lock;
         env = {
           FLEET_TASKS_DIR = tasksDir;
-          FLEET_CONTEXT_MAX_BYTES = toString cfg.taskContextMaxBytes;
-          FLEET_TASK_TIMEOUT = toString cfg.taskTimeout;
+          FLEET_CONTEXT_MAX_BYTES = toString topology.limits.taskContextMaxBytes;
+          FLEET_TASK_TIMEOUT = toString topology.limits.taskTimeout;
           FLEET_OPERATOR = op;
           FLEET_SELF = fleetPath;
-          FLEET_WORKERS = concatMapStringsSep " " (w: w.name) cfg.workers;
+          FLEET_WORKERS = concatStringsSep " " cfg.workers;
           FLEET_TAR = "${pkgs.gnutar}/bin/tar";
           FLEET_ZSTD = "${pkgs.zstd}/bin/zstd";
           FLEET_SYSTEMCTL = "${pkgs.systemd}/bin/systemctl";
@@ -51,19 +48,7 @@
 
     in
     {
-      options.agentFleet.operatorUser = mkOption {
-        type = types.str;
-        default = "fleet-operator";
-        description = ''
-          Unprivileged system user that owns the dispatch queue. The cockpit
-          reaches the queue only by running the `fleet` tool as this user via a
-          scoped sudo rule — this account, not the Claude permission list, is
-          the dispatch security boundary. It is non-wheel, has no shell login,
-          and can do nothing but enqueue tasks and read results.
-        '';
-      };
-
-      config = mkIf (cfg.workers != [ ]) {
+      config = {
         users.groups.${readers} = { };
         users.groups.${op} = { };
         users.users.${op} = {

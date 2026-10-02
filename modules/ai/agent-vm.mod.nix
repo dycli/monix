@@ -12,6 +12,7 @@
     }:
     let
       inherit (lib.attrsets)
+        genAttrs
         listToAttrs
         mapAttrsToList
         nameValuePair
@@ -73,14 +74,10 @@
         }
       ];
 
+      # Indices derive from roster order and fix each guest's address, MAC
+      # and vsock id; the guests are disposable, so a reorder costs nothing.
       mkAgentGuest =
-        {
-          name,
-          index,
-          vcpu,
-          mem,
-          ...
-        }:
+        index: name:
         let
           addr = "10.100.0.${toString (10 + index)}";
           mac = "02:00:00:00:00:${fixedWidthString 2 "0" (toString index)}";
@@ -166,7 +163,9 @@
             {
               microvm = {
                 hypervisor = "cloud-hypervisor";
-                inherit vcpu mem;
+                vcpu = 4;
+                # MiB, static, no ballooning.
+                mem = 4096;
 
                 # vsock context ids must be >= 3.
                 vsock.cid = 100 + index;
@@ -332,7 +331,7 @@
                     "FLEET_GUEST_EXEC_OPENCODE=${getExe opencodeExecutor}"
                     "FLEET_GUEST_EXEC_LOCAL=${getExe opencodeExecutor}"
                   ];
-                  LimitFSIZE = cfg.taskExchangeMaxBytes;
+                  LimitFSIZE = topology.limits.taskExchangeMaxBytes;
                 };
               };
 
@@ -351,32 +350,20 @@
               # (runuser grants supplementary groups) carries the task
               # exchange across virtiofs.
               users.groups.${guestGroup}.gid = guestGid;
-              users.users = {
-                agent-claude = {
-                  isNormalUser = true;
-                  homeMode = "0700";
-                  extraGroups = singleton guestGroup;
-                  description = "Claude fleet executor";
-                };
-                agent-codex = {
-                  isNormalUser = true;
-                  homeMode = "0700";
-                  extraGroups = singleton guestGroup;
-                  description = "Codex fleet executor";
-                };
-                agent-opencode = {
-                  isNormalUser = true;
-                  homeMode = "0700";
-                  extraGroups = singleton guestGroup;
-                  description = "opencode fleet executor";
-                };
-                agent-local = {
-                  isNormalUser = true;
-                  homeMode = "0700";
-                  extraGroups = singleton guestGroup;
-                  description = "credentialless local-model fleet executor";
-                };
-              };
+              users.users =
+                genAttrs
+                  [
+                    "agent-claude"
+                    "agent-codex"
+                    "agent-opencode"
+                    # Credentialless, for local models.
+                    "agent-local"
+                  ]
+                  (_: {
+                    isNormalUser = true;
+                    homeMode = "0700";
+                    extraGroups = singleton guestGroup;
+                  });
               systemd.tmpfiles.rules = singleton "d /workspace 0770 root users -";
 
               # The serial console requires host root to reach.
@@ -389,24 +376,8 @@
     {
       options.agentFleet = {
         workers = mkOption {
-          description = "agent-fleet worker roster";
-          default = [ ];
-          type = types.listOf (
-            types.submodule {
-              options = {
-                name = mkOption { type = types.str; };
-                index = mkOption { type = types.ints.between 1 99; };
-                vcpu = mkOption {
-                  type = types.int;
-                  default = 8;
-                };
-                mem = mkOption {
-                  type = types.int;
-                  default = 8192; # MiB, static, no ballooning
-                };
-              };
-            }
-          );
+          type = types.listOf types.str;
+          description = "Worker VM names, in roster order.";
         };
 
         credentials = {
@@ -419,53 +390,37 @@
             description = "host path of a copy of Codex's auth.json (from a ChatGPT login)";
           };
           opencodeKeyFile = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "host path of an OpenCode API key for Zen and Go (single line); null = hosted opencode dispatch has no credential and fails auth";
+            type = types.str;
+            description = "host path of the OpenCode API key for Zen and Go (single line)";
           };
         };
       };
 
       config = {
-        assertions = [
-          {
-            assertion =
-              lib.lists.length cfg.workers == (
-                cfg.workers
-                |> map (w: w.name)
-                |> lib.lists.unique
-                |> lib.lists.length
-              );
-            message = "agentFleet worker names must be unique";
-          }
-          {
-            assertion =
-              lib.lists.length cfg.workers == (
-                cfg.workers
-                |> map (w: w.index)
-                |> lib.lists.unique
-                |> lib.lists.length
-              );
-            message = "agentFleet worker indices must be unique";
-          }
-        ];
+        assertions = singleton {
+          assertion = lib.lists.allUnique cfg.workers;
+          message = "agentFleet worker names must be unique";
+        };
 
-        microvm.vms = cfg.workers |> map (w: nameValuePair w.name (mkAgentGuest w)) |> listToAttrs;
+        microvm.vms =
+          cfg.workers
+          |> lib.lists.imap1 (index: name: nameValuePair name (mkAgentGuest index name))
+          |> listToAttrs;
 
         # Share sources must exist before virtiofsd starts.
         users.groups.${guestGroup}.gid = guestGid;
         systemd.tmpfiles.rules =
           cfg.workers
-          |> concatMap (w: [
-            "d ${workDir w.name} 0770 root ${guestGroup} -"
-            "d ${credsDir w.name} 0700 root root -"
+          |> concatMap (name: [
+            "d ${workDir name} 0770 root ${guestGroup} -"
+            "d ${credsDir name} 0700 root root -"
           ]);
 
         systemd.services =
           cfg.workers
           |> map (
-            w:
-            (nameValuePair "microvm@${w.name}" {
+            name:
+            (nameValuePair "microvm@${name}" {
               serviceConfig = {
                 # The drainer owns lifecycle; Restart=always would fight it.
                 Restart = mkForce "no";
@@ -480,7 +435,7 @@
                 # The runner's autoCreate recreates these blank.
                 ExecStartPre = singleton (
                   "${getExe' pkgs.coreutils "rm"} -f "
-                  + concatMapStringsSep " " (v: "${config.microvm.stateDir}/${w.name}/${v.image}") volumes
+                  + concatMapStringsSep " " (v: "${config.microvm.stateDir}/${name}/${v.image}") volumes
                 );
               };
             })

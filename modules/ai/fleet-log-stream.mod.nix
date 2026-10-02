@@ -20,6 +20,7 @@
       cfg = config.fleetLogStream;
       inherit (lib.ship) topology;
       fleetLog = "${topology.tasksDir}/log";
+      homeserverUrl = "http://127.0.0.1:${toString config.matrix.port}";
     in
     {
       options.fleetLogStream = {
@@ -30,18 +31,6 @@
             MATRIX_PASSWORD=... — normally the same file the alerts
             aspect uses (any ALERT_ROOM_ID in it is ignored here).
           '';
-        };
-
-        homeserverUrl = mkOption {
-          type = types.str;
-          default = "http://127.0.0.1:${toString config.matrix.port}";
-          description = "Homeserver base URL (default: the loopback tuwunel).";
-        };
-
-        roomName = mkOption {
-          type = types.str;
-          default = "Fleet Ops";
-          description = "Display name for the room the bot creates on first start.";
         };
 
         inviteUsers = mkOption {
@@ -77,7 +66,7 @@
             pkgs.jq
           ];
           script = ''
-            hs=${lib.escapeShellArg cfg.homeserverUrl}
+            hs=${lib.escapeShellArg homeserverUrl}
             state=/var/lib/fleet-log-stream
             hdr=/run/fleet-log-stream/auth-header
 
@@ -107,7 +96,7 @@
             # remember the id. The room is the bot's own — no secret, no
             # repo state. If creation fails, exit and let Restart retry.
             if [ ! -s "$state/room-id" ]; then
-              room_id=$(jq -n --arg n ${lib.escapeShellArg cfg.roomName} \
+              room_id=$(jq -n --arg n "Fleet Ops" \
                   --argjson inv ${lib.escapeShellArg (toJSON cfg.inviteUsers)} \
                   '{name:$n, preset:"private_chat", invite:$inv,
                     topic:"Live fleet audit log — every SUBMIT/DISPATCH/ESCALATE/STEER/ANSWER/DONE as it happens"}' \

@@ -7,6 +7,26 @@
     home = "/home/bridge";
   };
 
+  # Unprivileged system user that owns the dispatch queue. The seat reaches
+  # the queue only by running `fleet` as this user via a scoped sudo rule:
+  # this account, not any agent permission list, is the dispatch security
+  # boundary.
+  operator = "fleet-operator";
+
+  # Per-task limits, shared by the `fleet` tool, the drainers and the guests.
+  limits = {
+    # Seconds without a guest heartbeat before a task is stalled and killed.
+    stallTimeout = 120;
+    # Seconds an idle warm VM lives before it is rebooted preventively.
+    warmMaxAge = 7200;
+    # Absolute seconds a task may run, regardless of progress.
+    taskTimeout = 21600;
+    # Bytes in one live task exchange before the task is stopped.
+    taskExchangeMaxBytes = 805306368;
+    # Bytes of compressed context capsule accepted for one task.
+    taskContextMaxBytes = 536870912;
+  };
+
   bridge = "br-agents";
   hostAddr = "10.100.0.1";
   tasksDir = "/var/lib/agents/tasks";
