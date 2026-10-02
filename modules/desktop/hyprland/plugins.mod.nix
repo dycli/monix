@@ -30,17 +30,27 @@
         # pass applies these.
         extraConfig = ''
           if hl.plugin.hyprbars then
-            -- Button alignment is global; there is no per-button side.
+            -- Mac OS 9 Platinum greys. bar_precedence_over_border wraps the
+            -- border around bar+window; the like-colored top segment vanishes
+            -- into the bar (appearance.mod.nix borders match). Button
+            -- alignment is global; there is no per-button side.
             hl.config({
               plugin = {
                 hyprbars = {
                   bar_height = 25,
-                  bar_color = "rgb(000000)",
+                  bar_color = "rgb(cccccc)",
                   bar_title_enabled = false,
                   bar_precedence_over_border = true,
                   bar_buttons_alignment = "left",
                 },
               },
+            })
+
+            -- Inactive-window grey; focus rules re-evaluate on every focus
+            -- change. Plugin rule effects require the string keys.
+            hl.window_rule({
+              match = { focus = false },
+              ["hyprbars:bar_color"] = "rgb(dddddd)",
             })
 
             -- Declaration order reads left-to-right on screen. A transparent
@@ -50,21 +60,21 @@
             -- dispatcher syntax fails silently.
             hl.plugin.hyprbars.add_button({
               bg_color = "rgba(00000000)",
-              fg_color = "rgb(b8b3c2)",
+              fg_color = "rgb(222222)",
               size = 20,
               icon = "󰖭",
               action = "hyprctl dispatch 'hl.dsp.window.close()'",
             })
             hl.plugin.hyprbars.add_button({
               bg_color = "rgba(00000000)",
-              fg_color = "rgb(b8b3c2)",
+              fg_color = "rgb(222222)",
               size = 20,
               icon = "󰖯",
               action = [=[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']=],
             })
             hl.plugin.hyprbars.add_button({
               bg_color = "rgba(00000000)",
-              fg_color = "rgb(b8b3c2)",
+              fg_color = "rgb(222222)",
               size = 20,
               icon = "󰖲",
               action = "hyprctl dispatch 'hl.dsp.window.float()'",
