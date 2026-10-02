@@ -1,4 +1,12 @@
 {
+  # The AI seat's account. The uid is fixed because its network fence is a
+  # drop-in on user-<uid>.slice.
+  seat = {
+    user = "bridge";
+    uid = 1001;
+    home = "/home/bridge";
+  };
+
   bridge = "br-agents";
   hostAddr = "10.100.0.1";
   tasksDir = "/var/lib/agents/tasks";

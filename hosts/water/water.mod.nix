@@ -19,6 +19,7 @@
           self.nixosModules.davinci-resolve
           self.nixosModules.radeon-7900xtx
           self.nixosModules.inference-radeon-24gb
+          self.nixosModules.inference-client
           ./credentials.nix
           ./nas-storage.nix
         ];
@@ -54,8 +55,6 @@
         # Keep build bursts within the server's 32GB RAM budget.
         nix.settings.max-jobs = 1;
         nix.settings.cores = 4;
-
-        inference.extraAllowedSubnets = lib.lists.singleton "10.100.0.0/24";
 
         boot.loader.timeout = 5;
 

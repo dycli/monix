@@ -1,0 +1,352 @@
+# The AI seat: one fenced, unprivileged account where Claude Code, Codex and
+# OpenCode share the ship guide, the project state and OptMem. Its home is
+# composed here; the primary user's agent CLIs come from `dev` instead.
+{
+  inputs,
+  lib,
+  self,
+  ...
+}:
+let
+  # Desktops whose visible Brave the seat drives over Tailscale SSH
+  # (browser.mod.nix).
+  browserTargets = {
+    earth = "dylan@earth";
+    fire = "zuko@fire";
+  };
+
+  browserServers =
+    pkgs:
+    browserTargets
+    |> lib.attrsets.mapAttrs (
+      _: target: {
+        command = lib.meta.getExe pkgs.tailscale;
+        args = [
+          "ssh"
+          target
+          "/run/current-system/sw/bin/kestrel-browser-mcp"
+        ];
+      }
+    );
+in
+{
+  flake.homeModules.cockpit =
+    {
+      config,
+      lib,
+      osConfig,
+      pkgs,
+      ...
+    }:
+    let
+      inherit (lib.ship) guide opencode topology;
+      inherit (lib.attrsets) genAttrs mapAttrs;
+      inherit (lib.lists) concatMap map singleton;
+      inherit (lib.modules) mkForce;
+      inherit (lib.strings) removePrefix toJSON;
+
+      userHome = config.home.homeDirectory;
+      monixDir = "${userHome}/ark/monix";
+      holdDir = "${userHome}/hold";
+      cockpitDir = "${userHome}/cockpit";
+      memoryDir = "${userHome}/.optmem/memory";
+
+      # An append-only LOG.txt of one-line memories plus a TREE/ of
+      # summaries. The store is mutable state, created once with `memo init`.
+      memo = pkgs.rustPlatform.buildRustPackage {
+        pname = "memo";
+        version = "0.1.0";
+        src = ./memo-cli;
+        cargoLock.lockFile = ./memo-cli/Cargo.lock;
+        # A runtime MEMORY_DIR still overrides this.
+        env.MEMO_MEMORY_DIR = memoryDir;
+        meta.mainProgram = "memo";
+      };
+
+      gitReadCommands = [
+        "status*"
+        "diff*"
+        "log*"
+        "show*"
+        "blame*"
+        "rev-parse*"
+        "merge-base*"
+        "ls-files*"
+        "ls-tree*"
+        "cat-file*"
+        "branch --show-current*"
+        "remote -v"
+        "tag --list*"
+      ];
+
+      # OpenCode has only static globs where Claude has a read-only
+      # classifier, so this list exists for OpenCode alone.
+      bashAllow = [
+        "sudo -n -u fleet-operator fleet *"
+        "fleet dispatch *"
+        # memo must never prompt.
+        "memo"
+        "memo *"
+        "nix build *"
+        "nix eval *"
+        "nix flake *"
+        "nix run nixpkgs#shellcheck *"
+        "nix search *"
+        "tailscale status*"
+      ]
+      ++ concatMap (command: [
+        "git ${command}"
+        "git -C * ${command}"
+      ]) gitReadCommands
+      ++ [
+        # No push rule: pushing is never unattended.
+        "git -C ${monixDir} add *"
+        "git -C ${monixDir} commit *"
+        "journalctl*"
+        "systemctl status*"
+        "systemctl show*"
+        "systemctl cat*"
+        "systemctl list-units*"
+        "systemctl list-timers*"
+        "systemctl list-unit-files*"
+        "systemctl list-dependencies*"
+        "systemctl is-active*"
+        "systemctl is-enabled*"
+        "systemctl is-failed*"
+        "systemctl --failed*"
+        "systemctl --user status*"
+        "systemctl --user show*"
+        "systemctl --user cat*"
+        "systemctl --user is-active*"
+        "systemctl --user list-units*"
+        "systemctl --user list-timers*"
+        "echo *"
+        "grep *"
+        "rg *"
+        "ls"
+        "ls *"
+        "head *"
+        "tail *"
+        "wc *"
+        "stat *"
+        "du *"
+        "df"
+        "df *"
+        "file *"
+        "readlink *"
+        "realpath *"
+        "command -v *"
+        "pgrep *"
+        "tree *"
+        "sleep *"
+        "mkdir -p *"
+      ];
+
+      writableDirs = [
+        monixDir
+        memoryDir
+      ];
+
+      # OpenCode strips the leading slash for file-tool paths, but
+      # external_directory checks the same path in absolute form.
+      bothForms = concatMap (path: [
+        "${path}/**"
+        "${removePrefix "/" path}/**"
+      ]);
+
+      # OpenCode evaluates the final matching rule; keep the catch-all first.
+      allowOnly = patterns: { "*" = "ask"; } // genAttrs patterns (_: "allow");
+
+      permission = {
+        bash = allowOnly bashAllow;
+        # Claude permits reads inside its working directory; OpenCode needs
+        # them listed.
+        read = allowOnly (
+          bothForms (
+            writableDirs
+            ++ [
+              cockpitDir
+              holdDir
+            ]
+          )
+        );
+        edit = allowOnly (bothForms writableDirs);
+        external_directory = allowOnly (map (path: "${path}/**") writableDirs);
+        glob = "allow";
+        grep = "allow";
+        list = "allow";
+        task = "allow";
+        # OpenCode cannot scope webfetch by domain.
+        webfetch = "ask";
+        todowrite = "allow";
+        question = "allow";
+        skill = "allow";
+      }
+      // opencode.permissions;
+    in
+    {
+      home.packages = singleton memo;
+
+      home.sessionVariables = opencode.environment // {
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
+      };
+
+      home.file.".config/agents/AGENTS.md".text = mkForce (guide.system + guide.pilot);
+      home.file."cockpit/FLEET.md" = {
+        force = true;
+        text = guide.fleet;
+      };
+
+      # The baseURL uses the seat-plane address because the slice fence
+      # admits that /32, not 127.0.0.1.
+      home.file.".config/opencode/opencode.jsonc" = {
+        force = true;
+        text = toJSON (
+          opencode.config {
+            name = "water local inference";
+            baseURL = "http://${topology.seatInferenceAddr}:${toString osConfig.inference.port}/v1";
+            models = osConfig.inference.openCodeModels;
+            extraMcp =
+              browserServers pkgs
+              |> mapAttrs (
+                _: server: {
+                  type = "local";
+                  command = singleton server.command ++ server.args;
+                  enabled = true;
+                }
+              );
+            inherit permission;
+            # Appended after OpenCode's built-in agent rules.
+            agent.plan.permission = permission // {
+              edit = "deny";
+              task = {
+                "*" = "allow";
+                general = "deny";
+              };
+            };
+            agent.explore.permission = {
+              "*" = "deny";
+              inherit (permission)
+                bash
+                external_directory
+                glob
+                grep
+                list
+                read
+                webfetch
+                ;
+            }
+            // opencode.permissions;
+          }
+        );
+      };
+    };
+
+  flake.nixosModules.lab = self.nixosModules.seat;
+  flake.nixosModules.seat =
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
+    let
+      inherit (lib.attrsets) mapAttrs;
+      inherit (lib.lists) singleton;
+      inherit (lib.strings) toJSON;
+      inherit (lib.ship) fences topology;
+      inherit (topology) seat;
+
+      codexConfig = (pkgs.formats.toml { }).generate "codex-system-config.toml" {
+        mcp_servers =
+          browserServers pkgs
+          |> mapAttrs (
+            _: server:
+            server
+            // {
+              default_tools_approval_mode = "writes";
+              startup_timeout_sec = 20;
+              tool_timeout_sec = 120;
+            }
+          );
+      };
+    in
+    {
+      # No wheel, no Nix trust, and no host/service secrets; its sole
+      # provider key is part of the model boundary. A Tailscale SSH session
+      # would run under tailscaled's cgroup and bypass the slice fence below.
+      users.users.${seat.user} = {
+        isNormalUser = true;
+        inherit (seat) uid home;
+        group = seat.user;
+        description = "AI seat";
+        # Group-enterable so the primary user can reach the seat's files.
+        homeMode = "750";
+        openssh.authorizedKeys.keys = lib.ship.keys.admin;
+        # journal reads; models grants writes to the model directory.
+        extraGroups = [
+          "systemd-journal"
+          "models"
+          "opencode-auth"
+        ];
+      };
+      users.groups.${seat.user}.gid = seat.uid;
+
+      users.users.${config.primaryUser}.extraGroups = singleton seat.user;
+
+      home-manager.users.${seat.user} = {
+        imports = [
+          self.homeModules.default
+          self.homeModules.dev
+          self.homeModules.cockpit
+        ];
+        home.username = seat.user;
+        home.homeDirectory = seat.home;
+        home.stateVersion = config.system.stateVersion;
+      };
+
+      # git refuses another user's repo without this, and honours it only
+      # from a global config file, never via -c or the environment.
+      home-manager.users.${config.primaryUser}.programs.git.settings.safe.directory =
+        "${seat.home}/ark/monix";
+
+      # Address filter on every process this user runs, both directions and
+      # all interfaces, including the tailnet, which Tailscale ACLs cannot
+      # restrict per-user. Filtering is port-blind, so admitting 127.0.0.1
+      # would expose every loopback service; llama-swap gets a dedicated
+      # seat-plane address instead.
+      systemd.slices."user-${toString seat.uid}".sliceConfig = {
+        IPAddressAllow = [
+          "127.0.0.53/32"
+          "${topology.seatInferenceAddr}/32"
+        ];
+        IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
+      };
+
+      # Must exist before the first session keys its project state to it.
+      systemd.tmpfiles.rules = singleton "d ${seat.home}/cockpit 0750 ${seat.user} ${seat.user} -";
+
+      programs.tmux.enable = true;
+      programs.tmux.historyLimit = 50000;
+      # terminal-features asserts OSC 52 support even when TERM's terminfo
+      # does not advertise Ms.
+      programs.tmux.extraConfig = ''
+        set -g set-clipboard on
+        set -as terminal-features ',*:clipboard'
+      '';
+
+      environment.systemPackages = [
+        inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
+        pkgs.python3
+        pkgs.jq
+      ];
+
+      # Authentication, project trust and session state remain per-user;
+      # host-owned MCP endpoints are immutable layers shared by every
+      # agent frontend.
+      environment.etc."codex/config.toml".source = codexConfig;
+      environment.etc."claude-code/managed-mcp.json".text = toJSON {
+        mcpServers = browserServers pkgs |> mapAttrs (_: server: server // { type = "stdio"; });
+      };
+    };
+}

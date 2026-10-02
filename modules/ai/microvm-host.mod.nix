@@ -100,6 +100,9 @@
           bridgeConfig.Isolated = true;
         };
 
+        # Guests reach llama-swap directly, outside the proxy.
+        inference.extraAllowedSubnets = singleton "10.100.0.0/24";
+
         networking.firewall.interfaces.${bridge}.allowedTCPPorts = [
           3128
           config.inference.port

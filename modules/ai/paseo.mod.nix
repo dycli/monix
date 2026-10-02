@@ -33,9 +33,9 @@
 
         # inheritUserEnvironment (default for a non-paseo user) puts that
         # account's profile on PATH, so providers resolve from its installs.
-        # Water keeps the locked bridge seat; another host can override this.
-        user = lib.modules.mkDefault "bridge";
-        group = lib.modules.mkDefault "bridge";
+        # Water keeps the fenced AI seat; another host can override this.
+        user = lib.modules.mkDefault lib.ship.topology.seat.user;
+        group = lib.modules.mkDefault lib.ship.topology.seat.user;
 
         # bazarr owns 6767 (Paseo's default). tailscale0 is a trusted firewall
         # interface, so binding broadly with the public firewall closed leaves

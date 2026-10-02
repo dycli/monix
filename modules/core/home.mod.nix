@@ -1,6 +1,6 @@
-# Home Manager plumbing and the primary user's identity. Home aspects
-# arrive through home-manager.sharedModules: every bundle a host imports
-# carries its home aspects for all managed users (see
+# Home Manager plumbing and the primary user's identity. Every bundle a host
+# imports carries its home aspects to the primary user; any other managed
+# user imports the home bundles it needs by name (see
 # options/flake-outputs.mod.nix).
 { self, inputs, ... }:
 {

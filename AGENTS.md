@@ -6,8 +6,8 @@ including sessions with telemetry disabled.
 
 Global instructions come from `~/.config/agents/AGENTS.md`, managed by
 `modules/cli/agent-instructions.mod.nix`. Codex, OpenCode and Claude's user
-rules all load that same source. Bridge's cockpit module replaces its
-content with the ship guide.
+rules all load that same source. The AI seat (`modules/ai/seat/`) replaces
+its content with the ship guide.
 
 This repository follows the **Dendritic Pattern**: every `*.mod.nix` file in the
 tree is a flake-parts module and is discovered automatically by `flake.nix`.
@@ -19,8 +19,8 @@ Each `*.mod.nix` is a flake-parts module. It typically registers one or more
 *aspects* into a collection:
 
 - `flake.nixosModules.<name>`  — NixOS aspects.
-- `flake.homeModules.<name>`   — Home Manager aspects, applied to every
-  managed user on hosts that import them.
+- `flake.homeModules.<name>`   — Home Manager aspects, applied to the
+  primary user on hosts that import them.
 
 A single concern file may register several aspects at once — e.g. `hyprland.mod.nix`
 defines both `nixosModules.hyprland` (compositor) and `homeModules.hyprland`
@@ -43,7 +43,12 @@ flake.nixosModules.desktop = self.nixosModules.audio;
 The collections are typed in `options/flake-outputs.mod.nix` so definitions
 of one attribute merge, overlapping membership dedups (an aspect may join
 several bundles), and each `homeModules` attribute is mirrored into the
-same-named `nixosModules` attribute via `home-manager.sharedModules`.
+same-named `nixosModules` attribute as an import of the primary user's home.
+
+Any other managed user composes its home explicitly, the way a host file
+lists its layers: the module that declares the user writes
+`home-manager.users.<name>.imports = [ self.homeModules.default … ]` with
+every home bundle it needs. Never gate a home aspect on the username.
 
 Current bundles:
 

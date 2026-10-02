@@ -3,50 +3,31 @@
 { self, ... }:
 {
   flake.nixosModules.dev = self.nixosModules.opencode-auth;
+  flake.homeModules.dev = self.homeModules.opencode-auth;
 
   flake.nixosModules.opencode-auth =
     { config, lib, ... }:
-    let
-      inherit (lib.attrsets) genAttrs;
-      inherit (lib.lists) singleton;
-      inherit (lib.options) mkOption;
-      inherit (lib.types) listOf str;
-    in
     {
-      options.opencodeAuth.users = mkOption {
-        type = listOf str;
-        default = [ ];
-        description = "managed users whose OpenCode auth stores receive the shared Zen/Go key";
-      };
+      # Every user whose home imports the auth aspect joins this group.
+      users.groups.opencode-auth = { };
+      users.users.${config.primaryUser}.extraGroups = lib.lists.singleton "opencode-auth";
 
-      config = {
-        opencodeAuth.users = singleton config.primaryUser;
-
-        users.groups.opencode-auth = { };
-        users.users = genAttrs config.opencodeAuth.users (_: {
-          extraGroups = singleton "opencode-auth";
-        });
-
-        secrets.opencode-key = {
-          file = ../../secrets/opencode-key.age;
-          group = "opencode-auth";
-          mode = "0440";
-        };
+      secrets.opencode-key = {
+        file = ../../secrets/opencode-key.age;
+        group = "opencode-auth";
+        mode = "0440";
       };
     };
 
   flake.homeModules.opencode-auth =
     {
-      config,
       lib,
       osConfig,
       pkgs,
       ...
     }:
     let
-      inherit (lib.lists) elem;
       inherit (lib.meta) getExe;
-      inherit (lib.modules) mkIf;
 
       installAuth = pkgs.writeShellApplication {
         name = "install-opencode-auth";
@@ -83,10 +64,8 @@
       };
     in
     {
-      home.activation.opencodeAuth = mkIf (elem config.home.username osConfig.opencodeAuth.users) (
-        lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-          ${getExe installAuth}
-        ''
-      );
+      home.activation.opencodeAuth = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        ${getExe installAuth}
+      '';
     };
 }

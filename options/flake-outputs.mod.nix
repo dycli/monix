@@ -5,7 +5,8 @@
 # aspect reached through two bundles would be applied twice and list options
 # would double-concatenate; keying each attribute by name makes overlapping
 # bundle membership dedup instead. Every `flake.homeModules` attribute is
-# mirrored into the NixOS attribute of the same name.
+# mirrored into the NixOS attribute of the same name, applied to the host's
+# primary user; any other managed user imports its home bundles by name.
 {
   config,
   inputs,
@@ -49,8 +50,10 @@ in
   config.flake.nixosModules =
     config.flake.homeModules
     |> mapAttrs (
-      _: module: {
-        home-manager.sharedModules = singleton module;
+      _: module:
+      { config, ... }:
+      {
+        home-manager.users.${config.primaryUser}.imports = singleton module;
       }
     );
 }

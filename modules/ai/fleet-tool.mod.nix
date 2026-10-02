@@ -20,7 +20,7 @@
 
       cfg = config.agentFleet;
       inherit (lib.ship) topology;
-      inherit (topology) tasksDir;
+      inherit (topology) seat tasksDir;
       op = cfg.operatorUser;
       readers = topology.readersGroup;
 
@@ -73,19 +73,15 @@
           description = "agent-fleet dispatch operator";
         };
         users.users.${config.primaryUser}.extraGroups = singleton readers;
-        users.users.bridge = {
-          extraGroups = singleton readers;
-        };
+        users.users.${seat.user}.extraGroups = singleton readers;
 
         environment.systemPackages = singleton fleet;
 
-        # The only path into the queue. NOPASSWD so a non-interactive
-        # `sudo -n` never blocks.
+        # The only path into the queue, and only the seat dispatches; the
+        # primary user reads results through the readers group. NOPASSWD so
+        # a non-interactive `sudo -n` never blocks.
         security.sudo.extraRules = singleton {
-          users = [
-            config.primaryUser
-            "bridge"
-          ];
+          users = singleton seat.user;
           runAs = op;
           commands = singleton {
             command = fleetPath;

@@ -38,24 +38,12 @@
       # Local inference is plain HTTP to a bridge IP, which a CONNECT
       # allowlist cannot express, so it bypasses the proxy.
       noProxy = "127.0.0.1,localhost,${hostAddr}";
-      # The ai-sdk loader requires a non-empty apiKey; llama-swap ignores it.
       opencodeConfig = pkgs.writeText "opencode.json" (
         toJSON (
-          {
-            "$schema" = "https://opencode.ai/config.json";
-            inherit (opencode) lsp mcp;
-            permission = opencode.permissions;
-          }
-          // {
-            provider.local = {
-              npm = "@ai-sdk/openai-compatible";
-              name = "ship-local inference (llama-swap)";
-              options = {
-                baseURL = "http://${hostAddr}:${toString config.inference.port}/v1";
-                apiKey = "local";
-              };
-              models = config.inference.openCodeModels;
-            };
+          opencode.config {
+            name = "ship-local inference (llama-swap)";
+            baseURL = "http://${hostAddr}:${toString config.inference.port}/v1";
+            models = config.inference.openCodeModels;
           }
         )
       );

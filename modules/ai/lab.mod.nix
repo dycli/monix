@@ -18,8 +18,5 @@
           ];
 
       fleetLogStream.inviteUsers = lib.lists.singleton "@dylan:chat.su.is";
-
-      # Baked in as memo's default so nothing sets MEMORY_DIR at runtime.
-      memo.memoryDir = "/home/bridge/.optmem/memory";
     };
 }
