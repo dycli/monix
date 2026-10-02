@@ -68,10 +68,6 @@
             float = true;
           }
           {
-            match.class = "^(steam)$";
-            float = true;
-          }
-          {
             match.class = "^com[.]mitchellh[.]ghostty[.]floating$";
             float = true;
           }
