@@ -42,7 +42,7 @@
       # Pin the registry and NIX_PATH to this flake's nixpkgs so `nix run`,
       # `nix shell` and legacy `<nixpkgs>` lookups all resolve consistently.
       nix.registry.nixpkgs.flake = inputs.nixpkgs;
-      nix.nixPath = singleton "nixpkgs=${inputs.nixpkgs}";
+      nix.settings.nix-path = singleton "nixpkgs=${inputs.nixpkgs}";
 
       nix.channel.enable = false;
 

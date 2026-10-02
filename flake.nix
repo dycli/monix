@@ -5,27 +5,6 @@
     url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
-  inputs.hyprland = {
-    url = "github:hyprwm/Hyprland/7ebf13abb3c391604c60c9f627c7a403bcec8d17";
-    # Keep the compatible hyprutils revision across lock updates.
-    inputs.hyprutils = {
-      url = "github:hyprwm/hyprutils/95983ee836ff205e615bba67d1f67098e1231941";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.systems.follows = "hyprland/systems";
-    };
-    inputs.nixpkgs.follows = "nixpkgs";
-  };
-
-  inputs.hy3 = {
-    url = "github:outfoxxed/hy3/12a73ab0adddbc39f839da320dcc2b028769fc58";
-    flake = false;
-  };
-
-  inputs.hyprland-plugins = {
-    url = "github:hyprwm/hyprland-plugins/722f15a77768eab13f01f5e5dce024bd2f61f270";
-    flake = false;
-  };
-
   inputs.nixos-hardware = {
     url = "github:NixOS/nixos-hardware/master";
   };
@@ -48,8 +27,6 @@
   inputs.agenix = {
     url = "github:ryantm/agenix";
     inputs.nixpkgs.follows = "nixpkgs";
-    inputs.home-manager.follows = "home-manager";
-    inputs.darwin.follows = "";
   };
 
   # Follows so the platform-theme plugin builds against the same Qt as

@@ -4,23 +4,16 @@
 # A store-path change here makes the next switch live-unload and reload the
 # plugin inside the running compositor, which is unreliable upstream; re-log in
 # rather than trusting the swap.
-{ inputs, ... }:
+{ ... }:
 {
   flake.homeModules.hyprland =
     { pkgs, ... }:
     {
       wayland.windowManager.hyprland = {
-        # Built against this pin's hyprland so the plugin ABI matches the
-        # running compositor by construction.
+        # Nixpkgs builds these plugins against its own compositor package.
         plugins = [
-          (pkgs.hyprlandPlugins.hyprbars.overrideAttrs {
-            src = inputs.hyprland-plugins + "/hyprbars";
-            version = "unstable-2026-09-05";
-          })
-          (pkgs.hyprlandPlugins.hy3.overrideAttrs {
-            src = inputs.hy3;
-            version = "unstable-2026-08-23";
-          })
+          pkgs.hyprlandPlugins.hyprbars
+          pkgs.hyprlandPlugins.hy3
         ];
 
         # Plugin-coupled config belongs in these guarded blocks, not in
