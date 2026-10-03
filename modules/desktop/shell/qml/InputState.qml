@@ -15,6 +15,17 @@ QtObject {
     property string accelerationProfile: "adaptive"
     property real mouseScrollFactor: 1
     property real touchpadScrollFactor: 1
+    // Pointer settings keyed by Hyprland device name. A device without an
+    // entry follows the global values above.
+    property var deviceOverrides: ({})
+    property var connectedDevices: []
+    property string selectedDevice: ""
+    readonly property var knownDevices: connectedDevices.concat(
+        Object.keys(deviceOverrides).filter(name => !connectedDevices.includes(name)).sort())
+    readonly property var selectedOverride: deviceOverrides[selectedDevice] ?? null
+    readonly property real selectedPointerSpeed: selectedSetting("pointerSpeed")
+    readonly property string selectedAccelerationProfile: selectedSetting("accelerationProfile")
+    readonly property real selectedScrollFactor: selectedSetting("scrollFactor")
     property string lastError: ""
     property string applyOutput: ""
     property string applyError: ""
@@ -51,6 +62,28 @@ QtObject {
                 root.applyNow();
             }
         }
+    }
+
+    property Process devicesProcess: Process {
+        command: ["hyprctl", "devices", "-j"]
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                try {
+                    root.connectedDevices = (JSON.parse(text).mice || [])
+                        .map(mouse => mouse.name).filter(name => name);
+                    if (!root.knownDevices.includes(root.selectedDevice))
+                        root.selectedDevice = "";
+                } catch (error) {
+                }
+            }
+        }
+    }
+
+    // Hyprland cannot unset a single device field, so dropping an override
+    // reloads the config; configreloaded then reapplies everything else.
+    property Process reloadProcess: Process {
+        command: ["hyprctl", "reload"]
     }
 
     property Timer applyTimer: Timer {
@@ -95,6 +128,16 @@ QtObject {
                 mouseScrollFactor, 0.1, 5);
             touchpadScrollFactor = boundedNumber(parsed.touchpadScrollFactor,
                 touchpadScrollFactor, 0.1, 5);
+            const overrides = {};
+            for (const [name, device] of Object.entries(parsed.devices || {}))
+                overrides[name] = {
+                    "pointerSpeed": boundedNumber(device.pointerSpeed, pointerSpeed, -1, 1),
+                    "accelerationProfile": device.accelerationProfile === "flat"
+                        ? "flat" : "adaptive",
+                    "scrollFactor": boundedNumber(device.scrollFactor,
+                        defaultScrollFactor(name), 0.1, 5)
+                };
+            deviceOverrides = overrides;
         } catch (error) {
         }
         loaded = true;
@@ -110,7 +153,8 @@ QtObject {
             "pointerSpeed": pointerSpeed,
             "accelerationProfile": accelerationProfile,
             "mouseScrollFactor": mouseScrollFactor,
-            "touchpadScrollFactor": touchpadScrollFactor
+            "touchpadScrollFactor": touchpadScrollFactor,
+            "devices": deviceOverrides
         }, null, 2));
     }
 
@@ -132,14 +176,76 @@ QtObject {
         changed();
     }
 
+    function refreshDevices(): void {
+        if (!devicesProcess.running)
+            devicesProcess.running = true;
+    }
+
+    function selectDevice(name: string): void {
+        selectedDevice = name;
+    }
+
+    // Hyprland applies a device scroll_factor to wheel and finger scrolling
+    // alike, so a touchpad starts from the touchpad factor.
+    function defaultScrollFactor(name: string): real {
+        return /touchpad|trackpad/i.test(name) ? touchpadScrollFactor : mouseScrollFactor;
+    }
+
+    function selectedSetting(key: string) {
+        if (selectedOverride)
+            return selectedOverride[key];
+        if (key === "scrollFactor")
+            return selectedDevice ? defaultScrollFactor(selectedDevice) : mouseScrollFactor;
+        return key === "pointerSpeed" ? pointerSpeed : accelerationProfile;
+    }
+
+    function setDeviceSetting(key: string, value): void {
+        const overrides = Object.assign({}, deviceOverrides);
+        overrides[selectedDevice] = Object.assign({
+            "pointerSpeed": pointerSpeed,
+            "accelerationProfile": accelerationProfile,
+            "scrollFactor": defaultScrollFactor(selectedDevice)
+        }, overrides[selectedDevice], { [key]: value });
+        deviceOverrides = overrides;
+        changed();
+    }
+
+    function resetDevice(name: string): void {
+        if (!deviceOverrides[name])
+            return;
+        const overrides = Object.assign({}, deviceOverrides);
+        delete overrides[name];
+        deviceOverrides = overrides;
+        saveTimer.restart();
+        reloadProcess.running = true;
+    }
+
     function setPointerSpeed(value: real): void {
-        pointerSpeed = Math.max(-1, Math.min(1, value));
+        const bounded = Math.max(-1, Math.min(1, value));
+        if (selectedDevice) {
+            setDeviceSetting("pointerSpeed", bounded);
+            return;
+        }
+        pointerSpeed = bounded;
         changed();
     }
 
     function setAccelerationProfile(value: string): void {
-        accelerationProfile = value === "flat" ? "flat" : "adaptive";
+        const profile = value === "flat" ? "flat" : "adaptive";
+        if (selectedDevice) {
+            setDeviceSetting("accelerationProfile", profile);
+            return;
+        }
+        accelerationProfile = profile;
         changed();
+    }
+
+    function setScrollFactor(value: real): void {
+        const bounded = Math.max(0.1, Math.min(5, value));
+        if (selectedDevice)
+            setDeviceSetting("scrollFactor", bounded);
+        else
+            setMouseScrollFactor(bounded);
     }
 
     function setMouseScrollFactor(value: real): void {
@@ -169,7 +275,12 @@ QtObject {
             + ", accel_profile = " + JSON.stringify(accelerationProfile)
             + ", scroll_factor = " + mouseScrollFactor.toFixed(3)
             + ", touchpad = { scroll_factor = "
-            + touchpadScrollFactor.toFixed(3) + " } } })";
+            + touchpadScrollFactor.toFixed(3) + " } } })"
+            + Object.entries(deviceOverrides).map(([name, device]) =>
+                " hl.device({ name = " + JSON.stringify(name)
+                + ", sensitivity = " + device.pointerSpeed.toFixed(3)
+                + ", accel_profile = " + JSON.stringify(device.accelerationProfile)
+                + ", scroll_factor = " + device.scrollFactor.toFixed(3) + " })").join("");
         applyProcess.command = ["hyprctl", "eval", command];
         applyProcess.running = true;
     }

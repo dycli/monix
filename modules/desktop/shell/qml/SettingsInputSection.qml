@@ -5,7 +5,26 @@ import QtQuick
 Column {
     id: root
 
+    property bool deviceSelectorOpen: false
+
     spacing: 8
+
+    Component.onCompleted: InputState.refreshDevices()
+
+    function deviceLabel(name: string): string {
+        if (!name)
+            return "All pointers";
+        const words = name.replace(/-/g, " ");
+        return words.charAt(0).toUpperCase() + words.slice(1);
+    }
+
+    function deviceDetail(name: string): string {
+        if (!name)
+            return "";
+        if (!InputState.connectedDevices.includes(name))
+            return "Not connected";
+        return InputState.deviceOverrides[name] ? "Custom" : "";
+    }
 
     function rounded(value: real, step: real): real {
         return Math.round(value / step) * step;
@@ -60,14 +79,43 @@ Column {
         text: "Pointer"
     }
 
+    SettingsChoiceButton {
+        width: parent.width
+        icon: "󰍽"
+        label: root.deviceLabel(InputState.selectedDevice)
+        detail: root.deviceSelectorOpen ? "" : ""
+        onActivated: {
+            root.deviceSelectorOpen = !root.deviceSelectorOpen;
+            if (root.deviceSelectorOpen)
+                InputState.refreshDevices();
+        }
+    }
+
+    Repeater {
+        model: root.deviceSelectorOpen ? [""].concat(InputState.knownDevices) : []
+
+        delegate: SettingsChoiceButton {
+            required property string modelData
+
+            width: root.width
+            active: modelData === InputState.selectedDevice
+            label: root.deviceLabel(modelData)
+            detail: root.deviceDetail(modelData)
+            onActivated: {
+                InputState.selectDevice(modelData);
+                root.deviceSelectorOpen = false;
+            }
+        }
+    }
+
     SettingsSlider {
         width: parent.width
         icon: "󰍽"
         iconAvailable: false
         label: "Speed"
-        value: (InputState.pointerSpeed + 1) / 2
-        valueText: (InputState.pointerSpeed > 0 ? "+" : "")
-            + InputState.pointerSpeed.toFixed(2)
+        value: (InputState.selectedPointerSpeed + 1) / 2
+        valueText: (InputState.selectedPointerSpeed > 0 ? "+" : "")
+            + InputState.selectedPointerSpeed.toFixed(2)
         onMoved: value => InputState.setPointerSpeed(root.rounded(-1 + value * 2, 0.05))
     }
 
@@ -88,14 +136,14 @@ Column {
 
         SettingsChoiceButton {
             width: (parent.width - parent.spacing) / 2
-            active: InputState.accelerationProfile === "adaptive"
+            active: InputState.selectedAccelerationProfile === "adaptive"
             label: "Adaptive"
             onActivated: InputState.setAccelerationProfile("adaptive")
         }
 
         SettingsChoiceButton {
             width: (parent.width - parent.spacing) / 2
-            active: InputState.accelerationProfile === "flat"
+            active: InputState.selectedAccelerationProfile === "flat"
             label: "Flat"
             onActivated: InputState.setAccelerationProfile("flat")
         }
@@ -105,15 +153,16 @@ Column {
         width: parent.width
         icon: "󰕐"
         iconAvailable: false
-        label: "Mouse scroll"
-        value: (InputState.mouseScrollFactor - 0.25) / 2.75
-        valueText: InputState.mouseScrollFactor.toFixed(2) + "×"
-        onMoved: value => InputState.setMouseScrollFactor(
+        label: InputState.selectedDevice ? "Scroll" : "Mouse scroll"
+        value: (InputState.selectedScrollFactor - 0.25) / 2.75
+        valueText: InputState.selectedScrollFactor.toFixed(2) + "×"
+        onMoved: value => InputState.setScrollFactor(
             root.rounded(0.25 + value * 2.75, 0.05))
     }
 
     SettingsSlider {
         width: parent.width
+        visible: !InputState.selectedDevice
         icon: "󰟸"
         iconAvailable: false
         label: "Touchpad scroll"
@@ -121,6 +170,14 @@ Column {
         valueText: InputState.touchpadScrollFactor.toFixed(2) + "×"
         onMoved: value => InputState.setTouchpadScrollFactor(
             root.rounded(0.25 + value * 2.75, 0.05))
+    }
+
+    SettingsChoiceButton {
+        width: parent.width
+        visible: InputState.selectedOverride !== null
+        icon: "󰑓"
+        label: "Use default pointer settings"
+        onActivated: InputState.resetDevice(InputState.selectedDevice)
     }
 
     Text {
