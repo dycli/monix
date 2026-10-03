@@ -125,9 +125,9 @@ QtObject {
             accelerationProfile = parsed.accelerationProfile === "flat"
                 ? "flat" : "adaptive";
             mouseScrollFactor = boundedNumber(parsed.mouseScrollFactor,
-                mouseScrollFactor, 0.1, 5);
+                mouseScrollFactor, 0.1, 2);
             touchpadScrollFactor = boundedNumber(parsed.touchpadScrollFactor,
-                touchpadScrollFactor, 0.1, 5);
+                touchpadScrollFactor, 0.1, 2);
             const overrides = {};
             for (const [name, device] of Object.entries(parsed.devices || {}))
                 overrides[name] = {
@@ -249,12 +249,13 @@ QtObject {
     }
 
     function setMouseScrollFactor(value: real): void {
-        mouseScrollFactor = Math.max(0.1, Math.min(5, value));
+        // Hyprland rejects global scroll factors above 2; device ones go higher.
+        mouseScrollFactor = Math.max(0.1, Math.min(2, value));
         changed();
     }
 
     function setTouchpadScrollFactor(value: real): void {
-        touchpadScrollFactor = Math.max(0.1, Math.min(5, value));
+        touchpadScrollFactor = Math.max(0.1, Math.min(2, value));
         changed();
     }
 

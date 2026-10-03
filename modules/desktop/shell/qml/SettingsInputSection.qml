@@ -6,6 +6,7 @@ Column {
     id: root
 
     property bool deviceSelectorOpen: false
+    readonly property real scrollMaximum: InputState.selectedDevice ? 3 : 2
 
     spacing: 8
 
@@ -154,10 +155,10 @@ Column {
         icon: "󰕐"
         iconAvailable: false
         label: InputState.selectedDevice ? "Scroll" : "Mouse scroll"
-        value: (InputState.selectedScrollFactor - 0.25) / 2.75
+        value: (InputState.selectedScrollFactor - 0.25) / (root.scrollMaximum - 0.25)
         valueText: InputState.selectedScrollFactor.toFixed(2) + "×"
         onMoved: value => InputState.setScrollFactor(
-            root.rounded(0.25 + value * 2.75, 0.05))
+            root.rounded(0.25 + value * (root.scrollMaximum - 0.25), 0.05))
     }
 
     SettingsSlider {
@@ -166,10 +167,10 @@ Column {
         icon: "󰟸"
         iconAvailable: false
         label: "Touchpad scroll"
-        value: (InputState.touchpadScrollFactor - 0.25) / 2.75
+        value: (InputState.touchpadScrollFactor - 0.25) / 1.75
         valueText: InputState.touchpadScrollFactor.toFixed(2) + "×"
         onMoved: value => InputState.setTouchpadScrollFactor(
-            root.rounded(0.25 + value * 2.75, 0.05))
+            root.rounded(0.25 + value * 1.75, 0.05))
     }
 
     SettingsChoiceButton {
