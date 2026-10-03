@@ -12,6 +12,7 @@
         pkgs.obs-studio
         pkgs.darktable
         pkgs.ffmpeg-full
+        pkgs.kicad
       ];
     };
 }
