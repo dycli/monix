@@ -18,7 +18,7 @@
             power_cap = 294.0;
             performance_level = "manual";
             max_core_clock = 2600;
-            voltage_offset = -100;
+            voltage_offset = -80;
           };
         };
       };
