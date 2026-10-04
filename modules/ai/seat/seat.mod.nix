@@ -8,8 +8,8 @@
   ...
 }:
 let
-  # Desktops whose visible Brave the seat drives over Tailscale SSH
-  # (browser.mod.nix).
+  # A headless Brave on the seat's own host, plus the desktops whose visible
+  # Brave the seat drives over Tailscale SSH (browser.mod.nix).
   browserTargets = {
     earth = "dylan@earth";
     fire = "zuko@fire";
@@ -17,16 +17,24 @@ let
 
   browserServers =
     pkgs:
-    browserTargets
-    |> lib.attrsets.mapAttrs (
-      _: target: {
-        command = lib.meta.getExe pkgs.tailscale;
-        args = [
-          "ssh"
-          target
-          "/run/current-system/sw/bin/kestrel-browser-mcp"
-        ];
-      }
+    {
+      browser = {
+        command = "/run/current-system/sw/bin/kestrel-browser-headless";
+        args = [ ];
+      };
+    }
+    // (
+      browserTargets
+      |> lib.attrsets.mapAttrs (
+        _: target: {
+          command = lib.meta.getExe pkgs.tailscale;
+          args = [
+            "ssh"
+            target
+            "/run/current-system/sw/bin/kestrel-browser-mcp"
+          ];
+        }
+      )
     );
 in
 {
