@@ -139,9 +139,6 @@
         hardware.sensor.iio.enable = false;
         hardware.fw-fanctrl.enable = true;
 
-        # PERIPHERALS
-        hardware.keyboard.zsa.enable = true;
-
         # AUDIO + DISPLAY CALIBRATION
         home-manager.users.${config.primaryUser} = {
           services.easyeffects = {
