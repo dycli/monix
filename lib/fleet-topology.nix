@@ -8,6 +8,9 @@
     # Root writes the seat's agent transcripts here and never deletes; the
     # seat reads them through its group.
     transcripts = "/srv/storage/transcripts";
+    # hippo, the seat's episodic memory. A trial store until the import
+    # builds the real one at /srv/storage/hippo (SPEC.md §9, §11).
+    hippo = "/srv/storage/hippo-trial";
   };
 
   # Unprivileged system user that owns the dispatch queue. The seat reaches

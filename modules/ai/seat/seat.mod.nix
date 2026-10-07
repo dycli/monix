@@ -88,9 +88,11 @@ in
       bashAllow = [
         "sudo -n -u ${topology.operator} fleet *"
         "fleet dispatch *"
-        # memo must never prompt.
+        # memo and hippo must never prompt.
         "memo"
         "memo *"
+        "hippo"
+        "hippo *"
         "nix build *"
         "nix eval *"
         "nix flake *"

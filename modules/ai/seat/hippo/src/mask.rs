@@ -1,0 +1,94 @@
+//! Secrets never enter the log. Every message is masked before it is
+//! written; the raw transcript archive (root-owned) keeps the originals.
+
+use regex::Regex;
+use std::sync::LazyLock;
+
+pub const MASK: &str = "[secret masked]";
+
+/// The whole pattern list. A capture group named `keep` survives the mask
+/// (a header name, say), the rest of the match is replaced.
+const PATTERNS: &[&str] = &[
+    // PEM private keys, whole block.
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+    // Anthropic, then OpenAI (sk-, sk-proj-, sk-svcacct-...).
+    r"\bsk-ant-[A-Za-z0-9_\-]{20,}",
+    r"\bsk-[A-Za-z0-9_\-]{20,}",
+    // GitHub tokens: classic and fine-grained.
+    r"\bgh[pousr]_[A-Za-z0-9]{30,}",
+    r"\bgithub_pat_[A-Za-z0-9_]{20,}",
+    // Tailscale auth and API keys.
+    r"\btskey-[A-Za-z0-9]+-[A-Za-z0-9\-]{8,}",
+    // age secret keys.
+    r"\bAGE-SECRET-KEY-1[0-9A-Z]{50,}",
+    // AWS access key ids and secret keys given by name.
+    r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b",
+    r"(?i)(?P<keep>aws_secret_access_key\s*[=:]\s*)[A-Za-z0-9/+=]{30,}",
+    // Bearer tokens in headers.
+    r"(?i)(?P<keep>\bbearer\s+)[A-Za-z0-9._~+/=\-]{16,}",
+];
+
+static RES: LazyLock<Vec<Regex>> =
+    LazyLock::new(|| PATTERNS.iter().map(|p| Regex::new(p).unwrap()).collect());
+
+pub fn mask(text: &str) -> String {
+    let mut out = text.to_owned();
+    for re in RES.iter() {
+        if re.is_match(&out) {
+            out = re
+                .replace_all(&out, |c: &regex::Captures| {
+                    let keep = c.name("keep").map_or("", |m| m.as_str());
+                    format!("{keep}{MASK}")
+                })
+                .into_owned();
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn masked(s: &str) -> bool {
+        mask(s).contains(MASK)
+    }
+
+    #[test]
+    fn masks_each_kind() {
+        let cases = [
+            "key sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+            "OPENAI_API_KEY=sk-proj-AbCdEfGhIjKlMnOpQrStUvWx",
+            "token ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+            "github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz",
+            "tskey-auth-kAbCdEf1CNTRL-AbCdEfGhIjKlMnOpQrStUv",
+            "AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
+            "AKIAIOSFODNN7EXAMPLE",
+            "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc",
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEA\n-----END OPENSSH PRIVATE KEY-----",
+        ];
+        for case in cases {
+            assert!(masked(case), "not masked: {case}");
+        }
+    }
+
+    #[test]
+    fn keeps_context_and_ordinary_text() {
+        assert_eq!(
+            mask("Authorization: Bearer abcdefghijklmnopqrstuvwxyz"),
+            format!("Authorization: Bearer {MASK}")
+        );
+        let pem = "a\n-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\nb";
+        assert_eq!(mask(pem), format!("a\n{MASK}\nb"));
+        for plain in [
+            "sk-short",
+            "the task-runner ran",
+            "git commit -m 'Add ghp support'",
+            "-----BEGIN PUBLIC KEY-----",
+            "bearer of bad news",
+        ] {
+            assert_eq!(mask(plain), plain);
+        }
+    }
+}
