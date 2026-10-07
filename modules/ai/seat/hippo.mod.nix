@@ -39,8 +39,7 @@ in
 
       # The compactor's model. Sonnet at medium effort runs through the seat's
       # own claude CLI and subscription; Qwen runs on the host's llama-swap at
-      # no subscription cost, one call at a time. The first import is
-      # summarized locally; set `compactor = sonnet` once it has caught up.
+      # no subscription cost, one call at a time.
       sonnet = {
         HIPPO_BACKEND = "claude";
         HIPPO_CLAUDE = "/etc/profiles/per-user/${seat.user}/bin/claude";
@@ -61,7 +60,7 @@ in
           top_k = 20;
         };
       };
-      compactor = qwen;
+      compactor = sonnet;
 
       # The seat's managed settings without its managed MCP servers: those
       # would start a browser and Tailscale SSH sessions on every compactor
