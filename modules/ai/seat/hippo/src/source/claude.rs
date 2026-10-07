@@ -22,6 +22,7 @@ const IGNORED: &[&str] = &[
     "pr-link",
     "mode",
     "permission-mode",
+    "bridge-session",
 ];
 
 /// Text the harness writes into user entries on its own.
