@@ -17,6 +17,8 @@ pub struct Sources {
     pub claude: Vec<PathBuf>,
     pub codex: Vec<PathBuf>,
     pub opencode: PathBuf,
+    /// More OpenCode databases, read by the import only.
+    pub opencode_more: Vec<PathBuf>,
     pub paseo: PathBuf,
 }
 
@@ -29,6 +31,7 @@ impl Sources {
                 home.join(".codex/archived_sessions"),
             ],
             opencode: home.join(".local/share/opencode/opencode-stable.db"),
+            opencode_more: Vec::new(),
             paseo: home.join(".paseo/agents"),
         }
     }
@@ -38,6 +41,20 @@ impl Sources {
     pub fn with_archive(mut self, archive: &Path) -> Sources {
         self.claude.push(archive.join("claude"));
         self.codex.push(archive.join("codex"));
+        self
+    }
+
+    /// Transcripts dropped in by hand for the import: `claude/` laid out as
+    /// `~/.claude/projects`, `codex/` holding rollout files at any depth,
+    /// `opencode/` holding database copies.
+    pub fn with_drop(mut self, dir: &Path) -> Sources {
+        self.claude.push(dir.join("claude"));
+        self.codex.push(dir.join("codex"));
+        self.opencode_more.extend(
+            read_dir(&dir.join("opencode"))
+                .into_iter()
+                .filter(|p| p.extension().is_some_and(|x| x == "db")),
+        );
         self
     }
 
@@ -405,8 +422,9 @@ fn records_read(
         })?;
         ends.insert(path, end);
     }
-    if sources.opencode.exists() {
-        let db = opencode::open(&sources.opencode)?;
+    let dbs = std::iter::once(&sources.opencode).chain(&sources.opencode_more);
+    for path in dbs.filter(|p| p.exists()) {
+        let db = opencode::open(path)?;
         for s in opencode::changed(&db, 0)? {
             for (ms, ev) in s.events {
                 let at = DateTime::from_timestamp_millis(ms)
@@ -551,6 +569,7 @@ mod tests {
             claude: vec![claude],
             codex: vec![fixtures().join("codex/sessions")],
             opencode: db,
+            opencode_more: Vec::new(),
             paseo: tmp.join("no-paseo"),
         }
     }
@@ -632,7 +651,7 @@ mod tests {
         let src = sources(&tmp, fixtures().join("claude"));
         let mut store = Store::open(&tmp.join("store"), true).unwrap();
         let mut w = Watcher::default();
-        import(&mut store, &mut w, &src).unwrap();
+        import(&mut store, &mut w, &src, None).unwrap();
         let got = log_of(&store);
         assert_eq!(
             got,
@@ -652,7 +671,7 @@ mod tests {
         );
         assert!(imported(&store.dir).unwrap().is_some());
         // A second import refuses.
-        assert!(import(&mut store, &mut Watcher::default(), &src).is_err());
+        assert!(import(&mut store, &mut Watcher::default(), &src, None).is_err());
     }
 
     #[test]
@@ -744,9 +763,14 @@ pub fn imported(store: &Path) -> Result<Option<Imported>, String> {
 
 /// Bootstraps an empty store with every chat the transcripts still hold,
 /// in time order and reduced to the captain's messages and each turn's
-/// final reply. Leaves cursors where the reading
+/// final reply, from `since` on if given. Leaves cursors where the reading
 /// stopped, so the service follows on from there in full.
-pub fn import(store: &mut Store, w: &mut Watcher, sources: &Sources) -> Result<String, String> {
+pub fn import(
+    store: &mut Store,
+    w: &mut Watcher,
+    sources: &Sources,
+    since: Option<DateTime<Local>>,
+) -> Result<String, String> {
     if !store.is_empty() || imported(&store.dir)?.is_some() {
         return Err(format!("{} is not empty.", store.dir.display()));
     }
@@ -754,9 +778,11 @@ pub fn import(store: &mut Store, w: &mut Watcher, sources: &Sources) -> Result<S
         true => opencode::watermark(&opencode::open(&sources.opencode)?)?,
         false => 0,
     };
-    let start = DateTime::from_timestamp(0, 0)
-        .unwrap()
-        .with_timezone(&Local);
+    let start = since.unwrap_or_else(|| {
+        DateTime::from_timestamp(0, 0)
+            .unwrap()
+            .with_timezone(&Local)
+    });
     let mut ends = HashMap::new();
     let records = records_read(
         sources,

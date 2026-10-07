@@ -37,8 +37,11 @@ Service and maintenance:
                            run the service (the only writer); without
                            following, it only serves and compacts its store
   hippo audit [YYYY-MM-DD] check a day of the log against the transcripts
-  hippo import             bootstrap an empty store with every past chat,
-                           reduced; the service starts after
+  hippo import [--since YYYY-MM-DD]
+                           bootstrap an empty store with every past chat,
+                           reduced, including any dropped in ~/hold/import
+                           (claude/, codex/, opencode/); the service starts
+                           after
   hippo replay <store> <from> <to>
                            rebuild a scratch store from transcripts
                            written between two dates (YYYY-MM-DD[THH:MM])";
@@ -157,16 +160,24 @@ fn browse(args: &[String]) -> Result<String, String> {
 }
 
 fn import(args: &[String]) -> Result<String, String> {
-    if !args.is_empty() {
-        return Err(USAGE.into());
+    let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    let sources = sources()
+        .with_archive(&archive())
+        .with_drop(&home.join("hold/import"));
+    let mut since = None;
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        match (arg.as_str(), rest.next()) {
+            ("--since", Some(d)) => since = Some(when(d)?),
+            _ => return Err(USAGE.into()),
+        }
     }
     let mut store = store::Store::open(&dir(), true)?;
-    let sources = sources().with_archive(&archive());
     let mut w = watcher::Watcher {
         paseo: Some(sources.paseo.clone()),
         ..watcher::Watcher::default()
     };
-    live::import(&mut store, &mut w, &sources)
+    live::import(&mut store, &mut w, &sources, since)
 }
 
 fn main() -> ExitCode {
