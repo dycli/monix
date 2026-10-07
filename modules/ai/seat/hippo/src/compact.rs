@@ -220,6 +220,11 @@ pub fn from_env() -> Result<Box<dyn Backend>, String> {
                 model: var("HIPPO_MODEL").ok_or("HIPPO_MODEL is not set")?,
                 effort: var("HIPPO_EFFORT"),
                 key,
+                extra: match var("HIPPO_HTTP_EXTRA") {
+                    Some(raw) => serde_json::from_str(&raw)
+                        .map_err(|e| format!("HIPPO_HTTP_EXTRA is not a JSON object: {e}"))?,
+                    None => serde_json::Map::new(),
+                },
             }))
         }
         other => Err(format!("Unknown HIPPO_BACKEND {other}.")),
@@ -413,6 +418,9 @@ pub struct Http {
     pub model: String,
     pub effort: Option<String>,
     pub key: Option<String>,
+    /// Fields merged into every request, for what a server takes beyond the
+    /// OpenAI API (llama.cpp's chat_template_kwargs, say).
+    pub extra: serde_json::Map<String, Value>,
 }
 
 struct HttpChat {
@@ -443,6 +451,9 @@ impl Chat for HttpChat {
         let mut body = json!({"model": b.model, "messages": self.messages});
         if let Some(effort) = &b.effort {
             body["reasoning_effort"] = json!(effort);
+        }
+        for (k, v) in &b.extra {
+            body[k] = v.clone();
         }
         let url = format!("{}/chat/completions", b.url.trim_end_matches('/'));
         let mut req = ureq::post(&url)

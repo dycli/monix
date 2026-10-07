@@ -34,17 +34,32 @@ in
     let
       inherit (lib.lists) singleton;
       inherit (lib.ship) fences topology;
+      inherit (lib.strings) toJSON;
       inherit (topology) seat;
 
-      # The compactor's model: Sonnet at medium effort through the seat's own
-      # claude CLI and subscription. HIPPO_BACKEND = "http" with HIPPO_URL
-      # (and HIPPO_KEY_FILE) points it at any OpenAI-compatible endpoint.
-      compactor = {
+      # The compactor's model. Sonnet at medium effort runs through the seat's
+      # own claude CLI and subscription; Qwen runs on the host's llama-swap at
+      # no subscription cost, one call at a time. The first import is
+      # summarized locally; set `compactor = sonnet` once it has caught up.
+      sonnet = {
         HIPPO_BACKEND = "claude";
         HIPPO_CLAUDE = "/etc/profiles/per-user/${seat.user}/bin/claude";
         HIPPO_MODEL = "sonnet";
         HIPPO_EFFORT = "medium";
       };
+      qwen = {
+        HIPPO_BACKEND = "http";
+        HIPPO_URL = "http://${topology.seatInferenceAddr}:${toString config.inference.port}/v1";
+        HIPPO_MODEL = "qwen3.8-27b-q4-k-m";
+        # Qwen's reasoning level and its recommended thinking-mode sampling.
+        HIPPO_HTTP_EXTRA = toJSON {
+          chat_template_kwargs.reasoning_effort = "medium";
+          temperature = 1.0;
+          top_p = 0.95;
+          top_k = 20;
+        };
+      };
+      compactor = qwen;
 
       # The seat's managed settings without its managed MCP servers: those
       # would start a browser and Tailscale SSH sessions on every compactor
@@ -100,8 +115,11 @@ in
             "AF_INET"
             "AF_INET6"
           ];
-          # The seat's own fence: the internet and the resolver only.
-          IPAddressAllow = singleton "127.0.0.53/32";
+          # The seat's own fence: the internet, the resolver and local inference.
+          IPAddressAllow = [
+            "127.0.0.53/32"
+            "${topology.seatInferenceAddr}/32"
+          ];
           IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
           # The primary user reads the store through the seat's group.
           UMask = "0027";
