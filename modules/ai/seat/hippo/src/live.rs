@@ -541,7 +541,7 @@ mod tests {
         "echo [bridge-1111]: (hippo output omitted)",
         "tool [bridge-1111]: Bash {\"command\":\"cat shed.txt\",\"description\":\"Read the notes\"}",
         "user [bridge-1111]: Use cedar, not pine.",
-        "echo [bridge-1111]: width 3m\nkey [secret masked]",
+        "echo [bridge-1111]: width 3m\nauth: Bearer [secret masked]",
         "talk [bridge-1111]: Cedar roof planned.",
         "echo [bridge-1111]: <task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n<summary>Background command \"Measure\" completed (exit code 0)</summary>\n</task-notification>",
         "user [bridge-1111]: [image]\nDoes this look right?",

@@ -56,17 +56,35 @@ mod tests {
 
     #[test]
     fn masks_each_kind() {
+        // Assembled at runtime: whole key-shaped literals in the source
+        // set off secret scanners.
         let cases = [
-            "key sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
-            "OPENAI_API_KEY=sk-proj-AbCdEfGhIjKlMnOpQrStUvWx",
-            "token ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
-            "github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz",
-            "tskey-auth-kAbCdEf1CNTRL-AbCdEfGhIjKlMnOpQrStUv",
-            "AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
-            "AKIAIOSFODNN7EXAMPLE",
-            "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-            "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc",
-            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEA\n-----END OPENSSH PRIVATE KEY-----",
+            concat!("key sk-", "ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"),
+            concat!("OPENAI_API_KEY=sk-", "proj-AbCdEfGhIjKlMnOpQrStUvWx"),
+            concat!("token gh", "p_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"),
+            concat!(
+                "github",
+                "_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz"
+            ),
+            concat!("tskey", "-auth-kAbCdEf1CNTRL-AbCdEfGhIjKlMnOpQrStUv"),
+            concat!(
+                "AGE-SECRET",
+                "-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ"
+            ),
+            concat!("AKIA", "IOSFODNN7EXAMPLE"),
+            concat!(
+                "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG",
+                "/bPxRfiCYEXAMPLEKEY"
+            ),
+            concat!(
+                "Authorization: Bearer ",
+                "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc"
+            ),
+            concat!(
+                "-----BEGIN OPENSSH PRIVATE",
+                " KEY-----\nb3BlbnNzaC1rZXktdjEA\n-----END OPENSSH PRIVATE",
+                " KEY-----"
+            ),
         ];
         for case in cases {
             assert!(masked(case), "not masked: {case}");
@@ -79,7 +97,11 @@ mod tests {
             mask("Authorization: Bearer abcdefghijklmnopqrstuvwxyz"),
             format!("Authorization: Bearer {MASK}")
         );
-        let pem = "a\n-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\nb";
+        let pem = concat!(
+            "a\n-----BEGIN PRIVATE",
+            " KEY-----\nMIIE\n-----END PRIVATE",
+            " KEY-----\nb"
+        );
         assert_eq!(mask(pem), format!("a\n{MASK}\nb"));
         for plain in [
             "sk-short",

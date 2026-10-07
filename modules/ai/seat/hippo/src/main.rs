@@ -2,11 +2,16 @@
 //! seat word for word and serves it back. `hippo serve` is the service and
 //! the only writer; every other command asks it over its socket.
 
+mod browse;
+mod compact;
+mod compactor;
 mod live;
 mod mask;
 mod server;
 mod source;
 mod store;
+mod tree;
+mod view;
 mod watcher;
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
@@ -20,13 +25,17 @@ use std::process::ExitCode;
 
 const USAGE: &str = "\
 Usage:
+  hippo view               the whole history as one-line summaries
   hippo zoom <id> <n>      open line id+n; n = 1 prints message id whole
   hippo date <id>          date and time of message id
   hippo search <regex>     search every message, word for word
   hippo note \"<text>\"      pin a fact as a note
   hippo status             what the service is doing
+  hippo browse <file.html> write the whole memory as one HTML page
 Service and maintenance:
-  hippo serve              run the service (the only writer)
+  hippo serve [--no-follow]
+                           run the service (the only writer); without
+                           following, it only serves and compacts its store
   hippo audit [YYYY-MM-DD] check a day of the log against the transcripts
   hippo replay <store> <from> <to>
                            rebuild a scratch store from transcripts
@@ -115,6 +124,28 @@ fn replay(args: &[String]) -> Result<String, String> {
     ))
 }
 
+fn serve(args: &[String]) -> Result<String, String> {
+    let follow = match args {
+        [] => true,
+        [flag] if flag == "--no-follow" => false,
+        _ => return Err(USAGE.into()),
+    };
+    let backend = match env::var("HIPPO_BACKEND").as_deref() {
+        Ok("none") => None,
+        _ => Some(compact::from_env()?),
+    };
+    server::serve(&dir(), follow.then(sources), backend).map(|_| String::new())
+}
+
+fn browse(args: &[String]) -> Result<String, String> {
+    let [path] = args else {
+        return Err(USAGE.into());
+    };
+    let html = ask("browse", &[])?;
+    std::fs::write(path, html).map_err(|e| format!("{path}: {e}"))?;
+    Ok(format!("Wrote {path}."))
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let (cmd, rest) = match args.split_first() {
@@ -122,10 +153,11 @@ fn main() -> ExitCode {
         None => ("help", &[][..]),
     };
     let result = match cmd {
-        "serve" => server::serve(&dir(), sources()).map(|_| String::new()),
+        "serve" => serve(rest),
         "audit" => audit(rest.first()),
         "replay" => replay(rest),
-        "zoom" | "date" | "search" | "status" => ask(cmd, rest),
+        "view" | "zoom" | "date" | "search" | "status" => ask(cmd, rest),
+        "browse" => browse(rest),
         "note" => ask(cmd, &[rest.join(" ")]),
         "help" | "-h" | "--help" => Ok(USAGE.into()),
         _ => Err(USAGE.into()),
