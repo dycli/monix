@@ -94,6 +94,16 @@ pub struct Pump {
     pub lo: Vec<u64>,
 }
 
+/// `hippo pause` leaves this file; while it exists no model call starts.
+/// Logging goes on, and the pause outlives restarts.
+pub fn pause_file(store: &std::path::Path) -> std::path::PathBuf {
+    store.join("state/paused")
+}
+
+pub fn paused(store: &std::path::Path) -> bool {
+    pause_file(store).exists()
+}
+
 /// What a level-0 node is built from.
 fn message(c: &Core, i: u64) -> Result<Msg, String> {
     c.store.get(i)
@@ -175,7 +185,7 @@ fn save(
 /// Starts every node that may start. Call with the core locked, after any
 /// change: a new message, a node built, a wait over.
 pub fn pump(shared: &Arc<Shared>, c: &mut Core) {
-    if shared.backend.is_none() {
+    if shared.backend.is_none() || paused(&c.store.dir) {
         return;
     }
     if let Some(until) = c.pump.limit {

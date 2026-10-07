@@ -31,6 +31,8 @@ Usage:
   hippo search <regex>     search every message, word for word
   hippo note \"<text>\"      pin a fact as a note
   hippo status             what the service is doing
+  hippo pause / resume     stop or restart the compactor's model calls;
+                           logging goes on
   hippo browse <file.html> write the whole memory as one HTML page
 Service and maintenance:
   hippo serve [--no-follow]
@@ -191,7 +193,7 @@ fn main() -> ExitCode {
         "audit" => audit(rest.first()),
         "replay" => replay(rest),
         "import" => import(rest),
-        "view" | "zoom" | "date" | "search" | "status" => ask(cmd, rest),
+        "view" | "zoom" | "date" | "search" | "status" | "pause" | "resume" => ask(cmd, rest),
         "browse" => browse(rest),
         "note" => ask(cmd, &[rest.join(" ")]),
         "help" | "-h" | "--help" => Ok(USAGE.into()),

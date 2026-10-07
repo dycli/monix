@@ -233,6 +233,24 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
             Ok(format!("Noted as message {}.", ids[0]))
         }
         "status" => Ok(status(&core.lock().unwrap(), shared.backend.is_some())),
+        "pause" => {
+            let c = core.lock().unwrap();
+            fs::write(crate::compactor::pause_file(&c.store.dir), "").map_err(|e| e.to_string())?;
+            Ok(format!(
+                "Paused: no new model calls; {} running finish. Logging goes on.",
+                c.pump.busy.len()
+            ))
+        }
+        "resume" => {
+            let mut c = core.lock().unwrap();
+            match fs::remove_file(crate::compactor::pause_file(&c.store.dir)) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.to_string()),
+            }
+            pump(shared, &mut c);
+            Ok("Resumed.".into())
+        }
         "browse" => crate::browse::render(&core.lock().unwrap()),
         other => Err(format!("Unknown command {other}.")),
     }
@@ -417,6 +435,11 @@ fn status(c: &Core, compacting: bool) -> String {
     ));
     if !compacting {
         out.push_str("compactor: off\n");
+    } else if crate::compactor::paused(&s.dir) {
+        out.push_str(&format!(
+            "compactor: paused (hippo resume); {} running\n",
+            c.pump.busy.len()
+        ));
     } else {
         out.push_str(&format!("compactor: {} running\n", c.pump.busy.len()));
     }
