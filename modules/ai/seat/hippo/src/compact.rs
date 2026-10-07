@@ -204,6 +204,9 @@ pub fn from_env() -> Result<Box<dyn Backend>, String> {
             command: var("HIPPO_CLAUDE").unwrap_or_else(|| "claude".into()),
             model: var("HIPPO_MODEL").unwrap_or_else(|| "sonnet".into()),
             effort: var("HIPPO_EFFORT").unwrap_or_else(|| "medium".into()),
+            mark: var("HIPPO_CACHE_MARK")
+                .and_then(|m| m.parse().ok())
+                .unwrap_or(CACHE_MARK),
         })),
         "http" => {
             let key = match var("HIPPO_KEY_FILE") {
@@ -238,9 +241,38 @@ pub struct ClaudeCli {
     pub command: String,
     pub model: String,
     pub effort: String,
+    /// Characters into the context block where its one cache mark goes.
+    pub mark: usize,
+}
+
+/// Characters into the view where the Claude backend marks its cache:
+/// calls share the view up to there, so the next call reads it from cache
+/// instead of writing it again.
+pub const CACHE_MARK: usize = 80_000;
+
+/// The user message's content blocks. The API allows four cache marks and
+/// Claude Code uses three, so the context gets one, at the last line end
+/// before `mark`, with the one-hour lifetime Claude Code's own marks have
+/// (a shorter mark may not precede a longer one).
+pub fn marked(blocks: &[String], mark: usize) -> Vec<Value> {
+    let mut out = Vec::new();
+    for (k, b) in blocks.iter().enumerate() {
+        if k == 0 && b.starts_with("<chat>") && b.len() > mark {
+            let cut = b[..b.floor_char_boundary(mark)].rfind('\n').unwrap_or(0) + 1;
+            if cut > 1 {
+                out.push(json!({"type": "text", "text": &b[..cut],
+                    "cache_control": {"type": "ephemeral", "ttl": "1h"}}));
+                out.push(json!({"type": "text", "text": &b[cut..]}));
+                continue;
+            }
+        }
+        out.push(json!({"type": "text", "text": b}));
+    }
+    out
 }
 
 struct ClaudeChat {
+    mark: usize,
     child: Child,
     stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
@@ -282,6 +314,7 @@ impl Backend for ClaudeCli {
         let stdin = child.stdin.take();
         let stdout = BufReader::new(child.stdout.take().unwrap());
         Ok(Box::new(ClaudeChat {
+            mark: self.mark,
             child,
             stdin,
             stdout,
@@ -304,10 +337,7 @@ impl ClaudeChat {
 
 impl Chat for ClaudeChat {
     fn say(&mut self, blocks: &[String]) -> Result<String, Fail> {
-        let content: Vec<Value> = blocks
-            .iter()
-            .map(|t| json!({"type": "text", "text": t}))
-            .collect();
+        let content = marked(blocks, self.mark);
         let msg = json!({"type": "user", "message": {"role": "user", "content": content}});
         let stdin = self.stdin.as_mut().unwrap();
         let mut line = msg.to_string();
@@ -529,6 +559,27 @@ mod tests {
     #[test]
     fn scale_is_exactly_one_node() {
         assert_eq!(SCALE.len(), NODE);
+    }
+
+    #[test]
+    fn marks_the_view_once_at_a_line_end() {
+        let view = format!("<chat>\n{}\n{}\n</chat>", "a".repeat(10), "b".repeat(10));
+        let blocks = marked(&[view.clone(), "step".into()], 20);
+        assert_eq!(blocks.len(), 3);
+        assert_eq!(blocks[0]["text"], format!("<chat>\n{}\n", "a".repeat(10)));
+        assert_eq!(blocks[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            format!(
+                "{}{}",
+                blocks[0]["text"].as_str().unwrap(),
+                blocks[1]["text"].as_str().unwrap()
+            ),
+            view
+        );
+        assert!(blocks[1].get("cache_control").is_none());
+        // A short view, or a retry, goes unmarked.
+        assert_eq!(marked(std::slice::from_ref(&view), 1000).len(), 1);
+        assert_eq!(marked(&["That line is 600 bytes".into()], 5).len(), 1);
     }
 
     #[test]
