@@ -206,7 +206,14 @@ in
         users.groups.models = { };
         systemd.tmpfiles.rules = singleton "d ${modelsDir} 0775 ${config.primaryUser} models -";
 
-        environment.systemPackages = singleton llamaCpp;
+        # `hf download` fetches GGUFs into the models directory; hf_xet makes
+        # it pull chunks in parallel.
+        environment.systemPackages = [
+          llamaCpp
+          (pkgs.python3.withPackages (
+            ps: singleton ps.huggingface-hub ++ ps.huggingface-hub.optional-dependencies.hf_xet
+          ))
+        ];
       };
     };
 
