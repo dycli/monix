@@ -204,7 +204,8 @@ pub fn parse(r: &Value, session: &str) -> Vec<Event> {
                         false,
                         str_at(b, "/tool_use_id").map(str::to_owned),
                     )),
-                    Some("thinking" | "redacted_thinking") => {}
+                    // A model switch mid-turn, with no content of its own.
+                    Some("thinking" | "redacted_thinking" | "fallback") => {}
                     other => out.push(Event::Unparsed(format!(
                         "assistant block {}",
                         other.unwrap_or("without a type")
@@ -221,4 +222,25 @@ pub fn parse(r: &Value, session: &str) -> Vec<Event> {
         other => out.push(Event::Unparsed(format!("entry type {other}"))),
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn model_fallback_is_skipped() {
+        let r = json!({
+            "type": "assistant", "uuid": "u1", "timestamp": "2026-07-25T21:07:32.543Z",
+            "message": {"model": "claude-opus-4-8", "stop_reason": "tool_use",
+                "content": [{"type": "fallback", "from": {"model": "a"}, "to": {"model": "b"}}]}
+        });
+        let events = parse(&r, "s");
+        assert!(
+            events
+                .iter()
+                .all(|e| !matches!(e, Event::Unparsed(_) | Event::Item(_)))
+        );
+    }
 }
