@@ -5,6 +5,9 @@
     user = "bridge";
     uid = 1001;
     home = "/home/bridge";
+    # Root writes the seat's agent transcripts here and never deletes; the
+    # seat reads them through its group.
+    transcripts = "/srv/storage/transcripts";
   };
 
   # Unprivileged system user that owns the dispatch queue. The seat reaches
