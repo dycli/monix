@@ -37,6 +37,8 @@ Service and maintenance:
                            run the service (the only writer); without
                            following, it only serves and compacts its store
   hippo audit [YYYY-MM-DD] check a day of the log against the transcripts
+  hippo import <LOG.txt>   bootstrap an empty store: OptMem's notes, then
+                           every past chat, reduced; the service starts after
   hippo replay <store> <from> <to>
                            rebuild a scratch store from transcripts
                            written between two dates (YYYY-MM-DD[THH:MM])";
@@ -46,6 +48,14 @@ fn dir() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| option_env!("HIPPO_DIR").map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from("/srv/storage/hippo"))
+}
+
+/// The NAS archive of the seat's transcripts, read by the import.
+fn archive() -> PathBuf {
+    env::var_os("HIPPO_ARCHIVE")
+        .map(PathBuf::from)
+        .or_else(|| option_env!("HIPPO_ARCHIVE").map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("/srv/storage/transcripts"))
 }
 
 fn sources() -> Sources {
@@ -146,6 +156,19 @@ fn browse(args: &[String]) -> Result<String, String> {
     Ok(format!("Wrote {path}."))
 }
 
+fn import(args: &[String]) -> Result<String, String> {
+    let [log] = args else {
+        return Err(USAGE.into());
+    };
+    let mut store = store::Store::open(&dir(), true)?;
+    let sources = sources().with_archive(&archive());
+    let mut w = watcher::Watcher {
+        paseo: Some(sources.paseo.clone()),
+        ..watcher::Watcher::default()
+    };
+    live::import(&mut store, &mut w, &sources, Path::new(log))
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let (cmd, rest) = match args.split_first() {
@@ -156,6 +179,7 @@ fn main() -> ExitCode {
         "serve" => serve(rest),
         "audit" => audit(rest.first()),
         "replay" => replay(rest),
+        "import" => import(rest),
         "view" | "zoom" | "date" | "search" | "status" => ask(cmd, rest),
         "browse" => browse(rest),
         "note" => ask(cmd, &[rest.join(" ")]),

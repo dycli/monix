@@ -1,9 +1,11 @@
 //! Following the harnesses' transcripts: where they are, how far each is
 //! read, and the same readers run over whole days for replay and audit.
 
+use crate::mask::mask;
 use crate::source::{self, Event, claude, codex, opencode};
-use crate::store::{Kind, Store, fmt_date, parse_date};
+use crate::store::{Draft, Kind, Src, Store, fmt_date, parse_date};
 use crate::watcher::{Watcher, marker};
+use chrono::TimeZone;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -14,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug)]
 pub struct Sources {
-    pub claude: PathBuf,
+    pub claude: Vec<PathBuf>,
     pub codex: Vec<PathBuf>,
     pub opencode: PathBuf,
     pub paseo: PathBuf,
@@ -23,7 +25,7 @@ pub struct Sources {
 impl Sources {
     pub fn home(home: &Path) -> Sources {
         Sources {
-            claude: home.join(".claude/projects"),
+            claude: vec![home.join(".claude/projects")],
             codex: vec![
                 home.join(".codex/sessions"),
                 home.join(".codex/archived_sessions"),
@@ -33,20 +35,32 @@ impl Sources {
         }
     }
 
-    /// Every transcript file, with its harness and session.
+    /// The transcripts archived on the NAS, beside the live ones: the
+    /// harnesses prune their own, the archive never does.
+    pub fn with_archive(mut self, archive: &Path) -> Sources {
+        self.claude.push(archive.join("claude"));
+        self.codex.push(archive.join("codex"));
+        self
+    }
+
+    /// Every transcript file, with its harness and session. A session found
+    /// in several places (live and archived, or moved by Codex) is read
+    /// from its largest copy.
     pub fn files(&self) -> Vec<(PathBuf, &'static str, String)> {
-        let mut out = Vec::new();
-        for project in read_dir(&self.claude) {
-            let name = project.file_name().unwrap_or_default().to_string_lossy();
-            // The compactor's own calls never persist; skip its directory
-            // anyway, should one ever appear.
-            if !project.is_dir() || name.starts_with("-srv-storage-hippo") {
-                continue;
-            }
-            for file in read_dir(&project) {
-                if file.extension().is_some_and(|x| x == "jsonl") && file.is_file() {
-                    let session = stem(&file);
-                    out.push((file, "claude", session));
+        let mut found = Vec::new();
+        for root in &self.claude {
+            for project in read_dir(root) {
+                let name = project.file_name().unwrap_or_default().to_string_lossy();
+                // The compactor's own calls never persist; skip its directory
+                // anyway, should one ever appear.
+                if !project.is_dir() || name.starts_with("-srv-storage-hippo") {
+                    continue;
+                }
+                for file in read_dir(&project) {
+                    if file.extension().is_some_and(|x| x == "jsonl") && file.is_file() {
+                        let session = stem(&file);
+                        found.push((file, "claude", session));
+                    }
                 }
             }
         }
@@ -58,11 +72,23 @@ impl Sources {
                         stack.push(path);
                     } else if path.extension().is_some_and(|x| x == "jsonl") {
                         let session = codex::session_of(&stem(&path)).to_owned();
-                        out.push((path, "codex", session));
+                        found.push((path, "codex", session));
                     }
                 }
             }
         }
+        let mut best: HashMap<(&'static str, String), (u64, PathBuf)> = HashMap::new();
+        for (path, harness, session) in found {
+            let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let key = (harness, session);
+            if best.get(&key).is_none_or(|(s, _)| size > *s) {
+                best.insert(key, (size, path));
+            }
+        }
+        let mut out: Vec<_> = best
+            .into_iter()
+            .map(|((harness, session), (_, path))| (path, harness, session))
+            .collect();
         out.sort();
         out
     }
@@ -157,6 +183,8 @@ pub struct Live {
     path: PathBuf,
     cur: Cursors,
     read: HashMap<PathBuf, u64>,
+    /// Harness and session of each file followed.
+    whose: HashMap<PathBuf, (&'static str, String)>,
     fresh: bool,
     db: Option<rusqlite::Connection>,
     /// OpenCode changes read so far; `cur.opencode` stays behind it while
@@ -194,6 +222,7 @@ impl Live {
             oc_read: cur.opencode,
             cur,
             read,
+            whose: HashMap::new(),
             fresh,
             db: None,
             saved: String::new(),
@@ -211,6 +240,10 @@ impl Live {
         // Cursors of files gone for good are dropped.
         let listed: HashSet<&PathBuf> = files.iter().map(|(p, _, _)| p).collect();
         self.read.retain(|p, _| listed.contains(p));
+        self.whose = files
+            .iter()
+            .map(|(p, h, s)| (p.clone(), (*h, s.clone())))
+            .collect();
         for (path, harness, session) in files.iter().cloned() {
             let len = match fs::metadata(&path) {
                 Ok(m) => m.len(),
@@ -272,11 +305,11 @@ impl Live {
     pub fn save(&mut self, w: &Watcher) -> Result<(), String> {
         let mut files = BTreeMap::new();
         for (path, &read) in &self.read {
-            let (harness, session) = match path.starts_with(&self.sources.claude) {
-                true => ("claude", stem(path)),
-                false => ("codex", codex::session_of(&stem(path)).to_owned()),
-            };
-            let held = w.chat(harness, &session).and_then(|c| c.held_from());
+            let held = self
+                .whose
+                .get(path)
+                .and_then(|(harness, session)| w.chat(harness, session))
+                .and_then(|c| c.held_from());
             files.insert(path.clone(), held.unwrap_or(read).min(read));
         }
         let holding = w
@@ -344,9 +377,19 @@ pub fn records(
     from: DateTime<Local>,
     to: DateTime<Local>,
 ) -> Result<Vec<Record>, String> {
+    records_read(sources, from, to, &mut HashMap::new())
+}
+
+/// `records`, also saying how far each file was read.
+fn records_read(
+    sources: &Sources,
+    from: DateTime<Local>,
+    to: DateTime<Local>,
+    ends: &mut HashMap<PathBuf, u64>,
+) -> Result<Vec<Record>, String> {
     let mut out: Vec<Record> = Vec::new();
     for (path, harness, session) in sources.files() {
-        read_lines(&path, 0, |off, line| {
+        let end = read_lines(&path, 0, |off, line| {
             let (at, events) = parse_line(harness, &session, off, line);
             let at = at.unwrap_or(from);
             let keep: Vec<Event> = if at >= from && at < to {
@@ -362,6 +405,7 @@ pub fn records(
             }
             Ok(())
         })?;
+        ends.insert(path, end);
     }
     if sources.opencode.exists() {
         let db = opencode::open(&sources.opencode)?;
@@ -506,7 +550,7 @@ mod tests {
         conn.execute_batch(&fs::read_to_string(fixtures().join("opencode.sql")).unwrap())
             .unwrap();
         Sources {
-            claude,
+            claude: vec![claude],
             codex: vec![fixtures().join("codex/sessions")],
             opencode: db,
             paseo: tmp.join("no-paseo"),
@@ -518,7 +562,7 @@ mod tests {
         (from, from + chrono::Duration::days(2))
     }
 
-    fn log(store: &Store) -> Vec<String> {
+    fn log_of(store: &Store) -> Vec<String> {
         let mut out = Vec::new();
         store
             .scan(|m| {
@@ -570,7 +614,7 @@ mod tests {
         let mut w = Watcher::default();
         let (from, to) = day();
         replay(&mut store, &mut w, &src, from, to).unwrap();
-        assert_eq!(log(&store), EXPECTED);
+        assert_eq!(log_of(&store), EXPECTED);
         assert_eq!(w.unparsed_total, 1, "{:?}", w.unparsed);
         assert!(w.unparsed[0].what.contains("brand-new-entry"));
         let off: Vec<_> = store
@@ -582,6 +626,43 @@ mod tests {
         let report = audit(&store, &src, from, to, None).unwrap();
         assert!(report.contains("0 missing, 0 duplicated"), "{report}");
         assert!(!OMITTED.is_empty());
+    }
+
+    #[test]
+    fn imports_notes_then_reduced_chats() {
+        let tmp = scratch("import");
+        let src = sources(&tmp, fixtures().join("claude"));
+        let log = tmp.join("LOG.txt");
+        fs::write(
+            &log,
+            "#0 2026-07-02 The first memory.          \n#1 2026-07-05 A second one.   \n",
+        )
+        .unwrap();
+        let mut store = Store::open(&tmp.join("store"), true).unwrap();
+        let mut w = Watcher::default();
+        import(&mut store, &mut w, &src, &log).unwrap();
+        let got = log_of(&store);
+        assert_eq!(
+            got,
+            [
+                "note: The first memory.",
+                "note: A second one.",
+                "user [bridge]: Check the boiler.",
+                "talk [bridge]: The boiler runs.",
+                "user [bridge-1111]: Plan the shed roof.",
+                "user [bridge-1111]: Use cedar, not pine.",
+                "talk [bridge-1111]: Cedar roof planned.",
+                "user [bridge-1111]: [image]\nDoes this look right?",
+                "user [bridge]: Fix the gutter.",
+                "talk [bridge]: The gutter is fixed.",
+                "user [fix-fence-gate]: Fix the fence gate.",
+                "talk [fix-fence-gate]: The gate hinge is replaced.",
+                "user [fix-fence-gate]: Paint it too.",
+            ]
+        );
+        assert!(imported(&store.dir).unwrap().is_some());
+        // A second import refuses.
+        assert!(import(&mut store, &mut Watcher::default(), &src, &log).is_err());
     }
 
     #[test]
@@ -644,10 +725,127 @@ mod tests {
             .filter(|l| l.contains("[bridge-1111]"))
             .map(|l| l.replace("[bridge-1111]", "[bridge]"))
             .collect();
-        assert_eq!(log(&store), shed);
+        assert_eq!(log_of(&store), shed);
         // Scanning again finds nothing new.
         live.scan(&mut w, &mut store).unwrap();
         w.tick(&mut store, later).unwrap();
-        assert_eq!(log(&store).len(), shed.len());
+        assert_eq!(log_of(&store).len(), shed.len());
     }
+}
+
+/// The record of the import that bootstrapped a store (`import.json`):
+/// entries written before `cutoff` came in reduced and are never logged
+/// again.
+#[derive(Serialize, Deserialize)]
+pub struct Imported {
+    pub cutoff: String,
+    pub notes: u64,
+    pub messages: u64,
+}
+
+pub fn imported(store: &Path) -> Result<Option<Imported>, String> {
+    match fs::read_to_string(store.join("import.json")) {
+        Ok(raw) => serde_json::from_str(&raw)
+            .map(Some)
+            .map_err(|e| e.to_string()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// OptMem's notes, `#n YYYY-MM-DD text` per line.
+pub fn optmem_notes(log: &Path) -> Result<Vec<Draft>, String> {
+    let raw = fs::read_to_string(log).map_err(|e| format!("{}: {e}", log.display()))?;
+    let line_re = regex::Regex::new(r"^#(\d+) (\d{4}-\d{2}-\d{2}) (.*)$").unwrap();
+    let mut notes = Vec::new();
+    for (k, line) in raw.lines().enumerate() {
+        let line = line.trim_end();
+        if line.is_empty() {
+            continue;
+        }
+        let c = line_re
+            .captures(line)
+            .ok_or_else(|| format!("{}:{}: not a note", log.display(), k + 1))?;
+        let day =
+            chrono::NaiveDate::parse_from_str(&c[2], "%Y-%m-%d").map_err(|e| e.to_string())?;
+        let date = Local
+            .from_local_datetime(&day.and_hms_opt(0, 0, 0).unwrap())
+            .earliest()
+            .ok_or("no such local time")?;
+        notes.push(Draft {
+            kind: Kind::Note,
+            chat: None,
+            text: mask(c[3].trim()),
+            date,
+            src: Some(Src {
+                h: "optmem".into(),
+                s: "LOG.txt".into(),
+                e: format!("#{}", &c[1]),
+            }),
+        });
+    }
+    Ok(notes)
+}
+
+/// Bootstraps an empty store: OptMem's notes first, then every chat the
+/// transcripts still hold, in time order and reduced to the captain's
+/// messages and each turn's final reply. Leaves cursors where the reading
+/// stopped, so the service follows on from there in full.
+pub fn import(
+    store: &mut Store,
+    w: &mut Watcher,
+    sources: &Sources,
+    log: &Path,
+) -> Result<String, String> {
+    if !store.is_empty() || imported(&store.dir)?.is_some() {
+        return Err(format!("{} is not empty.", store.dir.display()));
+    }
+    store.append(optmem_notes(log)?)?;
+    let notes = store.len();
+    let mark = match sources.opencode.exists() {
+        true => opencode::watermark(&opencode::open(&sources.opencode)?)?,
+        false => 0,
+    };
+    let start = DateTime::from_timestamp(0, 0)
+        .unwrap()
+        .with_timezone(&Local);
+    let mut ends = HashMap::new();
+    let records = records_read(
+        sources,
+        start,
+        Local::now() + chrono::Duration::days(1),
+        &mut ends,
+    )?;
+    let cutoff = Local::now();
+    w.reduce = true;
+    for (at, harness, session, line, events) in records {
+        w.tick(store, at)?;
+        for ev in events {
+            w.feed(store, harness, &session, line, at, ev)?;
+        }
+    }
+    w.flush_all(store)?;
+    let cursors = Cursors {
+        since: fmt_date(&cutoff),
+        files: ends.into_iter().collect(),
+        opencode: mark,
+    };
+    let raw = serde_json::to_string(&cursors).map_err(|e| e.to_string())?;
+    fs::write(store.dir.join("state/cursors.json"), raw).map_err(|e| e.to_string())?;
+    let done = Imported {
+        cutoff: fmt_date(&cutoff),
+        notes,
+        messages: store.len() - notes,
+    };
+    // Written last: the service starts once this exists.
+    let raw = serde_json::to_string(&done).map_err(|e| e.to_string())?;
+    let tmp = store.dir.join("import.json.tmp");
+    fs::write(&tmp, raw).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, store.dir.join("import.json")).map_err(|e| e.to_string())?;
+    Ok(format!(
+        "{notes} notes and {} chat messages in {} chats; live logging follows from {}.",
+        done.messages,
+        store.chats.len(),
+        done.cutoff
+    ))
 }

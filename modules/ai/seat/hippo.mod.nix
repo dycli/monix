@@ -8,7 +8,10 @@ let
     lib: pkgs:
     lib.ship.rustTool pkgs {
       src = ./hippo;
-      env.HIPPO_DIR = lib.ship.topology.seat.hippo;
+      env = {
+        HIPPO_DIR = lib.ship.topology.seat.hippo;
+        HIPPO_ARCHIVE = lib.ship.topology.seat.transcripts;
+      };
     };
 in
 {
@@ -53,9 +56,18 @@ in
     {
       systemd.tmpfiles.rules = singleton "d ${seat.hippo} 0750 ${seat.user} ${seat.user} -";
 
+      # A store is bootstrapped by `hippo import` (OptMem's notes and every
+      # past chat) before anything live enters it; the service starts once the
+      # import has written its record.
+      systemd.paths.hippo = {
+        wantedBy = singleton "paths.target";
+        pathConfig.PathExists = "${seat.hippo}/import.json";
+      };
+
       systemd.services.hippo = {
         description = "hippo, the AI seat's episodic memory";
         wantedBy = singleton "multi-user.target";
+        unitConfig.ConditionPathExists = "${seat.hippo}/import.json";
         after = singleton "network-online.target";
         wants = singleton "network-online.target";
         unitConfig.RequiresMountsFor = [

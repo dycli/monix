@@ -102,6 +102,7 @@ pub fn serve(
     };
     let watcher = Watcher {
         paseo: sources.as_ref().map(|s| s.paseo.clone()),
+        after: crate::live::imported(dir)?.and_then(|i| crate::store::parse_date(&i.cutoff)),
         ..Watcher::default()
     };
     let budget = std::env::var("HIPPO_VIEW")

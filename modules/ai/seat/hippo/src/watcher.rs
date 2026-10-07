@@ -25,6 +25,10 @@ const LIVE: Duration = Duration::hours(1);
 
 pub const OMITTED: &str = "(hippo output omitted)";
 
+/// Bytes above which an imported message of the captain's counts as a paste
+/// that should appear once.
+const PASTE: usize = 500;
+
 static MARKER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:^|\s)#(offrecord|amnesia)(?:$|[\s.,;:!?)])").unwrap());
 
@@ -81,6 +85,12 @@ pub struct Watcher {
     pub unparsed_total: u64,
     /// Where Paseo keeps its agents, for chat titles.
     pub paseo: Option<PathBuf>,
+    /// Importing history: keep only the captain's messages and each turn's
+    /// final reply, and drop a long paste seen before.
+    pub reduce: bool,
+    pub pasted: HashSet<u64>,
+    /// Entries before this were imported; never log them again.
+    pub after: Option<DateTime<Local>>,
 }
 
 impl Watcher {
@@ -160,9 +170,10 @@ impl Watcher {
     fn item(&mut self, store: &mut Store, line: Option<u64>, item: Item) -> Result<(), String> {
         let (harness, session) = (item.src.h.clone(), item.src.s.clone());
         let ckey = chat_key(&harness, &session);
+        let imported = self.after.is_some_and(|a| item.date < a);
         let chat = self.entry(store, &harness, &session);
         chat.last = Some(item.date);
-        if chat.foreign || chat.off {
+        if chat.foreign || chat.off || imported {
             return Ok(());
         }
         if item.kind == Kind::User
@@ -185,6 +196,20 @@ impl Watcher {
         if store.seen(&key) || chat.held_keys.contains(&key) {
             return Ok(());
         }
+        if self.reduce {
+            match item.kind {
+                Kind::Tool | Kind::Echo => return Ok(()),
+                Kind::User if item.text.len() > PASTE => {
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    std::hash::Hash::hash(&item.text, &mut h);
+                    if !self.pasted.insert(std::hash::Hasher::finish(&h)) {
+                        return Ok(());
+                    }
+                }
+                _ => {}
+            }
+        }
+        let chat = self.chats.get_mut(&ckey).unwrap();
         if item.opens && !chat.held.is_empty() {
             self.flush(store, &ckey)?;
         }
@@ -218,7 +243,7 @@ impl Watcher {
             },
             line,
         });
-        if chat.held.len() >= TURN_MAX {
+        if chat.held.len() >= TURN_MAX && !self.reduce {
             self.flush(store, &ckey)?;
         }
         Ok(())
@@ -226,13 +251,14 @@ impl Watcher {
 
     /// Flushes every chat whose turn is due, oldest activity first.
     pub fn tick(&mut self, store: &mut Store, now: DateTime<Local>) -> Result<(), String> {
+        let reduce = self.reduce;
         let mut due: Vec<(DateTime<Local>, String)> = self
             .chats
             .iter()
             .filter(|(_, c)| !c.held.is_empty())
             .filter(|(_, c)| {
                 let quiet = c.last.is_none_or(|l| now - l >= QUIET);
-                (c.ended && quiet) || c.since.is_some_and(|s| now - s >= TURN_AGE)
+                (c.ended && quiet) || (!reduce && c.since.is_some_and(|s| now - s >= TURN_AGE))
             })
             .map(|(k, c)| (c.last.unwrap_or(now), k.clone()))
             .collect();
@@ -270,10 +296,14 @@ impl Watcher {
             None => self.register(store, key)?,
         };
         let chat = self.chats.get_mut(key).unwrap();
+        // Reduced, a turn keeps the captain's words and its last reply.
+        let last_talk = chat.held.iter().rposition(|h| h.draft.kind == Kind::Talk);
         let drafts = chat
             .held
             .iter()
-            .map(|h| Draft {
+            .enumerate()
+            .filter(|(k, h)| !self.reduce || h.draft.kind == Kind::User || Some(*k) == last_talk)
+            .map(|(_, h)| Draft {
                 chat: Some(label.clone()),
                 ..h.draft.clone()
             })
