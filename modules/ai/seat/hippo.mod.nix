@@ -54,6 +54,8 @@ in
         # Qwen's reasoning level and its recommended thinking-mode sampling.
         HIPPO_HTTP_EXTRA = toJSON {
           chat_template_kwargs.reasoning_effort = "medium";
+          # Caps a reply that loops in its thinking; medium needs ~2k.
+          max_tokens = 8192;
           temperature = 1.0;
           top_p = 0.95;
           top_k = 20;

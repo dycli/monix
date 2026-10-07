@@ -491,6 +491,17 @@ impl Chat for HttpChat {
             cache_write: 0,
             output: n("/usage/completion_tokens"),
         });
+        // A reply cut at the token cap (a model stuck thinking, say) is
+        // a failed try; the node is retried.
+        if v.pointer("/choices/0/finish_reason")
+            .and_then(Value::as_str)
+            == Some("length")
+        {
+            return Err(Fail::Other(format!(
+                "{url}: reply cut at the token cap after {} tokens",
+                n("/usage/completion_tokens")
+            )));
+        }
         let text = v
             .pointer("/choices/0/message/content")
             .and_then(Value::as_str)
