@@ -252,8 +252,8 @@ pub const CACHE_MARK: usize = 80_000;
 
 /// The user message's content blocks. The API allows four cache marks and
 /// Claude Code uses three, so the context gets one, at the last line end
-/// before `mark`, with the one-hour lifetime Claude Code's own marks have
-/// (a shorter mark may not precede a longer one).
+/// before `mark`. It has the five-minute lifetime the calls run with (a
+/// shorter mark may not precede a longer one).
 pub fn marked(blocks: &[String], mark: usize) -> Vec<Value> {
     let mut out = Vec::new();
     for (k, b) in blocks.iter().enumerate() {
@@ -261,7 +261,7 @@ pub fn marked(blocks: &[String], mark: usize) -> Vec<Value> {
             let cut = b[..b.floor_char_boundary(mark)].rfind('\n').unwrap_or(0) + 1;
             if cut > 1 {
                 out.push(json!({"type": "text", "text": &b[..cut],
-                    "cache_control": {"type": "ephemeral", "ttl": "1h"}}));
+                    "cache_control": {"type": "ephemeral"}}));
                 out.push(json!({"type": "text", "text": &b[cut..]}));
                 continue;
             }
@@ -306,6 +306,10 @@ impl Backend for ClaudeCli {
                 "--effort",
                 &self.effort,
             ])
+            // Five-minute cache entries, not the one-hour ones Claude Code
+            // gives subscribers: a one-hour write costs 2x input, a
+            // five-minute one 1.25x, and consecutive calls come seconds apart.
+            .env("FORCE_PROMPT_CACHING_5M", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -567,7 +571,7 @@ mod tests {
         let blocks = marked(&[view.clone(), "step".into()], 20);
         assert_eq!(blocks.len(), 3);
         assert_eq!(blocks[0]["text"], format!("<chat>\n{}\n", "a".repeat(10)));
-        assert_eq!(blocks[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(blocks[0]["cache_control"]["type"], "ephemeral");
         assert_eq!(
             format!(
                 "{}{}",
