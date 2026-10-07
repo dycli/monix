@@ -15,9 +15,18 @@
     { lib, ... }:
     let
       inherit (lib.generators) toJSON;
+      inherit (lib.lists) singleton;
       inherit (lib.modules) mkForce;
     in
     {
+      nixpkgs.overlays = singleton (
+        _: prev: {
+          brave = prev.brave.override {
+            commandLineArgs = "--hide-crash-restore-bubble";
+          };
+        }
+      );
+
       environment.etc."brave/policies/managed/monix.json".text = toJSON { } {
         # ECH: the built-in client fetches HTTPS/type-65 records; the pin
         # guards against upstream default changes.
