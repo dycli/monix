@@ -1,11 +1,9 @@
 //! Following the harnesses' transcripts: where they are, how far each is
 //! read, and the same readers run over whole days for replay and audit.
 
-use crate::mask::mask;
 use crate::source::{self, Event, claude, codex, opencode};
-use crate::store::{Draft, Kind, Src, Store, fmt_date, parse_date};
+use crate::store::{Kind, Store, fmt_date, parse_date};
 use crate::watcher::{Watcher, marker};
-use chrono::TimeZone;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -629,24 +627,16 @@ mod tests {
     }
 
     #[test]
-    fn imports_notes_then_reduced_chats() {
+    fn imports_reduced_chats() {
         let tmp = scratch("import");
         let src = sources(&tmp, fixtures().join("claude"));
-        let log = tmp.join("LOG.txt");
-        fs::write(
-            &log,
-            "#0 2026-07-02 The first memory.          \n#1 2026-07-05 A second one.   \n",
-        )
-        .unwrap();
         let mut store = Store::open(&tmp.join("store"), true).unwrap();
         let mut w = Watcher::default();
-        import(&mut store, &mut w, &src, &log).unwrap();
+        import(&mut store, &mut w, &src).unwrap();
         let got = log_of(&store);
         assert_eq!(
             got,
             [
-                "note: The first memory.",
-                "note: A second one.",
                 "user [bridge]: Check the boiler.",
                 "talk [bridge]: The boiler runs.",
                 "user [bridge-1111]: Plan the shed roof.",
@@ -662,7 +652,7 @@ mod tests {
         );
         assert!(imported(&store.dir).unwrap().is_some());
         // A second import refuses.
-        assert!(import(&mut store, &mut Watcher::default(), &src, &log).is_err());
+        assert!(import(&mut store, &mut Watcher::default(), &src).is_err());
     }
 
     #[test]
@@ -739,7 +729,6 @@ mod tests {
 #[derive(Serialize, Deserialize)]
 pub struct Imported {
     pub cutoff: String,
-    pub notes: u64,
     pub messages: u64,
 }
 
@@ -753,55 +742,14 @@ pub fn imported(store: &Path) -> Result<Option<Imported>, String> {
     }
 }
 
-/// OptMem's notes, `#n YYYY-MM-DD text` per line.
-pub fn optmem_notes(log: &Path) -> Result<Vec<Draft>, String> {
-    let raw = fs::read_to_string(log).map_err(|e| format!("{}: {e}", log.display()))?;
-    let line_re = regex::Regex::new(r"^#(\d+) (\d{4}-\d{2}-\d{2}) (.*)$").unwrap();
-    let mut notes = Vec::new();
-    for (k, line) in raw.lines().enumerate() {
-        let line = line.trim_end();
-        if line.is_empty() {
-            continue;
-        }
-        let c = line_re
-            .captures(line)
-            .ok_or_else(|| format!("{}:{}: not a note", log.display(), k + 1))?;
-        let day =
-            chrono::NaiveDate::parse_from_str(&c[2], "%Y-%m-%d").map_err(|e| e.to_string())?;
-        let date = Local
-            .from_local_datetime(&day.and_hms_opt(0, 0, 0).unwrap())
-            .earliest()
-            .ok_or("no such local time")?;
-        notes.push(Draft {
-            kind: Kind::Note,
-            chat: None,
-            text: mask(c[3].trim()),
-            date,
-            src: Some(Src {
-                h: "optmem".into(),
-                s: "LOG.txt".into(),
-                e: format!("#{}", &c[1]),
-            }),
-        });
-    }
-    Ok(notes)
-}
-
-/// Bootstraps an empty store: OptMem's notes first, then every chat the
-/// transcripts still hold, in time order and reduced to the captain's
-/// messages and each turn's final reply. Leaves cursors where the reading
+/// Bootstraps an empty store with every chat the transcripts still hold,
+/// in time order and reduced to the captain's messages and each turn's
+/// final reply. Leaves cursors where the reading
 /// stopped, so the service follows on from there in full.
-pub fn import(
-    store: &mut Store,
-    w: &mut Watcher,
-    sources: &Sources,
-    log: &Path,
-) -> Result<String, String> {
+pub fn import(store: &mut Store, w: &mut Watcher, sources: &Sources) -> Result<String, String> {
     if !store.is_empty() || imported(&store.dir)?.is_some() {
         return Err(format!("{} is not empty.", store.dir.display()));
     }
-    store.append(optmem_notes(log)?)?;
-    let notes = store.len();
     let mark = match sources.opencode.exists() {
         true => opencode::watermark(&opencode::open(&sources.opencode)?)?,
         false => 0,
@@ -834,8 +782,7 @@ pub fn import(
     fs::write(store.dir.join("state/cursors.json"), raw).map_err(|e| e.to_string())?;
     let done = Imported {
         cutoff: fmt_date(&cutoff),
-        notes,
-        messages: store.len() - notes,
+        messages: store.len(),
     };
     // Written last: the service starts once this exists.
     let raw = serde_json::to_string(&done).map_err(|e| e.to_string())?;
@@ -843,7 +790,7 @@ pub fn import(
     fs::write(&tmp, raw).map_err(|e| e.to_string())?;
     fs::rename(&tmp, store.dir.join("import.json")).map_err(|e| e.to_string())?;
     Ok(format!(
-        "{notes} notes and {} chat messages in {} chats; live logging follows from {}.",
+        "{} messages in {} chats; live logging follows from {}.",
         done.messages,
         store.chats.len(),
         done.cutoff

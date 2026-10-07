@@ -37,8 +37,8 @@ Service and maintenance:
                            run the service (the only writer); without
                            following, it only serves and compacts its store
   hippo audit [YYYY-MM-DD] check a day of the log against the transcripts
-  hippo import <LOG.txt>   bootstrap an empty store: OptMem's notes, then
-                           every past chat, reduced; the service starts after
+  hippo import             bootstrap an empty store with every past chat,
+                           reduced; the service starts after
   hippo replay <store> <from> <to>
                            rebuild a scratch store from transcripts
                            written between two dates (YYYY-MM-DD[THH:MM])";
@@ -157,16 +157,16 @@ fn browse(args: &[String]) -> Result<String, String> {
 }
 
 fn import(args: &[String]) -> Result<String, String> {
-    let [log] = args else {
+    if !args.is_empty() {
         return Err(USAGE.into());
-    };
+    }
     let mut store = store::Store::open(&dir(), true)?;
     let sources = sources().with_archive(&archive());
     let mut w = watcher::Watcher {
         paseo: Some(sources.paseo.clone()),
         ..watcher::Watcher::default()
     };
-    live::import(&mut store, &mut w, &sources, Path::new(log))
+    live::import(&mut store, &mut w, &sources)
 }
 
 fn main() -> ExitCode {
