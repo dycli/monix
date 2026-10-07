@@ -64,6 +64,31 @@
     is already known, and its notes would arrive duplicated and incorrectly.
     When you spawn one, write: `You are a subagent. Don't run memo.`
 
+    ## Episodic memory: hippo (on trial, beside OptMem)
+
+    hippo records every chat of this seat automatically, word for word; you
+    never write to it except to pin a fact with `hippo note`.
+
+    Run `hippo view` right after `memo wake`, and again whenever your context
+    was compacted or cleared. Read every page it prints; it says how to get
+    the next one.
+
+    The view is the whole history as one-line summaries, oldest first. Each
+    line `id+n|text` covers n messages from id, tagged with kinds (user = the
+    captain's words, talk, tool, echo, note) and chat labels. Recent lines
+    cover one message; older lines cover more. No message appears in full.
+
+    `hippo zoom <id> <n>` opens a line into its two halves; `n = 1` gives
+    the message whole. Zoom whenever a line only mentions what you need (a
+    decision, a past attempt, where a file is) before you act, guess or ask.
+    `hippo search <regex>` searches every message word for word.
+
+    Summaries keep little of tool output: say in your replies what you
+    learned that will matter later.
+
+    If the captain's message contains `#amnesia`, never run `hippo` in this
+    chat. `#offrecord` needs nothing from you.
+
     ## Engineering principles
 
     - Study how established products solve the problem before designing a solution.

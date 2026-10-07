@@ -21,6 +21,8 @@ in
     { lib, pkgs, ... }:
     {
       home.packages = lib.lists.singleton (package lib pkgs);
+      # Seat sessions compact at 200k tokens; the view carries the history.
+      home.sessionVariables.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "200000";
     };
 
   flake.nixosModules.seat = self.nixosModules.hippo;
@@ -34,6 +36,7 @@ in
     let
       inherit (lib.lists) singleton;
       inherit (lib.ship) fences topology;
+      inherit (lib.attrsets) removeAttrs;
       inherit (lib.strings) toJSON;
       inherit (topology) seat;
 
@@ -62,14 +65,60 @@ in
       };
       compactor = sonnet;
 
-      # The seat's managed settings without its managed MCP servers: those
-      # would start a browser and Tailscale SSH sessions on every compactor
-      # call, and their presence forbids --strict-mcp-config.
-      claudeEtc =
-        pkgs.writeTextDir "managed-settings.json"
-          config.environment.etc."claude-code/managed-settings.json".text;
+      compactWindow = 200000;
+
+      # Managed settings and their hooks reach every user on the host; the
+      # hooks speak only to the seat.
+      forSeat =
+        name: text:
+        pkgs.writeShellScript name ''
+          [ "$(${pkgs.coreutils}/bin/id -u)" = ${toString seat.uid} ] || exit 0
+          ${pkgs.coreutils}/bin/cat <<'EOF'
+          ${text}
+          EOF
+        '';
+
+      # What Claude Code keeps of a conversation it compacts: hippo holds the
+      # history, so the summary is only a handoff that sends the session back
+      # to the view.
+      handoff = forSeat "hippo-handoff" ''
+        This conversation is recorded word for word in hippo, the seat's
+        memory. Do not summarize its history. Write only the task in
+        progress and its exact state, the next step, and anything decided
+        in the last few turns that is not yet acted on. End with this line:
+        Context was compacted: run `hippo view` now and read every page.'';
+
+      # Printed into a seat session that was compacted or cleared.
+      reload = forSeat "hippo-reload" "Your context was reset. Run `hippo view` now and read every page before you go on.";
+
+      # The compactor's own claude calls get the seat's managed settings
+      # without hooks or managed MCP servers: those would start a browser and
+      # Tailscale SSH sessions on every call, and forbid --strict-mcp-config.
+      claudeEtc = pkgs.writeTextDir "managed-settings.json" (
+        toJSON (removeAttrs config.seat.claudeSettings (singleton "hooks"))
+      );
     in
     {
+      seat.claudeSettings.hooks = {
+        PreCompact = singleton {
+          hooks = singleton {
+            type = "command";
+            command = toString handoff;
+          };
+        };
+        SessionStart = singleton {
+          matcher = "compact|clear";
+          hooks = singleton {
+            type = "command";
+            command = toString reload;
+          };
+        };
+      };
+
+      # Seat sessions compact at 200k tokens; the view carries the history.
+      # The variable, unlike the setting, leaves other users' sessions alone.
+      systemd.services.paseo.environment.CLAUDE_CODE_AUTO_COMPACT_WINDOW = toString compactWindow;
+
       systemd.tmpfiles.rules = singleton "d ${seat.hippo} 0750 ${seat.user} ${seat.user} -";
 
       # A store is bootstrapped by `hippo import` (OptMem's notes and every

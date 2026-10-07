@@ -261,8 +261,105 @@ in
       inherit (lib.ship) fences topology;
       inherit (topology) seat;
 
-      codexConfig = (pkgs.formats.toml { }).generate "codex-system-config.toml" {
-        mcp_servers =
+      json = pkgs.formats.json { };
+      toml = pkgs.formats.toml { };
+      cfg = config.seat;
+    in
+    {
+      # Host-wide settings of the seat's agent CLIs, which several modules
+      # contribute to.
+      options.seat = {
+        claudeSettings = lib.options.mkOption {
+          inherit (json) type;
+          default = { };
+          description = "Claude Code managed settings, for every launcher.";
+        };
+        codexConfig = lib.options.mkOption {
+          inherit (toml) type;
+          default = { };
+          description = "Codex's system config layer.";
+        };
+      };
+
+      config = {
+        # No wheel, no Nix trust, and no host/service secrets; its sole
+        # provider key is part of the model boundary. A Tailscale SSH session
+        # would run under tailscaled's cgroup and bypass the slice fence below.
+        users.users.${seat.user} = {
+          isNormalUser = true;
+          inherit (seat) uid home;
+          group = seat.user;
+          description = "AI seat";
+          # Group-enterable so the primary user can reach the seat's files.
+          homeMode = "750";
+          openssh.authorizedKeys.keys = lib.ship.keys.admin;
+          # journal reads; models grants writes to the model directory.
+          extraGroups = [
+            "systemd-journal"
+            "models"
+            "opencode-auth"
+          ];
+        };
+        users.groups.${seat.user}.gid = seat.uid;
+
+        users.users.${config.primaryUser}.extraGroups = singleton seat.user;
+
+        home-manager.users.${seat.user} = {
+          imports = [
+            self.homeModules.default
+            self.homeModules.dev
+            self.homeModules.cockpit
+          ];
+          home.username = seat.user;
+          home.homeDirectory = seat.home;
+          home.stateVersion = config.system.stateVersion;
+        };
+
+        # git refuses another user's repo without this, and honours it only
+        # from a global config file, never via -c or the environment.
+        home-manager.users.${config.primaryUser}.programs.git.settings.safe.directory =
+          "${seat.home}/ark/monix";
+
+        # Address filter on every process this user runs, both directions and
+        # all interfaces, including the tailnet, which Tailscale ACLs cannot
+        # restrict per-user. Filtering is port-blind, so admitting 127.0.0.1
+        # would expose every loopback service; llama-swap gets a dedicated
+        # seat-plane address instead.
+        systemd.slices."user-${toString seat.uid}".sliceConfig = {
+          IPAddressAllow = [
+            "127.0.0.53/32"
+            "${topology.seatInferenceAddr}/32"
+          ];
+          IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
+        };
+
+        # Must exist before the first session keys its project state to it.
+        systemd.tmpfiles.rules = singleton "d ${seat.home}/cockpit 0750 ${seat.user} ${seat.user} -";
+
+        programs.tmux.enable = true;
+        programs.tmux.historyLimit = 50000;
+        # terminal-features asserts OSC 52 support even when TERM's terminfo
+        # does not advertise Ms.
+        programs.tmux.extraConfig = ''
+          set -g set-clipboard on
+          set -as terminal-features ',*:clipboard'
+        '';
+
+        environment.systemPackages = [
+          inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
+          pkgs.python3
+          pkgs.jq
+        ];
+
+        # Authentication, project trust and session state remain per-user;
+        # host-owned MCP endpoints are immutable layers shared by every
+        # agent frontend.
+        environment.etc."codex/config.toml".source =
+          toml.generate "codex-system-config.toml" cfg.codexConfig;
+        environment.etc."claude-code/managed-settings.json".source =
+          json.generate "claude-managed-settings.json" cfg.claudeSettings;
+
+        seat.codexConfig.mcp_servers =
           browserServers pkgs
           |> mapAttrs (
             _: server:
@@ -273,89 +370,12 @@ in
               tool_timeout_sec = 120;
             }
           );
-      };
-    in
-    {
-      # No wheel, no Nix trust, and no host/service secrets; its sole
-      # provider key is part of the model boundary. A Tailscale SSH session
-      # would run under tailscaled's cgroup and bypass the slice fence below.
-      users.users.${seat.user} = {
-        isNormalUser = true;
-        inherit (seat) uid home;
-        group = seat.user;
-        description = "AI seat";
-        # Group-enterable so the primary user can reach the seat's files.
-        homeMode = "750";
-        openssh.authorizedKeys.keys = lib.ship.keys.admin;
-        # journal reads; models grants writes to the model directory.
-        extraGroups = [
-          "systemd-journal"
-          "models"
-          "opencode-auth"
-        ];
-      };
-      users.groups.${seat.user}.gid = seat.uid;
-
-      users.users.${config.primaryUser}.extraGroups = singleton seat.user;
-
-      home-manager.users.${seat.user} = {
-        imports = [
-          self.homeModules.default
-          self.homeModules.dev
-          self.homeModules.cockpit
-        ];
-        home.username = seat.user;
-        home.homeDirectory = seat.home;
-        home.stateVersion = config.system.stateVersion;
-      };
-
-      # git refuses another user's repo without this, and honours it only
-      # from a global config file, never via -c or the environment.
-      home-manager.users.${config.primaryUser}.programs.git.settings.safe.directory =
-        "${seat.home}/ark/monix";
-
-      # Address filter on every process this user runs, both directions and
-      # all interfaces, including the tailnet, which Tailscale ACLs cannot
-      # restrict per-user. Filtering is port-blind, so admitting 127.0.0.1
-      # would expose every loopback service; llama-swap gets a dedicated
-      # seat-plane address instead.
-      systemd.slices."user-${toString seat.uid}".sliceConfig = {
-        IPAddressAllow = [
-          "127.0.0.53/32"
-          "${topology.seatInferenceAddr}/32"
-        ];
-        IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
-      };
-
-      # Must exist before the first session keys its project state to it.
-      systemd.tmpfiles.rules = singleton "d ${seat.home}/cockpit 0750 ${seat.user} ${seat.user} -";
-
-      programs.tmux.enable = true;
-      programs.tmux.historyLimit = 50000;
-      # terminal-features asserts OSC 52 support even when TERM's terminfo
-      # does not advertise Ms.
-      programs.tmux.extraConfig = ''
-        set -g set-clipboard on
-        set -as terminal-features ',*:clipboard'
-      '';
-
-      environment.systemPackages = [
-        inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default
-        pkgs.python3
-        pkgs.jq
-      ];
-
-      # Authentication, project trust and session state remain per-user;
-      # host-owned MCP endpoints are immutable layers shared by every
-      # agent frontend.
-      environment.etc."codex/config.toml".source = codexConfig;
-      # OptMem is the only memory; Claude's own would be a second writable
-      # truth. Managed settings reach every launcher, Paseo included.
-      environment.etc."claude-code/managed-settings.json".text = toJSON {
-        autoMemoryEnabled = false;
-      };
-      environment.etc."claude-code/managed-mcp.json".text = toJSON {
-        mcpServers = browserServers pkgs |> mapAttrs (_: server: server // { type = "stdio"; });
+        # OptMem is the only memory; Claude's own would be a second writable
+        # truth. Managed settings reach every launcher, Paseo included.
+        seat.claudeSettings.autoMemoryEnabled = false;
+        environment.etc."claude-code/managed-mcp.json".text = toJSON {
+          mcpServers = browserServers pkgs |> mapAttrs (_: server: server // { type = "stdio"; });
+        };
       };
     };
 }
