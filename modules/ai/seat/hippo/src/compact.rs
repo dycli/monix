@@ -86,7 +86,7 @@ cost 2-4 bytes.";
 
 /// A realistic line of exactly `NODE` bytes, so the model has a sense of
 /// the size.
-pub const SCALE: &str = "user [petrock-plates]: keep the layout exact, reach it from stock Corne Choc with minimal copper change, drop all LEDs for now; talk: agreed, will trim only stock's own DRC clashes; tool/echo: ran tools/trim.py on both boards, DRC clean except 3 stock silk overlaps, renders in build; user [fire-power]: lock the GPU at 2600 MHz/-100 mV/294 W, 120 crashed so reject it; echo: monix 99975de pushed, eval and build pass, activation pending; talk [fire-power]: next the 250 W CPU run, then compare Blender and HEVC.";
+pub const SCALE: &str = "user [lighthouse-log]: repaint the lantern room in the original 1890 red, keep the brass untouched, skip the fog bell for now; talk: agreed, will strip only the flaking coats; tool/echo: sanded the north and east panels, primer holds, the south panel has rust under it; user [ferry-tables]: move the 6:40 am crossing to 7:05, the dock crew can't make it earlier, so drop the Sunday run; echo: timetable 3c and the printed schedule updated, the website shows old times; talk [ferry-tables]: next the winter fares.";
 
 pub enum Step<'a> {
     /// A whole message, rendered `kind [label]: text`.
@@ -111,7 +111,9 @@ pub fn input(context: &[String], step: &Step) -> [String; 2] {
     };
     [
         chat,
-        format!("For scale, this line is exactly {NODE} bytes:\n{SCALE}\n\n{ask}"),
+        format!(
+            "For scale only, an invented line of exactly {NODE} bytes (never copy from it):\n{SCALE}\n\n{ask}"
+        ),
     ]
 }
 
