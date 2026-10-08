@@ -119,6 +119,33 @@ pub fn input(context: &[String], step: &Step) -> [String; 2] {
     ]
 }
 
+/// Words that only the invented scale line should bring into a summary.
+const SCALE_MARKS: [&str; 6] = [
+    "lighthouse",
+    "lantern",
+    "fog bell",
+    "1890",
+    "ferry",
+    "dock crew",
+];
+
+/// Whether `line` borrows from the scale line: it uses one of its marks
+/// that the text it summarizes lacks. Catches reworded copies, and lets
+/// real talk about lighthouses through.
+pub fn borrows(line: &str, step: &Step) -> bool {
+    let source = match step {
+        Step::Compress(msg) => msg.to_lowercase(),
+        Step::Merge(a, b, _) => format!("{a}\n{b}").to_lowercase(),
+    };
+    let line = line.to_lowercase();
+    SCALE_MARKS
+        .iter()
+        .any(|m| line.contains(m) && !source.contains(m))
+}
+
+/// The retry for a line that borrowed from the scale line.
+pub const RETRY_BORROWED: &str = "That line borrows from the invented scale line, which is not part of this history. Write it again from the given text alone.";
+
 /// The retry that shows the model where the limit cuts its line.
 pub fn retry(line: &str) -> String {
     format!(
@@ -177,7 +204,8 @@ pub trait Backend: Send + Sync {
 }
 
 /// Runs one compactor step to a line: the first answer, then retries in the
-/// same conversation while over `NODE`; keeps the shortest.
+/// same conversation while it borrows from the scale line or runs over
+/// `NODE`; keeps the shortest line that does not borrow, if any.
 pub fn run(
     backend: &dyn Backend,
     context: &[String],
@@ -191,15 +219,25 @@ pub fn run(
         if line.is_empty() {
             return Err(Fail::Other("empty reply".into()));
         }
-        let over = line.len() > NODE;
-        let next = retry(&line);
-        tries.push(line);
-        if !over || tries.len() >= TRIES {
+        let borrowed = borrows(&line, step);
+        let next = if borrowed {
+            RETRY_BORROWED.to_owned()
+        } else if line.len() > NODE {
+            retry(&line)
+        } else {
+            tries.push((false, line));
+            break;
+        };
+        tries.push((borrowed, line));
+        if tries.len() >= TRIES {
             break;
         }
         reply = chat.say(&[next])?;
     }
-    let best = tries.into_iter().min_by_key(String::len).unwrap();
+    let (_, best) = tries
+        .into_iter()
+        .min_by_key(|(borrowed, line)| (*borrowed, line.len()))
+        .unwrap();
     Ok((best, chat.model(), chat.usage()))
 }
 
@@ -629,5 +667,29 @@ mod tests {
         let ask = |apart| input(&[], &Step::Merge("user: a", "talk: b", apart))[1].clone();
         assert!(ask(true).contains("bytes. These two lines come from different chats:\nuser: a"));
         assert!(!ask(false).contains("different chats"));
+    }
+
+    #[test]
+    fn borrowing_from_the_scale_line_is_retried() {
+        let step = Step::Compress("user: fix the dock lights");
+        assert!(borrows("user: repaint the Lighthouse, fix lights", &step));
+        assert!(!borrows("user: fix the dock lights", &step));
+        // Real talk about the scale line passes.
+        let real = Step::Merge("talk: invented lighthouse/ferry line", "user: ok", false);
+        assert!(!borrows(
+            "talk: invented lighthouse/ferry scale line; user: ok",
+            &real
+        ));
+
+        let s: &'static Scripted = Box::leak(Box::new(Scripted(
+            Mutex::new(vec![
+                "user: fix the lights; ferry moved to 7:05".into(),
+                "user: fix the dock lights".into(),
+            ]),
+            Mutex::new(Vec::new()),
+        )));
+        let (line, _, _) = run(&s, &[], &step).unwrap();
+        assert_eq!(line, "user: fix the dock lights");
+        assert_eq!(s.1.lock().unwrap()[1][0], RETRY_BORROWED);
     }
 }
