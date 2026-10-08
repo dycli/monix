@@ -1,7 +1,7 @@
 # Packages that carry no configuration; anything with config has its own file.
 # The system list reaches every user on every host; the home lists are bundle
 # members.
-{ self, ... }:
+{ self, inputs, ... }:
 {
   flake.nixosModules.default = self.nixosModules.packages;
   flake.nixosModules.packages =
@@ -100,6 +100,8 @@
         pkgs.obsidian
         pkgs.element-desktop
         pkgs.signal-desktop
+        # Client for the Paseo daemons on Water and Fire.
+        inputs.paseo.packages.${pkgs.stdenv.hostPlatform.system}.desktop
         (pkgs.spotify.override { deviceScaleFactor = 2; })
       ];
     };
