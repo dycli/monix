@@ -133,6 +133,9 @@ in
         description = "hippo, the AI seat's episodic memory";
         wantedBy = singleton "multi-user.target";
         unitConfig.ConditionPathExists = "${seat.hippo}/import.json";
+        # A switch restarts it after the reload: stopped first, hippo.path
+        # would start it again on the old unit before the new one loads.
+        stopIfChanged = false;
         after = singleton "network-online.target";
         wants = singleton "network-online.target";
         unitConfig.RequiresMountsFor = [
