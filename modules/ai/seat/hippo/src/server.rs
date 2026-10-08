@@ -261,7 +261,10 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
 /// so later pages come from the same render.
 fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
     let mut c = shared.core.lock().unwrap();
-    if let (Some(k), Some(token)) = (a.first(), a.get(1)) {
+    if !a.is_empty() {
+        let [k, token] = a else {
+            return Err("Name the page and its view: hippo view <page> <token>.".into());
+        };
         let k: usize = k.parse().map_err(|_| "page must be a number.")?;
         let pages = &c
             .pages

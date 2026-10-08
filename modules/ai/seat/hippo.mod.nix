@@ -86,10 +86,10 @@ in
         memory. Do not summarize its history. Write only the task in
         progress and its exact state, the next step, and anything decided
         in the last few turns that is not yet acted on. End with this line:
-        Context was compacted: run `hippo view` now and read every page.'';
+        Context was compacted: run `hippo view` now and read every page whole.'';
 
       # Printed into a seat session that was compacted or cleared.
-      reload = forSeat "hippo-reload" "Your context was reset. Run `hippo view` now and read every page before you go on.";
+      reload = forSeat "hippo-reload" "Your context was reset. Run `hippo view` now and read every page before you go on: run each command it prints exactly, and never cut its output with head, tail or grep.";
 
       # The compactor's own claude calls get the seat's managed settings
       # without hooks or managed MCP servers: those would start a browser and
