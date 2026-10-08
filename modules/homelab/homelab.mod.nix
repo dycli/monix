@@ -16,10 +16,8 @@
       # port 22 never opens publicly.
       services.openssh.openFirewall = lib.modules.mkDefault false;
 
-      # Resolve via the router rather than the tailnet's global
-      # nameservers, so the role does not inherit the ad-block resolver's
-      # outages or false positives. Merges with the aspect's --ssh.
-      services.tailscale.extraSetFlags = singleton "--accept-dns=false";
+      # Use MagicDNS names and the tailnet's filtering resolver.
+      services.tailscale.extraSetFlags = singleton "--accept-dns=true";
 
       homeAssistant.lanSubnets = singleton "192.168.1.0/24";
 
