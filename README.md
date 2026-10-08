@@ -1,9 +1,10 @@
 # Monix
 
 NixOS configuration for four machines, in one flake. Most of it wires up
-software other people wrote. The parts described at length below are the ones
-built here: the agent memory, the drone fleet, the desktop shell, alerting,
-the household bot and the NAS backup.
+software other people wrote, and that is not described here. This README
+covers what was built: the flake's module system, an AI agent setup with its
+own memory and a fleet of sandboxed VMs, a desktop shell, a household bot,
+and a NAS backup that proves its restores.
 
 | Host  | Machine                  | Role |
 |-------|--------------------------|------|
@@ -13,8 +14,6 @@ the household bot and the NAS backup.
 | air   | Cloud VPS                | Public sites, tailnet DNS filtering |
 
 Private services are reachable only over Tailscale.
-
-The repository has four systems: Platform, Desktop, AI and Homelab.
 
 ## Platform
 
@@ -85,17 +84,9 @@ the agenix CLI and, as `lib.ship.keys`, by the modules that grant SSH access.
 - **Unfree by name.** There is no `allowUnfree`. A module that installs an
   unfree package adds its name to `unfreePackages` next to the package, and
   `allowUnfreePredicate` admits exactly that list.
-- **Inputs follow nixpkgs**, so the fleet builds against one package set;
-  hyprqt6engine follows it so its plugin links the same Qt. nix-minecraft
-  deliberately does not, to keep its binary-cache hits.
-- **Secrets** are agenix files encrypted to host SSH keys; `secrets` is an
-  alias for `age.secrets`. Water unlocks its disk with the TPM so it can boot
-  unattended.
 - **Style** is in `AGENTS.md`: full `lib` paths, no `rec`. The two rules
   that are easy to slip on, no `builtins.` and no `with lib`, fail the
   flake check.
-
-Air also runs Unbound as the tailnet's ad-blocking resolver.
 
 ### lib.ship
 
@@ -107,21 +98,19 @@ Air also runs Unbound as the tailnet's ad-blocking resolver.
   closed-source software that gets what it needs and no more. A service
   takes a preset and overrides single keys, so the exceptions are visible.
 - **Network fences** (`network-fences.nix`): named address sets for
-  `IPAddressAllow`/`IPAddressDeny` (tailnet, private ranges, and a loopback
-  /24 that leaves the seat's own addresses outside it) and a ready-made
-  `internetOnlyDeny`. Services and whole user slices are fenced by name,
-  not by hand-written CIDR lists.
-- **Topology** (`fleet-topology.nix`): one place for the AI system's users,
-  uids, groups, paths and addresses, so the seat, the fleet and the guests
-  agree on them.
-- **`rustTool`** (`rust-tool.nix`): builds an in-tree Rust crate as a package
-  and runs its tests and clippy as part of the build.
+  `IPAddressAllow`/`IPAddressDeny`, applied by name to services and to
+  whole user slices. Loopback is a /24, not 127/8: systemd's allow list
+  beats its deny list, so the narrower range is what keeps the AI seat's
+  own loopback addresses outside it and the seat off other local services.
+- **Topology** (`fleet-topology.nix`): the AI system's users, uids, paths
+  and addresses in one place, so the seat, fleet and guests agree.
 
 ### Checks
 
-`nix flake check` builds and tests every Rust crate, runs nixfmt, rustfmt
-and a Nix style check, and verifies the agenix rulebook: every `.age` file
-has a rule, and every rule points at a tracked file.
+`nix flake check` builds every in-tree Rust crate through `lib.ship.rustTool`,
+which runs its tests and `clippy -D warnings` as part of the build. It also
+runs nixfmt, rustfmt and the style check, and verifies the agenix rulebook:
+every `.age` file has a rule, and every rule points at a tracked file.
 
 ### switcharoo
 
@@ -130,24 +119,28 @@ a host only ever runs published commits. It builds as the user with `nh`, then
 activates in a detached `systemd-run` unit. Activation can restart
 `tailscaled` or `sshd`; detached, the switch finishes even when the SSH
 session that started it dies. A switch over SSH that died halfway once left
-Air without DNS, which is why it works this way.
+Air without DNS and with a stale sudo, which is why it works this way.
 
 ## Desktop
 
-Hyprland, greetd with tuigreet, PipeWire, printing, Steam and the creative
-suite are configured but stock. The 7900 XTX is tuned through LACT (clock
-cap, power cap, undervolt, with the OverDrive feature mask set on the kernel
-command line).
+The session is Hyprland; everything around it except the shell is stock.
 
 ### Kestrel shell
 
 Kestrel is a Quickshell (QML) shell written for this repo, about 9,000
-lines in `modules/desktop/shell/`. It replaces a desktop environment rather
-than theming one. Everything is reachable from the bar, by keyboard or
-mouse, and no menu opens a separate window.
+lines in `modules/desktop/shell/` over some 200 commits. It replaces a
+desktop environment rather than theming one. The rule is that everything is
+reachable from the bar, by keyboard or mouse, and no menu opens a separate
+window.
 
-- **Bar**: geometric workspace markers, a left rail and a right rail. Menus
-  are popouts that slide out of the bar and close on Esc or a click outside.
+The code is split three ways. *State* singletons own system data (audio,
+network, Bluetooth, displays, input, power, notifications, privacy).
+*Services* own behaviour, and one `BarModeService` decides which menu is
+open on which screen and whether it takes the keyboard, so menus can't stack
+or fight over focus. *Popouts* are views that slide out of the bar and close
+on Esc or a click outside. Keybinds reach the same services over Quickshell
+IPC, so a key and a click take the same path.
+
 - **Menus**: a Pear system menu, Edit, Tools, View, Launch, Find, Clipboard,
   Emoji and a clock with calendar.
 - **Settings**: one narrow panel with Audio, Bluetooth, Display (with a live
@@ -158,8 +151,6 @@ mouse, and no menu opens a separate window.
   carousel.
 - **Services**: launcher, on-screen display for volume and brightness, night
   mode, session menu.
-
-The shell runs as the `ship-shell` user service.
 
 ## AI
 
@@ -174,11 +165,8 @@ only through its own address on the seat plane.
 Its home is composed in Nix, and one set of managed settings applies to every
 launcher, Paseo included, so an agent started from a phone has the same rules
 as one in a terminal. It can push to this repo; only the captain switches a
-host onto a commit.
-
-For the web, the seat has a Brave MCP server: a headless Brave inside the
-fence, or the visible Brave on a desktop, driven over Tailscale SSH
-(`browser.mod.nix`).
+host onto a commit. For the web it drives Brave over MCP, either headless
+inside the fence or the visible one on a desktop over Tailscale SSH.
 
 ### hippo
 
@@ -191,7 +179,8 @@ fixed-size summary that any session can read.
 as they are written (OpenCode through its SQLite database) and appends each
 message to a day-file log. The log is append-only. Secrets are masked before
 they are written, and a chat containing `#offrecord` is not recorded.
-`hippo import` loads old transcripts.
+`hippo import` loaded three months of older transcripts, about 9,000
+messages.
 
 **Compaction.** Messages become the leaves of a binary tree. Each message is
 compressed to a line of at most 512 bytes; each pair of lines is merged into
@@ -211,34 +200,44 @@ links to it, so Claude Code loads the whole view at session start and after
 every compaction with no tool call. Codex and OpenCode page it in with
 `hippo view`.
 
-**Session compaction.** A PreCompact hook has the agent write a short
-handoff before Claude Code compacts. The compaction window is 200k tokens,
-so a session compacts to the handoff plus a fresh view instead of carrying a
-long transcript.
+**Session compaction.** Claude Code compacts at 200k tokens, and a
+PreCompact hook has the agent write a short handoff first. A session comes
+back as handoff plus fresh view rather than a long transcript summary.
+Compactions went from 97-113 seconds to 16-18.
 
 **CLI.** The agent drills down with `zoom` (a line into its two halves, down
 to the whole message), `date`, `search` (regex over every message) and
 `note` (pin a fact). `status`, `pause`/`resume`, `browse`, `audit` and
-`replay` serve the operator. The service answers over a unix socket.
+`replay` serve the operator. The service answers over a unix socket; reads
+take 2-15 ms.
 
-### OptMem and the transcript archive
+**How it was tuned.** Choices were measured rather than guessed:
+
+- Five-minute prompt caching instead of one hour cut the cost per compactor
+  call by about two thirds.
+- Haiku 5.5 was tried as a 12x cheaper compactor over a full day of history,
+  across three prompt revisions and two effort levels. It still put wrong
+  context into 4-20% of lines against Sonnet's 0%, so Sonnet stayed.
+- The scale example was first a real history line, and models copied it into
+  summaries as fact. It is now an invented line.
+- Chat labels were dropped from the tree once they proved unreliable, in
+  favour of the session check on merges.
+
+### OptMem
 
 `memo` (`modules/ai/seat/memo-cli`) is a Rust implementation of Victor
 Taelin's OptMem: an append-only log of one-line notes that the agent writes
 on purpose (decisions, rules, outcomes), summarised into a binary tree that
 `memo wake` prints at the start of every session. `recall` and `find` search
 the raw notes; `zoom` opens a tree node; `nap` runs pending compressions.
-OptMem runs beside hippo while hippo is on trial.
-
-Every harness prunes its own session logs. The transcript archive
-(`transcripts.mod.nix`) has root copy the seat's transcripts onto the NAS,
-never deleting, and the nightly backup covers them.
+OptMem runs beside hippo while hippo is on trial. A separate job copies every
+harness's transcripts to the NAS before the harnesses prune them.
 
 ### The fleet
 
 The seat hands work to drones: disposable microVMs, each running one agent
 on one task. The code is about 5,500 lines of Rust in three crates under
-`modules/ai/fleet`.
+`modules/ai/fleet`, and it assumes the agent inside the VM is hostile.
 
 **`fleet` CLI.** The only path from the seat to the queue. It runs through
 scoped sudo as `fleet-operator`, a separate account outside wheel. Its
@@ -263,47 +262,54 @@ writes the exit code last, so a result is complete when it has one.
 **Isolation.** Guests are microvm.nix VMs on the host-only `br-agents`
 bridge. Their only way out is a Squid allowlist of the model vendors' APIs,
 search and docs services, and the Nix cache; local inference is reached
-directly. Per-worker volumes are wiped on every start, and shares use
-virtiofs with a pinned gid. The VMs have no tailnet, repo or secrets.
+directly. Per-worker volumes are wiped on every start. The VMs have no tailnet, repo or secrets.
 Results come back as untrusted input for the seat to review.
 
 The fleet's audit log is streamed to a Matrix room (`log-stream.mod.nix`).
-The agents' operating guide is generated from `lib/fleet-guide.nix` into
-`AGENTS.md`, `FLEET.md` and the drone guide.
+The agents' operating guide is one Nix file, `lib/fleet-guide.nix`, rendered
+into `AGENTS.md`, `FLEET.md` and the drone guide, so the seat and the drones
+can't drift apart.
 
 ### Local inference
 
-Water and Fire serve models with llama.cpp behind llama-swap, which starts
-one `llama-server` per model on demand and unloads it after an idle timeout,
-so an idle host holds no model memory. Qwen3.8-27B runs with MTP speculative
-decoding from the tensors embedded in the GGUF. Paseo gives phones and other
-clients access to the seat's agents.
+llama-swap starts one `llama-server` per model on demand and unloads it when
+idle, so a host holds no model memory until something asks.
 
 ### Remy
 
 Remy (`modules/ai/remy`) is the household Matrix bot, about 1,600 lines of
-Python. It has two rooms: Household, with shared lists, dated to-dos with
-repeats, reminders, and a 07:00 plan and 19:00 report that fold in the
-family calendar; and Scratchpad, the same skills on a separate database.
+Python, with shared lists, dated to-dos, reminders, and a morning plan and
+evening report that fold in the family calendar.
 
-Chat text is untrusted. The local model only classifies a message into a
+It is built for a model reading untrusted chat. The local model only classifies a message into a
 fixed intent schema for its room; SQL is parameterised from the typed
 fields, and no message has a path to a shell or to Matrix administration.
 The bot itself is fenced to loopback. A separate `remy-calendar-sync` unit
 holds the only CalDAV credentials and the only network egress: it pushes
 events created in chat and writes the upcoming calendar to a file the bot
-reads. The database is snapshotted into git.
+reads.
 
 ## Homelab
 
-Water runs the house's services. Jellyfin, the *arr stack with SABnzbd,
-calibre-web, Immich, Frigate, Home Assistant, a private Matrix server
-(tuwunel behind a Cloudflare tunnel) and Minecraft are packaged services
-with their own configuration.
+Water runs the house's services as one bundle, `lab`. Which services they
+are matters less than how they are put together.
 
-Web UIs are served at `<service>.su.is` by nginx with a wildcard DNS-01
-certificate. The names resolve publicly but route only inside the tailnet.
-Services run with `lib.ship` hardening presets and network fences.
+**One front door.** nginx terminates TLS for every `<service>.su.is` with a
+single wildcard certificate, issued by DNS-01 because the host is not
+publicly reachable. Each service module declares its own route (subdomain
+and port) beside its config, and the dashboard is generated from the same
+routes, so adding a service touches one file. The names resolve publicly
+but route only inside the tailnet, and an explicit default vhost catches any
+name with no route.
+
+**One message bus.** A private Matrix server, with federation off, carries
+everything that talks to people: alarms, the fleet's audit log and the
+household bot.
+
+**Fenced by default.** Each service gets a network fence and only the paths
+its job needs, even where a shared group would allow more. Software that
+ships no isolation of its own takes the `vendor` preset; the alert sensors
+run as `rootSensor`.
 
 ### NAS and backups
 
