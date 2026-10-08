@@ -18,15 +18,84 @@ The repository has four systems: Platform, Desktop, AI and Homelab.
 
 ## Platform
 
-The flake follows the dendritic pattern. Every `*.mod.nix` file is a
-flake-parts module and is imported automatically. Modules add themselves to
-named bundles (`default`, `desktop`, `hyprland`, `dev`, `lab`, `web`), and a
-host file is just its bundles plus hardware. There are no per-service
-`enable` flags; the bundles a host imports decide what it runs. Conventions
-are in `AGENTS.md`.
+The whole fleet is one flake: about 9,200 lines of Nix in 84 modules, four
+hosts, six in-tree Rust crates. The layout follows the dendritic pattern, and
+most of what makes it work is a few dozen lines of plumbing.
 
-Secrets use agenix with host SSH keys. Water unlocks its disk with the TPM so
-it can boot unattended. Air runs Unbound as the tailnet's ad-blocking resolver.
+### No import list
+
+`flake.nix` names no modules. It calls flake-parts' `mkFlake` with the repo's
+own extended `lib`, and imports every `*.mod.nix` that
+`lib.filesystem.listFilesRecursive` finds. Adding a file adds it to the
+flake; deleting it removes it. A file's directory is for people only.
+
+Every file is a flake-parts module, and a single file can contribute to
+several outputs at once: `hyprland.mod.nix` defines both the compositor
+(`nixosModules.hyprland`) and the session (`homeModules.hyprland`). Files are
+grouped by concern, not by target, so there is no `home/` tree.
+
+### Aspects and bundles
+
+A module registers an *aspect* and, on the next line, joins a *bundle*:
+
+```nix
+flake.nixosModules.alerts = { ... };
+flake.nixosModules.lab = self.nixosModules.alerts;
+```
+
+The bundles are `default`, `desktop`, `hyprland`, `dev`, `lab` and `web`.
+Bundles do not import each other, and none exists without a real member and
+a real host importing it.
+
+This needs flake-parts' module collections to behave differently, which
+`options/flake-outputs.mod.nix` arranges:
+
+- `nixosModules` and `homeModules` are retyped as lazy attrsets of deferred
+  modules, so many files can define the same attribute and the definitions
+  merge into one bundle.
+- Each definition is keyed by its file and name. An aspect reached through two
+  bundles is applied once, so list options are not concatenated twice.
+- Every `homeModules.X` is mirrored into `nixosModules.X` as an import of the
+  primary user's home. Importing the `hyprland` bundle brings both halves.
+  Any other managed user lists its home bundles by name; nothing is gated on
+  a username.
+
+There are no per-service `enable` flags. A service applies its config
+unconditionally, and a host runs it because it imported the bundle. Only
+real per-host facts, such as whether the machine has a UPS, are options.
+
+### Hosts
+
+`lib.ship.host "fire" module` returns a flake-parts module that defines
+`nixosConfigurations.fire`, adds the `default` bundle and sets the hostname.
+The host file is the machine: its bundle list, `primaryUser`, kernel modules,
+firmware, disk layout (disko) and its own secrets, which live beside it in
+`hosts/<name>/`. Fire's file is a list of ten bundles and aspects plus its hardware.
+
+### One lib everywhere
+
+`lib/default.nix` extends nixpkgs' lib with `lib.ship`. Hosts are built with
+the extended lib's `nixosSystem`, which passes the same lib through the
+fixpoint, so flake, NixOS and Home Manager modules all see `lib.ship` without
+relative imports. `keys.nix` is the single source of SSH keys, read both by
+the agenix CLI and, as `lib.ship.keys`, by the modules that grant SSH access.
+
+### Policies in the plumbing
+
+- **Unfree by name.** There is no `allowUnfree`. A module that installs an
+  unfree package adds its name to `unfreePackages` next to the package, and
+  `allowUnfreePredicate` admits exactly that list.
+- **Inputs follow nixpkgs**, so the fleet builds against one package set;
+  hyprqt6engine follows it so its plugin links the same Qt. nix-minecraft
+  deliberately does not, to keep its binary-cache hits.
+- **Secrets** are agenix files encrypted to host SSH keys; `secrets` is an
+  alias for `age.secrets`. Water unlocks its disk with the TPM so it can boot
+  unattended.
+- **Style** is in `AGENTS.md`: full `lib` paths, no `rec`. The two rules
+  that are easy to slip on, no `builtins.` and no `with lib`, fail the
+  flake check.
+
+Air also runs Unbound as the tailnet's ad-blocking resolver.
 
 ### lib.ship
 
