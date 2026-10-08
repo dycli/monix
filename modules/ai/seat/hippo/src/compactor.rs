@@ -408,7 +408,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("hippo-apart-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let mut store = crate::store::Store::open(&dir, true).unwrap();
-        let drafts = [
+        // Every chat has the same label: only the session tells them apart.
+        let sessions = [
             Some("a"),
             Some("a"),
             Some("b"),
@@ -417,16 +418,22 @@ mod tests {
             None,
             None,
             None,
-        ]
-        .into_iter()
-        .map(|chat| crate::store::Draft {
-            kind: crate::store::Kind::Talk,
-            chat: chat.map(Into::into),
-            text: "hi".into(),
-            date: chrono::Local::now(),
-            src: None,
-        })
-        .collect();
+        ];
+        let drafts = sessions
+            .into_iter()
+            .enumerate()
+            .map(|(k, session)| crate::store::Draft {
+                kind: crate::store::Kind::Talk,
+                chat: Some("bridge".into()),
+                text: "hi".into(),
+                date: chrono::Local::now(),
+                src: session.map(|s| crate::store::Src {
+                    h: "claude".into(),
+                    s: s.into(),
+                    e: k.to_string(),
+                }),
+            })
+            .collect();
         store.append(drafts).unwrap();
         let tree = Tree::open(&dir).unwrap();
         let c = Core::for_test(store, tree, View::default(), 2_000);

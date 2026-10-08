@@ -120,6 +120,7 @@ struct Meta {
     off: u64,
     len: u32,
     date: i64,
+    /// The chat's `harness:session` key; labels repeat across chats.
     chat: Option<String>,
 }
 
@@ -340,7 +341,7 @@ impl Store {
             off,
             len,
             date,
-            chat: m.chat.clone(),
+            chat: m.src.as_ref().map(|s| chat_key(&s.h, &s.s)),
         });
     }
 
@@ -361,7 +362,7 @@ impl Store {
         DateTime::from_timestamp(m.date, 0).map(|d| d.with_timezone(&Local))
     }
 
-    /// The chat message `i` came from.
+    /// The chat message `i` came from, as its `harness:session` key.
     pub fn chat(&self, i: u64) -> Option<&str> {
         self.index.get(i as usize)?.chat.as_deref()
     }
