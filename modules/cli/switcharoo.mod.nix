@@ -1,8 +1,9 @@
 # switcharoo: pull this machine's flake clone from origin, then switch.
 #
-# Origin is the repo of record, so hosts converge only on published history;
-# unpushed commits in another clone are invisible here. A failed pull only
-# warns, leaving an offline host able to switch what is on disk.
+# Origin is the repo of record, so the clone is a deploy copy: it always
+# lands on origin/main. Local commits are kept on a `switcharoo/saved-*`
+# branch and uncommitted edits in a stash before the reset, so nothing is
+# lost. If origin can't be reached it stops, unless run with --offline.
 { self, ... }:
 {
   flake.homeModules.default = self.homeModules.switcharoo;
@@ -12,7 +13,7 @@
       home.packages = lib.lists.singleton (
         pkgs.writers.writeNuBin "switcharoo" # nu
           ''
-            def main [] {
+            def main [--offline] {
               let repo = $env.HOME | path join "ark" "monix"
 
               if not ($repo | path exists) {
@@ -21,19 +22,35 @@
 
               let before = (^git -C $repo rev-parse HEAD | str trim)
 
-              if (^git -C $repo remote | lines | any {|r| $r == "origin" }) {
-                print "switcharoo: pulling origin"
-                try {
-                  ^git -C $repo pull --ff-only origin main
-                } catch {
-                  print --stderr "switcharoo: pull failed; switching to what's on disk"
+              if $offline {
+                print $"switcharoo: offline, switching what's on disk \(($before | str substring 0..6)\)"
+              } else {
+                print "switcharoo: fetching origin"
+                let fetch = (do { ^git -C $repo fetch origin main } | complete)
+                if $fetch.exit_code != 0 {
+                  print --stderr $fetch.stderr
+                  error make { msg: "switcharoo: can't reach origin; fix that, or run `switcharoo --offline` to switch what's on disk" }
                 }
+
+                let stamp = (date now | format date "%Y%m%d-%H%M%S")
+                if (^git -C $repo status --porcelain | str trim | is-not-empty) {
+                  ^git -C $repo stash push --include-untracked --message $"switcharoo ($stamp)"
+                  print $"switcharoo: uncommitted edits stashed \(git stash list\)"
+                }
+                let behind = (do { ^git -C $repo merge-base --is-ancestor HEAD origin/main } | complete)
+                if $behind.exit_code != 0 {
+                  ^git -C $repo branch $"switcharoo/saved-($stamp)" HEAD
+                  print $"switcharoo: local commits saved on branch switcharoo/saved-($stamp)"
+                }
+                ^git -C $repo reset --quiet --hard origin/main
               }
 
               let after = (^git -C $repo rev-parse HEAD | str trim)
               if $before != $after {
                 print $"switcharoo: activating ($before | str substring 0..6)..($after | str substring 0..6)"
                 ^git -C $repo log --oneline $"($before)..($after)"
+              } else {
+                print $"switcharoo: already at ($after | str substring 0..6)"
               }
 
               let buildDir = $env.HOME | path join ".local" "state" "switcharoo"
