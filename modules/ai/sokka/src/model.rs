@@ -13,6 +13,11 @@ const TIMEOUT: Duration = Duration::from_secs(300);
 
 pub trait Model: Send + Sync {
     fn answer(&self, system: &str, prompt: &str) -> Result<String, String>;
+
+    /// Whether answers may search the web.
+    fn searches(&self) -> bool {
+        false
+    }
 }
 
 pub fn from_env() -> Result<Box<dyn Model>, String> {
@@ -22,6 +27,7 @@ pub fn from_env() -> Result<Box<dyn Model>, String> {
             command: var("SOKKA_CLAUDE").unwrap_or_else(|| "claude".into()),
             model: var("SOKKA_MODEL").unwrap_or_else(|| "sonnet".into()),
             effort: var("SOKKA_EFFORT"),
+            mcp: var("SOKKA_MCP").map(mcp).transpose()?,
         })),
         "http" => Ok(Box::new(Http {
             url: var("SOKKA_URL").ok_or("SOKKA_URL is not set")?,
@@ -31,12 +37,15 @@ pub fn from_env() -> Result<Box<dyn Model>, String> {
     }
 }
 
-/// The `claude` CLI in print mode: no tools, no MCP, no settings sources
-/// (so no hooks), no session saved. Each call stands alone.
+/// The `claude` CLI in print mode: no built-in tools, no settings sources
+/// (so no hooks), no session saved; only the MCP servers in SOKKA_MCP.
+/// Each call stands alone.
 pub struct Claude {
     pub command: String,
     pub model: String,
     pub effort: Option<String>,
+    /// An MCP config file and the servers it names, all allowed.
+    pub mcp: Option<(String, Vec<String>)>,
 }
 
 impl Model for Claude {
@@ -59,6 +68,10 @@ impl Model for Claude {
         ]);
         if let Some(effort) = &self.effort {
             cmd.args(["--effort", effort]);
+        }
+        if let Some((file, servers)) = &self.mcp {
+            let allowed: Vec<String> = servers.iter().map(|s| format!("mcp__{s}")).collect();
+            cmd.args(["--mcp-config", file, "--allowedTools", &allowed.join(",")]);
         }
         let mut child = cmd
             .stdin(Stdio::piped())
@@ -104,6 +117,24 @@ impl Model for Claude {
         }
         Ok(text.trim().to_owned())
     }
+
+    fn searches(&self) -> bool {
+        self.mcp.is_some()
+    }
+}
+
+/// Reads the server names out of an MCP config file.
+fn mcp(file: String) -> Result<(String, Vec<String>), String> {
+    let text = std::fs::read_to_string(&file).map_err(|e| format!("{file}: {e}"))?;
+    let config: Value = serde_json::from_str(&text).map_err(|e| format!("{file}: {e}"))?;
+    let servers = config
+        .get("mcpServers")
+        .and_then(Value::as_object)
+        .ok_or_else(|| format!("{file}: no mcpServers"))?
+        .keys()
+        .cloned()
+        .collect();
+    Ok((file, servers))
 }
 
 /// Any OpenAI-compatible chat completions endpoint over plain HTTP.

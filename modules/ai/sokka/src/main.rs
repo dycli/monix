@@ -36,9 +36,16 @@ with its address (id+n: the n messages from id) and tags what Dylan said \
 as user and what you said as talk. Rely on it as what you remember; when \
 a line is too condensed to answer from, say what you remember and ask.
 
-You have no tools yet: you cannot set reminders, read calendars, search \
-the web or change anything. Say so plainly when asked, and never claim \
-to have done something.";
+You cannot set reminders, read calendars or change anything. Say so \
+plainly when asked, and never claim to have done something.";
+
+/// Added when the model can search.
+const SEARCH: &str = "\n\nYou can search the web and read pages. Search when the answer depends on \
+current or local facts (hours, prices, news, availability) or on \
+anything you are unsure of; skip it for what you know or remember. Give \
+the answer, not the search: say where it came from in a few words, add a \
+link only when Dylan will want to open it, and say plainly when the \
+sources disagree or come up empty.";
 
 fn var(k: &str) -> Result<String, String> {
     env::var(k)
@@ -55,7 +62,12 @@ fn answer(hippo: &Hippo, model: &dyn Model, text: &str) -> Result<String, String
         "{view}\nNow: {}\n\nDylan: {text}",
         Local::now().format("%Y-%m-%d %a %H:%M")
     );
-    let reply = model.answer(PROMPT, &prompt)?;
+    let system = if model.searches() {
+        format!("{PROMPT}{SEARCH}")
+    } else {
+        PROMPT.to_owned()
+    };
+    let reply = model.answer(&system, &prompt)?;
     if reply.is_empty() {
         return Err("the model answered nothing".into());
     }

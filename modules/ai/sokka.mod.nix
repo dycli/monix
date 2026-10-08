@@ -5,7 +5,8 @@
 #
 # Two units under one static user: the bot, and the hippo service that is
 # the store's only writer. Model calls run the claude CLI on the fleet's
-# subscription token, without tools, MCP or settings.
+# subscription token, without built-in tools or settings; their only tools
+# are Parallel's keyless web search and fetch, over MCP.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.sokka;
@@ -44,6 +45,13 @@
       # Hides the host's managed settings and MCP servers (the seat's), which
       # would forbid --strict-mcp-config.
       claudeEtc = pkgs.writeTextDir "managed-settings.json" "{}";
+
+      mcp = (pkgs.formats.json { }).generate "sokka-mcp.json" {
+        mcpServers.parallel = {
+          type = "http";
+          url = "https://search.parallel.ai/mcp";
+        };
+      };
 
       # Idempotent: logs in first, else walks the registration-token flow.
       register = pkgs.writeShellApplication {
@@ -241,6 +249,7 @@
             SOKKA_BACKEND = "claude";
             SOKKA_CLAUDE = getExe claude;
             SOKKA_MODEL = cfg.model;
+            SOKKA_MCP = toString mcp;
           };
           serviceConfig =
             sandbox

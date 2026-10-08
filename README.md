@@ -286,8 +286,9 @@ folds them into a 24 KB view, so an endless chat costs the same per call
 on its first day and its thousandth.
 
 The model is configuration: the `claude` CLI on a subscription token, with
-built-in tools, MCP and settings off, or any OpenAI-compatible endpoint,
-local or hosted. Sokka answers only the users it is configured for, joins
+built-in tools and settings off and Parallel's keyless web search as its
+only MCP server, or any OpenAI-compatible endpoint, local or hosted. The
+prompt mentions search only when the model has it. Sokka answers only the users it is configured for, joins
 only their rooms, and runs as its own fenced user with loopback and the
 internet but not the tailnet or the LAN. Chats are end-to-end encrypted
 (matrix-sdk): the bot holds its own cross-signed device, so neither the
