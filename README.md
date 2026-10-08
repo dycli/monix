@@ -1,8 +1,9 @@
 # Monix
 
-NixOS configuration for four machines, in one flake. Hosts deploy with
-`switcharoo`, which pulls `origin/main` and switches, so only published
-commits ever reach a machine.
+NixOS configuration for four machines, in one flake. Most of it wires up
+software other people wrote. The parts described at length below are the ones
+built here: the agent memory, the drone fleet, the desktop shell, alerting,
+the household bot and the NAS backup.
 
 | Host  | Machine                  | Role |
 |-------|--------------------------|------|
@@ -21,51 +22,244 @@ The flake follows the dendritic pattern. Every `*.mod.nix` file is a
 flake-parts module and is imported automatically. Modules add themselves to
 named bundles (`default`, `desktop`, `hyprland`, `dev`, `lab`, `web`), and a
 host file is just its bundles plus hardware. There are no per-service
-`enable` flags; the bundles a host imports decide what it runs.
-Conventions are in `AGENTS.md`.
+`enable` flags; the bundles a host imports decide what it runs. Conventions
+are in `AGENTS.md`.
 
-`lib.ship` is the shared library, available in every module: the host
-constructor, systemd hardening presets, network fences and the AI system's
-topology.
+Secrets use agenix with host SSH keys. Water unlocks its disk with the TPM so
+it can boot unattended. Air runs Unbound as the tailnet's ad-blocking resolver.
 
-Secrets use agenix with host SSH keys. Water unlocks its disk with the TPM
-so it can boot unattended. Air runs the tailnet's ad-blocking resolver.
+### lib.ship
+
+`lib/` is the shared library, available in every module as `lib.ship`:
+
+- **Hardening presets** (`hardened.nix`): systemd sandboxing profiles named
+  for who the service is. `tenant` is a network service holding untrusted
+  input, `rootSensor` a root job that only reads system state, `vendor`
+  closed-source software that gets what it needs and no more. A service
+  takes a preset and overrides single keys, so the exceptions are visible.
+- **Network fences** (`network-fences.nix`): named address sets for
+  `IPAddressAllow`/`IPAddressDeny` (tailnet, private ranges, and a loopback
+  /24 that leaves the seat's own addresses outside it) and a ready-made
+  `internetOnlyDeny`. Services and whole user slices are fenced by name,
+  not by hand-written CIDR lists.
+- **Topology** (`fleet-topology.nix`): one place for the AI system's users,
+  uids, groups, paths and addresses, so the seat, the fleet and the guests
+  agree on them.
+- **`rustTool`** (`rust-tool.nix`): builds an in-tree Rust crate as a package
+  and runs its tests and clippy as part of the build.
+
+### Checks
+
+`nix flake check` builds and tests every Rust crate, runs nixfmt, rustfmt
+and a Nix style check, and verifies the agenix rulebook: every `.age` file
+has a rule, and every rule points at a tracked file.
+
+### switcharoo
+
+Hosts deploy with `switcharoo`. It pulls `origin/main` fast-forward only, so
+a host only ever runs published commits. It builds as the user with `nh`, then
+activates in a detached `systemd-run` unit. Activation can restart
+`tailscaled` or `sshd`; detached, the switch finishes even when the SSH
+session that started it dies. A switch over SSH that died halfway once left
+Air without DNS, which is why it works this way.
 
 ## Desktop
 
-Hyprland with Kestrel, a custom Quickshell (QML) shell that replaces a desktop
-environment: bar, menus, launcher, notifications, quick settings and a
-settings panel. Its source is in `modules/desktop/shell/`.
+Hyprland, greetd with tuigreet, PipeWire, printing, Steam and the creative
+suite are configured but stock. The 7900 XTX is tuned through LACT (clock
+cap, power cap, undervolt, with the OverDrive feature mask set on the kernel
+command line).
+
+### Kestrel shell
+
+Kestrel is a Quickshell (QML) shell written for this repo, about 9,000
+lines in `modules/desktop/shell/`. It replaces a desktop environment rather
+than theming one. Everything is reachable from the bar, by keyboard or
+mouse, and no menu opens a separate window.
+
+- **Bar**: geometric workspace markers, a left rail and a right rail. Menus
+  are popouts that slide out of the bar and close on Esc or a click outside.
+- **Menus**: a Pear system menu, Edit, Tools, View, Launch, Find, Clipboard,
+  Emoji and a clock with calendar.
+- **Settings**: one narrow panel with Audio, Bluetooth, Display (with a live
+  preview of the monitor layout), Input (per-mouse settings), Network and
+  Power.
+- **Status**: notification ticker, privacy indicators for microphone, camera
+  and screen sharing, media controls, tray, battery and a power-profile
+  carousel.
+- **Services**: launcher, on-screen display for volume and brightness, night
+  mode, session menu.
+
+The shell runs as the `ship-shell` user service.
 
 ## AI
 
-Coding agents run in `bridge`, an unprivileged account with no admin rights
-and no host secrets. A network fence keeps it off the LAN and the tailnet.
-It can push to this repo; only the captain switches a host onto it.
+### The seat
 
-Agent memory has three parts. **OptMem** (`memo`) is an append-only log of
-notes, summarised into a tree that each session loads. The **transcript
-archive** keeps every agent conversation on the NAS. **hippo** records
-conversations live and summarises them for later sessions.
+Coding agents (Claude Code, Codex, OpenCode) run in `bridge`, one
+unprivileged account with a fixed uid. It has no wheel, no Nix trust and no
+host secrets. A per-user network fence applies to every process it starts:
+it cannot reach the LAN or the tailnet, and reaches the local model server
+only through its own address on the seat plane.
 
-The agents hand work to a **fleet** of disposable microVMs. The VMs have no
-tailnet, repo or secrets, reach the internet only through an allowlist proxy,
-and reset after every task. Dispatch goes through a separate unprivileged
-operator account. Usage is in `FLEET.md`, which is generated from
-`lib/fleet-guide.nix`.
+Its home is composed in Nix, and one set of managed settings applies to every
+launcher, Paseo included, so an agent started from a phone has the same rules
+as one in a terminal. It can push to this repo; only the captain switches a
+host onto a commit.
 
-Water and fire serve local models through llama.cpp and llama-swap. Paseo
-gives remote clients access to the agents. **Remy** is the household Matrix
-bot, running on the local model; it maps chat only to fixed actions, so no
-message can reach a shell or the fleet.
+For the web, the seat has a Brave MCP server: a headless Brave inside the
+fence, or the visible Brave on a desktop, driven over Tailscale SSH
+(`browser.mod.nix`).
+
+### hippo
+
+hippo is the seat's episodic memory: about 4,200 lines of Rust in
+`modules/ai/seat/hippo`, with seven dependencies. The design follows Victor
+Taelin's OptChat: keep every message, and fold the whole history into a
+fixed-size summary that any session can read.
+
+**Recording.** A watcher follows Claude Code, Codex and OpenCode transcripts
+as they are written (OpenCode through its SQLite database) and appends each
+message to a day-file log. The log is append-only. Secrets are masked before
+they are written, and a chat containing `#offrecord` is not recorded.
+`hippo import` loads old transcripts.
+
+**Compaction.** Messages become the leaves of a binary tree. Each message is
+compressed to a line of at most 512 bytes; each pair of lines is merged into
+one line covering both, and so on upward. Lines are tagged by kind (`user`,
+`talk`, `tool`, `echo`, `note`), never by chat. The compactor is Sonnet at
+medium effort, run through the `claude` CLI on the subscription, with
+five-minute prompt caching. Each call carries the current view as shared
+context, an invented 512-byte line for scale, and the step. When a merge's
+two halves come from different chats (keyed by harness and session), the
+step says so, so the model does not read one chat as a reply to the other.
+
+**The view.** The view is the history as one block of `id+n|text` lines
+within a fixed 128 KB budget, about 60k tokens: recent lines cover one
+message each, older lines cover more. The service rewrites `view.md`
+atomically whenever the tree grows. On the seat, `~/.claude/rules/hippo-view.md`
+links to it, so Claude Code loads the whole view at session start and after
+every compaction with no tool call. Codex and OpenCode page it in with
+`hippo view`.
+
+**Session compaction.** A PreCompact hook has the agent write a short
+handoff before Claude Code compacts. The compaction window is 200k tokens,
+so a session compacts to the handoff plus a fresh view instead of carrying a
+long transcript.
+
+**CLI.** The agent drills down with `zoom` (a line into its two halves, down
+to the whole message), `date`, `search` (regex over every message) and
+`note` (pin a fact). `status`, `pause`/`resume`, `browse`, `audit` and
+`replay` serve the operator. The service answers over a unix socket.
+
+### OptMem and the transcript archive
+
+`memo` (`modules/ai/seat/memo-cli`) is a Rust implementation of Victor
+Taelin's OptMem: an append-only log of one-line notes that the agent writes
+on purpose (decisions, rules, outcomes), summarised into a binary tree that
+`memo wake` prints at the start of every session. `recall` and `find` search
+the raw notes; `zoom` opens a tree node; `nap` runs pending compressions.
+OptMem runs beside hippo while hippo is on trial.
+
+Every harness prunes its own session logs. The transcript archive
+(`transcripts.mod.nix`) has root copy the seat's transcripts onto the NAS,
+never deleting, and the nightly backup covers them.
+
+### The fleet
+
+The seat hands work to drones: disposable microVMs, each running one agent
+on one task. The code is about 5,500 lines of Rust in three crates under
+`modules/ai/fleet`.
+
+**`fleet` CLI.** The only path from the seat to the queue. It runs through
+scoped sudo as `fleet-operator`, a separate account outside wheel. Its
+configuration is compiled in, so the caller cannot redirect it. `dispatch`
+snapshots the working context and passes it to the task on stdin; the other
+commands submit, watch, fetch results and patches, read logs, peek at a
+running drone, steer it, answer its questions, cancel, and report status and
+health.
+
+**Dispatcher.** One resident drainer per worker keeps a warm VM. It claims a
+queued markdown task, runs it, archives the result and reboots the guest.
+The queue is capped by bytes and inodes. A task's front matter must name the
+agent and model. `guidance: cockpit` lets a drone send questions back to the
+seat instead of guessing.
+
+**Guest supervisor.** Inside the VM, the supervisor runs as root and treats
+everything it reads as hostile: no symlinks followed, every read bounded, no
+shell interpolation. Each agent runs as its own unprivileged user with one
+staged credential. The supervisor captures the patch and a usage record, and
+writes the exit code last, so a result is complete when it has one.
+
+**Isolation.** Guests are microvm.nix VMs on the host-only `br-agents`
+bridge. Their only way out is a Squid allowlist of the model vendors' APIs,
+search and docs services, and the Nix cache; local inference is reached
+directly. Per-worker volumes are wiped on every start, and shares use
+virtiofs with a pinned gid. The VMs have no tailnet, repo or secrets.
+Results come back as untrusted input for the seat to review.
+
+The fleet's audit log is streamed to a Matrix room (`log-stream.mod.nix`).
+The agents' operating guide is generated from `lib/fleet-guide.nix` into
+`AGENTS.md`, `FLEET.md` and the drone guide.
+
+### Local inference
+
+Water and Fire serve models with llama.cpp behind llama-swap, which starts
+one `llama-server` per model on demand and unloads it after an idle timeout,
+so an idle host holds no model memory. Qwen3.8-27B runs with MTP speculative
+decoding from the tensors embedded in the GGUF. Paseo gives phones and other
+clients access to the seat's agents.
+
+### Remy
+
+Remy (`modules/ai/remy`) is the household Matrix bot, about 1,600 lines of
+Python. It has two rooms: Household, with shared lists, dated to-dos with
+repeats, reminders, and a 07:00 plan and 19:00 report that fold in the
+family calendar; and Scratchpad, the same skills on a separate database.
+
+Chat text is untrusted. The local model only classifies a message into a
+fixed intent schema for its room; SQL is parameterised from the typed
+fields, and no message has a path to a shell or to Matrix administration.
+The bot itself is fenced to loopback. A separate `remy-calendar-sync` unit
+holds the only CalDAV credentials and the only network egress: it pushes
+events created in chat and writes the upcoming calendar to a file the bot
+reads. The database is snapshotted into git.
 
 ## Homelab
 
-Water runs the house's services: an encrypted NAS with verified nightly
-backups (see `modules/homelab/nas/README.md`), Jellyfin and the *arr stack,
-Immich, Frigate, Home Assistant, a private Matrix server and Minecraft.
+Water runs the house's services. Jellyfin, the *arr stack with SABnzbd,
+calibre-web, Immich, Frigate, Home Assistant, a private Matrix server
+(tuwunel behind a Cloudflare tunnel) and Minecraft are packaged services
+with their own configuration.
 
-Web UIs are served at `<service>.su.is`. The names resolve publicly but route
-only inside the tailnet. Services run with systemd hardening and
-network fences. Failures, disk warnings and UPS events are posted to a Matrix
-alert room.
+Web UIs are served at `<service>.su.is` by nginx with a wildcard DNS-01
+certificate. The names resolve publicly but route only inside the tailnet.
+Services run with `lib.ship` hardening presets and network fences.
+
+### NAS and backups
+
+Water's NAS is an encrypted Btrfs filesystem on a 4 TB SSD, backed up to an
+encrypted Restic repository on an 8 TB HDD (`modules/homelab/nas`).
+
+Setup is a script, not an activation. `prepare-water-nas` checks the exact
+drive serials and sizes, formats only those, and leaves a marker so it can
+never run twice. Bind mounts keep every service's original paths, so moving
+data onto the NAS changed no service configuration. A recovery bundle (key,
+LUKS header, backup password, commands) is written for off-machine storage.
+
+Each night at 03:30 the backup pauses only the Immich server, dumps its
+PostgreSQL database, takes a read-only Btrfs snapshot and resumes Immich.
+Restic copies the snapshot to the HDD, then proves the copy: it restores a
+probe file and the full database dump from the repository, compares bytes,
+and parses the dump. On Sundays it prunes old snapshots and reads back 5% of
+the stored data. Details are in `modules/homelab/nas/README.md`.
+
+### ship-alert
+
+Every alarm reaches a Matrix alert room through `ship-alert`, a small Rust
+tool in `modules/homelab/alerts`. Four sensors feed it: a global `OnFailure`
+drop-in on every systemd unit, a six-hourly sweep for conditions `OnFailure`
+cannot see, smartd, and the UPS monitor's spool. It throttles repeats,
+caches its login token, and can ask the local model to add a one-line
+explanation. It posts only to the loopback homeserver, and the sensors are
+fenced to loopback.
