@@ -47,7 +47,7 @@
 
               # The service and its journal survive restarting the SSH transport.
               print "switcharoo: activating in switcharoo.service; logs: journalctl -fu switcharoo.service"
-              ^/run/wrappers/bin/sudo ${lib.meta.getExe' pkgs.systemd "systemd-run"} --unit=switcharoo --collect --service-type=exec --wait ${lib.meta.getExe pkgs.nh} os switch --bypass-root-check --no-nom --diff=never $system
+              ^/run/wrappers/bin/sudo ${lib.meta.getExe' pkgs.systemd "systemd-run"} --unit=switcharoo --collect --service-type=exec --wait --setenv=PATH=/run/wrappers/bin:/run/current-system/sw/bin ${lib.meta.getExe pkgs.nh} os switch --bypass-root-check --no-nom --diff=never $system
             }
           ''
       );
