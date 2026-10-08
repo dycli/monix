@@ -178,6 +178,9 @@ async fn run() -> Result<(), String> {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    // The homeserver is plain http on loopback, but reqwest panics
+    // without a TLS provider installed.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     match run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
