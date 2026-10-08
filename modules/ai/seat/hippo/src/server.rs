@@ -344,7 +344,7 @@ pub fn zoom(store: &Store, tree: &Tree, id: u64, n: u64) -> Result<String, Strin
     }
     if n == 1 {
         let m = store.get(id)?;
-        return Ok(format!("{id}+1|{}", m.render()));
+        return Ok(format!("{id}+1|{}", m.labelled()));
     }
     let l = n.trailing_zeros() as u8 - 1;
     let half = n / 2;

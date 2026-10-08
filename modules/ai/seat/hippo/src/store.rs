@@ -62,17 +62,23 @@ pub struct Msg {
 }
 
 impl Msg {
-    /// The message as level 0 of the tree sees it: `kind [label]: text`.
+    /// The message as level 0 of the tree sees it: `kind: text`. Chats share
+    /// one timeline; a line names its subject in words, never its chat.
     pub fn render(&self) -> String {
-        render(self.kind, self.chat.as_deref(), &self.text)
+        render(self.kind, &self.text)
+    }
+
+    /// The message with its chat, for reading it whole: `kind [chat]: text`.
+    pub fn labelled(&self) -> String {
+        match &self.chat {
+            Some(chat) => format!("{} [{chat}]: {}", self.kind.name(), self.text),
+            None => self.render(),
+        }
     }
 }
 
-pub fn render(kind: Kind, chat: Option<&str>, text: &str) -> String {
-    match chat {
-        Some(chat) => format!("{} [{chat}]: {text}", kind.name()),
-        None => format!("{}: {text}", kind.name()),
-    }
+pub fn render(kind: Kind, text: &str) -> String {
+    format!("{}: {text}", kind.name())
 }
 
 /// A message ready to be logged; the store gives it its id and size.
@@ -400,7 +406,7 @@ impl Store {
                 continue;
             }
             let i = self.len();
-            let size = render(d.kind, d.chat.as_deref(), &d.text).len() as u64;
+            let size = render(d.kind, &d.text).len() as u64;
             let msg = Msg {
                 i,
                 kind: d.kind,

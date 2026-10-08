@@ -76,8 +76,9 @@
 
     The view is the whole history as one-line summaries, oldest first. Each
     line `id+n|text` covers n messages from id, tagged with kinds (user = the
-    captain's words, talk, tool, echo, note) and chat labels. Recent lines
-    cover one message; older lines cover more. No message appears in full.
+    captain's words, talk, tool, echo, note). All chats, yours and parallel
+    ones, share this one timeline. Recent lines cover one message; older
+    lines cover more. No message appears in full.
 
     `hippo zoom <id> <n>` opens a line into its two halves; `n = 1` gives
     the message whole. Zoom whenever a line only mentions what you need (a

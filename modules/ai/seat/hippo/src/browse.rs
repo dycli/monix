@@ -60,7 +60,7 @@ pub fn render(c: &Core) -> Result<String, String> {
             m.i,
             m.date,
             m.size,
-            esc(&m.render())
+            esc(&m.labelled())
         );
         true
     })?;

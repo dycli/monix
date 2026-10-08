@@ -583,7 +583,7 @@ mod tests {
         let mut out = Vec::new();
         store
             .scan(|m| {
-                out.push(m.render());
+                out.push(m.labelled());
                 true
             })
             .unwrap();

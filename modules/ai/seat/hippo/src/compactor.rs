@@ -368,10 +368,10 @@ mod tests {
         assert_eq!(c.view.unbuilt(&c.tree), 0);
         assert!(c.view.size() <= budget, "view {} bytes", c.view.size());
         assert!(c.view.parts.iter().any(|&(l, _)| l > 0), "nothing merged");
-        // Short messages are their own line, word for word.
+        // Short messages are their own line, word for word, without their chat.
         assert_eq!(
             c.tree.text(0, 0).unwrap().unwrap(),
-            "talk [c]: message 0 xxxxxxxxxx"
+            "talk: message 0 xxxxxxxxxx"
         );
         let ids = regex::Regex::new(r"(?m)^\d+\+\d+\|").unwrap();
         for call in seen.lock().unwrap().iter() {
