@@ -275,19 +275,21 @@ can't drift apart.
 llama-swap starts one `llama-server` per model on demand and unloads it when
 idle, so a host holds no model memory until something asks.
 
-### Remy
+### Sokka
 
-Remy (`modules/ai/remy`) is the household Matrix bot, about 1,600 lines of
-Python, with shared lists, dated to-dos, reminders, and a morning plan and
-evening report that fold in the family calendar.
+Sokka (`modules/ai/sokka`) is the household assistant, a small Rust service
+on Matrix. It has no sessions and never compacts: every message becomes one
+fresh model call over Sokka's prompt, its whole memory and the new message.
+The memory is a second hippo store, written directly instead of by
+following transcripts: the bot logs each message and each answer, and hippo
+folds them into a 24 KB view, so an endless chat costs the same per call
+on its first day and its thousandth.
 
-It is built for a model reading untrusted chat. The local model only classifies a message into a
-fixed intent schema for its room; SQL is parameterised from the typed
-fields, and no message has a path to a shell or to Matrix administration.
-The bot itself is fenced to loopback. A separate `remy-calendar-sync` unit
-holds the only CalDAV credentials and the only network egress: it pushes
-events created in chat and writes the upcoming calendar to a file the bot
-reads.
+The model is configuration: the `claude` CLI on a subscription token, with
+built-in tools, MCP and settings off, or any OpenAI-compatible endpoint,
+local or hosted. Sokka answers only the users it is configured for, joins
+only their rooms, and runs as its own fenced user with loopback and the
+internet but not the tailnet or the LAN.
 
 ## Homelab
 

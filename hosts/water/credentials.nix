@@ -21,9 +21,11 @@ in
   matrix.registrationTokenEnvFile = config.secrets.matrix-registration-env.path;
   matrix.tunnelTokenFile = config.secrets.matrix-cloudflare-tunnel-token.path;
 
-  remy.credentialsEnvFile = config.secrets.matrix-remy-env.path;
-  remy.registrationEnvFile = config.secrets.matrix-registration-env.path;
-  remy.calendar.credentialsFile = config.secrets.remy-caldav-json.path;
+  sokka = {
+    credentialsEnvFile = config.secrets.matrix-sokka-env.path;
+    registrationEnvFile = config.secrets.matrix-registration-env.path;
+    claudeTokenFile = config.secrets.agent-claude-token.path;
+  };
 
   agentFleet.credentials = {
     claudeTokenFile = config.secrets.agent-claude-token.path;
@@ -36,11 +38,7 @@ in
     agent-claude-token.file = ./secrets/agent-claude-token.age;
     agent-codex-auth.file = ./secrets/agent-codex-auth.age;
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
-    matrix-remy-env.file = ./secrets/matrix-remy.env.age;
-    remy-caldav-json = {
-      file = ./secrets/remy-caldav.json.age;
-      owner = "remy";
-    };
+    matrix-sokka-env.file = ./secrets/matrix-sokka.env.age;
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     matrix-alertbot-env.file = ./secrets/matrix-alertbot.env.age;
     cloudflare-dns-token = {
@@ -59,7 +57,7 @@ in
   systemd.services.matrix-tunnel.restartTriggers = singleton ./secrets/matrix-cloudflare-tunnel-token.age;
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
-  systemd.services.remy.restartTriggers = singleton ./secrets/matrix-remy.env.age;
+  systemd.services.sokka.restartTriggers = singleton ./secrets/matrix-sokka.env.age;
   systemd.services.fleet-log-stream.restartTriggers = singleton ./secrets/matrix-alertbot.env.age;
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;

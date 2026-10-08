@@ -109,13 +109,19 @@ pub fn serve(
         after: crate::live::imported(dir)?.and_then(|i| crate::store::parse_date(&i.cutoff)),
         ..Watcher::default()
     };
-    let view = View::fold(&tree, store.len(), VIEW);
+    let budget = match std::env::var("HIPPO_VIEW") {
+        Ok(v) => v
+            .parse()
+            .map_err(|_| format!("HIPPO_VIEW is not a number: {v}"))?,
+        Err(_) => VIEW,
+    };
+    let view = View::fold(&tree, store.len(), budget);
     let shared = Arc::new(Shared {
         core: Mutex::new(Core {
             store,
             tree,
             view,
-            budget: VIEW,
+            budget,
             pump: Pump {
                 spent: Spent::load(dir)?,
                 ..Pump::default()
@@ -219,14 +225,21 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
             let c = core.lock().unwrap();
             search(&c.store, &re)
         }
-        "note" => {
-            let text = a.join(" ");
+        "log" => {
+            let (kind, text) = a.split_first().ok_or("Missing kind.")?;
+            let kind = match kind.as_str() {
+                "user" => Kind::User,
+                "talk" => Kind::Talk,
+                "note" => Kind::Note,
+                other => return Err(format!("Cannot log a {other} message.")),
+            };
+            let text = text.join(" ");
             if text.trim().is_empty() {
-                return Err("Nothing to note.".into());
+                return Err("Nothing to log.".into());
             }
             let mut c = core.lock().unwrap();
             let ids = c.store.append(vec![Draft {
-                kind: Kind::Note,
+                kind,
                 chat: None,
                 text: crate::mask::mask(text.trim()),
                 date: Local::now(),
@@ -234,7 +247,7 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
             }])?;
             c.sync();
             pump(shared, &mut c);
-            Ok(format!("Noted as message {}.", ids[0]))
+            Ok(format!("Logged as message {}.", ids[0]))
         }
         "status" => Ok(status(&core.lock().unwrap(), shared.backend.is_some())),
         "pause" => {
@@ -262,10 +275,12 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
 
 /// `hippo view [page token]`: the whole view, paged. The first call waits
 /// for the compactor (up to `SETTLE`), renders once and keeps the pages,
-/// so later pages come from the same render.
+/// so later pages come from the same render. `view whole`, for programs
+/// that put the view into a prompt, answers in one piece.
 fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
     let mut c = shared.core.lock().unwrap();
-    if !a.is_empty() {
+    let whole = a == ["whole"];
+    if !a.is_empty() && !whole {
         let [k, token] = a else {
             return Err("Name the page and its view: hippo view <page> <token>.".into());
         };
@@ -288,6 +303,9 @@ fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
             break;
         }
         c = shared.cv.wait_timeout(c, left).unwrap().0;
+    }
+    if whole {
+        return text(&c);
     }
     let (head, lines) = render(&c)?;
     let mut pages = vec![format!("{head}<chat>")];
@@ -335,9 +353,14 @@ fn render(c: &Core) -> Result<(String, Vec<String>), String> {
 
 /// Writes the whole view to `view.md` in the store, which the seat's Claude
 /// Code loads as a rules file at session start and after each compaction.
-pub fn publish(c: &mut Core) -> Result<(), String> {
+/// The whole view as one text, as `view.md` holds it.
+fn text(c: &Core) -> Result<String, String> {
     let (head, lines) = render(c)?;
-    let text = format!("{head}<chat>\n{}\n</chat>\n", lines.join("\n"));
+    Ok(format!("{head}<chat>\n{}\n</chat>\n", lines.join("\n")))
+}
+
+pub fn publish(c: &mut Core) -> Result<(), String> {
+    let text = text(c)?;
     let path = c.store.dir.join("view.md");
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;

@@ -242,15 +242,25 @@ pub fn run(
 }
 
 /// Configuration, from the environment the Nix module sets.
+/// COMPACT for the agent this store remembers: `HIPPO_AGENT`, else Bridge.
+fn prompt() -> String {
+    match std::env::var("HIPPO_AGENT") {
+        Ok(name) if !name.is_empty() => COMPACT.replace("Bridge", &name),
+        _ => COMPACT.to_owned(),
+    }
+}
+
 pub fn from_env() -> Result<Box<dyn Backend>, String> {
     let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
     match var("HIPPO_BACKEND").as_deref().unwrap_or("claude") {
         "claude" => Ok(Box::new(ClaudeCli {
+            prompt: prompt(),
             command: var("HIPPO_CLAUDE").unwrap_or_else(|| "claude".into()),
             model: var("HIPPO_MODEL").unwrap_or_else(|| "sonnet".into()),
             effort: var("HIPPO_EFFORT").unwrap_or_else(|| "medium".into()),
         })),
         "http" => Ok(Box::new(Http {
+            prompt: prompt(),
             url: var("HIPPO_URL").ok_or("HIPPO_URL is not set")?,
             model: var("HIPPO_MODEL").ok_or("HIPPO_MODEL is not set")?,
             effort: var("HIPPO_EFFORT"),
@@ -268,6 +278,7 @@ pub fn from_env() -> Result<Box<dyn Backend>, String> {
 /// out, so a retry stays in the same conversation; no tools, no MCP, no
 /// settings sources (so no hooks), no session saved.
 pub struct ClaudeCli {
+    pub prompt: String,
     pub command: String,
     pub model: String,
     pub effort: String,
@@ -322,7 +333,7 @@ impl Backend for ClaudeCli {
                 "--verbose",
                 "--no-session-persistence",
                 "--system-prompt",
-                COMPACT,
+                &self.prompt,
                 "--tools",
                 "",
                 "--strict-mcp-config",
@@ -474,6 +485,7 @@ fn limit(text: &str) -> Option<Fail> {
 /// local llama.cpp on Water.
 #[derive(Clone)]
 pub struct Http {
+    pub prompt: String,
     pub url: String,
     pub model: String,
     pub effort: Option<String>,
@@ -492,7 +504,7 @@ impl Backend for Http {
     fn start(&self) -> Result<Box<dyn Chat>, Fail> {
         Ok(Box::new(HttpChat {
             backend: self.clone(),
-            messages: vec![json!({"role": "system", "content": COMPACT})],
+            messages: vec![json!({"role": "system", "content": self.prompt})],
             used: Usage::default(),
         }))
     }

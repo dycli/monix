@@ -42,8 +42,7 @@ in
   ++ admin;
   "hosts/water/secrets/matrix-registration.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/matrix-remy.env.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/remy-caldav.json.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/matrix-sokka.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-alertbot.env.age".publicKeys = singleton water ++ admin;
   # INI merged over the declarative config at unit start.
   "hosts/water/secrets/sabnzbd-secrets.ini.age".publicKeys = singleton water ++ admin;

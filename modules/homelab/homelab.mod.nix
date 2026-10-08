@@ -43,15 +43,7 @@
       ];
       fleetLogStream.inviteUsers = singleton "@dylan:chat.su.is";
 
-      remy.inviteUsers = [
-        "@dylan:chat.su.is"
-        "@gab:chat.su.is"
-      ];
-      remy.scratchpad.users = singleton "@dylan:chat.su.is";
-      remy.model = "qwen3.8-27b-q4-k-m";
+      sokka.users = singleton "@dylan:chat.su.is";
       alerts.summary.model = "qwen3.8-27b-q4-k-m";
-      remy.famlog.path = "/home/${config.primaryUser}/crate/sync/notes/famlog.md";
-      remy.famlog.owner = config.primaryUser;
-      remy.famlog.group = "syncthing";
     };
 }

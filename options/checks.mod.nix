@@ -26,6 +26,7 @@
         hippo.path = "modules/ai/seat/hippo";
         memo.path = "modules/ai/seat/memo-cli";
         ship-alert.path = "modules/homelab/alerts/ship-alert";
+        sokka.path = "modules/ai/sokka";
       };
       cratePaths = attrValues crates |> map (crate: crate.path);
 

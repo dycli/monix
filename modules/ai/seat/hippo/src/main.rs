@@ -195,7 +195,7 @@ fn main() -> ExitCode {
         "import" => import(rest),
         "view" | "zoom" | "date" | "search" | "status" | "pause" | "resume" => ask(cmd, rest),
         "browse" => browse(rest),
-        "note" => ask(cmd, &[rest.join(" ")]),
+        "note" => ask("log", &["note".to_owned(), rest.join(" ")]),
         "help" | "-h" | "--help" => Ok(USAGE.into()),
         _ => Err(USAGE.into()),
     };
