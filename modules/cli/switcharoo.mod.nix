@@ -36,7 +36,18 @@
                 ^git -C $repo log --oneline $"($before)..($after)"
               }
 
-              ^nh os switch $repo
+              let buildDir = $env.HOME | path join ".local" "state" "switcharoo"
+              mkdir $buildDir
+              let result = $buildDir | path join "result"
+              ^nh os build --out-link $result $repo
+              if $env.LAST_EXIT_CODE != 0 {
+                exit $env.LAST_EXIT_CODE
+              }
+              let system = (^${lib.meta.getExe' pkgs.coreutils "readlink"} -f $result | str trim)
+
+              # The service and its journal survive restarting the SSH transport.
+              print "switcharoo: activating in switcharoo.service; logs: journalctl -fu switcharoo.service"
+              ^/run/wrappers/bin/sudo ${lib.meta.getExe' pkgs.systemd "systemd-run"} --unit=switcharoo --collect --service-type=exec --wait ${lib.meta.getExe pkgs.nh} os switch --bypass-root-check --no-nom --diff=never $system
             }
           ''
       );
