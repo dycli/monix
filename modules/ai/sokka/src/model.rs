@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 /// Seconds one answer may take before the call is abandoned.
 const TIMEOUT: Duration = Duration::from_secs(300);
 
-pub trait Model {
+pub trait Model: Send + Sync {
     fn answer(&self, system: &str, prompt: &str) -> Result<String, String>;
 }
 

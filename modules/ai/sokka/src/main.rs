@@ -9,13 +9,19 @@ mod model;
 
 use chrono::Local;
 use hippo::Hippo;
-use matrix::{Fail, Matrix};
+use matrix_sdk::config::SyncSettings;
+use matrix_sdk::ruma::events::room::encrypted::OriginalSyncRoomEncryptedEvent;
+use matrix_sdk::ruma::events::room::member::StrippedRoomMemberEvent;
+use matrix_sdk::ruma::events::room::message::{
+    MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent,
+};
+use matrix_sdk::{Client, Room, RoomState};
 use model::Model;
 use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::thread;
-use std::time::Duration;
+use std::sync::Arc;
+use tokio::sync::mpsc;
 
 const PROMPT: &str = "\
 You are Sokka, the household assistant of Dylan, who you talk with over \
@@ -57,68 +63,122 @@ fn answer(hippo: &Hippo, model: &dyn Model, text: &str) -> Result<String, String
     Ok(reply)
 }
 
-fn run() -> Result<(), String> {
-    let state = PathBuf::from(var("STATE_DIRECTORY")?);
-    let users: Vec<String> = var("SOKKA_USERS")?
-        .split(',')
-        .map(|u| u.trim().to_owned())
-        .collect();
-    let hippo = Hippo {
-        sock: PathBuf::from(var("HIPPO_DIR")?).join("hippo.sock"),
-    };
-    let model = model::from_env()?;
-    let mut mx = Matrix::new(
-        var("SOKKA_HOMESERVER")?,
-        var("MATRIX_USER")?,
-        var("MATRIX_PASSWORD")?,
-        state.join("session.json"),
+/// Joins rooms the allowed users invite Sokka to and leaves the rest. Off
+/// the sync loop: joining waits for a sync to see the room.
+fn on_invites(client: &Client, users: Arc<Vec<String>>) {
+    client.add_event_handler(
+        move |ev: StrippedRoomMemberEvent, room: Room, client: Client| {
+            let users = users.clone();
+            async move {
+                if client.user_id().is_none_or(|me| ev.state_key != me) {
+                    return;
+                }
+                let id = room.room_id().to_owned();
+                let welcome = users.iter().any(|u| *u == ev.sender);
+                tokio::spawn(async move {
+                    let r = if welcome {
+                        room.join().await
+                    } else {
+                        room.leave().await
+                    };
+                    if let Err(e) = r {
+                        eprintln!("sokka: invite to {id}: {e}");
+                    }
+                });
+            }
+        },
     );
-    loop {
-        if !mx.logged_in() {
-            mx.login()?;
-            eprintln!("sokka: logged in");
-        }
-        let news = match mx.sync() {
-            Ok(news) => news,
-            Err(Fail::Token) => {
-                mx.forget_token();
-                continue;
+}
+
+/// Queues text from allowed users in joined rooms, for one worker to answer
+/// in order.
+fn on_messages(
+    client: &Client,
+    users: Arc<Vec<String>>,
+    queue: mpsc::UnboundedSender<(Room, String)>,
+) {
+    client.add_event_handler(move |ev: OriginalSyncRoomMessageEvent, room: Room| {
+        let (users, queue) = (users.clone(), queue.clone());
+        async move {
+            if room.state() != RoomState::Joined || !users.iter().any(|u| *u == ev.sender) {
+                return;
             }
-            Err(Fail::Other(e)) => {
-                eprintln!("sokka: sync: {e}");
-                thread::sleep(Duration::from_secs(10));
-                continue;
-            }
-        };
-        for (room, inviter) in news.invites {
-            let r = if users.contains(&inviter) {
-                mx.join(&room)
-            } else {
-                mx.leave(&room)
-            };
-            if let Err(Fail::Other(e)) = r {
-                eprintln!("sokka: invite to {room}: {e}");
+            if let MessageType::Text(t) = ev.content.msgtype {
+                let _ = queue.send((room, t.body));
             }
         }
-        for m in news.messages {
-            if !users.contains(&m.sender) {
-                continue;
-            }
-            let _ = mx.typing(&m.room, true);
-            let reply = answer(&hippo, model.as_ref(), &m.body).unwrap_or_else(|e| {
-                eprintln!("sokka: {e}");
-                format!("(I couldn't answer that: {e})")
-            });
-            let _ = mx.typing(&m.room, false);
-            if let Err(Fail::Other(e)) = mx.send(&m.room, &reply) {
-                eprintln!("sokka: send to {}: {e}", m.room);
-            }
-        }
+    });
+    client.add_event_handler(
+        |ev: OriginalSyncRoomEncryptedEvent, room: Room| async move {
+            eprintln!(
+                "sokka: could not decrypt {} from {} in {}",
+                ev.event_id,
+                ev.sender,
+                room.room_id()
+            );
+        },
+    );
+}
+
+async fn reply(hippo: Arc<Hippo>, model: Arc<dyn Model>, room: Room, text: String) {
+    let _ = room.typing_notice(true).await;
+    let reply = tokio::task::spawn_blocking(move || answer(&hippo, model.as_ref(), &text))
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()))
+        .unwrap_or_else(|e| {
+            eprintln!("sokka: {e}");
+            format!("(I couldn't answer that: {e})")
+        });
+    let _ = room.typing_notice(false).await;
+    if let Err(e) = room.send(RoomMessageEventContent::text_plain(reply)).await {
+        eprintln!("sokka: send to {}: {e}", room.room_id());
     }
 }
 
-fn main() -> ExitCode {
-    match run() {
+async fn run() -> Result<(), String> {
+    let state = PathBuf::from(var("STATE_DIRECTORY")?);
+    let users: Arc<Vec<String>> = Arc::new(
+        var("SOKKA_USERS")?
+            .split(',')
+            .map(|u| u.trim().to_owned())
+            .collect(),
+    );
+    let hippo = Arc::new(Hippo {
+        sock: PathBuf::from(var("HIPPO_DIR")?).join("hippo.sock"),
+    });
+    let model: Arc<dyn Model> = model::from_env()?.into();
+    let (client, fresh) = matrix::connect(
+        &var("SOKKA_HOMESERVER")?,
+        &var("MATRIX_USER")?,
+        &var("MATRIX_PASSWORD")?,
+        &state.join("matrix"),
+    )
+    .await?;
+
+    on_invites(&client, users.clone());
+    if fresh {
+        client
+            .sync_once(SyncSettings::default())
+            .await
+            .map_err(|e| format!("sync: {e}"))?;
+    }
+    let (queue, mut inbox) = mpsc::unbounded_channel();
+    on_messages(&client, users, queue);
+    tokio::spawn(async move {
+        while let Some((room, text)) = inbox.recv().await {
+            reply(hippo.clone(), model.clone(), room, text).await;
+        }
+    });
+    eprintln!("sokka: listening");
+    client
+        .sync(SyncSettings::default())
+        .await
+        .map_err(|e| format!("sync: {e}"))
+}
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    match run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("sokka: {e}");
