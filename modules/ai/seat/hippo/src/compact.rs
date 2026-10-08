@@ -10,7 +10,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::Duration;
 
 /// Version of the prompt below, stored on every node it builds.
-pub const PROMPT_VERSION: &str = "hippo-1";
+pub const PROMPT_VERSION: &str = "hippo-2";
 
 /// Tries per node to get under `NODE`; the shortest is kept.
 pub const TRIES: usize = 5;
@@ -42,8 +42,10 @@ the line's words show that what it needs is inside: what your line omits \
 is lost to Bridge and to every line above.
 
 <chat> is Bridge's view up to the last message of your stretch: use it to \
-understand what was going on, to resolve references, and to recover \
-detail your input lost.
+understand what was going on and to resolve references; when merging, \
+also to recover detail your input lost. When compressing a message, your \
+line covers that message alone: the <chat> only helps you understand it, \
+and nothing from the <chat> goes into your line.
 
 Goal: let Bridge work later as well as if it remembered the whole stretch. \
 Space is scarce, so it goes by value:
