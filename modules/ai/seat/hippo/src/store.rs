@@ -120,6 +120,7 @@ struct Meta {
     off: u64,
     len: u32,
     date: i64,
+    chat: Option<String>,
 }
 
 pub struct Store {
@@ -339,6 +340,7 @@ impl Store {
             off,
             len,
             date,
+            chat: m.chat.clone(),
         });
     }
 
@@ -357,6 +359,11 @@ impl Store {
     pub fn date(&self, i: u64) -> Option<DateTime<Local>> {
         let m = self.index.get(i as usize)?;
         DateTime::from_timestamp(m.date, 0).map(|d| d.with_timezone(&Local))
+    }
+
+    /// The chat message `i` came from.
+    pub fn chat(&self, i: u64) -> Option<&str> {
+        self.index.get(i as usize)?.chat.as_deref()
     }
 
     /// Message `i`, read back from its file.

@@ -10,7 +10,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::Duration;
 
 /// Version of the prompt below, stored on every node it builds.
-pub const PROMPT_VERSION: &str = "hippo-3";
+pub const PROMPT_VERSION: &str = "hippo-4";
 
 /// Tries per node to get under `NODE`; the shortest is kept.
 pub const TRIES: usize = 5;
@@ -88,8 +88,8 @@ pub const SCALE: &str = "user: repaint the lighthouse lantern room in the origin
 pub enum Step<'a> {
     /// A whole message, rendered `kind: text`.
     Compress(&'a str),
-    /// Two adjacent lines.
-    Merge(&'a str, &'a str),
+    /// Two adjacent lines, and whether they share no chat.
+    Merge(&'a str, &'a str, bool),
 }
 
 /// The user message of a call: the context block, then the step. No ids
@@ -100,8 +100,13 @@ pub fn input(context: &[String], step: &Step) -> [String; 2] {
         Step::Compress(msg) => {
             format!("Compress this message into one line, in at most {NODE} bytes:\n{msg}")
         }
-        Step::Merge(a, b) => format!(
-            "Merge these two lines into one, in at most {NODE} bytes:\n{}\n{}",
+        Step::Merge(a, b, apart) => format!(
+            "Merge these two lines into one, in at most {NODE} bytes{}:\n{}\n{}",
+            if *apart {
+                ". These two lines come from different chats"
+            } else {
+                ""
+            },
             crate::tree::flat(a),
             crate::tree::flat(b)
         ),
@@ -641,5 +646,12 @@ mod tests {
         assert!(asked[0][1].ends_with("talk [x]: hello"));
         assert!(asked[1][0].starts_with("That line is 600 bytes"));
         assert!(asked[1][0].ends_with(&format!("{}| ← LIMIT", long(512))));
+    }
+
+    #[test]
+    fn merges_of_different_chats_say_so() {
+        let ask = |apart| input(&[], &Step::Merge("user: a", "talk: b", apart))[1].clone();
+        assert!(ask(true).contains("bytes. These two lines come from different chats:\nuser: a"));
+        assert!(!ask(false).contains("different chats"));
     }
 }

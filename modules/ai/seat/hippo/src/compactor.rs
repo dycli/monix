@@ -8,6 +8,7 @@ use crate::server::{Core, Shared};
 use crate::store::Msg;
 use crate::tree::{NODE, Node, addr, flat};
 use chrono::{DateTime, Local};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -130,8 +131,18 @@ enum Job {
     Call {
         context: Vec<String>,
         a: String,
-        b: Option<String>,
+        /// The second line of a merge, and whether the two share no chat.
+        b: Option<(String, bool)>,
     },
+}
+
+/// Whether the messages `[s, s + n)` and the next `n` share no chat. Only
+/// said when both halves come from known chats.
+fn apart(c: &Core, s: u64, n: u64) -> bool {
+    let chats =
+        |r: std::ops::Range<u64>| -> HashSet<&str> { r.filter_map(|i| c.store.chat(i)).collect() };
+    let (a, b) = (chats(s..s + n), chats(s + n..s + 2 * n));
+    !a.is_empty() && !b.is_empty() && a.is_disjoint(&b)
 }
 
 /// Prepares node `(l, i)`: free if its source fits in `NODE`.
@@ -155,10 +166,11 @@ fn prepare(c: &Core, l: u8, i: u64) -> Result<Option<Job>, String> {
         return Ok(Some(Job::Free(joined)));
     }
     let (s, n) = addr(l, i);
+    let apart = apart(c, s, n / 2);
     Ok(context(c, s + n)?.map(|context| Job::Call {
         context,
         a,
-        b: Some(b),
+        b: Some((b, apart)),
     }))
 }
 
@@ -246,10 +258,17 @@ pub fn pump(shared: &Arc<Shared>, c: &mut Core) {
     }
 }
 
-fn spawn(shared: Arc<Shared>, l: u8, i: u64, context: Vec<String>, a: String, b: Option<String>) {
+fn spawn(
+    shared: Arc<Shared>,
+    l: u8,
+    i: u64,
+    context: Vec<String>,
+    a: String,
+    b: Option<(String, bool)>,
+) {
     thread::spawn(move || {
         let step = match &b {
-            Some(b) => Step::Merge(&a, b),
+            Some((b, apart)) => Step::Merge(&a, b, *apart),
             None => Step::Compress(&a),
         };
         let backend = shared
@@ -382,5 +401,38 @@ mod tests {
             assert!(!ids.is_match(call), "ids in a call");
             assert!(call.starts_with("<chat>\n"));
         }
+    }
+
+    #[test]
+    fn merges_know_when_their_halves_share_no_chat() {
+        let dir = std::env::temp_dir().join(format!("hippo-apart-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut store = crate::store::Store::open(&dir, true).unwrap();
+        let drafts = [
+            Some("a"),
+            Some("a"),
+            Some("b"),
+            Some("b"),
+            Some("a"),
+            None,
+            None,
+            None,
+        ]
+        .into_iter()
+        .map(|chat| crate::store::Draft {
+            kind: crate::store::Kind::Talk,
+            chat: chat.map(Into::into),
+            text: "hi".into(),
+            date: chrono::Local::now(),
+            src: None,
+        })
+        .collect();
+        store.append(drafts).unwrap();
+        let tree = Tree::open(&dir).unwrap();
+        let c = Core::for_test(store, tree, View::default(), 2_000);
+        assert!(!apart(&c, 0, 1));
+        assert!(apart(&c, 0, 2));
+        assert!(!apart(&c, 0, 4), "chat a on both sides");
+        assert!(!apart(&c, 4, 2), "no known chat on one side");
     }
 }
