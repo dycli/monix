@@ -44,6 +44,8 @@ pub struct Core {
     pub started: DateTime<Local>,
     /// Rendered views being read page by page, by token.
     pages: Vec<(String, Vec<String>)>,
+    /// The view changed since `view.md` was last written.
+    pub stale: bool,
 }
 
 impl Core {
@@ -59,6 +61,7 @@ impl Core {
             live: None,
             started: Local::now(),
             pages: Vec::new(),
+            stale: true,
         }
     }
 
@@ -66,6 +69,7 @@ impl Core {
     pub fn sync(&mut self) {
         while self.view.t < self.store.len() {
             self.view.append(&self.tree, self.budget);
+            self.stale = true;
         }
     }
 }
@@ -105,17 +109,13 @@ pub fn serve(
         after: crate::live::imported(dir)?.and_then(|i| crate::store::parse_date(&i.cutoff)),
         ..Watcher::default()
     };
-    let budget = std::env::var("HIPPO_VIEW")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(VIEW);
-    let view = View::fold(&tree, store.len(), budget);
+    let view = View::fold(&tree, store.len(), VIEW);
     let shared = Arc::new(Shared {
         core: Mutex::new(Core {
             store,
             tree,
             view,
-            budget,
+            budget: VIEW,
             pump: Pump {
                 spent: Spent::load(dir)?,
                 ..Pump::default()
@@ -124,6 +124,7 @@ pub fn serve(
             live,
             started: Local::now(),
             pages: Vec::new(),
+            stale: true,
         }),
         cv: Condvar::new(),
         backend,
@@ -156,6 +157,9 @@ pub fn serve(
             }
             c.sync();
             pump(&shared, c);
+            if c.stale {
+                publish(c)?;
+            }
         }
         thread::sleep(Duration::from_secs(1));
     }
@@ -285,21 +289,7 @@ fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
         }
         c = shared.cv.wait_timeout(c, left).unwrap().0;
     }
-    let mut lines = Vec::new();
-    for &(l, i) in &c.view.parts {
-        let (s, n) = addr(l, i);
-        let text = c.tree.text(l, i)?.unwrap_or_else(|| PLACEHOLDER.to_owned());
-        lines.push(format!("{s}+{n}|{}", flat(&text)));
-    }
-    let unbuilt = c.view.unbuilt(&c.tree);
-    let mut head = String::new();
-    if unbuilt > 0 {
-        let why = match c.pump.limit {
-            Some(t) => format!(" (compactor rate-limited until {})", t.format("%H:%M")),
-            None => String::new(),
-        };
-        head = format!("{unbuilt} recent lines are not summarized yet{why}: zoom them.\n");
-    }
+    let (head, lines) = render(&c)?;
     let mut pages = vec![format!("{head}<chat>")];
     for line in lines {
         let page = pages.last_mut().unwrap();
@@ -320,6 +310,40 @@ fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
         c.pages.remove(0);
     }
     Ok(first)
+}
+
+/// The view as text: a head line when recent lines wait for the
+/// compactor, then one line per part, oldest first.
+fn render(c: &Core) -> Result<(String, Vec<String>), String> {
+    let mut lines = Vec::new();
+    for &(l, i) in &c.view.parts {
+        let (s, n) = addr(l, i);
+        let text = c.tree.text(l, i)?.unwrap_or_else(|| PLACEHOLDER.to_owned());
+        lines.push(format!("{s}+{n}|{}", flat(&text)));
+    }
+    let unbuilt = c.view.unbuilt(&c.tree);
+    let mut head = String::new();
+    if unbuilt > 0 {
+        let why = match c.pump.limit {
+            Some(t) => format!(" (compactor rate-limited until {})", t.format("%H:%M")),
+            None => String::new(),
+        };
+        head = format!("{unbuilt} recent lines are not summarized yet{why}: zoom them.\n");
+    }
+    Ok((head, lines))
+}
+
+/// Writes the whole view to `view.md` in the store, which the seat's Claude
+/// Code loads as a rules file at session start and after each compaction.
+pub fn publish(c: &mut Core) -> Result<(), String> {
+    let (head, lines) = render(c)?;
+    let text = format!("{head}<chat>\n{}\n</chat>\n", lines.join("\n"));
+    let path = c.store.dir.join("view.md");
+    let tmp = path.with_extension("tmp");
+    fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))?;
+    c.stale = false;
+    Ok(())
 }
 
 fn paged(page: &str, k: usize, n: usize, token: &str) -> String {

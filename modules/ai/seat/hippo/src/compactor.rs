@@ -191,6 +191,7 @@ fn save(
         prompt: prompt.to_owned(),
     })?;
     c.view.fit(&c.tree, c.budget);
+    c.stale = true;
     Ok(())
 }
 
@@ -401,6 +402,14 @@ mod tests {
             assert!(!ids.is_match(call), "ids in a call");
             assert!(call.starts_with("<chat>\n"));
         }
+        // The published view is the whole view in one block, unpaged.
+        assert!(c.stale);
+        crate::server::publish(&mut c).unwrap();
+        assert!(!c.stale);
+        let file = std::fs::read_to_string(dir.join("view.md")).unwrap();
+        assert!(file.starts_with("<chat>\n") && file.ends_with("\n</chat>\n"));
+        assert!(file.lines().nth(1).unwrap().starts_with("0+"));
+        assert_eq!(file.lines().count(), c.view.parts.len() + 2);
     }
 
     #[test]

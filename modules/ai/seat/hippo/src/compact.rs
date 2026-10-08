@@ -211,32 +211,17 @@ pub fn from_env() -> Result<Box<dyn Backend>, String> {
             command: var("HIPPO_CLAUDE").unwrap_or_else(|| "claude".into()),
             model: var("HIPPO_MODEL").unwrap_or_else(|| "sonnet".into()),
             effort: var("HIPPO_EFFORT").unwrap_or_else(|| "medium".into()),
-            mark: var("HIPPO_CACHE_MARK")
-                .and_then(|m| m.parse().ok())
-                .unwrap_or(CACHE_MARK),
         })),
-        "http" => {
-            let key = match var("HIPPO_KEY_FILE") {
-                Some(path) => Some(
-                    std::fs::read_to_string(&path)
-                        .map_err(|e| format!("{path}: {e}"))?
-                        .trim()
-                        .to_owned(),
-                ),
-                None => None,
-            };
-            Ok(Box::new(Http {
-                url: var("HIPPO_URL").ok_or("HIPPO_URL is not set")?,
-                model: var("HIPPO_MODEL").ok_or("HIPPO_MODEL is not set")?,
-                effort: var("HIPPO_EFFORT"),
-                key,
-                extra: match var("HIPPO_HTTP_EXTRA") {
-                    Some(raw) => serde_json::from_str(&raw)
-                        .map_err(|e| format!("HIPPO_HTTP_EXTRA is not a JSON object: {e}"))?,
-                    None => serde_json::Map::new(),
-                },
-            }))
-        }
+        "http" => Ok(Box::new(Http {
+            url: var("HIPPO_URL").ok_or("HIPPO_URL is not set")?,
+            model: var("HIPPO_MODEL").ok_or("HIPPO_MODEL is not set")?,
+            effort: var("HIPPO_EFFORT"),
+            extra: match var("HIPPO_HTTP_EXTRA") {
+                Some(raw) => serde_json::from_str(&raw)
+                    .map_err(|e| format!("HIPPO_HTTP_EXTRA is not a JSON object: {e}"))?,
+                None => serde_json::Map::new(),
+            },
+        })),
         other => Err(format!("Unknown HIPPO_BACKEND {other}.")),
     }
 }
@@ -248,8 +233,6 @@ pub struct ClaudeCli {
     pub command: String,
     pub model: String,
     pub effort: String,
-    /// Characters into the context block where its one cache mark goes.
-    pub mark: usize,
 }
 
 /// Characters into the view where the Claude backend marks its cache:
@@ -279,7 +262,6 @@ pub fn marked(blocks: &[String], mark: usize) -> Vec<Value> {
 }
 
 struct ClaudeChat {
-    mark: usize,
     child: Child,
     stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
@@ -325,7 +307,6 @@ impl Backend for ClaudeCli {
         let stdin = child.stdin.take();
         let stdout = BufReader::new(child.stdout.take().unwrap());
         Ok(Box::new(ClaudeChat {
-            mark: self.mark,
             child,
             stdin,
             stdout,
@@ -348,7 +329,7 @@ impl ClaudeChat {
 
 impl Chat for ClaudeChat {
     fn say(&mut self, blocks: &[String]) -> Result<String, Fail> {
-        let content = marked(blocks, self.mark);
+        let content = marked(blocks, CACHE_MARK);
         let msg = json!({"type": "user", "message": {"role": "user", "content": content}});
         let stdin = self.stdin.as_mut().unwrap();
         let mut line = msg.to_string();
@@ -451,14 +432,13 @@ fn limit(text: &str) -> Option<Fail> {
     Some(Fail::Limit(reset))
 }
 
-/// Any OpenAI-compatible chat completions endpoint: the local llama.cpp on
-/// Water, or another vendor.
+/// Any OpenAI-compatible chat completions endpoint over plain HTTP: the
+/// local llama.cpp on Water.
 #[derive(Clone)]
 pub struct Http {
     pub url: String,
     pub model: String,
     pub effort: Option<String>,
-    pub key: Option<String>,
     /// Fields merged into every request, for what a server takes beyond the
     /// OpenAI API (llama.cpp's chat_template_kwargs, say).
     pub extra: serde_json::Map<String, Value>,
@@ -497,14 +477,10 @@ impl Chat for HttpChat {
             body[k] = v.clone();
         }
         let url = format!("{}/chat/completions", b.url.trim_end_matches('/'));
-        let mut req = ureq::post(&url)
+        let mut resp = ureq::post(&url)
             .config()
             .http_status_as_error(false)
-            .build();
-        if let Some(key) = &b.key {
-            req = req.header("Authorization", &format!("Bearer {key}"));
-        }
-        let mut resp = req
+            .build()
             .send_json(&body)
             .map_err(|e| Fail::Other(format!("{url}: {e}")))?;
         let status = resp.status().as_u16();

@@ -18,9 +18,18 @@ in
   # Straight into the seat's bundle: a homeModules.hippo would be mirrored
   # onto the host's primary user (options/flake-outputs.mod.nix).
   flake.homeModules.cockpit =
-    { lib, pkgs, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     {
       home.packages = lib.lists.singleton (package lib pkgs);
+      # The service keeps the whole view in its store; as a user rule, Claude
+      # Code loads it at session start and again after each compaction.
+      home.file.".claude/rules/hippo-view.md".source =
+        config.lib.file.mkOutOfStoreSymlink "${lib.ship.topology.seat.hippo}/view.md";
       # Seat sessions compact at 200k tokens; the view carries the history.
       home.sessionVariables.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "200000";
     };
@@ -79,17 +88,14 @@ in
         '';
 
       # What Claude Code keeps of a conversation it compacts: hippo holds the
-      # history, so the summary is only a handoff that sends the session back
-      # to the view.
+      # history and its view reloads with the rules, so the summary is only a
+      # handoff.
       handoff = forSeat "hippo-handoff" ''
         This conversation is recorded word for word in hippo, the seat's
-        memory. Do not summarize its history. Write only the task in
-        progress and its exact state, the next step, and anything decided
-        in the last few turns that is not yet acted on. End with this line:
-        Context was compacted: run `hippo view` now and read every page whole.'';
-
-      # Printed into a seat session that was compacted or cleared.
-      reload = forSeat "hippo-reload" "Your context was reset. Run `hippo view` now and read every page before you go on: run each command it prints exactly, and never cut its output with head, tail or grep.";
+        memory, and its view reloads into context by itself. Do not
+        summarize its history. Write only the task in progress and its
+        exact state, the next step, and anything decided in the last few
+        turns that is not yet acted on.'';
 
       # The compactor's own claude calls get the seat's managed settings
       # without hooks or managed MCP servers: those would start a browser and
@@ -106,13 +112,6 @@ in
             command = toString handoff;
           };
         };
-        SessionStart = singleton {
-          matcher = "compact|clear";
-          hooks = singleton {
-            type = "command";
-            command = toString reload;
-          };
-        };
       };
 
       # Seat sessions compact at 200k tokens; the view carries the history.
@@ -121,8 +120,7 @@ in
 
       systemd.tmpfiles.rules = singleton "d ${seat.hippo} 0750 ${seat.user} ${seat.user} -";
 
-      # A store is bootstrapped by `hippo import` (OptMem's notes and every
-      # past chat) before anything live enters it; the service starts once the
+      # A store is bootstrapped by `hippo import` (every past chat) before anything live enters it; the service starts once the
       # import has written its record.
       systemd.paths.hippo = {
         wantedBy = singleton "paths.target";

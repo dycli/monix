@@ -69,10 +69,11 @@
     hippo records every chat of this seat automatically, word for word; you
     never write to it except to pin a fact with `hippo note`.
 
-    Run `hippo view` right after `memo wake`, and again whenever your context
-    was compacted or cleared. Read every page it prints, whole: run the
-    next-page command exactly as printed, and never cut the output with
-    head, tail or grep.
+    In Claude Code the view loads into your context by itself, as the rules
+    file `hippo-view.md`, at session start and after each compaction; it is
+    a snapshot from that moment. Run `hippo view` to refresh it mid-session,
+    and in Codex or OpenCode, where it does not load, right after `memo
+    wake`; read every page it prints, whole.
 
     The view is the whole history as one-line summaries, oldest first. Each
     line `id+n|text` covers n messages from id, tagged with kinds (user = the
@@ -89,7 +90,8 @@
     learned that will matter later.
 
     If the captain's message contains `#amnesia`, never run `hippo` in this
-    chat. `#offrecord` needs nothing from you.
+    chat and ignore the view in your context. `#offrecord` needs nothing
+    from you.
 
     ## Engineering principles
 
