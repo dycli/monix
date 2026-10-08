@@ -70,8 +70,9 @@
     never write to it except to pin a fact with `hippo note`.
 
     Run `hippo view` right after `memo wake`, and again whenever your context
-    was compacted or cleared. Read every page it prints; it says how to get
-    the next one.
+    was compacted or cleared. Read every page it prints, whole: run the
+    next-page command exactly as printed, and never cut the output with
+    head, tail or grep.
 
     The view is the whole history as one-line summaries, oldest first. Each
     line `id+n|text` covers n messages from id, tagged with kinds (user = the
@@ -143,7 +144,7 @@
     drone expands scope, picks its own model, or sets policy. This is an authority
     model, not a security boundary: containment is structural at the host
     (unprivileged, network-contained guests; a scoped-sudo operator hop for
-    dispatch). Full ship lore: the monix README.
+    dispatch). System overview: the monix README.
 
     ## Council pattern
 

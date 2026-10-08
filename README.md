@@ -1,87 +1,71 @@
-# THE KESTREL
+# Monix
 
-*Unmanned, semi-autonomous research and development ship.*
+NixOS configuration for four machines, in one flake. Hosts deploy with
+`switcharoo`, which pulls `origin/main` and switches, so only published
+commits ever reach a machine.
 
----
+| Host  | Machine                  | Role |
+|-------|--------------------------|------|
+| water | Threadripper workstation | Home server, AI system, desktop |
+| fire  | Gaming desktop           | Workstation, local inference |
+| earth | Framework 13             | Laptop |
+| air   | Cloud VPS                | Public sites, tailnet DNS filtering |
 
-Welcome aboard the Kestrel — an unmanned, semi-autonomous research and development
-ship. No human walks her decks: the crew that lives aboard is made of minds, and the
-Captain flies the ship remotely, from his outposts. He sets the heading and turns the
-key; nearly everything else, the ship handles on her own: missions flown and reviewed,
-the household kept, the alarms watched. A quiet
-hull with a lot going on below decks.
+Private services are reachable only over Tailscale.
 
-## The crew
+The repository has four systems: Platform, Desktop, AI and Homelab.
 
-**The Captain** — the only human in the crew. He is never aboard; he commands from his
-outposts, and everything that matters is his to decide: where the ship flies, what is
-good enough, what is permitted to leave the hull, and whether a new version of the
-ship is ever raised at all. He hails the bridge and the Pilot answers already awake —
-memory restored, the fleet counted, every system green or not. Then the ship holds,
-waiting for a heading. When the Captain signs off, the Pilot settles its memory and
-sleeps.
+## Platform
 
-**The Pilot** — the ship's resident mind, keeping the bridge watch without sleeping.
-Reach the Pilot from any outpost in the Constellation — and from nowhere else.
-The Pilot plans beside the Captain, runs every system,
-hands the drones their orders, reads everything they carry home and believes none of
-it until it has been checked. The Pilot does not change with a watch: one mind sleeps
-and wakes. What matters is written the moment it happens into a log that only ever
-grows, and on waking the Pilot remembers its whole life — yesterday vivid, the old
-years in outline, any single day recallable word for word. The ship never forgets
-what the Pilot knew.
+The flake follows the dendritic pattern. Every `*.mod.nix` file is a
+flake-parts module and is imported automatically. Modules add themselves to
+named bundles (`default`, `desktop`, `hyprland`, `dev`, `lab`, `web`), and a
+host file is just its bundles plus hardware. There are no per-service
+`enable` flags; the bundles a host imports decide what it runs.
+Conventions are in `AGENTS.md`.
 
-**Remy** — steward and quartermaster. He keeps the household running: the family's
-tasks and lists and reminders, the morning plan posted at 07:00 and the evening report
-at 19:00, and the calendar tended both ways. Remy's mind was grown aboard, in the
-inference bay, so the family's words are understood without once leaving the hull.
+`lib.ship` is the shared library, available in every module: the host
+constructor, systemd hardening presets, network fences and the AI system's
+topology.
 
-**The alertbot** — the klaxon, and it has no mind at all: it watches everything,
-thinks nothing, and shouts the instant something breaks. Every six hours it walks the
-ship end to end, and every movement of the fleet is logged to Fleet Ops as it happens.
+Secrets use agenix with host SSH keys. Water unlocks its disk with the TPM
+so it can boot unattended. Air runs the tailnet's ad-blocking resolver.
 
-**The bosun** — responsible for the maintenance of the ship: not one mind but an
-omnipresent, decentralized collection of small systems, each tending its own corner
-while the ship sleeps.
+## Desktop
 
-## The drones
+Hyprland with Kestrel, a custom Quickshell (QML) shell that replaces a desktop
+environment: bar, menus, launcher, notifications, quick settings and a
+settings panel. Its source is in `modules/desktop/shell/`.
 
-Empty shells wait in the **hangar**, kept warm, each named for one of the
-birds-of-paradise. When a mission comes down, the hangar decants a mind into a shell —
-chosen fresh for that one flight, hired off a distant star or grown in the ship's own
-bay — and hands it a single sealed credential and a capsule holding its orders and
-every scrap it will need, because a drone never sees the ship's archives. Then it
-departs on its mission.
+## AI
 
-Due to the dangerous nature of their work, drones keep only a limited connection to
-the Kestrel, so that nothing they encounter can corrupt the main systems — and are
-recycled and rebuilt after every run. Each flies with sealed provisions cloned from
-the ship's stores, no charts, no engine of its own, and a single guarded channel to
-its mind's home star. From the bridge the Pilot can watch a drone's log scroll, send
-a word to steer by mid-flight, and answer when it calls for help. When the work is
-done, only the report, the log, and the patch come home. The shells keep no wounds
-and no memories. The fleet has flown more than a hundred and fifty missions.
+Coding agents run in `bridge`, an unprivileged account with no admin rights
+and no host secrets. A network fence keeps it off the LAN and the tailnet.
+It can push to this repo; only the captain switches a host onto it.
 
-## The decks
+Agent memory has three parts. **OptMem** (`memo`) is an append-only log of
+notes, summarised into a tree that each session loads. The **transcript
+archive** keeps every agent conversation on the NAS. **hippo** records
+conversations live and summarises them for later sessions.
 
-- **The bridge** — the standing watch, and the seat the ship is flown from. Plans are
-  drawn here, drones dispatched, reports read, and the log written as it happens.
-- **The engine bay** (`~/ark`) — the ship's own source.
-- **The cargo hold** (`~/hold`) — where projects ride while they prove they deserve a
-  berth in the engine bay. Many don't.
-- **The hangar** — warm shells and the machinery that fills them, one mission at
-  a time.
-- **The rec room** — a small private world for friends and family. Boarding is by the
-  Captain's invitation and by no other means.
-- **The comms room** — the household's own array, sovereign, unfederated,
-  invitation-only. Remy and the bots have their quarters here.
-- **The inference bay** — where the ship grows minds of her own: local, tetherless,
-  free. They keep Remy thinking and stand ready to fill an empty drone.
-- **The vault** — the ship's secrets, sealed so that each hull can open only its own
-  share, with its own key, and never another's.
+The agents hand work to a **fleet** of disposable microVMs. The VMs have no
+tailnet, repo or secrets, reach the internet only through an allowlist proxy,
+and reset after every task. Dispatch goes through a separate unprivileged
+operator account. Usage is in `FLEET.md`, which is generated from
+`lib/fleet-guide.nix`.
 
-## The Constellation
+Water and fire serve local models through llama.cpp and llama-swap. Paseo
+gives remote clients access to the agents. **Remy** is the household Matrix
+bot, running on the local model; it maps chat only to fixed actions, so no
+message can reach a shell or the fleet.
 
-The Kestrel does not fly alone. A private relay net — the **Constellation** — binds
-the ship to the Captain's outposts. From any of them he takes the helm; the ship is
-wherever the Captain is sitting.
+## Homelab
+
+Water runs the house's services: an encrypted NAS with verified nightly
+backups (see `modules/homelab/nas/README.md`), Jellyfin and the *arr stack,
+Immich, Frigate, Home Assistant, a private Matrix server and Minecraft.
+
+Web UIs are served at `<service>.su.is`. The names resolve publicly but route
+only inside the tailnet. Services run with systemd hardening and
+network fences. Failures, disk warnings and UPS events are posted to a Matrix
+alert room.
