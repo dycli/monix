@@ -40,6 +40,9 @@ struct Remind {
     /// (check the mail, look at the calendar) and sends its answer.
     #[serde(default)]
     ask: bool,
+    /// For a routine: also hand its answer to the rest of the household.
+    #[serde(default)]
+    share: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -132,7 +135,9 @@ impl Tools {
     fn remind(&self, Parameters(r): Parameters<Remind>) -> Result<String, String> {
         let at = NaiveDateTime::parse_from_str(&r.at, AT)
             .map_err(|_| format!("`at` must be YYYY-MM-DD HH:MM, not {}", r.at))?;
-        let id = book::change(&self.dir, |b| b.remind(at, r.text, r.repeat, r.ask))?;
+        let id = book::change(&self.dir, |b| {
+            b.remind(at, r.text, r.repeat, r.ask, r.ask && r.share)
+        })?;
         Ok(format!(
             "Reminder {id} set for {}.",
             at.format("%a %Y-%m-%d %H:%M")
@@ -151,7 +156,9 @@ impl Tools {
                     r.at.format("%a %Y-%m-%d %H:%M"),
                     r.text
                 );
-                if r.ask {
+                if r.share {
+                    out.push_str(" (shared routine)");
+                } else if r.ask {
                     out.push_str(" (routine)");
                 }
                 if let Some(rep) = r.repeat {

@@ -36,6 +36,9 @@ pub struct Reminder {
     /// its answer, instead of sending `text` itself.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ask: bool,
+    /// A routine whose answer also goes to the rest of the household.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub share: bool,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Copy)]
@@ -88,6 +91,7 @@ impl Book {
         text: String,
         repeat: Option<Repeat>,
         ask: bool,
+        share: bool,
     ) -> u64 {
         self.next_id += 1;
         let id = self.next_id;
@@ -97,6 +101,7 @@ impl Book {
             text,
             repeat,
             ask,
+            share,
         });
         self.reminders.sort_by_key(|r| r.at);
         id
@@ -137,14 +142,15 @@ mod tests {
     #[test]
     fn due_drops_one_offs_and_moves_repeats_past_now() {
         let mut b = Book::default();
-        b.remind(t("2026-10-08 09:00"), "once".into(), None, false);
+        b.remind(t("2026-10-08 09:00"), "once".into(), None, false, false);
         b.remind(
             t("2026-10-01 18:00"),
             "weekly".into(),
             Some(Repeat::Weekly),
             true,
+            false,
         );
-        b.remind(t("2026-10-09 09:00"), "later".into(), None, false);
+        b.remind(t("2026-10-09 09:00"), "later".into(), None, false, false);
         let due = b.due(t("2026-10-08 12:00"));
         assert_eq!(due.len(), 2);
         assert_eq!(b.reminders.len(), 2);

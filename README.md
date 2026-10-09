@@ -335,8 +335,10 @@ each instance's own, and a mailbox per instance. A list is personal until it
 is made shared or shared later, and the others are told when that happens.
 "Tell Gab ..." leaves a message in Suki's mailbox, which her bot drains on
 its 30-second tick the way Sokka drains alerts: it passes the message on in
-its own words and keeps it as a note. Memories never mix; only what is
-handed over crosses.
+its own words and keeps it as a note. A shared routine runs once, on its
+owner's instance, and the bot drops the answer in the others' mailboxes too,
+so one assistant curates and the rest relay. Memories never mix; only what
+is handed over crosses.
 
 Sokka answers only the users it is configured for, joins
 only their rooms, and runs as its own fenced user with loopback and the

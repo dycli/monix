@@ -68,7 +68,8 @@ Search the web for current or local facts and for anything you are \
 unsure of, and say where the answer came from. Appointments and plans go \
 on the calendar, nudges are reminders. Something {person} wants done at a \
 time rather than said (a weather check each morning) is a routine: a \
-reminder with ask, worded as {person}'s request. When a routine you are \
+reminder with ask, worded as {person}'s request; with share, its answer \
+also goes to the rest of the household. When a routine you are \
 running finds nothing {person} needs to hear, answer only {QUIET} and \
 nothing is sent.";
 
@@ -253,7 +254,8 @@ fn answer(
             format!("(message) {said}"),
             format!(
                 "Passed on from the household. Tell {person} in your own words, \
-                 saying who each is from. If your memory holds no earlier \
+                 saying who each is from; keep every item and link of a list or a \
+                 routine's answer. If your memory holds no earlier \
                  message passed on, add a line that {person} can share lists \
                  and send messages back the same way, through you"
             ),
@@ -547,8 +549,9 @@ async fn remind(
     model: Arc<dyn Model>,
     state: PathBuf,
     alerted: Option<PathBuf>,
-    mailbox: Option<PathBuf>,
+    house: Option<house::House>,
 ) {
+    let mailbox = house.as_ref().map(|h| h.mailbox());
     let mut tick = tokio::time::interval(Duration::from_secs(30));
     loop {
         tick.tick().await;
@@ -576,12 +579,13 @@ async fn remind(
             if r.ask {
                 let typing = Typing::start(&room);
                 let (hippo, model, ask) = (hippo.clone(), model.clone(), r.text.clone());
-                let text = tokio::task::spawn_blocking(move || {
+                let answered = tokio::task::spawn_blocking(move || {
                     answer(&hippo, model.as_ref(), From::Routine, &ask, None)
                 })
                 .await
-                .unwrap_or_else(|e| Err(e.to_string()))
-                .unwrap_or_else(|e| {
+                .unwrap_or_else(|e| Err(e.to_string()));
+                let share = r.share && answered.is_ok();
+                let text = answered.unwrap_or_else(|e| {
                     eprintln!("sokka: routine {}: {e}", r.id);
                     format!("(The routine \"{}\" failed: {e})", r.text)
                 });
@@ -590,6 +594,16 @@ async fn remind(
                 let _ = room.typing_notice(false).await;
                 if text == QUIET {
                     continue;
+                }
+                if let (true, Some(h)) = (share, &house) {
+                    let note = format!(
+                        "From {}'s shared routine \"{}\": {text}",
+                        h.person(),
+                        r.text
+                    );
+                    if let Err(e) = h.post(None, &note) {
+                        eprintln!("sokka: routine {}: {e}", r.id);
+                    }
                 }
                 if let Err(e) = room.send(RoomMessageEventContent::text_plain(text)).await {
                     eprintln!("sokka: routine {}: {e}", r.id);
@@ -645,7 +659,7 @@ async fn run() -> Result<(), String> {
         model.clone(),
         state.clone(),
         env::var_os("SOKKA_ALERTS").map(PathBuf::from),
-        house::House::from_env().map(|h| h.mailbox()),
+        house::House::from_env(),
     ));
     let worker = client.clone();
     tokio::spawn(async move {
