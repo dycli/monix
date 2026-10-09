@@ -25,10 +25,15 @@ struct Tools {
 struct Remind {
     /// Local time to send it, as YYYY-MM-DD HH:MM.
     at: String,
-    /// What to tell Dylan, worded as the reminder itself.
+    /// What to tell Dylan, worded as the reminder itself; for a routine,
+    /// the request to carry out, worded as Dylan would ask it.
     text: String,
     /// Repeat after each send; leave out for once.
     repeat: Option<Repeat>,
+    /// A routine: at that time Sokka carries out the text as a request
+    /// (check the mail, look at the calendar) and sends its answer.
+    #[serde(default)]
+    ask: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -53,11 +58,13 @@ struct List {
 
 #[tool_router]
 impl Tools {
-    #[tool(description = "Set a reminder: Sokka sends the text to Dylan at that time.")]
+    #[tool(
+        description = "Set a reminder: Sokka sends the text to Dylan at that time, or with `ask`, carries it out as a request and sends the answer."
+    )]
     fn remind(&self, Parameters(r): Parameters<Remind>) -> Result<String, String> {
         let at = NaiveDateTime::parse_from_str(&r.at, AT)
             .map_err(|_| format!("`at` must be YYYY-MM-DD HH:MM, not {}", r.at))?;
-        let id = book::change(&self.dir, |b| b.remind(at, r.text, r.repeat))?;
+        let id = book::change(&self.dir, |b| b.remind(at, r.text, r.repeat, r.ask))?;
         Ok(format!(
             "Reminder {id} set for {}.",
             at.format("%a %Y-%m-%d %H:%M")
@@ -76,6 +83,9 @@ impl Tools {
                     r.at.format("%a %Y-%m-%d %H:%M"),
                     r.text
                 );
+                if r.ask {
+                    out.push_str(" (routine)");
+                }
                 if let Some(rep) = r.repeat {
                     let _ = write!(out, " (repeats {})", serde_json::to_value(rep).unwrap());
                 }

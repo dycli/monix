@@ -301,7 +301,10 @@ marked read, and it cannot send. Since any sender can put text in front of
 the model, Parallel's page fetch is denied, so nothing it reads can be
 carried out to a URL; search stays.
 The bot checks the book every 30 seconds and sends due reminders itself,
-logging them to hippo like any other answer.
+logging them to hippo like any other answer. A reminder can instead be a
+routine ("a mail digest at 8, 2 and 8"): when it comes due, the bot runs its
+text as a request, with the same tools as a message from Dylan, and sends
+the answer; hippo records the trigger as a routine, not as Dylan's words.
 
 Photos, PDFs and text files sent to Sokka are decrypted, typed by their
 first bytes rather than the sender's word, and handed to the model with

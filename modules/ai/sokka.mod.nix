@@ -12,8 +12,8 @@
 # mail (sokka-mail.py over IMAP, read-only), each the only process that
 # sees its login. Mail lets anyone put text in front of the model, so page
 # fetch, which could carry what it read to any URL, is denied. The bot
-# sends due reminders itself, and reads photos and files sent to it
-# without keeping them.
+# sends due reminders itself, runs due routines as requests and sends the
+# answers, and reads photos and files sent to it without keeping them.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.sokka;

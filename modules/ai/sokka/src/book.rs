@@ -29,6 +29,10 @@ pub struct Reminder {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat: Option<Repeat>,
+    /// A routine: at `at`, Sokka carries out `text` as a request and sends
+    /// its answer, instead of sending `text` itself.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ask: bool,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Clone, Copy)]
@@ -69,7 +73,13 @@ pub fn change<T>(dir: &Path, f: impl FnOnce(&mut Book) -> T) -> Result<T, String
 }
 
 impl Book {
-    pub fn remind(&mut self, at: NaiveDateTime, text: String, repeat: Option<Repeat>) -> u64 {
+    pub fn remind(
+        &mut self,
+        at: NaiveDateTime,
+        text: String,
+        repeat: Option<Repeat>,
+        ask: bool,
+    ) -> u64 {
         self.next_id += 1;
         let id = self.next_id;
         self.reminders.push(Reminder {
@@ -77,6 +87,7 @@ impl Book {
             at,
             text,
             repeat,
+            ask,
         });
         self.reminders.sort_by_key(|r| r.at);
         id
@@ -117,13 +128,19 @@ mod tests {
     #[test]
     fn due_drops_one_offs_and_moves_repeats_past_now() {
         let mut b = Book::default();
-        b.remind(t("2026-10-08 09:00"), "once".into(), None);
-        b.remind(t("2026-10-01 18:00"), "weekly".into(), Some(Repeat::Weekly));
-        b.remind(t("2026-10-09 09:00"), "later".into(), None);
+        b.remind(t("2026-10-08 09:00"), "once".into(), None, false);
+        b.remind(
+            t("2026-10-01 18:00"),
+            "weekly".into(),
+            Some(Repeat::Weekly),
+            true,
+        );
+        b.remind(t("2026-10-09 09:00"), "later".into(), None, false);
         let due = b.due(t("2026-10-08 12:00"));
         assert_eq!(due.len(), 2);
         assert_eq!(b.reminders.len(), 2);
         assert_eq!(b.reminders[0].at, t("2026-10-08 18:00"));
+        assert!(b.reminders[0].ask && due[0].ask && !due[1].ask);
         assert!(b.due(t("2026-10-08 12:01")).is_empty());
     }
 
