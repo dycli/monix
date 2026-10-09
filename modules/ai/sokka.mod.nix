@@ -13,7 +13,9 @@
 # sees its login. Mail lets anyone put text in front of the model, so page
 # fetch, which could carry what it read to any URL, is denied. The bot
 # sends due reminders itself, runs due routines as requests and sends the
-# answers, and reads photos and files sent to it without keeping them.
+# answers, posts the host's alerts word for word from their spool
+# (alerts.mod.nix), and reads photos and files sent to it without keeping
+# them.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.sokka;
@@ -244,6 +246,10 @@
       };
 
       config = {
+        # Sensors and the receiver write alerts in as root or sokka; nobody
+        # else may, since what Sokka posts its memory keeps.
+        alerts.reader = "sokka";
+
         users.users.sokka = {
           isSystemUser = true;
           group = "sokka";
@@ -317,6 +323,7 @@
             SOKKA_MODEL = cfg.model;
             SOKKA_MCP = toString mcp;
             SOKKA_DENY = "mcp__parallel__web_fetch";
+            SOKKA_ALERTS = config.alerts.spool;
           };
           serviceConfig =
             sandbox
@@ -324,6 +331,7 @@
             // claudeUnit
             // {
               ExecStart = getExe sokka;
+              ReadWritePaths = singleton config.alerts.spool;
               EnvironmentFile = cfg.credentialsEnvFile;
               LoadCredential = [
                 "claude-token:${cfg.claudeTokenFile}"

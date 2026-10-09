@@ -2,15 +2,22 @@
 # Public surface is nginx's 80/443 alone; everything else rides the tailnet.
 #
 # Vultr cloud instance, installed via nixos-anywhere from the live ISO.
-# Tailscale enrollment and alert credentials are provisioned out of band,
-# not by the flake.
+# Tailscale enrollment is provisioned out of band, not by the flake.
 { self, lib, ... }:
 {
   imports = lib.lists.singleton (
     lib.ship.host "air" (
       { config, ... }:
       {
-        imports = lib.lists.singleton self.nixosModules.web;
+        imports = [
+          self.nixosModules.web
+          self.nixosModules.alerts
+        ];
+
+        # Sokka on Water posts Air's alerts. A virtual machine has no disks
+        # for smartd to watch.
+        alerts.relay.to = lib.ship.topology.hostTailnetAddr;
+        alerts.smart.enable = false;
 
         primaryUser = "aang";
 

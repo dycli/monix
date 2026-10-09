@@ -24,7 +24,7 @@ use matrix_sdk::{Client, Room, RoomState};
 use model::{Attachment, Model};
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
@@ -91,6 +91,8 @@ const IMAGE_MAX: usize = 3_750_000;
 const PDF_MAX: usize = 24_000_000;
 /// The most of a text file inlined into the prompt.
 const TEXT_MAX: usize = 100_000;
+/// Longest alert sent; the rest is cut.
+const ALERT_MAX: usize = 4_000;
 
 /// What Dylan sent: words, and maybe a file.
 struct Message {
@@ -394,10 +396,57 @@ async fn reply(
     }
 }
 
-/// Every 30 s, sends the reminders that are due to the room Dylan last
-/// wrote from; with no such room yet, they wait. A routine is answered
-/// first, like a message from Dylan, and the answer sent.
-async fn remind(client: Client, hippo: Arc<Hippo>, model: Arc<dyn Model>, state: PathBuf) {
+/// Sends the alerts the host's sensors left in `dir`, oldest first and
+/// word for word, deleting each only once it is sent. Names starting with
+/// a dot are writes still in progress.
+async fn alerts(room: &Room, hippo: &Arc<Hippo>, dir: &Path) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut names: Vec<_> = entries
+        .filter_map(|e| e.ok().map(|e| e.file_name()))
+        .filter(|n| !n.to_string_lossy().starts_with('.'))
+        .collect();
+    names.sort();
+    for name in names {
+        let path = dir.join(name);
+        let text = match fs::read(&path) {
+            Ok(b) => String::from_utf8_lossy(&b[..b.len().min(ALERT_MAX)])
+                .trim()
+                .to_owned(),
+            Err(e) => {
+                eprintln!("sokka: alert {}: {e}", path.display());
+                continue;
+            }
+        };
+        if !text.is_empty() {
+            if let Err(e) = room.send(RoomMessageEventContent::text_plain(&text)).await {
+                eprintln!("sokka: alert: {e}");
+                return;
+            }
+            let hippo = hippo.clone();
+            let logged = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await;
+            if let Ok(Err(e)) = logged {
+                eprintln!("sokka: {e}");
+            }
+        }
+        if let Err(e) = fs::remove_file(&path) {
+            eprintln!("sokka: alert {}: {e}", path.display());
+        }
+    }
+}
+
+/// Every 30 s, sends the reminders that are due and the host's alerts to
+/// the room Dylan last wrote from; with no such room yet, they wait. A
+/// routine is answered first, like a message from Dylan, and the answer
+/// sent.
+async fn remind(
+    client: Client,
+    hippo: Arc<Hippo>,
+    model: Arc<dyn Model>,
+    state: PathBuf,
+    inbox: Option<PathBuf>,
+) {
     let mut tick = tokio::time::interval(Duration::from_secs(30));
     loop {
         tick.tick().await;
@@ -408,6 +457,9 @@ async fn remind(client: Client, hippo: Arc<Hippo>, model: Arc<dyn Model>, state:
         else {
             continue;
         };
+        if let Some(dir) = &inbox {
+            alerts(&room, &hippo, dir).await;
+        }
         let due = match book::change(&state, |b| b.due(Local::now().naive_local())) {
             Ok(due) => due,
             Err(e) => {
@@ -483,6 +535,7 @@ async fn run() -> Result<(), String> {
         hippo.clone(),
         model.clone(),
         state.clone(),
+        env::var_os("SOKKA_ALERTS").map(PathBuf::from),
     ));
     let worker = client.clone();
     tokio::spawn(async move {

@@ -8,7 +8,6 @@ in
 {
   users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.katara-password.path;
 
-  alerts.credentialsEnvFile = config.secrets.matrix-alertbot-env.path;
 
   fleetLogStream.credentialsEnvFile = config.secrets.matrix-alertbot-env.path;
 

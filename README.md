@@ -358,12 +358,14 @@ probe file and the full database dump from the repository, compares bytes,
 and parses the dump. On Sundays it prunes old snapshots and reads back 5% of
 the stored data. Details are in `modules/homelab/nas/README.md`.
 
-### ship-alert
+### Alerts
 
-Every alarm reaches a Matrix alert room through `ship-alert`, a small Rust
-tool in `modules/homelab/alerts`. Four sensors feed it: a global `OnFailure`
-drop-in on every systemd unit, a six-hourly sweep for conditions `OnFailure`
-cannot see, smartd, and the UPS monitor's spool. It throttles repeats,
-caches its login token, and can ask the local model to add a one-line
-explanation. It posts only to the loopback homeserver, and the sensors are
-fenced to loopback.
+Every alarm becomes a message in Sokka's chat. Four sensors feed it: a
+global `OnFailure` drop-in on every systemd unit, a six-hourly sweep for
+conditions `OnFailure` cannot see, smartd, and the UPS monitor's spool.
+Each writes through `ship-alert`, a short shell script that drops repeats
+and renames one file per alert into a spool only root and Sokka can write.
+Sokka posts each file word for word on its 30-second tick, with no model
+call, and deletes it once sent, so alerts wait out a homeserver outage.
+Air has no Sokka: a relay hands each alert over the tailnet to a socket on
+Water that admits only Air's address, and deletes it once Water answers.

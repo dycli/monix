@@ -1,8 +1,9 @@
-# Every alarm reaches the Matrix alert room through alerts/ship-alert.
-# Four sensors feed it: a global OnFailure drop-in, a 6-hourly sweep for
-# conditions OnFailure cannot see, smartd's -M exec hook, and upsmon's
-# NOTIFYCMD spool. Delivery is the loopback homeserver, so nothing sends
-# while it is down.
+# Every alarm becomes a message in Sokka's chat. Four sensors feed it: a
+# global OnFailure drop-in, a 6-hourly sweep for conditions OnFailure
+# cannot see, smartd's -M exec hook, and upsmon's NOTIFYCMD spool. Each
+# writes through ship-alert into the spool; on Water, Sokka sends what
+# lands there and deletes it, and on other hosts a relay hands each alert
+# to Water's receiver over the tailnet, deleting it once Water has it.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.alerts;
@@ -15,45 +16,64 @@
     }:
     let
       inherit (lib.lists) singleton;
-      inherit (lib.meta) getExe getExe';
+      inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib) types;
-      inherit (lib.ship) fences;
 
       cfg = config.alerts;
       hostname = config.networking.hostName;
+      inherit (cfg) spool;
+      port = 7749;
+      # Longest alert kept; the rest is cut.
+      max = 4000;
 
-      # Delivery and enrichment are both loopback, so egress is too.
+      # Sensors write files and nothing else; /var/lib/alerts holds the
+      # throttle marks.
       sensorHardening = lib.ship.hardened.rootSensor // {
-        IPAddressAllow = fences.loopback;
         IPAddressDeny = "any";
+        ReadWritePaths = [
+          spool
+          "/var/lib/alerts"
+        ];
       };
 
-      shipAlert = lib.ship.rustTool pkgs {
-        src = ./alerts/ship-alert;
-        env = {
-          SHIP_ALERT_HOMESERVER = cfg.homeserverUrl;
-          SHIP_ALERT_STATE_DIR = "/var/lib/alerts";
-          SHIP_ALERT_SUMMARY_URL = cfg.summary.url;
-          SHIP_ALERT_SUMMARY_MODEL = cfg.summary.model;
-          SHIP_ALERT_CURL = getExe' pkgs.curl "curl";
-        };
-      };
-
-      # smartd and the UPS relay do not inherit the Matrix credentials.
-      withCredentials = ''
-        set -a
-        # shellcheck disable=SC1091
-        . ${cfg.credentialsEnvFile}
-        set +a
+      # Files start with a dot and are renamed into place, so the reader
+      # never sees half an alert. The group (setgid spool) may read them.
+      enqueue = ''
+        umask 027
+        name=$(date +%s%N)-$$
+        printf '%s\n' "$body" > ${spool}/.$name
+        mv ${spool}/.$name ${spool}/$name
       '';
+
+      # usage: ship-alert [--throttle-minutes N] < body
+      # Throttled bodies are dropped while an identical one was queued
+      # within N minutes.
+      shipAlert = pkgs.writeShellApplication {
+        name = "ship-alert";
+        runtimeInputs = [
+          pkgs.coreutils
+          pkgs.findutils
+        ];
+        text = ''
+          minutes=0
+          if [ "''${1:-}" = --throttle-minutes ]; then minutes=$2; fi
+          body=$(head -c ${toString max})
+          [ -n "$body" ] || exit 0
+          if [ "$minutes" -gt 0 ]; then
+            mark=/var/lib/alerts/throttle-$(printf %s "$body" | sha256sum | cut -c1-16)
+            if [ -n "$(find "$mark" -mmin -"$minutes" 2>/dev/null)" ]; then exit 0; fi
+            touch "$mark"
+          fi
+          ${enqueue}
+        '';
+      };
 
       smartdHook = pkgs.writeShellApplication {
         name = "ship-alert-smart";
         runtimeInputs = singleton shipAlert;
         text = ''
-          ${withCredentials}
           printf '💽 %s: SMART %s on %s\n%s' \
             ${hostname} "''${SMARTD_FAILTYPE:-event}" "''${SMARTD_DEVICE:-?}" \
             "''${SMARTD_MESSAGE:-no detail}" \
@@ -90,19 +110,32 @@
     in
     {
       options.alerts = {
-        credentialsEnvFile = mkOption {
+        spool = mkOption {
           type = types.str;
+          default = "/var/spool/alerts";
+          readOnly = true;
+          description = "Directory the sensors write alerts into, one file each.";
+        };
+
+        reader = mkOption {
+          type = types.str;
+          default = "root";
           description = ''
-            agenix env file with MATRIX_USER=@bot:server,
-            MATRIX_PASSWORD=..., and ALERT_ROOM_ID=!...:server — the alert
-            bot's account (its only credential) and the room it posts to.
+            User whose process sends the alerts in the spool and deletes
+            them; its group owns the spool.
           '';
         };
 
-        homeserverUrl = mkOption {
-          type = types.str;
-          default = "http://127.0.0.1:${toString config.matrix.port}";
-          description = "Homeserver base URL (default: the loopback tuwunel).";
+        relay.to = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Tailnet address of the host that posts this host's alerts.";
+        };
+
+        relay.from = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Tailnet addresses whose alerts this host accepts and posts.";
         };
 
         diskPercentThreshold = mkOption {
@@ -120,21 +153,11 @@
         smart.enable = mkOption {
           type = types.bool;
           default = true;
-          description = "smartd disk-health events into the alert room, with scheduled self-tests.";
+          description = "smartd disk-health alerts, with scheduled self-tests.";
         };
 
         ups.enable = mkEnableOption "NUT monitoring of the USB-attached UPS (probe the hardware first)";
 
-        summary.url = mkOption {
-          type = types.str;
-          default = "http://127.0.0.1:${toString config.inference.port}";
-          description = "OpenAI-compatible endpoint (default: the local llama-swap).";
-        };
-
-        summary.model = mkOption {
-          type = types.str;
-          description = "inference.models catalog id to summarize with.";
-        };
       };
 
       config = mkMerge [
@@ -142,13 +165,16 @@
           systemd.packages = singleton onFailureDropins;
           environment.systemPackages = singleton shipAlert;
 
+          systemd.tmpfiles.rules = [
+            "d ${spool} 2770 root ${config.users.users.${cfg.reader}.group} -"
+            "d /var/lib/alerts 0700 root root -"
+          ];
+
           systemd.services."alert-unit-failure@" = {
-            description = "Post %i failure to the Matrix alert room";
+            description = "Alert that %i failed";
             # Journal reads and D-Bus need uid 0.
             serviceConfig = sensorHardening // {
               Type = "oneshot";
-              EnvironmentFile = cfg.credentialsEnvFile;
-              StateDirectory = "alerts";
             };
             scriptArgs = "%i";
             path = [
@@ -160,7 +186,7 @@
               case "$unit" in alert-*) exit 0 ;; esac
               tail=$(journalctl -u "$unit" -n 12 --no-pager -o cat || true)
               printf '🔴 %s: %s failed\n%s' ${hostname} "$unit" "$tail" \
-                | ship-alert --summarize
+                | ship-alert
             '';
           };
 
@@ -168,8 +194,6 @@
             description = "Sweep for failed units, full disks, and heat";
             serviceConfig = sensorHardening // {
               Type = "oneshot";
-              EnvironmentFile = cfg.credentialsEnvFile;
-              StateDirectory = "alerts";
             };
             path = [
               pkgs.systemd
@@ -307,32 +331,100 @@
           };
 
           systemd.services.alert-ups = {
-            description = "Relay spooled UPS events to the Matrix alert room";
+            description = "Turn spooled UPS events into alerts";
             serviceConfig = sensorHardening // {
               Type = "oneshot";
-              EnvironmentFile = cfg.credentialsEnvFile;
-              StateDirectory = "alerts";
-              # The spool sits outside the state directory, written by nutmon.
-              ReadWritePaths = singleton upsSpool;
+              # Written by nutmon, which may not write the alert spool.
+              ReadWritePaths = sensorHardening.ReadWritePaths ++ singleton upsSpool;
             };
             path = [
               pkgs.coreutils
               shipAlert
             ];
             script = ''
-              # An event is deleted only after delivery, so it survives a
-              # homeserver outage. On failure this backs off and exits 0,
-              # leaving the path condition true so the unit retries instead
-              # of hot-looping.
               for event in ${upsSpool}/[0-9]*; do
                 [ -f "$event" ] || continue
-                if printf '🔋 %s: UPS %s' ${hostname} "$(cat "$event")" | ship-alert; then
-                  rm -f "$event"
+                printf '🔋 %s: UPS %s' ${hostname} "$(cat "$event")" | ship-alert
+                rm -f "$event"
+              done
+            '';
+          };
+        })
+
+        (mkIf (cfg.relay.to != null) {
+          systemd.paths.alert-relay = {
+            description = "Watch for alerts to hand to ${cfg.relay.to}";
+            wantedBy = singleton "multi-user.target";
+            pathConfig = {
+              PathExistsGlob = "${spool}/[0-9]*";
+              Unit = "alert-relay.service";
+            };
+          };
+
+          # An alert is deleted only once the receiver answers ok. On
+          # failure this backs off and exits 0, leaving the path condition
+          # true so the unit retries instead of hot-looping.
+          systemd.services.alert-relay = {
+            description = "Hand alerts to ${cfg.relay.to}";
+            serviceConfig = lib.ship.hardened.rootSensor // {
+              Type = "oneshot";
+              ReadWritePaths = singleton spool;
+              IPAddressAllow = cfg.relay.to;
+              IPAddressDeny = "any";
+            };
+            path = [
+              pkgs.coreutils
+              pkgs.socat
+            ];
+            script = ''
+              for alert in ${spool}/[0-9]*; do
+                [ -f "$alert" ] || continue
+                reply=$(socat -T 30 - "TCP:${cfg.relay.to}:${toString port},connect-timeout=10" < "$alert" || true)
+                if [ "$reply" = ok ]; then
+                  rm -f "$alert"
                 else
                   sleep 60
                   exit 0
                 fi
               done
+            '';
+          };
+        })
+
+        (mkIf (cfg.relay.from != [ ]) {
+          # The tailnet interface is trusted by the firewall; the socket
+          # itself admits only the listed senders.
+          systemd.sockets.alert-receive = {
+            description = "Alerts from other hosts";
+            wantedBy = singleton "sockets.target";
+            socketConfig = {
+              ListenStream = port;
+              Accept = true;
+              MaxConnections = 8;
+              IPAddressAllow = cfg.relay.from;
+              IPAddressDeny = "any";
+            };
+          };
+
+          systemd.services."alert-receive@" = {
+            description = "Spool one alert from another host";
+            serviceConfig = lib.ship.hardened.tenant // {
+              User = cfg.reader;
+              Group = config.users.users.${cfg.reader}.group;
+              StandardInput = "socket";
+              StandardOutput = "socket";
+              StandardError = "journal";
+              RuntimeMaxSec = 60;
+              PrivateNetwork = true;
+              ReadWritePaths = singleton spool;
+              InaccessiblePaths = singleton config.users.users.${cfg.reader}.home;
+            };
+            path = singleton pkgs.coreutils;
+            script = ''
+              body=$(head -c ${toString max})
+              [ -n "$body" ] || exit 0
+              ${enqueue}
+              echo ok
             '';
           };
         })

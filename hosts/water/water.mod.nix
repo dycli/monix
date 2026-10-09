@@ -76,6 +76,9 @@
         # EcoFlow RIVER 3 Plus over USB HID (usbhid-ups, 3746:ffff).
         alerts.ups.enable = true;
 
+        # Air's tailnet address; its alerts reach Sokka through here.
+        alerts.relay.from = lib.lists.singleton "100.107.48.89";
+
         # The e-reader cannot join the tailnet and pulls OPDS over the LAN.
         media.calibreWebLan = {
           interface = "enp209s0f0np0";

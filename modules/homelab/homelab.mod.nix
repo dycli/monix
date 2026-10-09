@@ -44,6 +44,5 @@
       fleetLogStream.inviteUsers = singleton "@dylan:chat.su.is";
 
       sokka.users = singleton "@dylan:chat.su.is";
-      alerts.summary.model = "qwen3.8-27b-q4-k-m";
     };
 }
