@@ -14,8 +14,11 @@ use rmcp::{ServiceExt, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::fmt::Write;
+use std::io::Read;
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 const AT: &str = "%Y-%m-%d %H:%M";
 
@@ -288,6 +291,21 @@ impl Tools {
             None if all.is_empty() => Ok("No lists.".into()),
             _ => Ok(all.join("\n")),
         }
+    }
+
+    #[tool(
+        description = "How much of each AI subscription's limits (Claude, ChatGPT/Codex, OpenCode Go) is used, and when each resets."
+    )]
+    fn usage(&self) -> Result<String, String> {
+        let sock = std::env::var("SOKKA_USAGE").map_err(|_| "No usage service here.")?;
+        let mut out = String::new();
+        UnixStream::connect(&sock)
+            .and_then(|mut s| {
+                s.set_read_timeout(Some(Duration::from_secs(60)))?;
+                s.read_to_string(&mut out)
+            })
+            .map_err(|e| format!("usage: {e}"))?;
+        Ok(out)
     }
 
     #[tool(

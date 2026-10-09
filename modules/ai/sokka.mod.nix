@@ -18,7 +18,8 @@
 # the only process that sees its login, and YouTube search and captions
 # (sokka-youtube.py), which reaches YouTube only, and pictures
 # (sokka-image.py), drawn by the image service that alone holds the
-# household's Codex login. Mail and pages let
+# household's Codex login; `sokka tools` also reads the subscription
+# limits from the usage service (usage.mod.nix). Mail and pages let
 # anyone put text in front of the model, so fetch opens only links a
 # search returned or the person wrote: nothing it read can ride out in a
 # link it made up. The bot sends due reminders itself, runs
@@ -219,6 +220,7 @@
           };
           shared = households // {
             SOKKA_UNIT = n;
+            SOKKA_USAGE = "/run/usage.sock";
           };
 
           mcp = (pkgs.formats.json { }).generate "${n}-mcp.json" {
@@ -271,6 +273,7 @@
             SupplementaryGroups = [
               "sokka-image"
               "sokka-household"
+              "usage"
             ];
             StateDirectory = n;
             StateDirectoryMode = "0700";

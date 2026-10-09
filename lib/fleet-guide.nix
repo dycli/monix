@@ -95,8 +95,8 @@
 
     ## Subscription usage
 
-    `usage` prints the seat's 5-hour and weekly Claude limits and when each
-    resets. Check it before starting a long or model-heavy run.
+    `usage` prints how much of each subscription's limits is used (Claude,
+    ChatGPT/Codex, OpenCode Go) and when each resets. Check it before starting a long or model-heavy run.
 
     ## Engineering principles
 
