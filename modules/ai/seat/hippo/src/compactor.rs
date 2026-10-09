@@ -110,10 +110,11 @@ fn message(c: &Core, i: u64) -> Result<Msg, String> {
     c.store.get(i)
 }
 
-/// The view's lines up to `end` (exclusive), bare: no ids.
+/// The compactions' view up to `end` (exclusive), bare: no ids. None
+/// until all of it is built.
 fn context(c: &Core, end: u64) -> Result<Option<Vec<String>>, String> {
     let mut out = Vec::new();
-    for &(l, i) in &c.view.parts {
+    for &(l, i) in &c.context.parts {
         let (s, n) = addr(l, i);
         if s + n > end {
             break;
@@ -191,6 +192,8 @@ fn save(
         prompt: prompt.to_owned(),
     })?;
     c.view.fit(&c.tree, c.budget);
+    let budget = c.context_budget();
+    c.context.fit(&c.tree, budget);
     c.stale = true;
     Ok(())
 }
@@ -332,7 +335,7 @@ mod tests {
         fn say(&mut self, blocks: &[String]) -> Result<String, Fail> {
             self.0.lock().unwrap().push(blocks.join("\n"));
             let step = blocks.last().unwrap();
-            let body = step.lines().last().unwrap_or("");
+            let body = step.lines().rev().nth(1).unwrap_or("");
             Ok(format!("sum: {}", &body[..body.len().min(60)]))
         }
         fn model(&self) -> String {

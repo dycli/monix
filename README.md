@@ -187,14 +187,18 @@ compressed to a line of at most 512 bytes; each pair of lines is merged into
 one line covering both, and so on upward. Lines are tagged by kind (`user`,
 `talk`, `tool`, `echo`, `note`), never by chat. The compactor is Sonnet at
 medium effort, run through the `claude` CLI on the subscription, with
-five-minute prompt caching. Each call carries the current view as shared
-context, an invented 512-byte line for scale, and the step. When a merge's
+five-minute prompt caching. Each call carries the compactions' own view
+(the same sawtooth at 16-32 KB, so calls read each other's prefix from the
+cache), a ruler of 512 dashes for scale, and the step. When a merge's
 two halves come from different chats (keyed by harness and session), the
 step says so, so the model does not read one chat as a reply to the other.
 
 **The view.** The view is the history as one block of `id+n|text` lines
-within a fixed 128 KB budget, about 60k tokens: recent lines cover one
-message each, older lines cover more. The service rewrites `view.md`
+within a 128 KB budget, about 60k tokens: recent lines cover one
+message each, older lines cover more. Merges come in batches: past 128 KB
+the view merges down to 64 KB, then only grows, so its head stays the same
+and cached between batches. It is saved and loaded, never refolded at start,
+since a refold would differ from the live view. The service rewrites `view.md`
 atomically whenever the tree grows. On the seat, `~/.claude/rules/hippo-view.md`
 links to it, so Claude Code loads the whole view at session start and after
 every compaction with no tool call. Codex and OpenCode page it in with
@@ -218,8 +222,8 @@ take 2-15 ms.
 - Haiku 5.5 was tried as a 12x cheaper compactor over a full day of history,
   across three prompt revisions and two effort levels. It still put wrong
   context into 4-20% of lines against Sonnet's 0%, so Sonnet stayed.
-- The scale example was first a real history line, and models copied it into
-  summaries as fact. It is now an invented line.
+- The scale example was first a real history line, then an invented one;
+  models copied both into summaries as fact. It is now a ruler of dashes.
 - Chat labels were dropped from the tree once they proved unreliable, in
   favour of the session check on merges.
 

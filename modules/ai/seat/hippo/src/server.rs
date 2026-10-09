@@ -7,7 +7,7 @@ use crate::compactor::{Pump, Spent, pump};
 use crate::live::{Live, Sources};
 use crate::store::{Draft, Kind, Store, fmt_date};
 use crate::tree::{Tree, addr, flat};
-use crate::view::{PLACEHOLDER, VIEW, View};
+use crate::view::{CONTEXT, PLACEHOLDER, VIEW, View};
 use crate::watcher::Watcher;
 use chrono::{DateTime, Local};
 use regex::RegexBuilder;
@@ -38,6 +38,8 @@ pub struct Core {
     pub tree: Tree,
     pub view: View,
     pub budget: u64,
+    /// The compactions' own view, under `CONTEXT`.
+    pub context: View,
     pub pump: Pump,
     pub watcher: Watcher,
     pub live: Option<Live>,
@@ -56,6 +58,7 @@ impl Core {
             tree,
             view,
             budget,
+            context: View::default(),
             pump: Pump::default(),
             watcher: Watcher::default(),
             live: None,
@@ -65,10 +68,22 @@ impl Core {
         }
     }
 
+    pub fn context_budget(&self) -> u64 {
+        CONTEXT.min(self.budget)
+    }
+
+    /// Both views changed only by appends and merges; the next start loads
+    /// them instead of folding new ones, which would break the cache.
+    pub fn save_views(&self) -> Result<(), String> {
+        self.view.save(&self.store.dir, "view.json")?;
+        self.context.save(&self.store.dir, "context.json")
+    }
+
     /// Brings the view up to the log after messages were appended.
     pub fn sync(&mut self) {
         while self.view.t < self.store.len() {
             self.view.append(&self.tree, self.budget);
+            self.context.append(&self.tree, self.context_budget());
             self.stale = true;
         }
     }
@@ -115,13 +130,15 @@ pub fn serve(
             .map_err(|_| format!("HIPPO_VIEW is not a number: {v}"))?,
         Err(_) => VIEW,
     };
-    let view = View::fold(&tree, store.len(), budget);
+    let view = View::load(dir, "view.json", &tree, store.len(), budget);
+    let context = View::load(dir, "context.json", &tree, store.len(), CONTEXT.min(budget));
     let shared = Arc::new(Shared {
         core: Mutex::new(Core {
             store,
             tree,
             view,
             budget,
+            context,
             pump: Pump {
                 spent: Spent::load(dir)?,
                 ..Pump::default()
@@ -351,20 +368,22 @@ fn render(c: &Core) -> Result<(String, Vec<String>), String> {
     Ok((head, lines))
 }
 
-/// Writes the whole view to `view.md` in the store, which the seat's Claude
-/// Code loads as a rules file at session start and after each compaction.
 /// The whole view as one text, as `view.md` holds it.
 fn text(c: &Core) -> Result<String, String> {
     let (head, lines) = render(c)?;
     Ok(format!("{head}<chat>\n{}\n</chat>\n", lines.join("\n")))
 }
 
+/// Writes the whole view to `view.md` in the store, which the seat's Claude
+/// Code loads as a rules file at session start and after each compaction,
+/// and both views' parts, which the next start loads.
 pub fn publish(c: &mut Core) -> Result<(), String> {
     let text = text(c)?;
     let path = c.store.dir.join("view.md");
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
     fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))?;
+    c.save_views()?;
     c.stale = false;
     Ok(())
 }
