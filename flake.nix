@@ -58,6 +58,17 @@
     url = "github:Infinidoge/nix-minecraft";
   };
 
+  # Cargo.lock to one derivation per crate (buildRustCrate), so editing a
+  # crate rebuilds only that crate, not its dependency tree.
+  inputs.crate2nix = {
+    url = "github:nix-community/crate2nix";
+    inputs.cachix.follows = "";
+    inputs.flake-compat.follows = "";
+    inputs.flake-parts.follows = "flake-parts";
+    inputs.nix-test-runner.follows = "";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
   inputs.paseo = {
     url = "github:getpaseo/paseo";
     inputs.nixpkgs.follows = "nixpkgs";
@@ -66,7 +77,7 @@
   outputs =
     inputs:
     let
-      lib = import ./lib inputs.nixpkgs.lib;
+      lib = import ./lib inputs;
 
       inherit (lib.attrsets) filterAttrs mapAttrs' nameValuePair;
       inherit (lib.strings) hasSuffix removeSuffix;

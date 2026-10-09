@@ -20,6 +20,55 @@
         "type": "github"
       }
     },
+    "crate2nix": {
+      "inputs": {
+        "cachix": [],
+        "devshell": "devshell",
+        "flake-compat": [],
+        "flake-parts": [
+          "flake-parts"
+        ],
+        "nix-test-runner": [],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "pre-commit-hooks": "pre-commit-hooks"
+      },
+      "locked": {
+        "lastModified": 1790579054,
+        "narHash": "sha256-S2NrwKB7aQa6HZsg2UGCmzQPI5Dw+bqUPm8R23BAUh8=",
+        "owner": "nix-community",
+        "repo": "crate2nix",
+        "rev": "1cb60331b14f15dad145dbd4e207c1ec110e5675",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "crate2nix",
+        "type": "github"
+      }
+    },
+    "devshell": {
+      "inputs": {
+        "nixpkgs": [
+          "crate2nix",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791490533,
+        "narHash": "sha256-5lEbHDDZa9WV6nMSZoN2MHrh/kOFgqKIChVoBYx/fS8=",
+        "owner": "numtide",
+        "repo": "devshell",
+        "rev": "7f669063c38ed44f55931ce8c8e04b235bc4e13d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "devshell",
+        "type": "github"
+      }
+    },
     "disko": {
       "inputs": {
         "nixpkgs": [
@@ -336,9 +385,35 @@
         "type": "github"
       }
     },
+    "pre-commit-hooks": {
+      "inputs": {
+        "flake-compat": [
+          "crate2nix",
+          "flake-compat"
+        ],
+        "nixpkgs": [
+          "crate2nix",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1790500375,
+        "narHash": "sha256-XN3sDtn8TU9hAc9xqZ+SqRB/HHm2wjxM6aSWYLJU+oo=",
+        "owner": "cachix",
+        "repo": "pre-commit-hooks.nix",
+        "rev": "a0e4241b51206fbcbf52fd322eb5f0cd80f153c4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "cachix",
+        "repo": "pre-commit-hooks.nix",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "agenix": "agenix",
+        "crate2nix": "crate2nix",
         "disko": "disko",
         "flake-parts": "flake-parts",
         "home-manager": "home-manager",

@@ -2,8 +2,8 @@
 # builds systems with `final.nixosSystem`, which passes `lib = final` through
 # the lib.extend fixpoint, so flake, NixOS and Home Manager modules all reach
 # `lib.ship.*` without relative lib/ imports.
-nixpkgsLib:
-nixpkgsLib.extend (
+inputs:
+inputs.nixpkgs.lib.extend (
   final: prev: {
     ship = {
       fences = import ./network-fences.nix;
@@ -12,7 +12,7 @@ nixpkgsLib.extend (
       guide = import ./fleet-guide.nix;
       keys = import ../keys.nix;
       opencode = import ./opencode.nix final;
-      rustTool = import ./rust-tool.nix final;
+      rustTool = import ./rust-tool.nix final inputs.crate2nix;
 
       # `ship.host "name" module` is a flake-parts module defining
       # nixosConfigurations.name. Every host gets the `default` bundle.
