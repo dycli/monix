@@ -8,8 +8,9 @@
 # subscription token, without built-in tools or settings; their only tools
 # come over MCP: Parallel's keyless web search and fetch, and Sokka's own
 # reminders and lists (`sokka tools`), which reach only its book in the
-# state directory. The bot sends due reminders itself, and reads photos and
-# files sent to it without keeping them.
+# state directory, and its calendar (sokka-calendar.py over CalDAV), the
+# only process that sees the calendar login. The bot sends due reminders
+# itself, and reads photos and files sent to it without keeping them.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.sokka;
@@ -23,6 +24,7 @@
     let
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
+      inherit (lib.strings) readFile;
       inherit (lib.options) mkOption;
       inherit (lib.strings) concatStringsSep;
       inherit (lib) types;
@@ -33,6 +35,14 @@
 
       sokka = lib.ship.rustTool pkgs { src = ./sokka; };
       hippo = lib.ship.rustTool pkgs { src = ./seat/hippo; };
+
+      calendar = pkgs.writers.writePython3Bin "sokka-calendar" {
+        libraries = ps: [
+          ps.caldav
+          ps.mcp
+        ];
+        flakeIgnore = singleton "E501";
+      } (readFile ./sokka-calendar.py);
 
       # The token rides a systemd credential into the environment, never
       # the command line.
@@ -61,6 +71,12 @@
             "tools"
             state
           ];
+        };
+        mcpServers.calendar = {
+          type = "stdio";
+          command = getExe calendar;
+          args = singleton "/run/credentials/sokka.service/caldav";
+          env.SOKKA_TZ = config.time.timeZone;
         };
       };
 
@@ -166,6 +182,14 @@
           description = "File holding a Claude Code OAuth token.";
         };
 
+        calendarCredentialsFile = mkOption {
+          type = types.str;
+          description = ''
+            agenix JSON file with Sokka's CalDAV accounts:
+            [{"name", "url", "username", "password"}, ...].
+          '';
+        };
+
         users = mkOption {
           type = types.listOf types.str;
           example = singleton "@alice:chat.example.com";
@@ -269,6 +293,10 @@
             // {
               ExecStart = getExe sokka;
               EnvironmentFile = cfg.credentialsEnvFile;
+              LoadCredential = [
+                "claude-token:${cfg.claudeTokenFile}"
+                "caldav:${cfg.calendarCredentialsFile}"
+              ];
               Restart = "always";
               RestartSec = 10;
             };

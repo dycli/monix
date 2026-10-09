@@ -292,6 +292,10 @@ them only when the model has them. Parallel's keyless server gives it web
 search. Sokka's own server, `sokka tools`, keeps reminders and lists in one
 locked JSON book and can touch nothing else, so a page that tries to steer
 the model through search results finds no keys, memory or shell to reach.
+The calendar is a third server, a short Python one on `caldav` and the
+official MCP SDK, and the only process that receives the CalDAV login, as
+a systemd credential; it lists, adds, moves and cancels events, with
+repeats expanded.
 The bot checks the book every 30 seconds and sends due reminders itself,
 logging them to hippo like any other answer.
 

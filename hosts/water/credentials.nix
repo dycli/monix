@@ -25,6 +25,7 @@ in
     credentialsEnvFile = config.secrets.matrix-sokka-env.path;
     registrationEnvFile = config.secrets.matrix-registration-env.path;
     claudeTokenFile = config.secrets.agent-claude-token.path;
+    calendarCredentialsFile = config.secrets.sokka-caldav-json.path;
   };
 
   agentFleet.credentials = {
@@ -39,6 +40,7 @@ in
     agent-codex-auth.file = ./secrets/agent-codex-auth.age;
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
     matrix-sokka-env.file = ./secrets/matrix-sokka.env.age;
+    sokka-caldav-json.file = ./secrets/sokka-caldav.json.age;
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     matrix-alertbot-env.file = ./secrets/matrix-alertbot.env.age;
     cloudflare-dns-token = {
@@ -57,7 +59,10 @@ in
   systemd.services.matrix-tunnel.restartTriggers = singleton ./secrets/matrix-cloudflare-tunnel-token.age;
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
-  systemd.services.sokka.restartTriggers = singleton ./secrets/matrix-sokka.env.age;
+  systemd.services.sokka.restartTriggers = [
+    ./secrets/matrix-sokka.env.age
+    ./secrets/sokka-caldav.json.age
+  ];
   systemd.services.fleet-log-stream.restartTriggers = singleton ./secrets/matrix-alertbot.env.age;
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
