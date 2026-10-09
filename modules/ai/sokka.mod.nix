@@ -166,7 +166,7 @@
 
         model = mkOption {
           type = types.str;
-          default = "sonnet";
+          default = "opus";
           description = "Claude model that answers.";
         };
 
