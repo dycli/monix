@@ -52,9 +52,14 @@
         hardware.enableRedistributableFirmware = true;
         hardware.amdgpu.opencl.enable = true;
 
-        # Keep build bursts within the server's 32GB RAM budget.
-        nix.settings.max-jobs = 1;
-        nix.settings.cores = 4;
+        # Builds use every core, at idle priority, and run in a memory fence:
+        # past it a build fails, never the services beside it.
+        nix.daemonCPUSchedPolicy = "idle";
+        nix.daemonIOSchedClass = "idle";
+        systemd.services.nix-daemon.serviceConfig = {
+          MemoryHigh = "18G";
+          MemoryMax = "22G";
+        };
 
         boot.loader.timeout = 5;
 
