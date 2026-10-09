@@ -146,6 +146,21 @@ impl Model for Claude {
                 return Err(format!("claude exited {status}: {}", tail(&err)));
             }
         };
+        // One journal line per call: the subscription's own meter is not
+        // readable with Sokka's token, so this is how its share is counted.
+        let n = |k: &str| {
+            ev.pointer(&format!("/usage/{k}"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+        };
+        eprintln!(
+            "sokka: tokens {} input, {} cache read, {} cache write, {} output; {} turns",
+            n("input_tokens"),
+            n("cache_read_input_tokens"),
+            n("cache_creation_input_tokens"),
+            n("output_tokens"),
+            ev.get("num_turns").and_then(Value::as_u64).unwrap_or(0),
+        );
         let text = ev.get("result").and_then(Value::as_str).unwrap_or("");
         if ev.get("is_error") == Some(&Value::Bool(true)) {
             return Err(format!("claude: {}", tail(text)));
