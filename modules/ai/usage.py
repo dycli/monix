@@ -26,7 +26,7 @@ def when(at):
         t = datetime.fromtimestamp(at)
     else:
         t = datetime.fromisoformat(at.replace("Z", "+00:00")).astimezone()
-    return t.strftime("%a %H:%M")
+    return t.strftime("%a %b %-d %H:%M")
 
 
 def line(account, window, pct, at):
