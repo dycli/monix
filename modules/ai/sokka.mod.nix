@@ -7,8 +7,9 @@
 # the store's only writer. Model calls run the claude CLI on the fleet's
 # subscription token, without built-in tools or settings; their only tools
 # come over MCP: Parallel's keyless web search and fetch, and Sokka's own
-# reminders and lists (`sokka tools`), which reach only its book in the
-# state directory, its calendar (sokka-calendar.py over CalDAV) and its
+# reminders, lists and memory tools (`sokka tools`: zoom, search, date and
+# note in its hippo, as the seat's hippo CLI has), which reach only its
+# book and its hippo, its calendar (sokka-calendar.py over CalDAV) and its
 # mail (sokka-mail.py over IMAP, read-only), each the only process that
 # sees its login, and YouTube search and captions (sokka-youtube.py),
 # which reaches YouTube only. Mail lets anyone put text in front of the
@@ -94,6 +95,7 @@
             "tools"
             state
           ];
+          env.HIPPO_DIR = env.HIPPO_DIR;
         };
         mcpServers.calendar = {
           type = "stdio";

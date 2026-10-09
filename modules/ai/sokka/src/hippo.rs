@@ -7,6 +7,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
+#[derive(Clone)]
 pub struct Hippo {
     pub sock: PathBuf,
 }
@@ -44,5 +45,20 @@ impl Hippo {
     /// Logs one message: `user` for the captain's words, `talk` for Sokka's.
     pub fn log(&self, kind: &str, text: &str) -> Result<(), String> {
         self.ask("log", &[kind, text]).map(|_| ())
+    }
+
+    /// Opens line `id+n` into its two halves; `n = 1` gives the message whole.
+    pub fn zoom(&self, id: u64, n: u64) -> Result<String, String> {
+        self.ask("zoom", &[&id.to_string(), &n.to_string()])
+    }
+
+    /// Every message matching a case-insensitive regex, newest last.
+    pub fn search(&self, regex: &str) -> Result<String, String> {
+        self.ask("search", &[regex])
+    }
+
+    /// When message `id` was sent.
+    pub fn date(&self, id: u64) -> Result<String, String> {
+        self.ask("date", &[&id.to_string()])
     }
 }

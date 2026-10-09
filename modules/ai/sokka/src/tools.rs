@@ -1,9 +1,10 @@
 //! `sokka tools DIR`: Sokka's own tools, an MCP server on stdio that the
-//! claude CLI starts for each model call. They reach only the book in DIR,
-//! never the Matrix keys or the memory, so text pulled in by a web search
-//! cannot steer them anywhere else.
+//! claude CLI starts for each model call. They reach only the book in DIR
+//! and the memory (hippo at HIPPO_DIR), never the Matrix keys, so text
+//! pulled in by a web search cannot steer them anywhere else.
 
 use crate::book::{self, Repeat};
+use crate::hippo::Hippo;
 use chrono::NaiveDateTime;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -18,6 +19,7 @@ const AT: &str = "%Y-%m-%d %H:%M";
 #[derive(Clone)]
 struct Tools {
     dir: PathBuf,
+    hippo: Hippo,
     tool_router: ToolRouter<Self>,
 }
 
@@ -56,8 +58,66 @@ struct List {
     list: Option<String>,
 }
 
+#[derive(Deserialize, JsonSchema)]
+struct Line {
+    /// The message id, as a <chat> line's address starts (id+n).
+    id: u64,
+    /// The line's n; 1 gives the one message whole.
+    n: u64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Search {
+    /// A case-insensitive regex, e.g. dentist|teeth.
+    regex: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Message {
+    /// The message id.
+    id: u64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Note {
+    /// The fact to keep, in one plain sentence.
+    text: String,
+}
+
 #[tool_router]
 impl Tools {
+    #[tool(
+        description = "Open a <chat> line id+n of your memory into its two halves, each in more words; n = 1 gives that one message whole. Zoom down until the detail you need appears."
+    )]
+    fn memory_zoom(&self, Parameters(Line { id, n }): Parameters<Line>) -> Result<String, String> {
+        self.hippo.zoom(id, n)
+    }
+
+    #[tool(
+        description = "Search every message you and Dylan ever sent, word for word, with a regex; each hit shows its id, who, when and the words around the match."
+    )]
+    fn memory_search(
+        &self,
+        Parameters(Search { regex }): Parameters<Search>,
+    ) -> Result<String, String> {
+        self.hippo.search(&regex)
+    }
+
+    #[tool(description = "When a message of your memory was sent.")]
+    fn memory_date(
+        &self,
+        Parameters(Message { id }): Parameters<Message>,
+    ) -> Result<String, String> {
+        self.hippo.date(id)
+    }
+
+    #[tool(
+        description = "Pin a fact Dylan wants kept (a preference, a decision, a date) into your memory as a note."
+    )]
+    fn memory_note(&self, Parameters(Note { text }): Parameters<Note>) -> Result<String, String> {
+        self.hippo.log("note", &text).map(|()| "Noted.".into())
+    }
+
     #[tool(
         description = "Set a reminder: Sokka sends the text to Dylan at that time, or with `ask`, carries it out as a request and sends the answer."
     )]
@@ -180,8 +240,12 @@ impl Tools {
 impl rmcp::ServerHandler for Tools {}
 
 pub async fn serve(dir: PathBuf) -> Result<(), String> {
+    let hippo = std::env::var("HIPPO_DIR").map_err(|_| "HIPPO_DIR is not set")?;
     let tools = Tools {
         dir,
+        hippo: Hippo {
+            sock: PathBuf::from(hippo).join("hippo.sock"),
+        },
         tool_router: Tools::tool_router(),
     };
     let running = tools
