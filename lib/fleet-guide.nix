@@ -93,6 +93,11 @@
     chat and ignore the view in your context. `#offrecord` needs nothing
     from you.
 
+    ## Subscription usage
+
+    `usage` prints the seat's 5-hour and weekly Claude limits and when each
+    resets. Check it before starting a long or model-heavy run.
+
     ## Engineering principles
 
     - Study how established products solve the problem before designing a solution.
