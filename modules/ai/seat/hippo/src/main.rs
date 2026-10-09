@@ -29,7 +29,6 @@ Usage:
   hippo zoom <id> <n>      open line id+n; n = 1 prints message id whole
   hippo date <id>          date and time of message id
   hippo search <regex>     search every message, word for word
-  hippo note \"<text>\"      pin a fact as a note
   hippo status             what the service is doing
   hippo pause / resume     stop or restart the compactor's model calls;
                            logging goes on
@@ -195,7 +194,6 @@ fn main() -> ExitCode {
         "import" => import(rest),
         "view" | "zoom" | "date" | "search" | "status" | "pause" | "resume" => ask(cmd, rest),
         "browse" => browse(rest),
-        "note" => ask("log", &["note".to_owned(), rest.join(" ")]),
         "help" | "-h" | "--help" => Ok(USAGE.into()),
         _ => Err(USAGE.into()),
     };

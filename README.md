@@ -206,8 +206,8 @@ back as handoff plus fresh view rather than a long transcript summary.
 Compactions went from 97-113 seconds to 16-18.
 
 **CLI.** The agent drills down with `zoom` (a line into its two halves, down
-to the whole message), `date`, `search` (regex over every message) and
-`note` (pin a fact). `status`, `pause`/`resume`, `browse`, `audit` and
+to the whole message), `date` and `search` (regex over
+every message). `status`, `pause`/`resume`, `browse`, `audit` and
 `replay` serve the operator. The service answers over a unix socket; reads
 take 2-15 ms.
 
@@ -305,14 +305,20 @@ automatic ones, and refuses any link that is not YouTube.
 The bot checks the book every 30 seconds and sends due reminders itself,
 logging them to hippo like any other answer. A reminder can instead be a
 routine ("a mail digest at 8, 2 and 8"): when it comes due, the bot runs its
-text as a request, with the same tools as a message from Dylan, and sends
-the answer; hippo records the trigger as a routine, not as Dylan's words.
+text as a request, with the same tools as a message from its person, and sends
+the answer; hippo records the trigger as a routine, not as their words.
 
 Photos, PDFs and text files sent to Sokka are decrypted, typed by their
 first bytes rather than the sender's word, and handed to the model with
 the message. They are read once and kept nowhere: hippo holds only text, so
 the prompt asks the answer to state what matters in the file (dates,
 amounts, names), and that answer is what Sokka remembers.
+
+The module runs one instance per person, each with its own Matrix account,
+hippo store, book and chat, so no instance can read another's memory.
+They share the calendar login and the model; mail and alerts are set per
+instance, and only one instance may take the alerts. Dylan's is Sokka, with
+his mail and the alerts; Gab's is Suki, with neither.
 
 Sokka answers only the users it is configured for, joins
 only their rooms, and runs as its own fenced user with loopback and the

@@ -67,7 +67,7 @@
     ## Episodic memory: hippo (on trial, beside OptMem)
 
     hippo records every chat of this seat automatically, word for word; you
-    never write to it except to pin a fact with `hippo note`.
+    never write to it. To keep something, say it in a reply.
 
     In Claude Code the view loads into your context by itself, as the rules
     file `hippo-view.md`, at session start and after each compaction; it is

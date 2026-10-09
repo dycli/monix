@@ -43,6 +43,16 @@
       ];
       fleetLogStream.inviteUsers = singleton "@dylan:chat.su.is";
 
-      sokka.users = singleton "@dylan:chat.su.is";
+      sokka.instances = {
+        sokka = {
+          person = "Dylan";
+          users = singleton "@dylan:chat.su.is";
+          alerts = true;
+        };
+        suki = {
+          person = "Gab";
+          users = singleton "@gab:chat.su.is";
+        };
+      };
     };
 }

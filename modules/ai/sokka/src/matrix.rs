@@ -34,7 +34,9 @@ async fn login(homeserver: &str, user: &str, password: &str, dir: &Path) -> Resu
     client
         .matrix_auth()
         .login_username(user, password)
-        .initial_device_display_name("Sokka")
+        .initial_device_display_name(
+            &std::env::var("SOKKA_NAME").map_err(|_| "SOKKA_NAME is not set")?,
+        )
         .send()
         .await
         .map_err(|e| format!("login: {e}"))?;

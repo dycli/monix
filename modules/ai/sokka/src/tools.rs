@@ -27,8 +27,8 @@ struct Tools {
 struct Remind {
     /// Local time to send it, as YYYY-MM-DD HH:MM.
     at: String,
-    /// What to tell Dylan, worded as the reminder itself; for a routine,
-    /// the request to carry out, worded as Dylan would ask it.
+    /// What to tell them, worded as the reminder itself; for a routine,
+    /// the request to carry out, worded as they would ask it.
     text: String,
     /// Repeat after each send; leave out for once.
     repeat: Option<Repeat>,
@@ -78,12 +78,6 @@ struct Message {
     id: u64,
 }
 
-#[derive(Deserialize, JsonSchema)]
-struct Note {
-    /// The fact to keep, in one plain sentence.
-    text: String,
-}
-
 #[tool_router]
 impl Tools {
     #[tool(
@@ -94,7 +88,7 @@ impl Tools {
     }
 
     #[tool(
-        description = "Search every message you and Dylan ever sent, word for word, with a regex; each hit shows its id, who, when and the words around the match."
+        description = "Search every message you and your person ever sent, word for word, with a regex; each hit shows its id, who, when and the words around the match."
     )]
     fn memory_search(
         &self,
@@ -112,14 +106,7 @@ impl Tools {
     }
 
     #[tool(
-        description = "Pin a fact Dylan wants kept (a preference, a decision, a date) into your memory as a note."
-    )]
-    fn memory_note(&self, Parameters(Note { text }): Parameters<Note>) -> Result<String, String> {
-        self.hippo.log("note", &text).map(|()| "Noted.".into())
-    }
-
-    #[tool(
-        description = "Set a reminder: Sokka sends the text to Dylan at that time, or with `ask`, carries it out as a request and sends the answer."
+        description = "Set a reminder: you send the text at that time, or with `ask`, carries it out as a request and sends the answer."
     )]
     fn remind(&self, Parameters(r): Parameters<Remind>) -> Result<String, String> {
         let at = NaiveDateTime::parse_from_str(&r.at, AT)
