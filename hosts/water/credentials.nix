@@ -26,6 +26,8 @@ in
     registrationEnvFile = config.secrets.matrix-registration-env.path;
     claudeTokenFile = config.secrets.agent-claude-token.path;
     calendarCredentialsFile = config.secrets.sokka-caldav-json.path;
+    mailCredentialsFile = config.secrets.sokka-mail-json.path;
+    mailServer = "imap.migadu.com";
   };
 
   agentFleet.credentials = {
@@ -41,6 +43,7 @@ in
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
     matrix-sokka-env.file = ./secrets/matrix-sokka.env.age;
     sokka-caldav-json.file = ./secrets/sokka-caldav.json.age;
+    sokka-mail-json.file = ./secrets/sokka-mail.json.age;
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     matrix-alertbot-env.file = ./secrets/matrix-alertbot.env.age;
     cloudflare-dns-token = {
@@ -62,6 +65,7 @@ in
   systemd.services.sokka.restartTriggers = [
     ./secrets/matrix-sokka.env.age
     ./secrets/sokka-caldav.json.age
+    ./secrets/sokka-mail.json.age
   ];
   systemd.services.fleet-log-stream.restartTriggers = singleton ./secrets/matrix-alertbot.env.age;
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;

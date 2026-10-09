@@ -36,6 +36,7 @@ pub fn from_env() -> Result<Box<dyn Model>, String> {
             model: var("SOKKA_MODEL").unwrap_or_else(|| "sonnet".into()),
             effort: var("SOKKA_EFFORT"),
             mcp: var("SOKKA_MCP").map(mcp).transpose()?,
+            deny: var("SOKKA_DENY"),
         })),
         "http" => Ok(Box::new(Http {
             url: var("SOKKA_URL").ok_or("SOKKA_URL is not set")?,
@@ -54,6 +55,8 @@ pub struct Claude {
     pub effort: Option<String>,
     /// An MCP config file and the servers it names, all allowed.
     pub mcp: Option<(String, Vec<String>)>,
+    /// Tools of those servers that stay denied, comma-separated.
+    pub deny: Option<String>,
 }
 
 impl Model for Claude {
@@ -85,6 +88,9 @@ impl Model for Claude {
         if let Some((file, servers)) = &self.mcp {
             let allowed: Vec<String> = servers.iter().map(|s| format!("mcp__{s}")).collect();
             cmd.args(["--mcp-config", file, "--allowedTools", &allowed.join(",")]);
+        }
+        if let Some(deny) = &self.deny {
+            cmd.args(["--disallowedTools", deny]);
         }
         let mut child = cmd
             .stdin(Stdio::piped())

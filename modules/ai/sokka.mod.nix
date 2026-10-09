@@ -8,9 +8,12 @@
 # subscription token, without built-in tools or settings; their only tools
 # come over MCP: Parallel's keyless web search and fetch, and Sokka's own
 # reminders and lists (`sokka tools`), which reach only its book in the
-# state directory, and its calendar (sokka-calendar.py over CalDAV), the
-# only process that sees the calendar login. The bot sends due reminders
-# itself, and reads photos and files sent to it without keeping them.
+# state directory, its calendar (sokka-calendar.py over CalDAV) and its
+# mail (sokka-mail.py over IMAP, read-only), each the only process that
+# sees its login. Mail lets anyone put text in front of the model, so page
+# fetch, which could carry what it read to any URL, is denied. The bot
+# sends due reminders itself, and reads photos and files sent to it
+# without keeping them.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.sokka;
@@ -43,6 +46,14 @@
         ];
         flakeIgnore = singleton "E501";
       } (readFile ./sokka-calendar.py);
+
+      mail = pkgs.writers.writePython3Bin "sokka-mail" {
+        libraries = ps: [
+          ps.imapclient
+          ps.mcp
+        ];
+        flakeIgnore = singleton "E501";
+      } (readFile ./sokka-mail.py);
 
       # The token rides a systemd credential into the environment, never
       # the command line.
@@ -77,6 +88,12 @@
           command = getExe calendar;
           args = singleton "/run/credentials/sokka.service/caldav";
           env.SOKKA_TZ = config.time.timeZone;
+        };
+        mcpServers.mail = {
+          type = "stdio";
+          command = getExe mail;
+          args = singleton "/run/credentials/sokka.service/mail";
+          env.SOKKA_IMAP = cfg.mailServer;
         };
       };
 
@@ -190,6 +207,20 @@
           '';
         };
 
+        mailCredentialsFile = mkOption {
+          type = types.str;
+          description = ''
+            agenix JSON file with Sokka's IMAP accounts:
+            [{"name", "username", "password"}, ...].
+          '';
+        };
+
+        mailServer = mkOption {
+          type = types.str;
+          example = "imap.example.com";
+          description = "IMAP server of the mail accounts, over TLS on 993.";
+        };
+
         users = mkOption {
           type = types.listOf types.str;
           example = singleton "@alice:chat.example.com";
@@ -285,6 +316,7 @@
             SOKKA_CLAUDE = getExe claude;
             SOKKA_MODEL = cfg.model;
             SOKKA_MCP = toString mcp;
+            SOKKA_DENY = "mcp__parallel__web_fetch";
           };
           serviceConfig =
             sandbox
@@ -296,6 +328,7 @@
               LoadCredential = [
                 "claude-token:${cfg.claudeTokenFile}"
                 "caldav:${cfg.calendarCredentialsFile}"
+                "mail:${cfg.mailCredentialsFile}"
               ];
               Restart = "always";
               RestartSec = 10;

@@ -295,7 +295,11 @@ the model through search results finds no keys, memory or shell to reach.
 The calendar is a third server, a short Python one on `caldav` and the
 official MCP SDK, and the only process that receives the CalDAV login, as
 a systemd credential; it lists, adds, moves and cancels events, with
-repeats expanded.
+repeats expanded. Mail is a fourth, read-only over IMAP: folders open with
+EXAMINE and bodies are fetched with `BODY.PEEK`, so nothing is moved or
+marked read, and it cannot send. Since any sender can put text in front of
+the model, Parallel's page fetch is denied, so nothing it reads can be
+carried out to a URL; search stays.
 The bot checks the book every 30 seconds and sends due reminders itself,
 logging them to hippo like any other answer.
 
