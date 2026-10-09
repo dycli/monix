@@ -43,8 +43,8 @@
       enqueue = ''
         umask 027
         name=$(date +%s%N)-$$
-        printf '%s\n' "$body" > ${spool}/.$name
-        mv ${spool}/.$name ${spool}/$name
+        printf '%s\n' "$body" > "${spool}/.$name"
+        mv "${spool}/.$name" "${spool}/$name"
       '';
 
       # usage: ship-alert [--throttle-minutes N] < body
