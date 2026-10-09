@@ -52,6 +52,7 @@
         suki = {
           person = "Gab";
           users = singleton "@gab:chat.su.is";
+          style = "Gab likes a slightly warmer tone.";
         };
       };
     };

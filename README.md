@@ -373,7 +373,10 @@ global `OnFailure` drop-in on every systemd unit, a six-hourly sweep for
 conditions `OnFailure` cannot see, smartd, and the UPS monitor's spool.
 Each writes through `ship-alert`, a short shell script that drops repeats
 and renames one file per alert into a spool only root and Sokka can write.
-Sokka posts each file word for word on its 30-second tick, with no model
-call, and deletes it once sent, so alerts wait out a homeserver outage.
+On its 30-second tick Sokka hands the pending files to the model as one
+request and sends the answer, an admin's read of what happened, whether it
+needs Dylan and what to do, and deletes them only once that is sent, so
+alerts wait out a homeserver outage. If the model fails, the alerts go out
+word for word instead.
 Air has no Sokka: a relay hands each alert over the tailnet to a socket on
 Water that admits only Air's address, and deletes it once Water answers.

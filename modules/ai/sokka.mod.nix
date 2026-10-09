@@ -20,8 +20,8 @@
 # read to any URL, is denied. The bot sends due reminders itself, runs
 # due routines as requests and sends the answers, reads photos and files
 # sent to it without keeping them, and on the one instance that takes
-# them, posts the host's alerts word for word from their spool
-# (alerts.mod.nix).
+# them, reads the host's alerts from their spool and sends its own account
+# of them (alerts.mod.nix).
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.sokka;
@@ -289,6 +289,7 @@
                 SOKKA_MCP = toString mcp;
                 SOKKA_DENY = "mcp__parallel__web_fetch";
               }
+              // optionalAttrs (i.style != null) { SOKKA_STYLE = i.style; }
               // optionalAttrs i.alerts { SOKKA_ALERTS = config.alerts.spool; };
             serviceConfig =
               sandbox
@@ -361,6 +362,13 @@
                       [{"name", "username", "password"}, ...]; null for no
                       mail.
                     '';
+                  };
+
+                  style = mkOption {
+                    type = types.nullOr types.str;
+                    default = null;
+                    example = "Be a little warm.";
+                    description = "A line on tone, added to the prompt.";
                   };
 
                   alerts = mkOption {
