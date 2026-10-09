@@ -1,12 +1,13 @@
 """One connection, one report: how much of each subscription's limits is
-used, read live from each provider. Claude and OpenCode Go logins arrive as
+used, read live from each provider, and under each Claude and Codex window
+who used it, from usage-share. Claude and OpenCode Go logins arrive as
 systemd credentials; Codex runs its own app-server on the household login,
 which keeps that login fresh itself. Nothing is stored."""
 
 import json
 import os
+import socket
 import subprocess
-import sys
 import threading
 import time
 import urllib.request
@@ -29,8 +30,16 @@ def when(at):
     return t.strftime("%a %b %-d %H:%M")
 
 
-def line(account, window, pct, at):
-    return f"{account:<7} {window:<5} {pct:3.0f}%  resets {when(at)}"
+def stamp(at):
+    if isinstance(at, (int, float)):
+        return at
+    return datetime.fromisoformat(at.replace("Z", "+00:00")).timestamp()
+
+
+def line(account, window, pct, at, length=None):
+    """A window's line; with its length, also its start for usage-share."""
+    text = f"{account:<7} {window:<5} {pct:3.0f}%  resets {when(at)}"
+    return (text, account, window, stamp(at) - length) if length else text
 
 
 def claude():
@@ -39,8 +48,8 @@ def claude():
     if login["expiresAt"] / 1000 < time.time():
         return ["claude  unknown (the seat's login lapsed; it renews when the seat next runs claude)"]
     out = get("https://api.anthropic.com/api/oauth/usage", login["accessToken"], {"anthropic-beta": "oauth-2025-04-20"})
-    names = {"five_hour": "5h", "seven_day": "week"}
-    return [line("claude", names[k], out[k]["utilization"], out[k]["resets_at"]) for k in names if out.get(k)]
+    names = {"five_hour": ("5h", 5 * 3600), "seven_day": ("week", 7 * 86400)}
+    return [line("claude", n, out[k]["utilization"], out[k]["resets_at"], length) for k, (n, length) in names.items() if out.get(k)]
 
 
 def codex():
@@ -73,7 +82,7 @@ def codex():
         if w:
             mins = w["windowDurationMins"]
             name = {300: "5h", 10080: "week"}.get(mins, f"{mins}m")
-            lines.append(line("codex", name, w["usedPercent"], w["resetsAt"]))
+            lines.append(line("codex", name, w["usedPercent"], w["resetsAt"], mins * 60))
     resets = sum(c["status"] == "available" for c in (out.get("rateLimitResetCredits") or {}).get("credits", []))
     if resets:
         lines.append(f"codex   {resets} free full resets unused")
@@ -88,9 +97,55 @@ def go():
     return [line("go", names[k], out[k]["percent"], out[k]["resetsAt"]) for k in names if out.get(k)]
 
 
+def shares(rows):
+    """Asks usage-share who used each window since its start."""
+    windows = {}
+    for _, account, window, start in rows:
+        windows.setdefault(account, {})[window] = start
+    with socket.socket(socket.AF_UNIX) as s:
+        s.settimeout(60)
+        s.connect(os.environ["USAGE_SHARE"])
+        s.sendall((json.dumps(windows) + "\n").encode())
+        s.shutdown(socket.SHUT_WR)
+        return json.loads(b"".join(iter(lambda: s.recv(65536), b"")))
+
+
+def split(spent):
+    """korra 71% (memory 12%) · sokka 26% · ... · $14 at API prices"""
+    total = sum(spent.values())
+    if not total:
+        return "        no use logged here"
+    agents = {}
+    for key, dollars in spent.items():
+        agent, _, part = key.partition(" ")
+        whole, parts = agents.setdefault(agent, [0, {}])
+        agents[agent][0] = whole + dollars
+        if part:
+            parts[part] = parts.get(part, 0) + dollars
+    out = []
+    for agent, (whole, parts) in sorted(agents.items(), key=lambda a: -a[1][0]):
+        inner = ", ".join(f"{p} {d / total:.0%}" for p, d in parts.items())
+        out.append(f"{agent} {whole / total:.0%}" + (f" ({inner})" if inner else ""))
+    return "        " + " · ".join(out) + f" · ${total:,.0f} at API prices"
+
+
+rows = []
 for name, read in (("claude", claude), ("codex", codex), ("go", go)):
     try:
-        print("\n".join(read()))
+        rows += [(r, name) for r in read()]
     except Exception as e:
-        print(f"{name:<7} unknown ({type(e).__name__}: {e})")
-    sys.stdout.flush()
+        rows.append((f"{name:<7} unknown ({type(e).__name__}: {e})", name))
+windows = [r for r, _ in rows if isinstance(r, tuple)]
+try:
+    spent = shares(windows) if windows else {}
+except Exception as e:
+    spent = {}
+    print(f"usage-share unknown ({type(e).__name__}: {e})")
+for r, _ in rows:
+    if isinstance(r, tuple):
+        print(r[0])
+        if r[1] in spent:
+            print(split(spent[r[1]].get(r[2], {})))
+    else:
+        print(r)
+print("Shares count use logged on Water: the seat, the assistants, their memories and pictures.")

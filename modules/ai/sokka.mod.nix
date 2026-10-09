@@ -111,13 +111,18 @@
         ];
         text = ''
           description=$(head -c 4000)
+          model=gpt-6-luna
           cd "$(mktemp -d)"
           out=$(timeout 300 codex exec --skip-git-repo-check --ephemeral \
             --ignore-user-config --ignore-rules -s read-only \
-            -m gpt-6-luna -c model_reasoning_effort=low --json \
+            -m "$model" -c model_reasoning_effort=low --json \
             "Make exactly one picture with your image tool from the description below, then answer only: done.
 
           $description" < /dev/null)
+          # One journal line per picture, where `usage` counts the
+          # household's share of the subscription.
+          jq -rR --arg m "$model" 'fromjson? | select(.type == "turn.completed") | .usage
+            | "sokka-image: tokens model=\($m) input=\(.input_tokens - .cached_input_tokens) cache_read=\(.cached_input_tokens) cache_write=0 output=\(.output_tokens)"' <<< "$out" >&2
           id=$(jq -rR 'fromjson? | select(.type == "thread.started") | .thread_id' <<< "$out" | head -1)
           [ -n "$id" ] || exit 1
           dir="$CODEX_HOME/generated_images/$id"

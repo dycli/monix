@@ -96,7 +96,7 @@
     ## Subscription usage
 
     `usage` prints how much of each subscription's limits is used (Claude,
-    ChatGPT/Codex, OpenCode Go) and when each resets. Check it before starting a long or model-heavy run.
+    ChatGPT/Codex, OpenCode Go), when each resets, and which assistant on Water used it. Check it before starting a long or model-heavy run.
 
     ## Engineering principles
 

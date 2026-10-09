@@ -316,7 +316,11 @@ like any attachment, and is then deleted.
 Another socket service, `usage`, reports how much of each subscription's
 limits is used (Claude, ChatGPT/Codex, OpenCode Go), read live from each
 provider and never stored; the assistants ask it through their tools and the
-seat through its `usage` command, and only it sees the logins.
+seat through its `usage` command, and only it sees the logins. Under each
+Claude and Codex window it shows who used it: a second service, run as the
+seat and offline, prices the seat's own transcripts and the one journal line
+each assistant, memory and picture writes per call at API rates, and splits
+the window by them. Use from other machines is not counted.
 The bot checks the book every 30 seconds and sends due reminders itself,
 logging them to hippo like any other answer. A reminder can instead be a
 routine ("a mail digest at 8, 2 and 8"): when it comes due, the bot runs its

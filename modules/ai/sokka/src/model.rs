@@ -140,24 +140,19 @@ impl Model for Claude {
                 return Err(format!("claude exited {status}: {}", tail(&err)));
             }
         };
-        // One journal line per call: the subscription's own meter is not
-        // readable with Sokka's token, so this is how its share is counted.
-        let n = |k: &str| {
-            ev.pointer(&format!("/usage/{k}"))
-                .and_then(Value::as_u64)
-                .unwrap_or(0)
-        };
-        eprintln!(
-            "sokka: tokens {} input, {} cache read, {} cache write, {} output; {} turns; ${:.4} at API prices",
-            n("input_tokens"),
-            n("cache_read_input_tokens"),
-            n("cache_creation_input_tokens"),
-            n("output_tokens"),
-            ev.get("num_turns").and_then(Value::as_u64).unwrap_or(0),
-            ev.get("total_cost_usd")
-                .and_then(Value::as_f64)
-                .unwrap_or(0.0),
-        );
+        // One journal line per model per call, where `usage` counts each
+        // assistant's share of the subscriptions.
+        let models = ev.get("modelUsage").and_then(Value::as_object);
+        for (model, u) in models.into_iter().flatten() {
+            let n = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0);
+            eprintln!(
+                "sokka: tokens model={model} input={} cache_read={} cache_write={} output={}",
+                n("inputTokens"),
+                n("cacheReadInputTokens"),
+                n("cacheCreationInputTokens"),
+                n("outputTokens"),
+            );
+        }
         let text = ev.get("result").and_then(Value::as_str).unwrap_or("");
         if ev.get("is_error") == Some(&Value::Bool(true)) {
             return Err(format!("claude: {}", tail(text)));

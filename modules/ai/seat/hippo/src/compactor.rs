@@ -56,6 +56,12 @@ impl Spent {
     }
 
     fn record(&mut self, l: u8, i: u64, model: &str, usage: Usage) {
+        // Also one journal line per call, where `usage` counts each
+        // assistant's share of the subscriptions.
+        eprintln!(
+            "hippo: tokens model={model} input={} cache_read={} cache_write={} output={}",
+            usage.input, usage.cache_read, usage.cache_write, usage.output
+        );
         let now = Local::now();
         let day = self.days.entry(now.date_naive()).or_default();
         day.0 += 1;
