@@ -13,13 +13,15 @@ use chrono::Local;
 use hippo::Hippo;
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::media::{MediaFormat, MediaRequestParameters};
-use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk::ruma::events::reaction::ReactionEventContent;
+use matrix_sdk::ruma::events::relation::Annotation;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::encrypted::OriginalSyncRoomEncryptedEvent;
 use matrix_sdk::ruma::events::room::member::StrippedRoomMemberEvent;
 use matrix_sdk::ruma::events::room::message::{
     MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent,
 };
+use matrix_sdk::ruma::{OwnedEventId, OwnedRoomId};
 use matrix_sdk::{Client, Room, RoomState};
 use model::{Attachment, Model};
 use std::env;
@@ -33,7 +35,9 @@ use tokio::sync::mpsc;
 const PROMPT: &str = "\
 You are {name}, {person}'s household assistant, over Matrix. Lead with the \
 answer, give it the length the question deserves, and stop. Use plain \
-words, no filler. Write plain text: Matrix shows no markdown.
+words, no filler. Write plain text: Matrix shows no markdown. When an \
+emoji says it all (done, noted, thanks), answer with that one emoji \
+alone: it becomes a reaction to the message.
 
 <chat> is your memory: every message between you and {person}, oldest \
 first, one line each. Recent lines hold a message nearly whole; older \
@@ -84,6 +88,8 @@ const ALERT_MAX: usize = 4_000;
 
 /// What the person sent: words, and maybe a file.
 struct Message {
+    /// The event, for a reaction to it.
+    event: OwnedEventId,
     text: String,
     file: Option<File>,
 }
@@ -302,10 +308,12 @@ fn on_messages(
             }
             let msg = match ev.content.msgtype {
                 MessageType::Text(t) => Message {
+                    event: ev.event_id.clone(),
                     text: t.body,
                     file: None,
                 },
                 MessageType::Image(i) => Message {
+                    event: ev.event_id.clone(),
                     text: i.caption().unwrap_or_default().to_owned(),
                     file: Some(File {
                         name: i.filename().to_owned(),
@@ -316,6 +324,7 @@ fn on_messages(
                     }),
                 },
                 MessageType::File(f) => Message {
+                    event: ev.event_id.clone(),
                     text: f.caption().unwrap_or_default().to_owned(),
                     file: Some(File {
                         name: f.filename().to_owned(),
@@ -374,6 +383,7 @@ async fn reply(
     msg: Message,
 ) {
     let typing = Typing::start(&room);
+    let msg_event = msg.event.clone();
     let file = match &msg.file {
         None => Ok(None),
         Some(f) => fetch(client, f)
@@ -397,9 +407,26 @@ async fn reply(
     };
     drop(typing);
     let _ = room.typing_notice(false).await;
-    if let Err(e) = room.send(RoomMessageEventContent::text_plain(reply)).await {
+    let sent = if is_reaction(&reply) {
+        room.send(ReactionEventContent::new(Annotation::new(msg_event, reply)))
+            .await
+    } else {
+        room.send(RoomMessageEventContent::text_plain(reply)).await
+    };
+    if let Err(e) = sent {
         eprintln!("sokka: send to {}: {e}", room.room_id());
     }
+}
+
+/// Whether an answer is one emoji alone, sent as a reaction instead.
+fn is_reaction(reply: &str) -> bool {
+    !reply.is_empty()
+        && reply.chars().count() <= 8
+        && reply
+            .chars()
+            .all(|c| !c.is_ascii() && !c.is_alphanumeric() && !c.is_whitespace())
+        // Emoji start at U+2300; below are dashes, arrows and other marks.
+        && reply.chars().any(|c| c >= '\u{2300}')
 }
 
 /// Hands the alerts the host's sensors left in `dir` to the model as one
@@ -603,6 +630,16 @@ async fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reacts_only_to_a_lone_emoji() {
+        for yes in ["✅", "👍", "❤️", "👨‍👩‍👧"] {
+            assert!(is_reaction(yes), "{yes}");
+        }
+        for no in ["", "Done ✅", "(nothing new)", "✅ ✅", "ok", "—"] {
+            assert!(!is_reaction(no), "{no}");
+        }
+    }
 
     #[test]
     fn reads_files_by_their_bytes() {
