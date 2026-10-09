@@ -24,7 +24,6 @@
         };
         fleet-cli.path = "modules/ai/fleet/cli";
         hippo.path = "modules/ai/seat/hippo";
-        memo.path = "modules/ai/seat/memo-cli";
         sokka.path = "modules/ai/sokka";
       };
       cratePaths = attrValues crates |> map (crate: crate.path);

@@ -227,15 +227,8 @@ take 2-15 ms.
 - Chat labels were dropped from the tree once they proved unreliable, in
   favour of the session check on merges.
 
-### OptMem
-
-`memo` (`modules/ai/seat/memo-cli`) is a Rust implementation of Victor
-Taelin's OptMem: an append-only log of one-line notes that the agent writes
-on purpose (decisions, rules, outcomes), summarised into a binary tree that
-`memo wake` prints at the start of every session. `recall` and `find` search
-the raw notes; `zoom` opens a tree node; `nap` runs pending compressions.
-OptMem runs beside hippo while hippo is on trial. A separate job copies every
-harness's transcripts to the NAS before the harnesses prune them.
+A separate job copies every harness's transcripts to the NAS before the
+harnesses prune them.
 
 ### The fleet
 

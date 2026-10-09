@@ -15,17 +15,18 @@
       inherit (lib.attrsets) removeAttrs;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
+      inherit (lib.strings) readFile;
       inherit (lib.ship) fences;
 
       inherit (lib.ship.topology) seat;
 
       report = pkgs.writers.writePython3Bin "usage-report" {
         flakeIgnore = singleton "E501";
-      } (builtins.readFile ./usage.py);
+      } (readFile ./usage.py);
 
       share = pkgs.writers.writePython3Bin "usage-share" {
         flakeIgnore = singleton "E501";
-      } (builtins.readFile ./usage-share.py);
+      } (readFile ./usage-share.py);
     in
     {
       users.groups.usage = { };

@@ -1,5 +1,5 @@
 # The AI seat: one fenced, unprivileged account where Claude Code, Codex and
-# OpenCode share the ship guide, the project state and OptMem. Its home is
+# OpenCode share the ship guide, the project state and hippo. Its home is
 # composed here; the primary user's agent CLIs come from `dev` instead.
 {
   inputs,
@@ -57,15 +57,6 @@ in
       monixDir = "${userHome}/ark/monix";
       holdDir = "${userHome}/hold";
       cockpitDir = "${userHome}/cockpit";
-      memoryDir = "${userHome}/.optmem/memory";
-
-      # An append-only LOG.txt of one-line memories plus a TREE/ of
-      # summaries. The store is mutable state, created once with `memo init`.
-      memo = lib.ship.rustTool pkgs {
-        src = ./memo-cli;
-        # A runtime MEMORY_DIR still overrides this.
-        env.MEMO_MEMORY_DIR = memoryDir;
-      };
 
       gitReadCommands = [
         "status*"
@@ -88,9 +79,7 @@ in
       bashAllow = [
         "sudo -n -u ${topology.operator} fleet *"
         "fleet dispatch *"
-        # memo and hippo must never prompt.
-        "memo"
-        "memo *"
+        # hippo must never prompt.
         "hippo"
         "hippo *"
         "nix build *"
@@ -150,7 +139,6 @@ in
 
       writableDirs = [
         monixDir
-        memoryDir
       ];
 
       # OpenCode strips the leading slash for file-tool paths, but
@@ -191,8 +179,6 @@ in
       // opencode.permissions;
     in
     {
-      home.packages = singleton memo;
-
       home.sessionVariables = opencode.environment;
 
       home.file.".config/agents/AGENTS.md".text = mkForce (guide.system + guide.pilot);
@@ -370,7 +356,7 @@ in
               tool_timeout_sec = 120;
             }
           );
-        # OptMem is the only memory; Claude's own would be a second writable
+        # hippo is the only memory; Claude's own would be a second writable
         # truth. Managed settings reach every launcher, Paseo included.
         seat.claudeSettings.autoMemoryEnabled = false;
         environment.etc."claude-code/managed-mcp.json".text = toJSON {

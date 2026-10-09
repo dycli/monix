@@ -12,59 +12,7 @@
   + "\n";
 
   pilot = ''
-    ## Memory
-
-    Your memory is OptMem:
-    - The tool is `memo`
-    - Your memories are in `~/.optmem/memory`
-
-    OptMem outlives every session, compaction, model and vendor change.
-    Without it you do not know who you are, or what was decided and tried.
-
-    ### At startup: activating OptMem (mandatory)
-
-    Run `memo wake` before any other tool call, in every session, and
-    then do exactly what it prints, to the end of its output.
-
-    ### While working: register memories (mandatory)
-
-    Call `memo note "<1 line, max 280 bytes>"` when something happens that
-    a future session needs: a decision and its reason, a preference or rule
-    the user sets, an authorization or boundary, a final outcome, a lesson
-    from a failure, a fact about the user's life, or an open loop a later
-    session must close (note it once, then again when it closes).
-
-    A memory is not a progress log. Leave out what goes stale: process IDs,
-    ETAs, test counts, intermediate steps. Write details to the file that
-    owns them (a report, a commit, a doc) and note the conclusion with a
-    pointer to that file. Do not repeat the date; memo records it.
-
-    Do not register redundant memories.
-
-    If `memo note` asks a compression: do it before your next action.
-
-    Never edit or delete anything under `~/.optmem/memory`: the tool manages it.
-
-    ### When you need an old memory: search, or navigate
-
-    `memo recall <regex>` searches every memory, word for word.
-    `memo find "<words>"` ranks raw memories when you know the topic but not
-    the exact wording. Treat summaries as historical navigation; use `find`
-    before relying on a mutable fact found only in a summary.
-
-    Your memories also form a binary tree: #0-1, #2-3 ... exist as one-line
-    summaries, pairs of those as #0-3, and so on -- every `#a-b` line wake
-    prints is one node of it. `memo zoom <a-b>` opens a node into its
-    two halves, down to the raw memories.
-
-    ### If you're a subagent: skip everything above
-
-    Parallel sessions on this machine are all you, and may all write memories.
-    A subagent is not: it must never run `memo`, because it cannot judge what
-    is already known, and its notes would arrive duplicated and incorrectly.
-    When you spawn one, write: `You are a subagent. Don't run memo.`
-
-    ## Episodic memory: hippo (on trial, beside OptMem)
+    ## Memory: hippo
 
     hippo records every chat of this seat automatically, word for word; you
     never write to it. To keep something, say it in a reply.
@@ -72,8 +20,8 @@
     In Claude Code the view loads into your context by itself, as the rules
     file `hippo-view.md`, at session start and after each compaction; it is
     a snapshot from that moment. Run `hippo view` to refresh it mid-session,
-    and in Codex or OpenCode, where it does not load, right after `memo
-    wake`; read every page it prints, whole.
+    and in Codex or OpenCode, where it does not load, at session start;
+    read every page it prints, whole.
 
     The view is the whole history as one-line summaries, oldest first. Each
     line `id+n|text` covers n messages from id, tagged with kinds (user = the
