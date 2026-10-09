@@ -12,14 +12,16 @@ mod tools;
 use chrono::Local;
 use hippo::Hippo;
 use matrix_sdk::config::SyncSettings;
+use matrix_sdk::media::{MediaFormat, MediaRequestParameters};
 use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::encrypted::OriginalSyncRoomEncryptedEvent;
 use matrix_sdk::ruma::events::room::member::StrippedRoomMemberEvent;
 use matrix_sdk::ruma::events::room::message::{
     MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent,
 };
 use matrix_sdk::{Client, Room, RoomState};
-use model::Model;
+use model::{Attachment, Model};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -60,6 +62,40 @@ names (groceries, errands) with the list tools, and show a list when \
 asked rather than recalling it. Say something is done only once a tool \
 has done it.";
 
+/// Added always: files are read once and not kept.
+const FILES: &str = "\n\nDylan may send a photo or a file with a message. You see it this once; \
+only your answer is remembered, never the file. So when one comes, say \
+briefly what matters in it (dates, times, amounts, names, places) along \
+with whatever Dylan asked.";
+
+/// The largest image the model takes, before base64.
+const IMAGE_MAX: usize = 3_750_000;
+/// The largest PDF the model takes, before base64.
+const PDF_MAX: usize = 24_000_000;
+/// The most of a text file inlined into the prompt.
+const TEXT_MAX: usize = 100_000;
+
+/// What Dylan sent: words, and maybe a file.
+struct Message {
+    text: String,
+    file: Option<File>,
+}
+
+struct File {
+    name: String,
+    photo: bool,
+    mime: Option<String>,
+    source: MediaSource,
+    /// A smaller copy, for a photo too big for the model.
+    thumbnail: Option<MediaSource>,
+}
+
+/// A downloaded file, as the model will see it.
+enum Read {
+    Model(Attachment),
+    Text(String),
+}
+
 fn var(k: &str) -> Result<String, String> {
     env::var(k)
         .ok()
@@ -67,16 +103,115 @@ fn var(k: &str) -> Result<String, String> {
         .ok_or_else(|| format!("{k} is not set"))
 }
 
-/// One message in, one answer out, both remembered.
-fn answer(hippo: &Hippo, model: &dyn Model, text: &str) -> Result<String, String> {
+/// Names a file by its first bytes; the sender's stated type is a fallback
+/// for text only.
+fn read(data: Vec<u8>, mime: Option<&str>) -> Option<Read> {
+    let image = match data.as_slice() {
+        [0xFF, 0xD8, 0xFF, ..] => Some("image/jpeg"),
+        [0x89, b'P', b'N', b'G', ..] => Some("image/png"),
+        [b'G', b'I', b'F', b'8', ..] => Some("image/gif"),
+        [
+            b'R',
+            b'I',
+            b'F',
+            b'F',
+            _,
+            _,
+            _,
+            _,
+            b'W',
+            b'E',
+            b'B',
+            b'P',
+            ..,
+        ] => Some("image/webp"),
+        _ => None,
+    };
+    if let Some(mime) = image {
+        Some(Read::Model(Attachment::Image { mime, data }))
+    } else if data.starts_with(b"%PDF") {
+        Some(Read::Model(Attachment::Pdf(data)))
+    } else if mime.is_some_and(|m| m.starts_with("text/")) {
+        String::from_utf8(data).ok().map(Read::Text)
+    } else {
+        None
+    }
+}
+
+/// Downloads and decrypts a file, falling back to a photo's thumbnail when
+/// the original is too big. Errors are what to tell Dylan.
+async fn fetch(client: &Client, file: &File) -> Result<Read, String> {
+    let get = |source: &MediaSource| {
+        let request = MediaRequestParameters {
+            source: source.clone(),
+            format: MediaFormat::File,
+        };
+        async move { client.media().get_media_content(&request, false).await }
+    };
+    let data = get(&file.source)
+        .await
+        .map_err(|e| format!("I couldn't download {}: {e}", file.name))?;
+    let too_big = |r: &Read| match r {
+        Read::Model(Attachment::Image { data, .. }) => data.len() > IMAGE_MAX,
+        Read::Model(Attachment::Pdf(data)) => data.len() > PDF_MAX,
+        Read::Text(_) => false,
+    };
+    let unreadable = || {
+        format!(
+            "I can't read {}: only photos, PDFs and text files.",
+            file.name
+        )
+    };
+    let r = read(data, file.mime.as_deref()).ok_or_else(unreadable)?;
+    if !too_big(&r) {
+        return Ok(r);
+    }
+    if let Some(thumb) = &file.thumbnail
+        && let Ok(data) = get(thumb).await
+        && let Some(r) = read(data, None).filter(|r| !too_big(r))
+    {
+        return Ok(r);
+    }
+    Err(format!("{} is too big for me to read.", file.name))
+}
+
+/// One message in, one answer out, both remembered. The file, if any, is
+/// read now and kept nowhere; hippo notes only that it came.
+fn answer(
+    hippo: &Hippo,
+    model: &dyn Model,
+    text: &str,
+    file: Option<(String, bool, Read)>,
+) -> Result<String, String> {
     let view = hippo.view()?;
-    hippo.log("user", text)?;
+    let (said, inline, files) = match file {
+        None => (text.to_owned(), String::new(), Vec::new()),
+        Some((name, photo, r)) => {
+            let what = if photo { "a photo" } else { "a file" };
+            let said = format!("(sent {what}: {name}) {text}")
+                .trim_end()
+                .to_owned();
+            match r {
+                Read::Model(a) => (said, String::new(), vec![a]),
+                Read::Text(t) => {
+                    let t: String = t.chars().take(TEXT_MAX).collect();
+                    (
+                        said,
+                        format!("\n<file name=\"{name}\">\n{t}\n</file>"),
+                        Vec::new(),
+                    )
+                }
+            }
+        }
+    };
+    hippo.log("user", &said)?;
     let prompt = format!(
-        "{view}\nNow: {}\n\nDylan: {text}",
+        "{view}\nNow: {}\n\nDylan: {said}{inline}",
         Local::now().format("%Y-%m-%d %a %H:%M")
     );
-    let system = format!("{PROMPT}{}", if model.tools() { TOOLS } else { NO_TOOLS });
-    let reply = model.answer(&system, &prompt)?;
+    let tools = if model.tools() { TOOLS } else { NO_TOOLS };
+    let system = format!("{PROMPT}{tools}{FILES}");
+    let reply = model.answer(&system, &prompt, &files)?;
     if reply.is_empty() {
         return Err("the model answered nothing".into());
     }
@@ -111,12 +246,12 @@ fn on_invites(client: &Client, users: Arc<Vec<String>>) {
     );
 }
 
-/// Queues text from allowed users in joined rooms, for one worker to answer
-/// in order.
+/// Queues text, photos and files from allowed users in joined rooms, for
+/// one worker to answer in order.
 fn on_messages(
     client: &Client,
     users: Arc<Vec<String>>,
-    queue: mpsc::UnboundedSender<(Room, String)>,
+    queue: mpsc::UnboundedSender<(Room, Message)>,
 ) {
     client.add_event_handler(move |ev: OriginalSyncRoomMessageEvent, room: Room| {
         let (users, queue) = (users.clone(), queue.clone());
@@ -124,9 +259,34 @@ fn on_messages(
             if room.state() != RoomState::Joined || !users.iter().any(|u| *u == ev.sender) {
                 return;
             }
-            if let MessageType::Text(t) = ev.content.msgtype {
-                let _ = queue.send((room, t.body));
-            }
+            let msg = match ev.content.msgtype {
+                MessageType::Text(t) => Message {
+                    text: t.body,
+                    file: None,
+                },
+                MessageType::Image(i) => Message {
+                    text: i.caption().unwrap_or_default().to_owned(),
+                    file: Some(File {
+                        name: i.filename().to_owned(),
+                        photo: true,
+                        mime: i.info.as_ref().and_then(|x| x.mimetype.clone()),
+                        thumbnail: i.info.as_ref().and_then(|x| x.thumbnail_source.clone()),
+                        source: i.source,
+                    }),
+                },
+                MessageType::File(f) => Message {
+                    text: f.caption().unwrap_or_default().to_owned(),
+                    file: Some(File {
+                        name: f.filename().to_owned(),
+                        photo: false,
+                        mime: f.info.as_ref().and_then(|x| x.mimetype.clone()),
+                        thumbnail: None,
+                        source: f.source,
+                    }),
+                },
+                _ => return,
+            };
+            let _ = queue.send((room, msg));
         }
     });
     client.add_event_handler(
@@ -141,15 +301,35 @@ fn on_messages(
     );
 }
 
-async fn reply(hippo: Arc<Hippo>, model: Arc<dyn Model>, room: Room, text: String) {
+async fn reply(
+    client: &Client,
+    hippo: Arc<Hippo>,
+    model: Arc<dyn Model>,
+    room: Room,
+    msg: Message,
+) {
     let _ = room.typing_notice(true).await;
-    let reply = tokio::task::spawn_blocking(move || answer(&hippo, model.as_ref(), &text))
-        .await
-        .unwrap_or_else(|e| Err(e.to_string()))
-        .unwrap_or_else(|e| {
+    let file = match &msg.file {
+        None => Ok(None),
+        Some(f) => fetch(client, f)
+            .await
+            .map(|r| Some((f.name.clone(), f.photo, r))),
+    };
+    let reply = match file {
+        Err(e) => {
             eprintln!("sokka: {e}");
-            format!("(I couldn't answer that: {e})")
-        });
+            e
+        }
+        Ok(file) => {
+            tokio::task::spawn_blocking(move || answer(&hippo, model.as_ref(), &msg.text, file))
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()))
+                .unwrap_or_else(|e| {
+                    eprintln!("sokka: {e}");
+                    format!("(I couldn't answer that: {e})")
+                })
+        }
+    };
     let _ = room.typing_notice(false).await;
     if let Err(e) = room.send(RoomMessageEventContent::text_plain(reply)).await {
         eprintln!("sokka: send to {}: {e}", room.room_id());
@@ -221,12 +401,13 @@ async fn run() -> Result<(), String> {
     let (queue, mut inbox) = mpsc::unbounded_channel();
     on_messages(&client, users, queue);
     tokio::spawn(remind(client.clone(), hippo.clone(), state.clone()));
+    let worker = client.clone();
     tokio::spawn(async move {
-        while let Some((room, text)) = inbox.recv().await {
+        while let Some((room, msg)) = inbox.recv().await {
             if let Err(e) = fs::write(state.join("room"), room.room_id().as_str()) {
                 eprintln!("sokka: room: {e}");
             }
-            reply(hippo.clone(), model.clone(), room, text).await;
+            reply(&worker, hippo.clone(), model.clone(), room, msg).await;
         }
     });
     eprintln!("sokka: listening");
@@ -253,5 +434,26 @@ async fn main() -> ExitCode {
             eprintln!("sokka: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_files_by_their_bytes() {
+        let kind = |data: &[u8], mime| match read(data.to_vec(), mime) {
+            Some(Read::Model(Attachment::Image { mime, .. })) => mime,
+            Some(Read::Model(Attachment::Pdf(_))) => "pdf",
+            Some(Read::Text(_)) => "text",
+            None => "none",
+        };
+        assert_eq!(kind(b"\x89PNG\r\n", Some("image/jpeg")), "image/png");
+        assert_eq!(kind(b"RIFF1234WEBPVP8", None), "image/webp");
+        assert_eq!(kind(b"%PDF-1.7", None), "pdf");
+        assert_eq!(kind(b"milk, eggs", Some("text/plain")), "text");
+        assert_eq!(kind(b"milk, eggs", None), "none");
+        assert_eq!(kind(b"\xff\xfe\x00", Some("text/plain")), "none");
     }
 }

@@ -295,6 +295,12 @@ the model through search results finds no keys, memory or shell to reach.
 The bot checks the book every 30 seconds and sends due reminders itself,
 logging them to hippo like any other answer.
 
+Photos, PDFs and text files sent to Sokka are decrypted, typed by their
+first bytes rather than the sender's word, and handed to the model with
+the message. They are read once and kept nowhere: hippo holds only text, so
+the prompt asks the answer to state what matters in the file (dates,
+amounts, names), and that answer is what Sokka remembers.
+
 Sokka answers only the users it is configured for, joins
 only their rooms, and runs as its own fenced user with loopback and the
 internet but not the tailnet or the LAN. Chats are end-to-end encrypted

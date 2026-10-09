@@ -8,7 +8,8 @@
 # subscription token, without built-in tools or settings; their only tools
 # come over MCP: Parallel's keyless web search and fetch, and Sokka's own
 # reminders and lists (`sokka tools`), which reach only its book in the
-# state directory. The bot sends due reminders itself.
+# state directory. The bot sends due reminders itself, and reads photos and
+# files sent to it without keeping them.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.sokka;

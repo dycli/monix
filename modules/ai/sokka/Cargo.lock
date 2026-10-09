@@ -3193,6 +3193,7 @@ dependencies = [
 name = "sokka"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "matrix-sdk",
  "rmcp",

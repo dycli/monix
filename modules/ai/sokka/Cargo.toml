@@ -9,6 +9,7 @@ publish = false
 matrix-sdk = { version = "0.19", default-features = false, features = ["e2e-encryption", "bundled-sqlite"] }
 # matrix-sdk always builds reqwest with rustls and leaves the provider to us.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 rmcp = { version = "3.5", default-features = false, features = ["macros", "server", "transport-io"] }
 schemars = "1"

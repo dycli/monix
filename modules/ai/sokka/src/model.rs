@@ -2,6 +2,8 @@
 //! configuration: the `claude` CLI on a subscription, or any
 //! OpenAI-compatible endpoint (local llama.cpp, a hosted API).
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as B64;
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
@@ -11,8 +13,14 @@ use std::time::{Duration, Instant};
 /// Seconds one answer may take before the call is abandoned.
 const TIMEOUT: Duration = Duration::from_secs(300);
 
+/// A file sent with a message, in a form models read directly.
+pub enum Attachment {
+    Image { mime: &'static str, data: Vec<u8> },
+    Pdf(Vec<u8>),
+}
+
 pub trait Model: Send + Sync {
-    fn answer(&self, system: &str, prompt: &str) -> Result<String, String>;
+    fn answer(&self, system: &str, prompt: &str, files: &[Attachment]) -> Result<String, String>;
 
     /// Whether answers have tools: web search and Sokka's own.
     fn tools(&self) -> bool {
@@ -49,12 +57,17 @@ pub struct Claude {
 }
 
 impl Model for Claude {
-    fn answer(&self, system: &str, prompt: &str) -> Result<String, String> {
+    fn answer(&self, system: &str, prompt: &str, files: &[Attachment]) -> Result<String, String> {
         let mut cmd = Command::new(&self.command);
+        // Stream-json is the only way to hand the CLI images and PDFs; it
+        // needs stream-json out, which ends with the result event.
         cmd.args([
             "-p",
+            "--input-format",
+            "stream-json",
             "--output-format",
-            "json",
+            "stream-json",
+            "--verbose",
             "--no-session-persistence",
             "--system-prompt",
             system,
@@ -79,9 +92,21 @@ impl Model for Claude {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("{}: {e}", self.command))?;
+        let mut content: Vec<Value> = files
+            .iter()
+            .map(|f| match f {
+                Attachment::Image { mime, data } => json!({"type": "image",
+                    "source": {"type": "base64", "media_type": mime, "data": B64.encode(data)}}),
+                Attachment::Pdf(data) => json!({"type": "document",
+                    "source": {"type": "base64", "media_type": "application/pdf",
+                               "data": B64.encode(data)}}),
+            })
+            .collect();
+        content.push(json!({"type": "text", "text": prompt}));
+        let line = json!({"type": "user", "message": {"role": "user", "content": content}});
         let mut stdin = child.stdin.take().unwrap();
-        let prompt = prompt.to_owned();
-        let writer = thread::spawn(move || stdin.write_all(prompt.as_bytes()));
+        let line = format!("{line}\n");
+        let writer = thread::spawn(move || stdin.write_all(line.as_bytes()));
         let mut stdout = child.stdout.take().unwrap();
         let reader = thread::spawn(move || {
             let mut out = String::new();
@@ -101,9 +126,13 @@ impl Model for Claude {
         };
         let _ = writer.join();
         let out = reader.join().unwrap().map_err(|e| e.to_string())?;
-        let ev: Value = match serde_json::from_str(&out) {
-            Ok(ev) => ev,
-            Err(_) => {
+        let result = out
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .find(|ev| ev.get("type").and_then(Value::as_str) == Some("result"));
+        let ev = match result {
+            Some(ev) => ev,
+            None => {
                 let mut err = String::new();
                 if let Some(mut e) = child.stderr.take() {
                     let _ = e.read_to_string(&mut err);
@@ -144,13 +173,22 @@ pub struct Http {
 }
 
 impl Model for Http {
-    fn answer(&self, system: &str, prompt: &str) -> Result<String, String> {
+    fn answer(&self, system: &str, prompt: &str, files: &[Attachment]) -> Result<String, String> {
         let url = format!("{}/chat/completions", self.url.trim_end_matches('/'));
+        let mut content: Vec<Value> = Vec::new();
+        for f in files {
+            match f {
+                Attachment::Image { mime, data } => content.push(json!({"type": "image_url",
+                    "image_url": {"url": format!("data:{mime};base64,{}", B64.encode(data))}})),
+                Attachment::Pdf(_) => return Err("this model can't read PDFs".into()),
+            }
+        }
+        content.push(json!({"type": "text", "text": prompt}));
         let body = json!({
             "model": self.model,
             "messages": [
                 {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": content},
             ],
         });
         let mut resp = ureq::post(&url)
