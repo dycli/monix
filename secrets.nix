@@ -45,6 +45,8 @@ in
   "hosts/water/secrets/matrix-sokka.env.age".publicKeys = singleton water ++ admin;
   # Sokka's CalDAV accounts: [{"name","url","username","password"}, ...].
   "hosts/water/secrets/sokka-caldav.json.age".publicKeys = singleton water ++ admin;
+  # Sokka's IMAP accounts: [{"name","username","password"}, ...].
+  "hosts/water/secrets/sokka-mail.json.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-alertbot.env.age".publicKeys = singleton water ++ admin;
   # INI merged over the declarative config at unit start.
   "hosts/water/secrets/sabnzbd-secrets.ini.age".publicKeys = singleton water ++ admin;
