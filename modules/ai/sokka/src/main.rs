@@ -334,6 +334,30 @@ fn on_messages(
     );
 }
 
+/// Shows "typing" until dropped. A typing notice lapses after 4 s and
+/// matrix-sdk resends one only after 3 s, so asking twice a second keeps it
+/// up without extra requests.
+struct Typing(tokio::task::JoinHandle<()>);
+
+impl Typing {
+    fn start(room: &Room) -> Self {
+        let room = room.clone();
+        Self(tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_millis(500));
+            loop {
+                tick.tick().await;
+                let _ = room.typing_notice(true).await;
+            }
+        }))
+    }
+}
+
+impl Drop for Typing {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 async fn reply(
     client: &Client,
     hippo: Arc<Hippo>,
@@ -341,7 +365,7 @@ async fn reply(
     room: Room,
     msg: Message,
 ) {
-    let _ = room.typing_notice(true).await;
+    let typing = Typing::start(&room);
     let file = match &msg.file {
         None => Ok(None),
         Some(f) => fetch(client, f)
@@ -363,6 +387,7 @@ async fn reply(
             format!("(I couldn't answer that: {e})")
         }),
     };
+    drop(typing);
     let _ = room.typing_notice(false).await;
     if let Err(e) = room.send(RoomMessageEventContent::text_plain(reply)).await {
         eprintln!("sokka: send to {}: {e}", room.room_id());
@@ -392,7 +417,7 @@ async fn remind(client: Client, hippo: Arc<Hippo>, model: Arc<dyn Model>, state:
         };
         for r in due {
             if r.ask {
-                let _ = room.typing_notice(true).await;
+                let typing = Typing::start(&room);
                 let (hippo, model, ask) = (hippo.clone(), model.clone(), r.text.clone());
                 let text = tokio::task::spawn_blocking(move || {
                     answer(&hippo, model.as_ref(), From::Routine, &ask, None)
@@ -403,6 +428,7 @@ async fn remind(client: Client, hippo: Arc<Hippo>, model: Arc<dyn Model>, state:
                     eprintln!("sokka: routine {}: {e}", r.id);
                     format!("(The routine \"{}\" failed: {e})", r.text)
                 });
+                drop(typing);
                 let _ = room.typing_notice(false).await;
                 if let Err(e) = room.send(RoomMessageEventContent::text_plain(text)).await {
                     eprintln!("sokka: routine {}: {e}", r.id);
