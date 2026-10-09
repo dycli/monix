@@ -3,13 +3,16 @@
 //! prompt, its whole memory (its hippo view) and the new message. Both the
 //! message and the answer go into hippo, so the next call remembers them.
 
+mod book;
 mod hippo;
 mod matrix;
 mod model;
+mod tools;
 
 use chrono::Local;
 use hippo::Hippo;
 use matrix_sdk::config::SyncSettings;
+use matrix_sdk::ruma::OwnedRoomId;
 use matrix_sdk::ruma::events::room::encrypted::OriginalSyncRoomEncryptedEvent;
 use matrix_sdk::ruma::events::room::member::StrippedRoomMemberEvent;
 use matrix_sdk::ruma::events::room::message::{
@@ -18,9 +21,11 @@ use matrix_sdk::ruma::events::room::message::{
 use matrix_sdk::{Client, Room, RoomState};
 use model::Model;
 use std::env;
+use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 const PROMPT: &str = "\
@@ -34,18 +39,26 @@ first, one line each. Recent messages appear nearly whole; older lines \
 cover more messages in fewer words, the older the more. Each line starts \
 with its address (id+n: the n messages from id) and tags what Dylan said \
 as user and what you said as talk. Rely on it as what you remember; when \
-a line is too condensed to answer from, say what you remember and ask.
+a line is too condensed to answer from, say what you remember and ask.";
 
-You cannot set reminders, read calendars or change anything. Say so \
+/// Added when the model has no tools.
+const NO_TOOLS: &str = "\n\nYou cannot set reminders, keep lists or change anything. Say so \
 plainly when asked, and never claim to have done something.";
 
-/// Added when the model can search.
-const SEARCH: &str = "\n\nYou can search the web and read pages. Search when the answer depends on \
+/// Added when the model has tools.
+const TOOLS: &str = "\n\nYou can search the web and read pages. Search when the answer depends on \
 current or local facts (hours, prices, news, availability) or on \
 anything you are unsure of; skip it for what you know or remember. Give \
 the answer, not the search: say where it came from in a few words, add a \
 link only when Dylan will want to open it, and say plainly when the \
-sources disagree or come up empty.";
+sources disagree or come up empty.
+
+You keep Dylan's reminders and lists. Set a reminder when Dylan asks \
+for one, at the time Dylan means, worked out from Now; you send it then, \
+word for word, so write it as the reminder itself. Keep lists Dylan \
+names (groceries, errands) with the list tools, and show a list when \
+asked rather than recalling it. Say something is done only once a tool \
+has done it.";
 
 fn var(k: &str) -> Result<String, String> {
     env::var(k)
@@ -62,11 +75,7 @@ fn answer(hippo: &Hippo, model: &dyn Model, text: &str) -> Result<String, String
         "{view}\nNow: {}\n\nDylan: {text}",
         Local::now().format("%Y-%m-%d %a %H:%M")
     );
-    let system = if model.searches() {
-        format!("{PROMPT}{SEARCH}")
-    } else {
-        PROMPT.to_owned()
-    };
+    let system = format!("{PROMPT}{}", if model.tools() { TOOLS } else { NO_TOOLS });
     let reply = model.answer(&system, &prompt)?;
     if reply.is_empty() {
         return Err("the model answered nothing".into());
@@ -147,6 +156,41 @@ async fn reply(hippo: Arc<Hippo>, model: Arc<dyn Model>, room: Room, text: Strin
     }
 }
 
+/// Every 30 s, sends the reminders that are due to the room Dylan last
+/// wrote from; with no such room yet, they wait.
+async fn remind(client: Client, hippo: Arc<Hippo>, state: PathBuf) {
+    let mut tick = tokio::time::interval(Duration::from_secs(30));
+    loop {
+        tick.tick().await;
+        let Some(room) = fs::read_to_string(state.join("room"))
+            .ok()
+            .and_then(|id| OwnedRoomId::try_from(id.trim()).ok())
+            .and_then(|id| client.get_room(&id))
+        else {
+            continue;
+        };
+        let due = match book::change(&state, |b| b.due(Local::now().naive_local())) {
+            Ok(due) => due,
+            Err(e) => {
+                eprintln!("sokka: {e}");
+                continue;
+            }
+        };
+        for r in due {
+            let text = format!("Reminder: {}", r.text);
+            if let Err(e) = room.send(RoomMessageEventContent::text_plain(&text)).await {
+                eprintln!("sokka: reminder {}: {e}", r.id);
+                continue;
+            }
+            let hippo = hippo.clone();
+            let logged = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await;
+            if let Ok(Err(e)) = logged {
+                eprintln!("sokka: {e}");
+            }
+        }
+    }
+}
+
 async fn run() -> Result<(), String> {
     let state = PathBuf::from(var("STATE_DIRECTORY")?);
     let users: Arc<Vec<String>> = Arc::new(
@@ -176,8 +220,12 @@ async fn run() -> Result<(), String> {
     }
     let (queue, mut inbox) = mpsc::unbounded_channel();
     on_messages(&client, users, queue);
+    tokio::spawn(remind(client.clone(), hippo.clone(), state.clone()));
     tokio::spawn(async move {
         while let Some((room, text)) = inbox.recv().await {
+            if let Err(e) = fs::write(state.join("room"), room.room_id().as_str()) {
+                eprintln!("sokka: room: {e}");
+            }
             reply(hippo.clone(), model.clone(), room, text).await;
         }
     });
@@ -193,7 +241,13 @@ async fn main() -> ExitCode {
     // The homeserver is plain http on loopback, but reqwest panics
     // without a TLS provider installed.
     let _ = rustls::crypto::ring::default_provider().install_default();
-    match run().await {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let r = match args.as_slice() {
+        [] => run().await,
+        [cmd, dir] if cmd == "tools" => tools::serve(PathBuf::from(dir)).await,
+        _ => Err("usage: sokka [tools DIR]".into()),
+    };
+    match r {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("sokka: {e}");

@@ -6,7 +6,9 @@
 # Two units under one static user: the bot, and the hippo service that is
 # the store's only writer. Model calls run the claude CLI on the fleet's
 # subscription token, without built-in tools or settings; their only tools
-# are Parallel's keyless web search and fetch, over MCP.
+# come over MCP: Parallel's keyless web search and fetch, and Sokka's own
+# reminders and lists (`sokka tools`), which reach only its book in the
+# state directory. The bot sends due reminders itself.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.sokka;
@@ -50,6 +52,14 @@
         mcpServers.parallel = {
           type = "http";
           url = "https://search.parallel.ai/mcp";
+        };
+        mcpServers.sokka = {
+          type = "stdio";
+          command = getExe sokka;
+          args = [
+            "tools"
+            state
+          ];
         };
       };
 

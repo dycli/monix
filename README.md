@@ -285,10 +285,17 @@ following transcripts: the bot logs each message and each answer, and hippo
 folds them into a 128 KB view, the seat's size, so once the view fills an
 endless chat costs the same per call on its hundredth day as its thousandth.
 
-The model is configuration: the `claude` CLI on a subscription token, with
-built-in tools and settings off and Parallel's keyless web search as its
-only MCP server, or any OpenAI-compatible endpoint, local or hosted. The
-prompt mentions search only when the model has it. Sokka answers only the users it is configured for, joins
+The model is configuration: the `claude` CLI on a subscription token, or
+any OpenAI-compatible endpoint, local or hosted. The CLI runs with built-in
+tools and settings off; its tools come over MCP, and the prompt mentions
+them only when the model has them. Parallel's keyless server gives it web
+search. Sokka's own server, `sokka tools`, keeps reminders and lists in one
+locked JSON book and can touch nothing else, so a page that tries to steer
+the model through search results finds no keys, memory or shell to reach.
+The bot checks the book every 30 seconds and sends due reminders itself,
+logging them to hippo like any other answer.
+
+Sokka answers only the users it is configured for, joins
 only their rooms, and runs as its own fenced user with loopback and the
 internet but not the tailnet or the LAN. Chats are end-to-end encrypted
 (matrix-sdk): the bot holds its own cross-signed device, so neither the

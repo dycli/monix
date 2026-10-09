@@ -14,8 +14,8 @@ const TIMEOUT: Duration = Duration::from_secs(300);
 pub trait Model: Send + Sync {
     fn answer(&self, system: &str, prompt: &str) -> Result<String, String>;
 
-    /// Whether answers may search the web.
-    fn searches(&self) -> bool {
+    /// Whether answers have tools: web search and Sokka's own.
+    fn tools(&self) -> bool {
         false
     }
 }
@@ -118,7 +118,7 @@ impl Model for Claude {
         Ok(text.trim().to_owned())
     }
 
-    fn searches(&self) -> bool {
+    fn tools(&self) -> bool {
         self.mcp.is_some()
     }
 }
