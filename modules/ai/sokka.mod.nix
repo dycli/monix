@@ -483,8 +483,10 @@
         alerts.reader = mkIf (alerted != [ ]) (head alerted);
 
         # sokka-image holds the household's one Codex login, on the ChatGPT
-        # subscription; the assistants reach only its socket. Log in once:
-        # sudo -u sokka-image env CODEX_HOME=/var/lib/sokka-image codex login --device-auth
+        # subscription; the assistants reach only its socket. Log in once,
+        # with the codex from the unit's script (not on PATH), after
+        # `sudo install -d -o sokka-image -g sokka-image -m 700 /var/lib/sokka-image`:
+        # sudo -u sokka-image env HOME=/var/lib/sokka-image CODEX_HOME=/var/lib/sokka-image <codex> login --device-auth
         users.users = mapAttrs (n: _: {
           isSystemUser = true;
           group = n;
