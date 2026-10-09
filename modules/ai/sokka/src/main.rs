@@ -11,6 +11,7 @@ mod tools;
 
 use chrono::Local;
 use hippo::Hippo;
+use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::media::{MediaFormat, MediaRequestParameters};
 use matrix_sdk::ruma::events::reaction::ReactionEventContent;
@@ -381,6 +382,7 @@ async fn reply(
     model: Arc<dyn Model>,
     room: Room,
     msg: Message,
+    outbox: &Path,
 ) {
     let typing = Typing::start(&room);
     let msg_event = msg.event.clone();
@@ -405,6 +407,7 @@ async fn reply(
             format!("(I couldn't answer that: {e})")
         }),
     };
+    send_images(&room, outbox).await;
     drop(typing);
     let _ = room.typing_notice(false).await;
     let sent = if is_reaction(&reply) {
@@ -415,6 +418,40 @@ async fn reply(
     };
     if let Err(e) = sent {
         eprintln!("sokka: send to {}: {e}", room.room_id());
+    }
+}
+
+/// Sends the pictures `make_image` left in the outbox, oldest first,
+/// deleting each once sent; one that fails stays for the next answer.
+async fn send_images(room: &Room, outbox: &Path) {
+    let Ok(dir) = fs::read_dir(outbox) else {
+        return;
+    };
+    let mut files: Vec<PathBuf> = dir
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "png"))
+        .collect();
+    files.sort();
+    for path in files {
+        let sent = match fs::read(&path) {
+            Ok(data) => room
+                .send_attachment(
+                    "picture.png",
+                    &mime::IMAGE_PNG,
+                    data,
+                    AttachmentConfig::new(),
+                )
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        match sent {
+            Ok(()) => {
+                let _ = fs::remove_file(&path);
+            }
+            Err(e) => eprintln!("sokka: picture {}: {e}", path.display()),
+        }
     }
 }
 
@@ -531,6 +568,7 @@ async fn remind(
                     eprintln!("sokka: routine {}: {e}", r.id);
                     format!("(The routine \"{}\" failed: {e})", r.text)
                 });
+                send_images(&room, &state.join("outbox")).await;
                 drop(typing);
                 let _ = room.typing_notice(false).await;
                 if text == QUIET {
@@ -597,7 +635,15 @@ async fn run() -> Result<(), String> {
             if let Err(e) = fs::write(state.join("room"), room.room_id().as_str()) {
                 eprintln!("sokka: room: {e}");
             }
-            reply(&worker, hippo.clone(), model.clone(), room, msg).await;
+            reply(
+                &worker,
+                hippo.clone(),
+                model.clone(),
+                room,
+                msg,
+                &state.join("outbox"),
+            )
+            .await;
         }
     });
     eprintln!("sokka: listening");

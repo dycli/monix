@@ -304,6 +304,11 @@ made up could carry what it read out in its path, but a link that existed
 before it read anything carries nothing. YouTube is a fifth, on `yt-dlp`: it
 searches and reads a video's captions as text, the uploader's own before
 automatic ones, and refuses any link that is not YouTube.
+Pictures are a sixth: the assistant describes one, and a small socket-activated
+service draws it with Codex on the household's ChatGPT subscription. That
+service alone holds the Codex login; the assistants reach only its socket. The
+picture waits in the instance's outbox, goes out with the answer, encrypted
+like any attachment, and is then deleted.
 The bot checks the book every 30 seconds and sends due reminders itself,
 logging them to hippo like any other answer. A reminder can instead be a
 routine ("a mail digest at 8, 2 and 8"): when it comes due, the bot runs its

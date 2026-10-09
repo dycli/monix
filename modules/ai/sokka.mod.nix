@@ -16,7 +16,9 @@
 # and its hippo, the shared calendar (sokka-calendar.py over CalDAV), mail
 # where the instance has some (sokka-mail.py over IMAP, read-only), each
 # the only process that sees its login, and YouTube search and captions
-# (sokka-youtube.py), which reaches YouTube only. Mail and pages let
+# (sokka-youtube.py), which reaches YouTube only, and pictures
+# (sokka-image.py), drawn by the image service that alone holds the
+# household's Codex login. Mail and pages let
 # anyone put text in front of the model, so fetch opens only links a
 # search returned or the person wrote: nothing it read can ride out in a
 # link it made up. The bot sends due reminders itself, runs
@@ -80,6 +82,41 @@
         libraries = singleton pkgs.python3Packages.mcp;
         flakeIgnore = singleton "E501";
       } (readFile ./sokka-web.py);
+
+      image = pkgs.writers.writePython3Bin "sokka-image-mcp" {
+        libraries = singleton pkgs.python3Packages.mcp;
+        flakeIgnore = singleton "E501";
+      } (readFile ./sokka-image.py);
+
+      # One connection, one picture: the description on stdin, the PNG out.
+      # Codex keeps each thread's pictures under its thread id.
+      draw = pkgs.writeShellApplication {
+        name = "sokka-image";
+        runtimeInputs = [
+          pkgs.codex
+          pkgs.jq
+          pkgs.coreutils
+        ];
+        text = ''
+          description=$(head -c 4000)
+          cd "$(mktemp -d)"
+          out=$(timeout 300 codex exec --skip-git-repo-check --ephemeral \
+            --ignore-user-config --ignore-rules -s read-only \
+            -m gpt-6-luna -c model_reasoning_effort=low --json \
+            "Make exactly one picture with your image tool from the description below, then answer only: done.
+
+          $description" < /dev/null)
+          id=$(jq -rR 'fromjson? | select(.type == "thread.started") | .thread_id' <<< "$out" | head -1)
+          [ -n "$id" ] || exit 1
+          dir="$CODEX_HOME/generated_images/$id"
+          trap 'rm -rf "$dir"' EXIT
+          for f in "$dir"/*.png; do
+            cat "$f"
+            exit 0
+          done
+          exit 1
+        '';
+      };
 
       youtube = pkgs.writers.writePython3Bin "sokka-youtube" {
         libraries = ps: [
@@ -196,6 +233,11 @@
                 type = "stdio";
                 command = getExe youtube;
               };
+              image = {
+                type = "stdio";
+                command = getExe image;
+                args = singleton "${state}/outbox";
+              };
             }
             // optionalAttrs (i.mailCredentialsFile != null) {
               mail = {
@@ -210,6 +252,7 @@
           sandbox = lib.ship.hardened.tenant // {
             User = n;
             Group = n;
+            SupplementaryGroups = "sokka-image";
             StateDirectory = n;
             StateDirectoryMode = "0700";
             RestrictAddressFamilies = [
@@ -439,14 +482,57 @@
         # nobody else may, since what it posts its memory keeps.
         alerts.reader = mkIf (alerted != [ ]) (head alerted);
 
+        # sokka-image holds the household's one Codex login, on the ChatGPT
+        # subscription; the assistants reach only its socket. Log in once:
+        # sudo -u sokka-image env CODEX_HOME=/var/lib/sokka-image codex login --device-auth
         users.users = mapAttrs (n: _: {
           isSystemUser = true;
           group = n;
           home = "/var/lib/${n}";
-        }) cfg.instances;
-        users.groups = mapAttrs (_: _: { }) cfg.instances;
+        }) (cfg.instances // { sokka-image = { }; });
+        users.groups = mapAttrs (_: _: { }) cfg.instances // {
+          sokka-image = { };
+        };
 
-        systemd.services = mkMerge (mapAttrsToList services cfg.instances);
+        systemd.sockets.sokka-image = {
+          description = "Pictures for the household assistants";
+          wantedBy = singleton "sockets.target";
+          socketConfig = {
+            ListenStream = "/run/sokka-image.sock";
+            Accept = true;
+            MaxConnections = 2;
+            SocketMode = "0660";
+            SocketGroup = "sokka-image";
+          };
+        };
+
+        systemd.services = mkMerge (
+          mapAttrsToList services cfg.instances
+          ++ singleton {
+            "sokka-image@" = {
+              description = "One picture for a household assistant";
+              environment = {
+                HOME = "/var/lib/sokka-image";
+                CODEX_HOME = "/var/lib/sokka-image";
+              };
+              serviceConfig =
+                lib.ship.hardened.tenant
+                // fence
+                // {
+                  User = "sokka-image";
+                  Group = "sokka-image";
+                  StateDirectory = "sokka-image";
+                  StateDirectoryMode = "0700";
+                  ExecStart = getExe draw;
+                  StandardInput = "socket";
+                  StandardOutput = "socket";
+                  StandardError = "journal";
+                  # Hides the seat's Codex config and its MCP servers.
+                  BindReadOnlyPaths = singleton "${pkgs.emptyDirectory}:/etc/codex";
+                };
+            };
+          }
+        );
       };
     };
 }

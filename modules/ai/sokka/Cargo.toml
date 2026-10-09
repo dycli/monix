@@ -11,6 +11,7 @@ matrix-sdk = { version = "0.19", default-features = false, features = ["e2e-encr
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+mime = "0.3"
 rmcp = { version = "3.5", default-features = false, features = ["macros", "server", "transport-io"] }
 schemars = "1"
 serde = { version = "1", features = ["derive"] }

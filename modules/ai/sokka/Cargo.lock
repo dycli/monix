@@ -3196,6 +3196,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "matrix-sdk",
+ "mime",
  "rmcp",
  "rustls",
  "schemars",
