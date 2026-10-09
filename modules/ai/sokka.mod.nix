@@ -172,7 +172,7 @@
 
         viewBytes = mkOption {
           type = types.ints.positive;
-          default = 24000;
+          default = 128000;
           description = "Budget of Sokka's memory view, sent with every call.";
         };
       };

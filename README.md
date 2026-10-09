@@ -282,8 +282,8 @@ on Matrix. It has no sessions and never compacts: every message becomes one
 fresh model call over Sokka's prompt, its whole memory and the new message.
 The memory is a second hippo store, written directly instead of by
 following transcripts: the bot logs each message and each answer, and hippo
-folds them into a 24 KB view, so an endless chat costs the same per call
-on its first day and its thousandth.
+folds them into a 128 KB view, the seat's size, so once the view fills an
+endless chat costs the same per call on its hundredth day as its thousandth.
 
 The model is configuration: the `claude` CLI on a subscription token, with
 built-in tools and settings off and Parallel's keyless web search as its
