@@ -299,7 +299,9 @@ repeats expanded. Mail is a fourth, read-only over IMAP: folders open with
 EXAMINE and bodies are fetched with `BODY.PEEK`, so nothing is moved or
 marked read, and it cannot send. Since any sender can put text in front of
 the model, Parallel's page fetch is denied, so nothing it reads can be
-carried out to a URL; search stays.
+carried out to a URL; search stays. YouTube is a fifth, on `yt-dlp`: it
+searches and reads a video's captions as text, the uploader's own before
+automatic ones, and refuses any link that is not YouTube.
 The bot checks the book every 30 seconds and sends due reminders itself,
 logging them to hippo like any other answer. A reminder can instead be a
 routine ("a mail digest at 8, 2 and 8"): when it comes due, the bot runs its

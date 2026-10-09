@@ -154,12 +154,15 @@ impl Model for Claude {
                 .unwrap_or(0)
         };
         eprintln!(
-            "sokka: tokens {} input, {} cache read, {} cache write, {} output; {} turns",
+            "sokka: tokens {} input, {} cache read, {} cache write, {} output; {} turns; ${:.4} at API prices",
             n("input_tokens"),
             n("cache_read_input_tokens"),
             n("cache_creation_input_tokens"),
             n("output_tokens"),
             ev.get("num_turns").and_then(Value::as_u64).unwrap_or(0),
+            ev.get("total_cost_usd")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0),
         );
         let text = ev.get("result").and_then(Value::as_str).unwrap_or("");
         if ev.get("is_error") == Some(&Value::Bool(true)) {

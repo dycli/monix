@@ -10,8 +10,10 @@
 # reminders and lists (`sokka tools`), which reach only its book in the
 # state directory, its calendar (sokka-calendar.py over CalDAV) and its
 # mail (sokka-mail.py over IMAP, read-only), each the only process that
-# sees its login. Mail lets anyone put text in front of the model, so page
-# fetch, which could carry what it read to any URL, is denied. The bot
+# sees its login, and YouTube search and captions (sokka-youtube.py),
+# which reaches YouTube only. Mail lets anyone put text in front of the
+# model, so page fetch, which could carry what it read to any URL, is
+# denied. The bot
 # sends due reminders itself, runs due routines as requests and sends the
 # answers, posts the host's alerts word for word from their spool
 # (alerts.mod.nix), and reads photos and files sent to it without keeping
@@ -57,6 +59,14 @@
         flakeIgnore = singleton "E501";
       } (readFile ./sokka-mail.py);
 
+      youtube = pkgs.writers.writePython3Bin "sokka-youtube" {
+        libraries = ps: [
+          ps.yt-dlp
+          ps.mcp
+        ];
+        flakeIgnore = singleton "E501";
+      } (readFile ./sokka-youtube.py);
+
       # The token rides a systemd credential into the environment, never
       # the command line.
       claude = pkgs.writeShellApplication {
@@ -96,6 +106,10 @@
           command = getExe mail;
           args = singleton "/run/credentials/sokka.service/mail";
           env.SOKKA_IMAP = cfg.mailServer;
+        };
+        mcpServers.youtube = {
+          type = "stdio";
+          command = getExe youtube;
         };
       };
 
