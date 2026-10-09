@@ -26,6 +26,11 @@
 # sent to it without keeping them, and on the one instance that takes
 # them, reads the host's alerts from their spool and sends its own account
 # of them (alerts.mod.nix).
+#
+# The instances share a household directory their common group can write:
+# shared lists, and a mailbox each. "Tell Gab ..." leaves a message in hers,
+# and her assistant passes it on in its own words; sharing a list leaves
+# one too. Memories stay apart; only what is handed over crosses.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.sokka;
@@ -58,6 +63,12 @@
       inherit (lib.ship) fences;
 
       cfg = config.sokka;
+
+      house = "/var/lib/sokka-household";
+      households = {
+        SOKKA_HOUSE = house;
+        SOKKA_PEOPLE = concatStringsSep "," (mapAttrsToList (n: i: "${n}=${i.person}") cfg.instances);
+      };
 
       sokka = lib.ship.rustTool pkgs { src = ./sokka; };
       hippo = lib.ship.rustTool pkgs { src = ./seat/hippo; };
@@ -206,6 +217,9 @@
             HOME = state;
             HIPPO_DIR = "${state}/hippo";
           };
+          shared = households // {
+            SOKKA_UNIT = n;
+          };
 
           mcp = (pkgs.formats.json { }).generate "${n}-mcp.json" {
             mcpServers = {
@@ -221,7 +235,9 @@
                   "tools"
                   state
                 ];
-                env.HIPPO_DIR = env.HIPPO_DIR;
+                env = shared // {
+                  inherit (env) HIPPO_DIR;
+                };
               };
               calendar = {
                 type = "stdio";
@@ -252,7 +268,10 @@
           sandbox = lib.ship.hardened.tenant // {
             User = n;
             Group = n;
-            SupplementaryGroups = "sokka-image";
+            SupplementaryGroups = [
+              "sokka-image"
+              "sokka-household"
+            ];
             StateDirectory = n;
             StateDirectoryMode = "0700";
             RestrictAddressFamilies = [
@@ -329,6 +348,7 @@
             ];
             environment =
               env
+              // shared
               // {
                 SOKKA_NAME = i.name;
                 SOKKA_PERSON = i.person;
@@ -355,8 +375,8 @@
                 ++ optional (i.mailCredentialsFile != null) "mail:${i.mailCredentialsFile}";
                 Restart = "always";
                 RestartSec = 10;
-              }
-              // optionalAttrs i.alerts { ReadWritePaths = singleton config.alerts.spool; };
+                ReadWritePaths = singleton house ++ optional i.alerts config.alerts.spool;
+              };
           };
         };
 
@@ -494,7 +514,30 @@
         }) (cfg.instances // { sokka-image = { }; });
         users.groups = mapAttrs (_: _: { }) cfg.instances // {
           sokka-image = { };
+          sokka-household = { };
         };
+
+        # Setgid, so what one assistant writes stays the group's.
+        systemd.tmpfiles.settings.sokka-household = {
+          ${house}.d = {
+            user = "root";
+            group = "sokka-household";
+            mode = "2770";
+          };
+          "${house}/mail".d = {
+            user = "root";
+            group = "sokka-household";
+            mode = "2770";
+          };
+        }
+        // lib.attrsets.mapAttrs' (n: _: {
+          name = "${house}/mail/${n}";
+          value.d = {
+            user = "root";
+            group = "sokka-household";
+            mode = "2770";
+          };
+        }) cfg.instances;
 
         systemd.sockets.sokka-image = {
           description = "Pictures for the household assistants";

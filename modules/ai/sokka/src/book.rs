@@ -1,14 +1,17 @@
 //! Sokka's book: the reminders and lists its tools keep, one JSON file in
 //! its state directory. The tool server (one per model call) and the bot
 //! both change it, so every change holds an exclusive lock and lands by
-//! rename.
+//! rename. The household's shared lists are a book of the same kind, in a
+//! directory its group can write, so there its files open to the group.
 
+use crate::house;
 use chrono::{Days, Months, NaiveDateTime};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::ErrorKind;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 #[derive(Serialize, Deserialize, Default)]
@@ -55,7 +58,12 @@ impl Repeat {
 
 /// Runs `f` on the book under the lock and saves what it leaves.
 pub fn change<T>(dir: &Path, f: impl FnOnce(&mut Book) -> T) -> Result<T, String> {
-    let lock = File::create(dir.join("book.lock")).map_err(|e| format!("book lock: {e}"))?;
+    let group = fs::metadata(dir).is_ok_and(|m| m.permissions().mode() & 0o020 != 0);
+    let lock_path = dir.join("book.lock");
+    let lock = File::create(&lock_path).map_err(|e| format!("book lock: {e}"))?;
+    if group {
+        let _ = house::shared(&lock_path);
+    }
     lock.lock().map_err(|e| format!("book lock: {e}"))?;
     let path = dir.join("book.json");
     let mut book = match fs::read(&path) {
@@ -67,6 +75,7 @@ pub fn change<T>(dir: &Path, f: impl FnOnce(&mut Book) -> T) -> Result<T, String
     let tmp = dir.join("book.json.tmp");
     let json = serde_json::to_vec_pretty(&book).map_err(|e| e.to_string())?;
     fs::write(&tmp, json)
+        .and_then(|()| if group { house::shared(&tmp) } else { Ok(()) })
         .and_then(|()| fs::rename(&tmp, &path))
         .map_err(|e| format!("book: {e}"))?;
     Ok(out)

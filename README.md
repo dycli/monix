@@ -329,6 +329,15 @@ They share the calendar login and the model; mail and alerts are set per
 instance, and only one instance may take the alerts. Dylan's is Sokka, with
 his mail and the alerts; Gab's is Suki, with neither.
 
+What crosses between instances goes through one household directory that
+only their shared group can write. It holds the shared lists, a book like
+each instance's own, and a mailbox per instance. A list is personal until it
+is made shared or shared later, and the others are told when that happens.
+"Tell Gab ..." leaves a message in Suki's mailbox, which her bot drains on
+its 30-second tick the way Sokka drains alerts: it passes the message on in
+its own words and keeps it as a note. Memories never mix; only what is
+handed over crosses.
+
 Sokka answers only the users it is configured for, joins
 only their rooms, and runs as its own fenced user with loopback and the
 internet but not the tailnet or the LAN. Chats are end-to-end encrypted
