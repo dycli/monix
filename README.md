@@ -288,8 +288,8 @@ endless chat costs the same per call on its hundredth day as its thousandth.
 The model is configuration: the `claude` CLI on a subscription token, or
 any OpenAI-compatible endpoint, local or hosted. The CLI runs with built-in
 tools and settings off; its tools come over MCP, and the prompt mentions
-them only when the model has them. Parallel's keyless server gives it web
-search. Sokka's own server, `sokka tools`, keeps reminders and lists in one
+them only when the model has them. Web search and fetch go through a short
+Python server in front of Parallel's keyless one. Sokka's own server, `sokka tools`, keeps reminders and lists in one
 locked JSON book and can touch nothing else, so a page that tries to steer
 the model through search results finds no keys, memory or shell to reach.
 The calendar is a third server, a short Python one on `caldav` and the
@@ -297,16 +297,20 @@ official MCP SDK, and the only process that receives the CalDAV login, as
 a systemd credential; it lists, adds, moves and cancels events, with
 repeats expanded. Mail is a fourth, read-only over IMAP: folders open with
 EXAMINE and bodies are fetched with `BODY.PEEK`, so nothing is moved or
-marked read, and it cannot send. Since any sender can put text in front of
-the model, Parallel's page fetch is denied, so nothing it reads can be
-carried out to a URL; search stays. YouTube is a fifth, on `yt-dlp`: it
+marked read, and it cannot send. Since any sender or page can put text in
+front of the model, fetch opens only links that a search in the same call
+returned or that the person wrote, as OpenAI's agents do: a link the model
+made up could carry what it read out in its path, but a link that existed
+before it read anything carries nothing. YouTube is a fifth, on `yt-dlp`: it
 searches and reads a video's captions as text, the uploader's own before
 automatic ones, and refuses any link that is not YouTube.
 The bot checks the book every 30 seconds and sends due reminders itself,
 logging them to hippo like any other answer. A reminder can instead be a
 routine ("a mail digest at 8, 2 and 8"): when it comes due, the bot runs its
 text as a request, with the same tools as a message from its person, and sends
-the answer; hippo records the trigger as a routine, not as their words.
+the answer, or stays quiet when it has nothing new, so a daily price
+check speaks only when the price moves; hippo records the trigger as a
+routine, not as their words.
 
 Photos, PDFs and text files sent to Sokka are decrypted, typed by their
 first bytes rather than the sender's word, and handed to the model with

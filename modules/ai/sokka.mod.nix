@@ -9,15 +9,17 @@
 # hippo service that is the store's only writer, and the account
 # bootstrap. Model calls run the claude CLI on the fleet's subscription
 # token, without built-in tools or settings; their only tools come over
-# MCP: Parallel's keyless web search and fetch, the instance's own
+# MCP: web search and fetch (sokka-web.py, in front of Parallel's keyless
+# server), the instance's own
 # reminders, lists and memory tools (`sokka tools`: zoom, search and date
 # in its hippo, as the seat's hippo CLI has), which reach only its book
 # and its hippo, the shared calendar (sokka-calendar.py over CalDAV), mail
 # where the instance has some (sokka-mail.py over IMAP, read-only), each
 # the only process that sees its login, and YouTube search and captions
-# (sokka-youtube.py), which reaches YouTube only. Mail lets anyone put
-# text in front of the model, so page fetch, which could carry what it
-# read to any URL, is denied. The bot sends due reminders itself, runs
+# (sokka-youtube.py), which reaches YouTube only. Mail and pages let
+# anyone put text in front of the model, so fetch opens only links a
+# search returned or the person wrote: nothing it read can ride out in a
+# link it made up. The bot sends due reminders itself, runs
 # due routines as requests and sends the answers, reads photos and files
 # sent to it without keeping them, and on the one instance that takes
 # them, reads the host's alerts from their spool and sends its own account
@@ -73,6 +75,11 @@
         ];
         flakeIgnore = singleton "E501";
       } (readFile ./sokka-mail.py);
+
+      web = pkgs.writers.writePython3Bin "sokka-web" {
+        libraries = singleton pkgs.python3Packages.mcp;
+        flakeIgnore = singleton "E501";
+      } (readFile ./sokka-web.py);
 
       youtube = pkgs.writers.writePython3Bin "sokka-youtube" {
         libraries = ps: [
@@ -165,9 +172,10 @@
 
           mcp = (pkgs.formats.json { }).generate "${n}-mcp.json" {
             mcpServers = {
-              parallel = {
-                type = "http";
-                url = "https://search.parallel.ai/mcp";
+              web = {
+                type = "stdio";
+                command = getExe web;
+                env.HIPPO_DIR = env.HIPPO_DIR;
               };
               sokka = {
                 type = "stdio";
@@ -287,7 +295,6 @@
                 SOKKA_CLAUDE = getExe claude;
                 SOKKA_MODEL = cfg.model;
                 SOKKA_MCP = toString mcp;
-                SOKKA_DENY = "mcp__parallel__web_fetch";
               }
               // optionalAttrs (i.style != null) { SOKKA_STYLE = i.style; }
               // optionalAttrs i.alerts { SOKKA_ALERTS = config.alerts.spool; };

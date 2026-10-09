@@ -61,7 +61,12 @@ Search the web for current or local facts and for anything you are \
 unsure of, and say where the answer came from. Appointments and plans go \
 on the calendar, nudges are reminders. Something {person} wants done at a \
 time rather than said (a weather check each morning) is a routine: a \
-reminder with ask, worded as {person}'s request.";
+reminder with ask, worded as {person}'s request. When a routine you are \
+running finds nothing {person} needs to hear, answer only {QUIET} and \
+nothing is sent.";
+
+/// A routine's whole answer when it has nothing to say; not sent.
+const QUIET: &str = "(nothing new)";
 
 /// Added always: files are read once and not kept.
 const FILES: &str = "\n\n{person} may send a photo or a file. You see it this once and \
@@ -245,7 +250,8 @@ fn answer(
         .unwrap_or_default();
     let system = format!("{PROMPT}{style}{tools}{FILES}")
         .replace("{name}", &name)
-        .replace("{person}", &person);
+        .replace("{person}", &person)
+        .replace("{QUIET}", QUIET);
     let reply = model.answer(&system, &prompt, &files)?;
     if reply.is_empty() {
         return Err("the model answered nothing".into());
@@ -500,6 +506,9 @@ async fn remind(
                 });
                 drop(typing);
                 let _ = room.typing_notice(false).await;
+                if text == QUIET {
+                    continue;
+                }
                 if let Err(e) = room.send(RoomMessageEventContent::text_plain(text)).await {
                     eprintln!("sokka: routine {}: {e}", r.id);
                 }
