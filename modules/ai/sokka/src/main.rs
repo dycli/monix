@@ -10,6 +10,7 @@ mod matrix;
 mod model;
 mod tools;
 
+use book::Book;
 use chrono::Local;
 use hippo::Hippo;
 use matrix_sdk::attachment::AttachmentConfig;
@@ -542,7 +543,8 @@ async fn drain(room: &Room, hippo: &Arc<Hippo>, model: &Arc<dyn Model>, dir: &Pa
 /// Every 30 s, sends the reminders that are due, the host's alerts and the
 /// household's messages to the room the person last wrote from; with no such room yet, they wait. A
 /// routine is answered first, like a message from them, and the answer
-/// sent.
+/// sent. A reminder leaves the book (or moves to its next time) only once
+/// Matrix has it, so one that fails to send goes again on the next tick.
 async fn remind(
     client: Client,
     hippo: Arc<Hippo>,
@@ -568,7 +570,8 @@ async fn remind(
         if let Some(dir) = &mailbox {
             drain(&room, &hippo, &model, dir, From::Message).await;
         }
-        let due = match book::change(&state, |b| b.due(Local::now().naive_local())) {
+        let now = Local::now().naive_local();
+        let due = match Book::open(&state, None).and_then(|b| b.read(|db| book::due(db, now))) {
             Ok(due) => due,
             Err(e) => {
                 eprintln!("sokka: {e}");
@@ -576,23 +579,37 @@ async fn remind(
             }
         };
         for r in due {
-            if r.ask {
-                let typing = Typing::start(&room);
-                let (hippo, model, ask) = (hippo.clone(), model.clone(), r.text.clone());
-                let answered = tokio::task::spawn_blocking(move || {
-                    answer(&hippo, model.as_ref(), From::Routine, &ask, None)
-                })
-                .await
-                .unwrap_or_else(|e| Err(e.to_string()));
-                let share = r.share && answered.is_ok();
-                let text = answered.unwrap_or_else(|e| {
-                    eprintln!("sokka: routine {}: {e}", r.id);
-                    format!("(The routine \"{}\" failed: {e})", r.text)
-                });
-                send_images(&room, &state.join("outbox")).await;
-                drop(typing);
-                let _ = room.typing_notice(false).await;
-                if text == QUIET {
+            let (text, share) = match (&r.answer, r.ask) {
+                (Some(kept), _) => (kept.clone(), r.share),
+                (None, false) => (format!("Reminder: {}", r.text), false),
+                (None, true) => {
+                    let typing = Typing::start(&room);
+                    let (hippo, model, ask) = (hippo.clone(), model.clone(), r.text.clone());
+                    let answered = tokio::task::spawn_blocking(move || {
+                        answer(&hippo, model.as_ref(), From::Routine, &ask, None)
+                    })
+                    .await
+                    .unwrap_or_else(|e| Err(e.to_string()));
+                    send_images(&room, &state.join("outbox")).await;
+                    drop(typing);
+                    let _ = room.typing_notice(false).await;
+                    match answered {
+                        Ok(text) => {
+                            if let Err(e) = on_book(&state, |db| book::keep_answer(db, &r, &text)) {
+                                eprintln!("sokka: routine {}: {e}", r.id);
+                            }
+                            (text, r.share)
+                        }
+                        Err(e) => {
+                            eprintln!("sokka: routine {}: {e}", r.id);
+                            (format!("(The routine \"{}\" failed: {e})", r.text), false)
+                        }
+                    }
+                }
+            };
+            if text != QUIET {
+                if let Err(e) = room.send(RoomMessageEventContent::text_plain(&text)).await {
+                    eprintln!("sokka: reminder {}: {e}", r.id);
                     continue;
                 }
                 if let (true, Some(h)) = (share, &house) {
@@ -605,23 +622,28 @@ async fn remind(
                         eprintln!("sokka: routine {}: {e}", r.id);
                     }
                 }
-                if let Err(e) = room.send(RoomMessageEventContent::text_plain(text)).await {
-                    eprintln!("sokka: routine {}: {e}", r.id);
+                if !r.ask {
+                    let hippo = hippo.clone();
+                    let logged =
+                        tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await;
+                    if let Ok(Err(e)) = logged {
+                        eprintln!("sokka: {e}");
+                    }
                 }
-                continue;
             }
-            let text = format!("Reminder: {}", r.text);
-            if let Err(e) = room.send(RoomMessageEventContent::text_plain(&text)).await {
+            if let Err(e) = on_book(&state, |db| book::done(db, &r, now)) {
                 eprintln!("sokka: reminder {}: {e}", r.id);
-                continue;
-            }
-            let hippo = hippo.clone();
-            let logged = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await;
-            if let Ok(Err(e)) = logged {
-                eprintln!("sokka: {e}");
             }
         }
     }
+}
+
+/// One change to the book in `state`.
+fn on_book<T>(
+    state: &Path,
+    f: impl FnOnce(&rusqlite::Transaction) -> rusqlite::Result<T>,
+) -> Result<T, String> {
+    Book::open(state, None)?.change(f)
 }
 
 async fn run() -> Result<(), String> {

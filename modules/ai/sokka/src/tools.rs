@@ -4,7 +4,7 @@
 //! mailboxes, never the Matrix keys, so text pulled in by a web search
 //! cannot steer them anywhere else.
 
-use crate::book::{self, Repeat};
+use crate::book::{self, Book, Repeat, Shelf};
 use crate::hippo::Hippo;
 use crate::house::House;
 use chrono::NaiveDateTime;
@@ -138,9 +138,9 @@ impl Tools {
     fn remind(&self, Parameters(r): Parameters<Remind>) -> Result<String, String> {
         let at = NaiveDateTime::parse_from_str(&r.at, AT)
             .map_err(|_| format!("`at` must be YYYY-MM-DD HH:MM, not {}", r.at))?;
-        let id = book::change(&self.dir, |b| {
-            b.remind(at, r.text, r.repeat, r.ask, r.ask && r.share)
-        })?;
+        let id = self
+            .book()?
+            .change(|db| book::remind(db, at, &r.text, r.repeat, r.ask, r.ask && r.share))?;
         Ok(format!(
             "Reminder {id} set for {}.",
             at.format("%a %Y-%m-%d %H:%M")
@@ -149,41 +149,36 @@ impl Tools {
 
     #[tool(description = "Show the reminders still to come.")]
     fn reminders(&self) -> Result<String, String> {
-        book::change(&self.dir, |b| {
-            let mut out = String::new();
-            for r in &b.reminders {
-                let _ = write!(
-                    out,
-                    "{}: {} {}",
-                    r.id,
-                    r.at.format("%a %Y-%m-%d %H:%M"),
-                    r.text
-                );
-                if r.share {
-                    out.push_str(" (shared routine)");
-                } else if r.ask {
-                    out.push_str(" (routine)");
-                }
-                if let Some(rep) = r.repeat {
-                    let _ = write!(out, " (repeats {})", serde_json::to_value(rep).unwrap());
-                }
-                out.push('\n');
+        let all = self.book()?.read(book::reminders)?;
+        let mut out = String::new();
+        for r in &all {
+            let _ = write!(
+                out,
+                "{}: {} {}",
+                r.id,
+                r.at.format("%a %Y-%m-%d %H:%M"),
+                r.text
+            );
+            if r.share {
+                out.push_str(" (shared routine)");
+            } else if r.ask {
+                out.push_str(" (routine)");
             }
-            if out.is_empty() {
-                "No reminders.".into()
-            } else {
-                out
+            if let Some(rep) = r.repeat {
+                let _ = write!(out, " (repeats {})", serde_json::to_value(rep).unwrap());
             }
-        })
+            out.push('\n');
+        }
+        if out.is_empty() {
+            Ok("No reminders.".into())
+        } else {
+            Ok(out)
+        }
     }
 
     #[tool(description = "Cancel a reminder, repeating ones included.")]
     fn cancel_reminder(&self, Parameters(Id { id }): Parameters<Id>) -> Result<String, String> {
-        let gone = book::change(&self.dir, |b| {
-            let n = b.reminders.len();
-            b.reminders.retain(|r| r.id != id);
-            b.reminders.len() < n
-        })?;
+        let gone = self.book()?.change(|db| book::cancel(db, id))?;
         if gone {
             Ok(format!("Reminder {id} cancelled."))
         } else {
@@ -202,21 +197,25 @@ impl Tools {
             shared,
         }): Parameters<Items>,
     ) -> Result<String, String> {
-        let found = self.find(&list)?;
-        let fresh = found.is_none() && shared;
-        let dir = match found {
-            Some(dir) => dir,
-            None if shared => self.house_dir()?,
-            None => self.dir.clone(),
-        };
-        let out = book::change(&dir, |b| {
-            let l = b.lists.entry(list.clone()).or_default();
+        if shared {
+            self.household()?;
+        }
+        let shelves = self.shelves();
+        let (out, fresh) = self.book()?.change(|db| {
+            let found = find(db, &shelves, &list)?;
+            let fresh = found.is_none() && shared;
+            let (shelf, mut l) = match found {
+                Some(found) => found,
+                None if shared => (Shelf::House, Vec::new()),
+                None => (Shelf::Own, Vec::new()),
+            };
             for i in items {
                 if !l.iter().any(|x| x.eq_ignore_ascii_case(&i)) {
                     l.push(i);
                 }
             }
-            format!("{list}: {}", l.join(", "))
+            book::set_list(db, shelf, &list, &l)?;
+            Ok((format!("{list}: {}", l.join(", ")), fresh))
         })?;
         if fresh {
             self.announce(&list, &out)?;
@@ -228,15 +227,18 @@ impl Tools {
         description = "Share one of your person's lists with the household; the others hear of it."
     )]
     fn share_list(&self, Parameters(Name { list }): Parameters<Name>) -> Result<String, String> {
-        let house = self.house_dir()?;
-        if book::change(&house, |b| b.lists.contains_key(&list))? {
-            return Err(format!("The household already has a list {list}."));
-        }
-        let Some(items) = book::change(&self.dir, |b| b.lists.remove(&list))? else {
-            return Err(format!("No list {list}."));
-        };
-        let out = format!("{list}: {}", items.join(", "));
-        book::change(&house, |b| b.lists.insert(list.clone(), items))?;
+        self.household()?;
+        let out = self.book()?.change(|db| {
+            if book::list(db, Shelf::House, &list)?.is_some() {
+                return Ok(Err(format!("The household already has a list {list}.")));
+            }
+            let Some(items) = book::list(db, Shelf::Own, &list)? else {
+                return Ok(Err(format!("No list {list}.")));
+            };
+            book::set_list(db, Shelf::House, &list, &items)?;
+            book::set_list(db, Shelf::Own, &list, &[])?;
+            Ok(Ok(format!("{list}: {}", items.join(", "))))
+        })??;
         self.announce(&list, &out)?;
         Ok(format!("Shared. {out}"))
     }
@@ -248,20 +250,18 @@ impl Tools {
         &self,
         Parameters(Items { list, items, .. }): Parameters<Items>,
     ) -> Result<String, String> {
-        let Some(dir) = self.find(&list)? else {
-            return Err(format!("No list {list}."));
-        };
-        book::change(&dir, |b| {
-            let Some(l) = b.lists.get_mut(&list) else {
-                return format!("No list {list}.");
+        let shelves = self.shelves();
+        self.book()?.change(|db| {
+            let Some((shelf, mut l)) = find(db, &shelves, &list)? else {
+                return Ok(Err(format!("No list {list}.")));
             };
             let missing: Vec<&String> = items
                 .iter()
                 .filter(|i| !l.iter().any(|x| x.eq_ignore_ascii_case(i)))
                 .collect();
             l.retain(|x| !items.iter().any(|i| x.eq_ignore_ascii_case(i)));
+            book::set_list(db, shelf, &list, &l)?;
             let mut out = if l.is_empty() {
-                b.lists.remove(&list);
                 format!("{list} is now empty and gone.")
             } else {
                 format!("{list}: {}", l.join(", "))
@@ -270,21 +270,20 @@ impl Tools {
                 let missing: Vec<&str> = missing.iter().map(|s| s.as_str()).collect();
                 let _ = write!(out, " Not on it: {}.", missing.join(", "));
             }
-            out
-        })
+            Ok(Ok(out))
+        })?
     }
 
     #[tool(description = "Show one list, or every list; shared ones are marked.")]
     fn lists(&self, Parameters(List { list }): Parameters<List>) -> Result<String, String> {
+        let book = self.book()?;
         let mut all = Vec::new();
-        for (dir, mark) in self.books() {
-            book::change(&dir, |b| {
-                for (n, l) in &b.lists {
-                    if list.as_ref().is_none_or(|want| want == n) {
-                        all.push(format!("{n}{mark}: {}", l.join(", ")));
-                    }
+        for (shelf, mark) in self.shelves() {
+            for (n, l) in book.read(|db| book::lists(db, shelf))? {
+                if list.as_ref().is_none_or(|want| *want == n) {
+                    all.push(format!("{n}{mark}: {}", l.join(", ")));
                 }
-            })?;
+            }
         }
         match list {
             Some(name) if all.is_empty() => Err(format!("No list {name}.")),
@@ -319,30 +318,24 @@ impl Tools {
 }
 
 impl Tools {
-    fn house_dir(&self) -> Result<PathBuf, String> {
+    fn household(&self) -> Result<&House, String> {
         self.house
-            .as_ref()
-            .map(|h| h.dir.clone())
+            .as_deref()
             .ok_or("There is no household here.".into())
     }
 
-    /// The books to look in: the person's own, then the household's.
-    fn books(&self) -> Vec<(PathBuf, &'static str)> {
-        let mut v = vec![(self.dir.clone(), "")];
-        if let Some(h) = &self.house {
-            v.push((h.dir.clone(), " (shared)"));
-        }
-        v
+    /// The person's book, with the household's attached.
+    fn book(&self) -> Result<Book, String> {
+        Book::open(&self.dir, self.house.as_ref().map(|h| h.dir.as_path()))
     }
 
-    /// The book that holds `list`, if one does.
-    fn find(&self, list: &str) -> Result<Option<PathBuf>, String> {
-        for (dir, _) in self.books() {
-            if book::change(&dir, |b| b.lists.contains_key(list))? {
-                return Ok(Some(dir));
-            }
+    /// The shelves to look on: the person's own, then the household's.
+    fn shelves(&self) -> Vec<(Shelf, &'static str)> {
+        let mut v = vec![(Shelf::Own, "")];
+        if self.house.is_some() {
+            v.push((Shelf::House, " (shared)"));
         }
-        Ok(None)
+        v
     }
 
     fn announce(&self, list: &str, out: &str) -> Result<(), String> {
@@ -356,6 +349,20 @@ impl Tools {
         )?;
         Ok(())
     }
+}
+
+/// The shelf that holds `list`, and its items, if one does.
+fn find(
+    db: &rusqlite::Connection,
+    shelves: &[(Shelf, &str)],
+    list: &str,
+) -> rusqlite::Result<Option<(Shelf, Vec<String>)>> {
+    for &(shelf, _) in shelves {
+        if let Some(items) = book::list(db, shelf, list)? {
+            return Ok(Some((shelf, items)));
+        }
+    }
+    Ok(None)
 }
 
 #[tool_handler(router = self.tool_router)]

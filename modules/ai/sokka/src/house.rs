@@ -89,6 +89,11 @@ impl House {
     }
 }
 
+/// Whether `dir` is the household's, open to its group.
+pub fn is_shared(dir: &Path) -> bool {
+    fs::metadata(dir).is_ok_and(|m| m.permissions().mode() & 0o020 != 0)
+}
+
 /// Opens a file this assistant made to the household's group (the unit's
 /// umask keeps new files private). Fails on another's file, which its
 /// maker has already opened.

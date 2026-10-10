@@ -287,7 +287,7 @@ any OpenAI-compatible endpoint, local or hosted. The CLI runs with built-in
 tools and settings off; its tools come over MCP, and the prompt mentions
 them only when the model has them. Web search and fetch go through a short
 Python server in front of Parallel's keyless one. Sokka's own server, `sokka tools`, keeps reminders and lists in one
-locked JSON book and can touch nothing else, so a page that tries to steer
+SQLite book and can touch nothing else, so a page that tries to steer
 the model through search results finds no keys, memory or shell to reach.
 The calendar is a third server, a short Python one on `caldav` and the
 official MCP SDK, and the only process that receives the CalDAV login, as
@@ -315,7 +315,9 @@ seat and offline, prices the seat's own transcripts and the one journal line
 each assistant, memory and picture writes per call at API rates, and splits
 the window by them. Use from other machines is not counted.
 The bot checks the book every 30 seconds and sends due reminders itself,
-logging them to hippo like any other answer. A reminder can instead be a
+logging them to hippo like any other answer. A reminder leaves the book only
+once Matrix has it, and a routine's answer is kept until then, so a failed
+send goes again on the next check, at worst twice, never lost. A reminder can instead be a
 routine ("a mail digest at 8, 2 and 8"): when it comes due, the bot runs its
 text as a request, with the same tools as a message from its person, and sends
 the answer, or stays quiet when it has nothing new, so a daily price
