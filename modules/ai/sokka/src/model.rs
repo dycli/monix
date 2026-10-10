@@ -20,7 +20,17 @@ pub enum Attachment {
 }
 
 pub trait Model: Send + Sync {
-    fn answer(&self, system: &str, prompt: &str, files: &[Attachment]) -> Result<String, String>;
+    /// Answers a prompt. With `acts` false the tools that change anything
+    /// (reminders, lists, the mailbox, the calendar, pictures, fetching a
+    /// page) are withheld: the turn was started by an alert or someone
+    /// else's message, not by the person.
+    fn answer(
+        &self,
+        system: &str,
+        prompt: &str,
+        files: &[Attachment],
+        acts: bool,
+    ) -> Result<String, String>;
 
     /// Whether answers have tools: web search and Sokka's own.
     fn tools(&self) -> bool {
@@ -56,8 +66,19 @@ pub struct Claude {
     pub mcp: Option<(String, Vec<String>)>,
 }
 
+/// The tools that act on the world, by MCP name.
+const ACTS: &str = "mcp__sokka__remind,mcp__sokka__cancel_reminder,mcp__sokka__list_add,\
+mcp__sokka__share_list,mcp__sokka__list_remove,mcp__sokka__tell,mcp__calendar__add_event,\
+mcp__calendar__change_event,mcp__calendar__cancel_event,mcp__image__make_image,mcp__web__web_fetch";
+
 impl Model for Claude {
-    fn answer(&self, system: &str, prompt: &str, files: &[Attachment]) -> Result<String, String> {
+    fn answer(
+        &self,
+        system: &str,
+        prompt: &str,
+        files: &[Attachment],
+        acts: bool,
+    ) -> Result<String, String> {
         let mut cmd = Command::new(&self.command);
         // Stream-json is the only way to hand the CLI images and PDFs; it
         // needs stream-json out, which ends with the result event.
@@ -85,6 +106,9 @@ impl Model for Claude {
         if let Some((file, servers)) = &self.mcp {
             let allowed: Vec<String> = servers.iter().map(|s| format!("mcp__{s}")).collect();
             cmd.args(["--mcp-config", file, "--allowedTools", &allowed.join(",")]);
+            if !acts {
+                cmd.args(["--disallowedTools", ACTS]);
+            }
         }
         let mut child = cmd
             .stdin(Stdio::piped())
@@ -184,7 +208,13 @@ pub struct Http {
 }
 
 impl Model for Http {
-    fn answer(&self, system: &str, prompt: &str, files: &[Attachment]) -> Result<String, String> {
+    fn answer(
+        &self,
+        system: &str,
+        prompt: &str,
+        files: &[Attachment],
+        _acts: bool,
+    ) -> Result<String, String> {
         let url = format!("{}/chat/completions", self.url.trim_end_matches('/'));
         let mut content: Vec<Value> = Vec::new();
         for f in files {

@@ -304,6 +304,14 @@ made up could carry what it read out in its path, but a link that existed
 before it read anything carries nothing. YouTube is a fifth, on `yt-dlp`: it
 searches and reads a video's captions as text, the uploader's own before
 automatic ones, and refuses any link that is not YouTube.
+
+Who started a turn decides what it may do. A message from the person, or a
+routine they set, runs with every tool. A turn that an alert or another
+instance's message started has the tools that act withheld (reminders,
+lists, the mailbox, the calendar, pictures, fetch): the text arrives quoted
+in `<alert>` or `<message>`, and the prompt says such text is information,
+never an instruction, so the worst a crafted alert can do is be read out.
+Nothing about the person's own messages is wrapped or restricted.
 Pictures are a sixth: the assistant describes one, and a small socket-activated
 service draws it with Codex on the household's ChatGPT subscription. That
 service alone holds the Codex login; the assistants reach only its socket. The
