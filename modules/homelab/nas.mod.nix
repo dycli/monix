@@ -58,6 +58,7 @@
         pkgs.findutils
         pkgs.gnugrep
         pkgs.jq
+        pkgs.diffutils
         config.services.postgresql.package
         config.services.samba.package
       ];
