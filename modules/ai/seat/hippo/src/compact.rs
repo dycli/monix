@@ -186,6 +186,28 @@ pub trait Chat {
 
 pub trait Backend: Send + Sync {
     fn start(&self) -> Result<Box<dyn Chat>, Fail>;
+    /// A different backend for steps at tree level `l`, if there is one.
+    fn for_level(&self, _l: u8) -> Option<&dyn Backend> {
+        None
+    }
+}
+
+/// A model per tree level: cheap ones low in the tree, where a call
+/// compresses one message, better ones for the merges above. Levels not
+/// listed use the base backend.
+pub struct Levels {
+    pub base: Box<dyn Backend>,
+    pub per: Vec<(u8, Box<dyn Backend>)>,
+}
+
+impl Backend for Levels {
+    fn start(&self) -> Result<Box<dyn Chat>, Fail> {
+        self.base.start()
+    }
+    fn for_level(&self, l: u8) -> Option<&dyn Backend> {
+        let b = self.per.iter().find(|(at, _)| *at == l)?;
+        Some(b.1.as_ref())
+    }
 }
 
 /// Runs one compactor step to a line: the first answer, then retries in the
@@ -224,20 +246,50 @@ fn prompt() -> String {
     }
 }
 
+/// `HIPPO_BACKEND` (claude, http or codex) with its model and effort; then
+/// `HIPPO_LEVELS`, entries `level=backend/model/effort` separated by
+/// spaces, say `0=claude/haiku/xhigh`, each overriding one tree level.
 pub fn from_env() -> Result<Box<dyn Backend>, String> {
     let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
-    match var("HIPPO_BACKEND").as_deref().unwrap_or("claude") {
+    let base = backend(
+        var("HIPPO_BACKEND").as_deref().unwrap_or("claude"),
+        var("HIPPO_MODEL"),
+        var("HIPPO_EFFORT"),
+    )?;
+    let Some(levels) = var("HIPPO_LEVELS") else {
+        return Ok(base);
+    };
+    let mut per = Vec::new();
+    for entry in levels.split_whitespace() {
+        let bad = || format!("HIPPO_LEVELS entry {entry}: want level=backend/model/effort");
+        let (l, spec) = entry.split_once('=').ok_or_else(bad)?;
+        let l = l.parse().map_err(|_| bad())?;
+        let [kind, model, effort] = spec.split('/').collect::<Vec<_>>()[..] else {
+            return Err(bad());
+        };
+        per.push((l, backend(kind, Some(model.into()), Some(effort.into()))?));
+    }
+    Ok(Box::new(Levels { base, per }))
+}
+
+fn backend(
+    kind: &str,
+    model: Option<String>,
+    effort: Option<String>,
+) -> Result<Box<dyn Backend>, String> {
+    let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+    match kind {
         "claude" => Ok(Box::new(ClaudeCli {
             prompt: prompt(),
             command: var("HIPPO_CLAUDE").unwrap_or_else(|| "claude".into()),
-            model: var("HIPPO_MODEL").unwrap_or_else(|| "sonnet".into()),
-            effort: var("HIPPO_EFFORT").unwrap_or_else(|| "medium".into()),
+            model: model.unwrap_or_else(|| "sonnet".into()),
+            effort: effort.unwrap_or_else(|| "medium".into()),
         })),
         "http" => Ok(Box::new(Http {
             prompt: prompt(),
             url: var("HIPPO_URL").ok_or("HIPPO_URL is not set")?,
-            model: var("HIPPO_MODEL").ok_or("HIPPO_MODEL is not set")?,
-            effort: var("HIPPO_EFFORT"),
+            model: model.ok_or("HIPPO_MODEL is not set")?,
+            effort,
             extra: match var("HIPPO_HTTP_EXTRA") {
                 Some(raw) => serde_json::from_str(&raw)
                     .map_err(|e| format!("HIPPO_HTTP_EXTRA is not a JSON object: {e}"))?,
@@ -247,10 +299,10 @@ pub fn from_env() -> Result<Box<dyn Backend>, String> {
         "codex" => Ok(Box::new(CodexCli {
             prompt: prompt(),
             command: var("HIPPO_CODEX").unwrap_or_else(|| "codex".into()),
-            model: var("HIPPO_MODEL").unwrap_or_else(|| "gpt-6-luna".into()),
-            effort: var("HIPPO_EFFORT").unwrap_or_else(|| "low".into()),
+            model: model.unwrap_or_else(|| "gpt-6-luna".into()),
+            effort: effort.unwrap_or_else(|| "low".into()),
         })),
-        other => Err(format!("Unknown HIPPO_BACKEND {other}.")),
+        other => Err(format!("Unknown backend {other}.")),
     }
 }
 
@@ -798,6 +850,29 @@ mod tests {
         let short = marked(&["<chat>\n0+1|a\n</chat>".into()]);
         assert!(short.iter().all(|b| b.get("cache_control").is_none()));
         assert_eq!(marked(&["Too long: 600 bytes".into()]).len(), 1);
+    }
+
+    struct Named(&'static str);
+    impl Backend for Named {
+        fn start(&self) -> Result<Box<dyn Chat>, Fail> {
+            Err(Fail::Other(self.0.into()))
+        }
+    }
+
+    #[test]
+    fn levels_pick_a_backend_by_tree_level() {
+        let levels = Levels {
+            base: Box::new(Named("base")),
+            per: vec![(0, Box::new(Named("low"))), (1, Box::new(Named("mid")))],
+        };
+        let name = |l: u8| match levels.for_level(l).unwrap_or(&levels).start() {
+            Err(Fail::Other(n)) => n,
+            _ => unreachable!(),
+        };
+        assert_eq!(name(0), "low");
+        assert_eq!(name(1), "mid");
+        assert_eq!(name(2), "base");
+        assert!(Named("x").for_level(0).is_none());
     }
 
     #[test]

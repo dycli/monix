@@ -49,14 +49,17 @@ in
       inherit (lib.strings) toJSON;
       inherit (topology) seat;
 
-      # The compactor's model. Sonnet at medium effort runs through the seat's
-      # own claude CLI and subscription; Qwen runs on the host's llama-swap at
-      # no subscription cost, one call at a time.
+      # The compactor's models, through the seat's own claude CLI and
+      # subscription: Haiku at xhigh effort compresses single messages (level
+      # 0, half the calls), Sonnet at medium merges the lines above, where
+      # Haiku invents. Qwen runs on the host's llama-swap at no subscription
+      # cost, one call at a time.
       sonnet = {
         HIPPO_BACKEND = "claude";
         HIPPO_CLAUDE = "/etc/profiles/per-user/${seat.user}/bin/claude";
         HIPPO_MODEL = "sonnet";
         HIPPO_EFFORT = "medium";
+        HIPPO_LEVELS = "0=claude/claude-haiku-5-5/xhigh";
       };
       qwen = {
         HIPPO_BACKEND = "http";

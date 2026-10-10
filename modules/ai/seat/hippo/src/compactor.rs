@@ -301,7 +301,7 @@ fn spawn(
             .backend
             .as_deref()
             .expect("pump runs only with a backend");
-        let result = compact::run(backend, &context, &step);
+        let result = compact::run(backend.for_level(l).unwrap_or(backend), &context, &step);
         let wait = {
             let mut c = shared.core.lock().unwrap();
             match result {

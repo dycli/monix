@@ -325,6 +325,7 @@
               HIPPO_CLAUDE = getExe claude;
               HIPPO_MODEL = "sonnet";
               HIPPO_EFFORT = "medium";
+              HIPPO_LEVELS = "0=claude/claude-haiku-5-5/xhigh";
             };
             serviceConfig =
               sandbox
