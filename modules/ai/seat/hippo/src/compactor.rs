@@ -118,8 +118,8 @@ fn message(c: &Core, i: u64) -> Result<Msg, String> {
     c.store.get(i)
 }
 
-/// The compactions' view up to `end` (exclusive), bare: no ids. None
-/// until all of it is built.
+/// The compactions' view up to `end` (exclusive), as `id+n|text` lines.
+/// None until all of it is built.
 fn context(c: &Core, end: u64) -> Result<Option<Vec<String>>, String> {
     let mut out = Vec::new();
     for &(l, i) in &c.context.parts {
@@ -128,7 +128,7 @@ fn context(c: &Core, end: u64) -> Result<Option<Vec<String>>, String> {
             break;
         }
         match c.tree.text(l, i)? {
-            Some(t) => out.push(flat(&t)),
+            Some(t) => out.push(format!("{s}+{n}|{}", flat(&t))),
             None => return Ok(None),
         }
     }
@@ -288,8 +288,14 @@ fn spawn(
 ) {
     thread::spawn(move || {
         let step = match &b {
-            Some((b, apart)) => Step::Merge(&a, b, *apart),
-            None => Step::Compress(&a),
+            Some((b, apart)) => Step::Merge {
+                l,
+                i,
+                a: &a,
+                b,
+                apart: *apart,
+            },
+            None => Step::Compress { id: i, msg: &a },
         };
         let backend = shared
             .backend
@@ -422,8 +428,21 @@ mod tests {
                 !call.contains(PLACEHOLDER),
                 "a call saw an unsummarized line"
             );
-            assert!(!ids.is_match(call), "ids in a call");
             assert!(call.starts_with("<chat>\n"));
+            assert!(
+                call.contains("</chat>\nCompaction: "),
+                "the task names its message or lines"
+            );
+            if let Some(ctx) = call
+                .split("</chat>")
+                .next()
+                .unwrap()
+                .strip_prefix("<chat>\n")
+            {
+                for line in ctx.lines() {
+                    assert!(ids.is_match(line), "a bare context line: {line}");
+                }
+            }
         }
         // The published view is the whole view in one block, unpaged.
         assert!(c.stale);
