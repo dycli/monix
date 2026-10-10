@@ -95,13 +95,16 @@ in
       handoff = forSeat "hippo-handoff" ''
         This conversation is recorded word for word in hippo, the seat's
         memory; its view reloads into context by itself and `hippo zoom`
-        opens any message. The summary is a handoff of at most 300 words,
-        not a record. Of the usual sections keep only Pending Tasks,
-        Current Work (with the exact state of uncommitted or unpushed
-        work) and Next Step, plus any decision or standing rule from the
-        last few turns not yet acted on. Leave Primary Request, Key
-        Technical Concepts, Files and Code Sections, Errors and Fixes,
-        Problem Solving and All User Messages empty: hippo holds them.'';
+        opens any message. So the summary is a handoff, not a record, and
+        it replaces the usual template: write exactly three short sections,
+        Pending Tasks, Current Work (the exact state of uncommitted or
+        unpushed work) and Next Step, plus one line for any decision or
+        standing rule from the last few turns not yet acted on. Do not
+        write Primary Request, Key Technical Concepts, Files and Code
+        Sections, Errors and Fixes, Problem Solving or All User Messages,
+        not even as empty headings: hippo holds them. Hard limit 300 words.
+        An earlier summary in this conversation is not a record either:
+        carry nothing from it that is no longer live.'';
 
       # The compactor's own claude calls get the seat's managed settings
       # without hooks or managed MCP servers: those would start a browser and
