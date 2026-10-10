@@ -18,7 +18,7 @@ use std::fmt::Write;
 use std::fs;
 use std::io::Read;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -31,6 +31,9 @@ struct Tools {
     house: Option<Arc<House>>,
     /// The mail accounts file, when there is mail to send from.
     mail: Option<PathBuf>,
+    /// The computer's desk, when there is a computer: where its
+    /// screenshots and downloads land.
+    desk: Option<PathBuf>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -92,6 +95,13 @@ struct Draft {
     subject: String,
     /// Plain text, exactly as it will go out.
     body: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Show {
+    /// The screenshot's file name on the desk, as the screenshot tool
+    /// reported it.
+    file: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -332,6 +342,14 @@ impl Tools {
     }
 
     #[tool(
+        description = "Show your person a screenshot you took on your computer; it goes out with your answer."
+    )]
+    fn show(&self, Parameters(Show { file }): Parameters<Show>) -> Result<String, String> {
+        let desk = self.desk.as_ref().ok_or("There is no computer here.")?;
+        show(desk, &self.dir.join("outbox"), &file)
+    }
+
+    #[tool(
         description = "Draft an email for your person to approve. The draft shows in the chat and goes out only when they react 👍 to it; nothing sends without that, so never say it was sent."
     )]
     fn draft_mail(
@@ -425,6 +443,45 @@ fn find(
 #[tool_handler(router = self.tool_router)]
 impl rmcp::ServerHandler for Tools {}
 
+/// Copies a screenshot from the desk into the outbox, where the answer's
+/// sender picks it up; the name alone counts, so no path leaves the desk.
+fn show(desk: &Path, outbox: &Path, file: &str) -> Result<String, String> {
+    let name = Path::new(file).file_name().ok_or("Which file?")?;
+    let from = desk.join(name);
+    if from.extension().is_none_or(|x| x != "png") {
+        return Err("Only a png screenshot can be shown.".into());
+    }
+    fs::create_dir_all(outbox).map_err(|e| e.to_string())?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    fs::copy(&from, outbox.join(format!("{stamp}.png")))
+        .map_err(|e| format!("{}: {e}", from.display()))?;
+    Ok("It goes out with your answer.".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_screenshot_is_shown_by_name_only_and_only_a_png() {
+        let dir = std::env::temp_dir().join(format!("sokka-show-{}", std::process::id()));
+        let desk = dir.join("desk");
+        let outbox = dir.join("outbox");
+        fs::create_dir_all(&desk).unwrap();
+        fs::write(desk.join("page.png"), b"png").unwrap();
+        fs::write(desk.join("notes.txt"), b"text").unwrap();
+        assert!(show(&desk, &outbox, "/desk/page.png").is_ok());
+        assert_eq!(fs::read_dir(&outbox).unwrap().count(), 1);
+        assert!(show(&desk, &outbox, "notes.txt").is_err());
+        assert!(show(&desk, &outbox, "../page.png").is_ok());
+        assert!(show(&desk, &outbox, "missing.png").is_err());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
 pub async fn serve(dir: PathBuf) -> Result<(), String> {
     let hippo = std::env::var("HIPPO_DIR").map_err(|_| "HIPPO_DIR is not set")?;
     let tools = Tools {
@@ -434,6 +491,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
         },
         house: House::from_env().map(Arc::new),
         mail: std::env::var_os("SOKKA_MAIL").map(PathBuf::from),
+        desk: std::env::var_os("SOKKA_DESK").map(PathBuf::from),
         tool_router: Tools::tool_router(),
     };
     let running = tools

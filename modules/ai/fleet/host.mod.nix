@@ -59,10 +59,10 @@
         # network-online target instead.
         systemd.network.wait-online.enable = !config.networking.networkmanager.enable;
 
-        boot.kernel.sysctl = {
-          "net.ipv4.ip_forward" = 0;
-          "net.ipv6.conf.all.forwarding" = 0;
-        };
+        # The assistants' computers need forwarding on (sokka-network.mod.nix),
+        # so the forward chain, closed by default, is what keeps a drone
+        # from routing.
+        networking.firewall.filterForward = true;
 
         assertions = singleton {
           assertion = !(lib.lists.elem bridge config.networking.firewall.trustedInterfaces);

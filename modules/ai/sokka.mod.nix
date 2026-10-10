@@ -26,7 +26,11 @@
 # due routines as requests and sends the answers, reads photos and files
 # sent to it without keeping them, and on the one instance that takes
 # them, reads the host's alerts from their spool and sends its own account
-# of them (alerts.mod.nix).
+# of them (alerts.mod.nix). An instance with `computer = true` also drives
+# a browser in a microVM of its own (sokka-computer.mod.nix) over
+# Playwright MCP, reads its desk for screenshots, and can start a task:
+# a turn of its own with no clock on it, run on the tick, for work that
+# outlives the message.
 #
 # The instances share a household directory their common group can write:
 # shared lists, and a mailbox each. "Tell Gab ..." leaves a message in hers,
@@ -66,7 +70,7 @@
         ;
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib) types;
-      inherit (lib.ship) fences;
+      inherit (lib.ship) fences computers;
 
       cfg = config.sokka;
 
@@ -231,10 +235,18 @@
             HOME = state;
             HIPPO_DIR = "${state}/hippo";
           };
-          shared = households // {
-            SOKKA_UNIT = n;
-            SOKKA_USAGE = "/run/usage.sock";
+          # The assistant's computer (sokka-computer.mod.nix), if it has one.
+          pc = optionalAttrs i.computer {
+            addr = computers.addr (computers.indexes cfg.instances).${n};
+            desk = "${computers.desks}/${n}";
           };
+          shared =
+            households
+            // {
+              SOKKA_UNIT = n;
+              SOKKA_USAGE = "/run/usage.sock";
+            }
+            // optionalAttrs i.computer { SOKKA_DESK = pc.desk; };
 
           mcp = (pkgs.formats.json { }).generate "${n}-mcp.json" {
             mcpServers = {
@@ -279,6 +291,13 @@
                 command = getExe mail;
                 args = singleton "${creds}/mail";
                 env.SOKKA_IMAP = cfg.mailServer;
+              };
+            }
+            // optionalAttrs i.computer {
+              # Playwright MCP in the guest, driving its browser.
+              computer = {
+                type = "http";
+                url = "http://${pc.addr}:${toString computers.mcpPort}/mcp";
               };
             };
           };
@@ -399,7 +418,13 @@
                 ++ optional (i.mailCredentialsFile != null) "mail:${i.mailCredentialsFile}";
                 Restart = "always";
                 RestartSec = 10;
-                ReadWritePaths = singleton house ++ optional i.alerts config.alerts.spool;
+                ReadWritePaths =
+                  singleton house ++ optional i.alerts config.alerts.spool ++ optional i.computer pc.desk;
+              }
+              // optionalAttrs i.computer {
+                # Through the fence to its own computer, and into its desk.
+                IPAddressAllow = fence.IPAddressAllow ++ singleton pc.addr;
+                SupplementaryGroups = sandbox.SupplementaryGroups ++ singleton computers.deskGroup;
               };
           };
         };

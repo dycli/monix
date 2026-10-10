@@ -6,6 +6,7 @@ inputs:
 inputs.nixpkgs.lib.extend (
   final: prev: {
     ship = {
+      computers = import ./computers.nix final;
       fences = import ./network-fences.nix;
       hardened = import ./hardened.nix final;
       topology = import ./fleet-topology.nix;

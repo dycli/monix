@@ -14,24 +14,7 @@
       inherit (lib.meta) getExe;
       inherit (lib.strings) concatStringsSep;
 
-      # The nixpkgs MCP wrapper retains every bundled Playwright browser.
-      # Brave is already the elected browser, so keep only the JS library and
-      # remove the wrapper that references that redundant browser closure.
-      playwrightLibrary = pkgs.playwright-test.overrideAttrs (old: {
-        postInstall = (old.postInstall or "") + ''
-          rm -rf "$out/bin"
-        '';
-      });
-
-      playwrightMcp = pkgs.playwright-mcp.overrideAttrs {
-        postInstall = ''
-          pkg_dir="$out/lib/node_modules/@playwright/mcp"
-          rm -rf "$pkg_dir/node_modules/playwright"
-          rm -rf "$pkg_dir/node_modules/playwright-core"
-          ln -s ${playwrightLibrary}/lib/node_modules/playwright "$pkg_dir/node_modules/playwright"
-          ln -s ${playwrightLibrary}/lib/node_modules/playwright-core "$pkg_dir/node_modules/playwright-core"
-        '';
-      };
+      playwrightMcp = import ./playwright-mcp.nix pkgs;
 
       playwrightArgs = [
         "--browser chrome"
