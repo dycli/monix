@@ -50,7 +50,12 @@
         head
         ;
       inherit (lib.meta) getExe;
-      inherit (lib.strings) readFile concatStringsSep toSentenceCase;
+      inherit (lib.strings)
+        readFile
+        concatStringsSep
+        toSentenceCase
+        replaceStrings
+        ;
       inherit (lib.options) mkOption;
       inherit (lib.attrsets)
         optionalAttrs
@@ -89,6 +94,9 @@
         ];
         flakeIgnore = singleton "E501";
       } (readFile ./sokka-mail.py);
+      send = pkgs.writers.writePython3Bin "sokka-send" {
+        flakeIgnore = singleton "E501";
+      } (readFile ./sokka-send.py);
 
       web = pkgs.writers.writePython3Bin "sokka-web" {
         libraries = singleton pkgs.python3Packages.mcp;
@@ -242,9 +250,12 @@
                   "tools"
                   state
                 ];
-                env = shared // {
-                  inherit (env) HIPPO_DIR;
-                };
+                env =
+                  shared
+                  // {
+                    inherit (env) HIPPO_DIR;
+                  }
+                  // optionalAttrs (i.mailCredentialsFile != null) { SOKKA_MAIL = "${creds}/mail"; };
               };
               calendar = {
                 type = "stdio";
@@ -368,7 +379,12 @@
                 SOKKA_MCP = toString mcp;
               }
               // optionalAttrs (i.style != null) { SOKKA_STYLE = i.style; }
-              // optionalAttrs i.alerts { SOKKA_ALERTS = config.alerts.spool; };
+              // optionalAttrs i.alerts { SOKKA_ALERTS = config.alerts.spool; }
+              // optionalAttrs (i.mailCredentialsFile != null) {
+                SOKKA_MAIL = "${creds}/mail";
+                SOKKA_SEND = getExe send;
+                SOKKA_SMTP = cfg.smtpServer;
+              };
             serviceConfig =
               sandbox
               // fence
@@ -485,6 +501,13 @@
           type = types.str;
           example = "imap.example.com";
           description = "IMAP server of the mail accounts, over TLS on 993.";
+        };
+
+        smtpServer = mkOption {
+          type = types.str;
+          default = replaceStrings [ "imap." ] [ "smtp." ] cfg.mailServer;
+          defaultText = "mailServer with imap. replaced by smtp.";
+          description = "SMTP server of the same accounts, over TLS on 465.";
         };
 
         model = mkOption {

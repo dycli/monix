@@ -68,7 +68,7 @@ pub struct Claude {
 
 /// The tools that act on the world, by MCP name.
 const ACTS: &str = "mcp__sokka__remind,mcp__sokka__cancel_reminder,mcp__sokka__list_add,\
-mcp__sokka__share_list,mcp__sokka__list_remove,mcp__sokka__tell,mcp__calendar__add_event,\
+mcp__sokka__share_list,mcp__sokka__list_remove,mcp__sokka__tell,mcp__sokka__draft_mail,mcp__calendar__add_event,\
 mcp__calendar__change_event,mcp__calendar__cancel_event,mcp__image__make_image,mcp__web__web_fetch";
 
 impl Model for Claude {

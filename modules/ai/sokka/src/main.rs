@@ -8,6 +8,7 @@ mod hippo;
 mod house;
 mod matrix;
 mod model;
+mod pending;
 mod tools;
 
 use book::Book;
@@ -16,7 +17,7 @@ use hippo::Hippo;
 use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::media::{MediaFormat, MediaRequestParameters};
-use matrix_sdk::ruma::events::reaction::ReactionEventContent;
+use matrix_sdk::ruma::events::reaction::{OriginalSyncReactionEvent, ReactionEventContent};
 use matrix_sdk::ruma::events::relation::Annotation;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::encrypted::OriginalSyncRoomEncryptedEvent;
@@ -587,6 +588,7 @@ async fn remind(
         if let Some(dir) = &mailbox {
             drain(&room, &hippo, &model, dir, From::Message).await;
         }
+        show_pending(&room, &hippo, &state).await;
         let now = Local::now().naive_local();
         let due = match Book::open(&state, None).and_then(|b| b.read(|db| book::due(db, now))) {
             Ok(due) => due,
@@ -658,6 +660,83 @@ async fn remind(
     }
 }
 
+/// Posts each act not yet shown, verbatim, and remembers which event
+/// shows it, so a reaction to that event can answer it.
+async fn show_pending(room: &Room, hippo: &Arc<Hippo>, state: &Path) {
+    let waiting = match pending::all(state) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("sokka: pending: {e}");
+            return;
+        }
+    };
+    for mut p in waiting.into_iter().filter(|p| p.event.is_none()) {
+        let text = p.act.show();
+        let sent = match room.send(RoomMessageEventContent::text_plain(&text)).await {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("sokka: pending {}: {e}", p.id);
+                continue;
+            }
+        };
+        p.event = Some(sent.response.event_id.to_string());
+        if let Err(e) = pending::save(state, &p) {
+            eprintln!("sokka: pending {}: {e}", p.id);
+        }
+        let hippo = hippo.clone();
+        if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await {
+            eprintln!("sokka: {e}");
+        }
+    }
+}
+
+/// A 👍 or 👎 from an allowed user on a shown act carries it out or drops
+/// it. The sender check is the same one messages pass; the model is
+/// never in this path.
+fn on_reactions(client: &Client, users: Arc<Vec<String>>, state: PathBuf, hippo: Arc<Hippo>) {
+    client.add_event_handler(move |ev: OriginalSyncReactionEvent, room: Room| {
+        let (users, state, hippo) = (users.clone(), state.clone(), hippo.clone());
+        async move {
+            if room.state() != RoomState::Joined || !users.iter().any(|u| *u == ev.sender) {
+                return;
+            }
+            let Some(yes) = pending::verdict(&ev.content.relates_to.key) else {
+                return;
+            };
+            let Some(p) = pending::by_event(&state, ev.content.relates_to.event_id.as_str()) else {
+                return;
+            };
+            tokio::spawn(async move {
+                let outcome = if yes {
+                    let act = p.act.clone();
+                    tokio::task::spawn_blocking(move || act.carry_out())
+                        .await
+                        .unwrap_or_else(|e| Err(e.to_string()))
+                } else {
+                    Ok("Dropped it.".to_owned())
+                };
+                let text = match outcome {
+                    Ok(done) => {
+                        if let Err(e) = pending::remove(&state, p.id) {
+                            eprintln!("sokka: pending {}: {e}", p.id);
+                        }
+                        done
+                    }
+                    Err(e) => format!("(I couldn't: {e}. The draft still stands.)"),
+                };
+                if let Err(e) = room.send(RoomMessageEventContent::text_plain(&text)).await {
+                    eprintln!("sokka: pending {}: {e}", p.id);
+                }
+                if let Ok(Err(e)) =
+                    tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await
+                {
+                    eprintln!("sokka: {e}");
+                }
+            });
+        }
+    });
+}
+
 /// One change to the book in `state`.
 fn on_book<T>(
     state: &Path,
@@ -694,7 +773,8 @@ async fn run() -> Result<(), String> {
             .map_err(|e| format!("sync: {e}"))?;
     }
     let (queue, mut inbox) = mpsc::unbounded_channel();
-    on_messages(&client, users, queue);
+    on_messages(&client, users.clone(), queue);
+    on_reactions(&client, users, state.clone(), hippo.clone());
     tokio::spawn(remind(
         client.clone(),
         hippo.clone(),

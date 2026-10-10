@@ -297,7 +297,12 @@ official MCP SDK, and the only process that receives the CalDAV login, as
 a systemd credential; it lists, adds, moves and cancels events, with
 repeats expanded. Mail is a fourth, read-only over IMAP: folders open with
 EXAMINE and bodies are fetched with `BODY.PEEK`, so nothing is moved or
-marked read, and it cannot send. Since any sender or page can put text in
+marked read. It cannot send: the model only drafts, the draft shows whole in
+the chat, and a 👍 reaction from the person's own account makes the assistant
+send it, through a sender that is the one process holding the SMTP login; 👎
+drops it. The model holds no tool that sends, so no text it reads can make it,
+and a draft an injected page shaped is still read before it is approved. Since
+any sender or page can put text in
 front of the model, fetch opens only links that a search in the same call
 returned or that the person wrote, as OpenAI's agents do: a link the model
 made up could carry what it read out in its path, but a link that existed

@@ -7,6 +7,7 @@
 use crate::book::{self, Book, Repeat, Shelf};
 use crate::hippo::Hippo;
 use crate::house::House;
+use crate::pending::{self, Act};
 use chrono::NaiveDateTime;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -14,6 +15,7 @@ use rmcp::{ServiceExt, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::fmt::Write;
+use std::fs;
 use std::io::Read;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
@@ -27,6 +29,8 @@ struct Tools {
     dir: PathBuf,
     hippo: Hippo,
     house: Option<Arc<House>>,
+    /// The mail accounts file, when there is mail to send from.
+    mail: Option<PathBuf>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -77,6 +81,17 @@ struct Tell {
     to: Option<String>,
     /// What to pass on, as your person put it.
     text: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Draft {
+    /// The account to send from, by name, when there is more than one.
+    account: Option<String>,
+    /// The recipient's address; several, comma-separated.
+    to: String,
+    subject: String,
+    /// Plain text, exactly as it will go out.
+    body: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -315,6 +330,48 @@ impl Tools {
         let who = house.post(to.as_deref(), &format!("From {}: {text}", house.person()))?;
         Ok(format!("Left for {}.", who.join(" and ")))
     }
+
+    #[tool(
+        description = "Draft an email for your person to approve. The draft shows in the chat and goes out only when they react 👍 to it; nothing sends without that, so never say it was sent."
+    )]
+    fn draft_mail(
+        &self,
+        Parameters(Draft {
+            account,
+            to,
+            subject,
+            body,
+        }): Parameters<Draft>,
+    ) -> Result<String, String> {
+        let file = self.mail.as_ref().ok_or("There is no mail account here.")?;
+        let names: Vec<String> = fs::read(file)
+            .map_err(|e| e.to_string())
+            .and_then(|b| {
+                serde_json::from_slice::<Vec<serde_json::Value>>(&b).map_err(|e| e.to_string())
+            })
+            .map_err(|e| format!("mail accounts: {e}"))?
+            .iter()
+            .filter_map(|a| a["name"].as_str().map(str::to_owned))
+            .collect();
+        let account = match (account, names.as_slice()) {
+            (Some(a), _) if names.contains(&a) => Some(a),
+            (Some(a), _) => return Err(format!("No account {a}; there are: {}", names.join(", "))),
+            (None, [_]) => None,
+            (None, _) => return Err(format!("Say which account: {}", names.join(", "))),
+        };
+        let id = pending::add(
+            &self.dir,
+            Act::Mail {
+                account,
+                to,
+                subject,
+                body,
+            },
+        )?;
+        Ok(format!(
+            "Drafted (#{id}). It shows in the chat and goes out only on their 👍."
+        ))
+    }
 }
 
 impl Tools {
@@ -376,6 +433,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
             sock: PathBuf::from(hippo).join("hippo.sock"),
         },
         house: House::from_env().map(Arc::new),
+        mail: std::env::var_os("SOKKA_MAIL").map(PathBuf::from),
         tool_router: Tools::tool_router(),
     };
     let running = tools
