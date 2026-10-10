@@ -127,7 +127,7 @@
                   }
                   ++ lib.lists.optional config.services.immich.enable {
                     Immich = {
-                      href = url "immich";
+                      href = url "pix";
                       description = "Photos";
                       icon = "immich.png";
                     };
