@@ -186,10 +186,9 @@ messages.
 **Compaction.** Messages become the leaves of a binary tree. Each message is
 compressed to a line of at most 512 bytes; each pair of lines is merged into
 one line covering both, and so on upward. Lines are tagged by kind (`user`,
-`talk`, `tool`, `echo`, `note`), never by chat. The compactor picks its model
-by tree level: Haiku at xhigh effort compresses single messages, Sonnet at
-medium effort merges the lines above, both through the `claude` CLI on the
-subscription with five-minute prompt caching. Each call carries the compactions' own view
+`talk`, `tool`, `echo`, `note`), never by chat. The compactor runs Sonnet at
+medium effort through the `claude` CLI on the subscription with five-minute
+prompt caching; `HIPPO_LEVELS` can hand lower tree levels to a cheaper model. Each call carries the compactions' own view
 (the same sawtooth at 16-32 KB, so calls read each other's prefix from the
 cache), a ruler of 512 dashes for scale, and the step. When a merge's
 two halves come from different chats (keyed by harness and session), the
@@ -223,8 +222,9 @@ take 2-15 ms.
   call by about two thirds.
 - Haiku 5.5, Sonnet, Opus, and OpenAI's Luna and Sol were replayed over the
   same 512 messages and judged blind, by level. Haiku at xhigh matched
-  Sonnet when compressing single messages and invented at merges, so the
-  model is chosen by tree level.
+  Sonnet when compressing single messages (once a guard held each line to its
+  message's kind) and invented at merges, so the model can be chosen by tree
+  level. All levels run Sonnet until a week's real cost is known.
 - The scale example was first a real history line, then an invented one;
   models copied both into summaries as fact. It is now a ruler of dashes.
 - Chat labels were dropped from the tree once they proved unreliable, in
