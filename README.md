@@ -178,7 +178,7 @@ fixed-size summary that any session can read.
 **Recording.** A watcher follows Claude Code, Codex and OpenCode transcripts
 as they are written (OpenCode through its SQLite database) and appends each
 message to a day-file log. The log is append-only. Secrets are masked before
-they are written, and a chat containing `#offrecord` is not recorded.
+they are written.
 `hippo import` loaded three months of older transcripts, about 9,000
 messages.
 

@@ -105,16 +105,6 @@ pub struct ChatRec {
     pub first: String,
 }
 
-/// A chat the captain took off the record, in `offrecord.jsonl`. The
-/// transcript archive reads this file to skip the same sessions.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OffRec {
-    pub harness: String,
-    pub session: String,
-    pub marker: String,
-    pub date: String,
-}
-
 struct Meta {
     file: u32,
     off: u64,
@@ -131,7 +121,6 @@ pub struct Store {
     seen: HashSet<String>,
     out: Option<(NaiveDate, File, u64)>,
     pub chats: HashMap<String, ChatRec>,
-    pub offrecord: HashMap<String, OffRec>,
     /// Lines that were not valid JSON at load, as `file:line`.
     pub torn: Vec<String>,
     /// Last message per harness: (id, date).
@@ -288,7 +277,6 @@ impl Store {
             seen: HashSet::new(),
             out: None,
             chats: HashMap::new(),
-            offrecord: HashMap::new(),
             torn: Vec::new(),
             last: HashMap::new(),
             _lock: lock,
@@ -303,11 +291,6 @@ impl Store {
             self.chats
                 .entry(chat_key(&c.harness, &c.session))
                 .or_insert(c);
-        })?;
-        read_jsonl::<OffRec>(&self.dir.join("offrecord.jsonl"), &mut torn, |o, _, _| {
-            self.offrecord
-                .entry(chat_key(&o.harness, &o.session))
-                .or_insert(o);
         })?;
         self.days = day_files(&self.dir.join("main"))?;
         for (f, day) in self.days.clone().into_iter().enumerate() {
@@ -465,17 +448,6 @@ impl Store {
         let line = serde_json::to_string(&rec).map_err(|e| e.to_string())?;
         append_line(&mut open_append(&self.dir.join("chats.jsonl"))?, &line)?;
         self.chats.insert(key, rec);
-        Ok(())
-    }
-
-    pub fn take_off_record(&mut self, rec: OffRec) -> Result<(), String> {
-        let key = chat_key(&rec.harness, &rec.session);
-        if self.offrecord.contains_key(&key) {
-            return Ok(());
-        }
-        let line = serde_json::to_string(&rec).map_err(|e| e.to_string())?;
-        append_line(&mut open_append(&self.dir.join("offrecord.jsonl"))?, &line)?;
-        self.offrecord.insert(key, rec);
         Ok(())
     }
 }

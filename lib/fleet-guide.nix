@@ -37,10 +37,6 @@
     Summaries keep little of tool output: say in your replies what you
     learned that will matter later.
 
-    If the captain's message contains `#amnesia`, never run `hippo` in this
-    chat and ignore the view in your context. `#offrecord` needs nothing
-    from you.
-
     ## Subscription usage
 
     `usage` prints how much of each subscription's limits is used (Claude,

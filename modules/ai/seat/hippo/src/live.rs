@@ -3,7 +3,7 @@
 
 use crate::source::{self, Event, claude, codex, opencode};
 use crate::store::{Kind, Store, fmt_date, parse_date};
-use crate::watcher::{Watcher, marker};
+use crate::watcher::Watcher;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -473,11 +473,6 @@ pub fn audit(
 ) -> Result<String, String> {
     let start = since.map_or(from, |s| s.max(from));
     let mut foreign = HashSet::new();
-    let mut off: HashMap<String, DateTime<Local>> = store
-        .offrecord
-        .iter()
-        .filter_map(|(k, o)| parse_date(&o.date).map(|d| (k.clone(), d)))
-        .collect();
     let mut expected: BTreeMap<String, (DateTime<Local>, Kind, String)> = BTreeMap::new();
     for (at, harness, session, _, events) in records(sources, start, to)? {
         let chat = format!("{harness}:{session}");
@@ -487,11 +482,7 @@ pub fn audit(
                     foreign.insert(chat.clone());
                 }
                 Event::Item(it) => {
-                    if it.kind == Kind::User && marker(&it.text).is_some() {
-                        off.entry(chat.clone()).or_insert(it.date);
-                    }
-                    let gone = off.get(&chat).is_some_and(|d| it.date >= *d);
-                    if foreign.contains(&chat) || gone || at < start {
+                    if foreign.contains(&chat) || at < start {
                         continue;
                     }
                     let excerpt: String = it.text.chars().take(80).collect();
@@ -607,8 +598,8 @@ mod tests {
         "echo [bridge-1111]: <task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n<summary>Background command \"Measure\" completed (exit code 0)</summary>\n</task-notification>",
         "user [bridge-1111]: [image]\nDoes this look right?",
         "echo [bridge-1111]: API Error: the image could not be processed.",
-        // #offrecord: nothing of the shed chat from there on. The boiler
-        // chat went quiet over an hour ago, so this one may be "bridge" too.
+        // The boiler chat went quiet over an hour ago, so this one may be
+        // "bridge" too.
         "user [bridge]: Fix the gutter.",
         "tool [bridge]: exec const r = await tools.exec_command({cmd:\"memo wake\",\"workdir\":\"/home/bridge\"}); text(r.output);\n",
         "echo [bridge]: (hippo output omitted)",
@@ -634,12 +625,6 @@ mod tests {
         assert_eq!(log_of(&store), EXPECTED);
         assert_eq!(w.unparsed_total, 1, "{:?}", w.unparsed);
         assert!(w.unparsed[0].what.contains("brand-new-entry"));
-        let off: Vec<_> = store
-            .offrecord
-            .values()
-            .map(|o| o.marker.as_str())
-            .collect();
-        assert_eq!(off, ["#offrecord"]);
         let report = audit(&store, &src, from, to, None).unwrap();
         assert!(report.contains("0 missing, 0 duplicated"), "{report}");
         assert!(!OMITTED.is_empty());

@@ -583,14 +583,5 @@ fn status(c: &Core, compacting: bool) -> String {
             torn.join(", ")
         ));
     }
-    let mut off: Vec<_> = s.offrecord.values().collect();
-    off.sort_by(|a, b| a.date.cmp(&b.date));
-    out.push_str(&format!("off the record: {} chats\n", off.len()));
-    for o in off {
-        out.push_str(&format!(
-            "  {}:{} {} since {}\n",
-            o.harness, o.session, o.marker, o.date
-        ));
-    }
     out.trim_end().to_owned()
 }

@@ -5,13 +5,11 @@
 
 use crate::mask::mask;
 use crate::source::{Event, Item, cap};
-use crate::store::{ChatRec, Draft, Kind, OffRec, Store, chat_key, fmt_date};
+use crate::store::{ChatRec, Draft, Kind, Store, chat_key, fmt_date};
 use chrono::{DateTime, Duration, Local};
-use regex::Regex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
 
 /// A turn is flushed after this many messages even if it runs on.
 pub const TURN_MAX: usize = 50;
@@ -29,14 +27,6 @@ pub const OMITTED: &str = "(hippo output omitted)";
 /// that should appear once.
 const PASTE: usize = 500;
 
-static MARKER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?:^|\s)#(offrecord|amnesia)(?:$|[\s.,;:!?)])").unwrap());
-
-/// The chat marker in a message of the captain's, if any.
-pub fn marker(text: &str) -> Option<String> {
-    MARKER.captures(text).map(|c| format!("#{}", &c[1]))
-}
-
 struct Held {
     draft: Draft,
     /// Byte offset of the transcript line it came from.
@@ -50,7 +40,6 @@ pub struct Chat {
     cwd: String,
     title: String,
     foreign: bool,
-    off: bool,
     label: Option<String>,
     held: Vec<Held>,
     held_keys: HashSet<String>,
@@ -111,7 +100,6 @@ impl Watcher {
         self.chats.entry(key.clone()).or_insert_with(|| Chat {
             harness: harness.to_owned(),
             session: session.to_owned(),
-            off: store.offrecord.contains_key(&key),
             label: store.chats.get(&key).map(|c| c.chat.clone()),
             ..Chat::default()
         })
@@ -173,23 +161,7 @@ impl Watcher {
         let imported = self.after.is_some_and(|a| item.date < a);
         let chat = self.entry(store, &harness, &session);
         chat.last = Some(item.date);
-        if chat.foreign || chat.off || imported {
-            return Ok(());
-        }
-        if item.kind == Kind::User
-            && let Some(mark) = marker(&item.text)
-        {
-            // Everything before the marker stays; nothing from it on enters.
-            self.flush(store, &ckey)?;
-            let chat = self.chats.get_mut(&ckey).unwrap();
-            chat.off = true;
-            chat.ended = false;
-            store.take_off_record(OffRec {
-                harness,
-                session,
-                marker: mark,
-                date: fmt_date(&item.date),
-            })?;
+        if chat.foreign || imported {
             return Ok(());
         }
         let key = item.src.key();
@@ -443,14 +415,6 @@ pub fn paseo_title(dir: &Path, session: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn markers() {
-        assert_eq!(marker("#offrecord"), Some("#offrecord".into()));
-        assert_eq!(marker("ok so #amnesia. go"), Some("#amnesia".into()));
-        assert_eq!(marker("mention #offrecords"), None);
-        assert_eq!(marker("tag#offrecord"), None);
-    }
 
     #[test]
     fn slugs() {
