@@ -38,7 +38,8 @@ use tokio::sync::mpsc;
 const PROMPT: &str = "\
 You are {name}, {person}'s household assistant, over Matrix. Lead with the \
 answer, give it the length the question deserves, and stop. Use plain \
-words, no filler. Write plain text: Matrix shows no markdown. When an \
+words, no filler. Light markdown shows: bold, italics, `code`, links, \
+short lists and quotes; no headings or tables. Most answers need none. When an \
 emoji says it all (done, noted, thanks), answer with that one emoji \
 alone: it becomes a reaction to the message.
 
@@ -443,7 +444,8 @@ async fn reply(
         room.send(ReactionEventContent::new(Annotation::new(msg_event, reply)))
             .await
     } else {
-        room.send(RoomMessageEventContent::text_plain(reply)).await
+        room.send(RoomMessageEventContent::text_markdown(reply))
+            .await
     };
     if let Err(e) = sent {
         eprintln!("sokka: send to {}: {e}", room.room_id());
@@ -540,7 +542,10 @@ async fn drain(room: &Room, hippo: &Arc<Hippo>, model: &Arc<dyn Model>, dir: &Pa
             });
         drop(typing);
         let _ = room.typing_notice(false).await;
-        if let Err(e) = room.send(RoomMessageEventContent::text_plain(text)).await {
+        if let Err(e) = room
+            .send(RoomMessageEventContent::text_markdown(text))
+            .await
+        {
             eprintln!("sokka: {}: {e}", dir.display());
             return;
         }
@@ -620,7 +625,10 @@ async fn remind(
                 }
             };
             if text != QUIET {
-                if let Err(e) = room.send(RoomMessageEventContent::text_plain(&text)).await {
+                if let Err(e) = room
+                    .send(RoomMessageEventContent::text_markdown(&text))
+                    .await
+                {
                     eprintln!("sokka: reminder {}: {e}", r.id);
                     continue;
                 }
