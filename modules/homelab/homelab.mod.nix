@@ -1,6 +1,6 @@
 # The lab bundle: the house's services — media automation, family apps,
 # smart home, their shared front door and alerting — plus the agent lab
-# (AI seat, worker fleet, inference; wired in ai/).
+# (AI seat, household assistants, inference; wired in ai/).
 #
 # Only role wiring lives here. agenix ciphertext is encrypted to one
 # host's key and cannot travel, so every `*File` option, along with
@@ -36,12 +36,6 @@
       services.syncthing.enable = true;
 
       matrix.serverName = "chat.su.is";
-
-      agentFleet.workers = [
-        "astrapia"
-        "cicinnurus"
-      ];
-      fleetLogStream.inviteUsers = singleton "@dylan:chat.su.is";
 
       sokka.instances = {
         sokka = {

@@ -68,8 +68,6 @@ in
       # OpenCode has only static globs where Claude has a read-only
       # classifier, so this list exists for OpenCode alone.
       bashAllow = [
-        "sudo -n -u ${topology.operator} fleet *"
-        "fleet dispatch *"
         # hippo must never prompt.
         "hippo"
         "hippo *"
@@ -173,10 +171,6 @@ in
       home.sessionVariables = opencode.environment;
 
       home.file.".config/agents/AGENTS.md".text = mkForce (guide.system + guide.pilot);
-      home.file."cockpit/FLEET.md" = {
-        force = true;
-        text = guide.fleet;
-      };
 
       # The baseURL uses the seat-plane address because the slice fence
       # admits that /32, not 127.0.0.1.

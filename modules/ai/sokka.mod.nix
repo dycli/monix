@@ -7,7 +7,7 @@
 #
 # Each instance is three units under its own static user: the bot, the
 # hippo service that is the store's only writer, and the account
-# bootstrap. Model calls run the claude CLI on the fleet's subscription
+# bootstrap. Model calls run the claude CLI on the ship's Claude subscription
 # token, without built-in tools or settings; their only tools come over
 # MCP: web search and fetch (sokka-web.py, in front of Parallel's keyless
 # server), the instance's own

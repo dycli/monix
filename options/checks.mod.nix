@@ -14,15 +14,6 @@
 
       # Check name → crate directory and the tools its tests shell out to.
       crates = {
-        fleet-dispatch.path = "modules/ai/fleet/dispatch";
-        fleet-guest = {
-          path = "modules/ai/fleet/guest";
-          tools = [
-            pkgs.jq
-            pkgs.sqlite
-          ];
-        };
-        fleet-cli.path = "modules/ai/fleet/cli";
         hippo.path = "modules/ai/seat/hippo";
         sokka.path = "modules/ai/sokka";
       };

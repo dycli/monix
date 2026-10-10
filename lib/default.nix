@@ -9,8 +9,8 @@ inputs.nixpkgs.lib.extend (
       computers = import ./computers.nix final;
       fences = import ./network-fences.nix;
       hardened = import ./hardened.nix final;
-      topology = import ./fleet-topology.nix;
-      guide = import ./fleet-guide.nix;
+      topology = import ./topology.nix;
+      guide = import ./guide.nix;
       keys = import ../keys.nix;
       opencode = import ./opencode.nix final;
       rustTool = import ./rust-tool.nix final inputs.crate2nix;

@@ -146,6 +146,7 @@
                     "compress=zstd"
                   ];
                 };
+                # The assistants' computers' disks (sokka-network.mod.nix).
                 subvolumes."@agents" = {
                   mountpoint = "/var/lib/agents";
                   mountOptions = [

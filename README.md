@@ -3,8 +3,8 @@
 NixOS configuration for four machines, in one flake. Most of it wires up
 software other people wrote, and that is not described here. This README
 covers what was built: the flake's module system, an AI agent setup with its
-own memory and a fleet of sandboxed VMs, a desktop shell, a household bot,
-and a NAS backup that proves its restores.
+own memory, a desktop shell, a household bot with a computer of its own, and
+a NAS backup that proves its restores.
 
 | Host  | Machine                  | Role |
 |-------|--------------------------|------|
@@ -17,8 +17,8 @@ Private services are reachable only over Tailscale.
 
 ## Platform
 
-The whole fleet is one flake: about 9,200 lines of Nix in 84 modules, four
-hosts, six in-tree Rust crates. The layout follows the dendritic pattern, and
+All four hosts are one flake: about 9,100 lines of Nix in 83 modules, four
+hosts, two in-tree Rust crates. The layout follows the dendritic pattern, and
 most of what makes it work is a few dozen lines of plumbing.
 
 ### No import list
@@ -102,8 +102,8 @@ the agenix CLI and, as `lib.ship.keys`, by the modules that grant SSH access.
   whole user slices. Loopback is a /24, not 127/8: systemd's allow list
   beats its deny list, so the narrower range is what keeps the AI seat's
   own loopback addresses outside it and the seat off other local services.
-- **Topology** (`fleet-topology.nix`): the AI system's users, uids, paths
-  and addresses in one place, so the seat, fleet and guests agree.
+- **Topology** (`topology.nix`): the AI system's users, uids, paths and
+  addresses in one place, so the seat and the hosts it reaches agree.
 
 ### Checks
 
@@ -234,43 +234,6 @@ take 2-15 ms.
 A separate job copies every harness's transcripts to the NAS before the
 harnesses prune them.
 
-### The fleet
-
-The seat hands work to drones: disposable microVMs, each running one agent
-on one task. The code is about 5,500 lines of Rust in three crates under
-`modules/ai/fleet`, and it assumes the agent inside the VM is hostile.
-
-**`fleet` CLI.** The only path from the seat to the queue. It runs through
-scoped sudo as `fleet-operator`, a separate account outside wheel. Its
-configuration is compiled in, so the caller cannot redirect it. `dispatch`
-snapshots the working context and passes it to the task on stdin; the other
-commands submit, watch, fetch results and patches, read logs, peek at a
-running drone, steer it, answer its questions, cancel, and report status and
-health.
-
-**Dispatcher.** One resident drainer per worker keeps a warm VM. It claims a
-queued markdown task, runs it, archives the result and reboots the guest.
-The queue is capped by bytes and inodes. A task's front matter must name the
-agent and model. `guidance: cockpit` lets a drone send questions back to the
-seat instead of guessing.
-
-**Guest supervisor.** Inside the VM, the supervisor runs as root and treats
-everything it reads as hostile: no symlinks followed, every read bounded, no
-shell interpolation. Each agent runs as its own unprivileged user with one
-staged credential. The supervisor captures the patch and a usage record, and
-writes the exit code last, so a result is complete when it has one.
-
-**Isolation.** Guests are microvm.nix VMs on the host-only `br-agents`
-bridge. Their only way out is a Squid allowlist of the model vendors' APIs,
-search and docs services, and the Nix cache; local inference is reached
-directly. Per-worker volumes are wiped on every start. The VMs have no tailnet, repo or secrets.
-Results come back as untrusted input for the seat to review.
-
-The fleet's audit log is streamed to a Matrix room (`log-stream.mod.nix`).
-The agents' operating guide is one Nix file, `lib/fleet-guide.nix`, rendered
-into `AGENTS.md`, `FLEET.md` and the drone guide, so the seat and the drones
-can't drift apart.
-
 ### Local inference
 
 llama-swap starts one `llama-server` per model on demand and unloads it when
@@ -342,7 +305,7 @@ check speaks only when the price moves; hippo records the trigger as a
 routine, not as their words.
 
 Each assistant can have a computer of its own (`sokka-computer.mod.nix`): a
-persistent microVM, cloud-hypervisor like the drones, with a desktop that only
+persistent microVM under cloud-hypervisor, with a desktop that only
 it touches. Brave runs full screen under cage on a headless wlroots output,
 and Playwright MCP, the same server the seat's browser tool uses, drives it
 over HTTP from the host, so the model works a page by its accessibility tree
@@ -415,8 +378,7 @@ but route only inside the tailnet, and an explicit default vhost catches any
 name with no route.
 
 **One message bus.** A private Matrix server, with federation off, carries
-everything that talks to people: alarms, the fleet's audit log and the
-household bot.
+everything that talks to people: alarms and the household bot.
 
 **Fenced by default.** Each service gets a network fence and only the paths
 its job needs, even where a shared group would allow more. Software that

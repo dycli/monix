@@ -1,11 +1,10 @@
-# The assistants' computers' network: a host-only bridge with NAT to the
-# internet and nothing else. A computer reaches any public address and
-# no private one: not the host, the LAN, the tailnet or another
-# computer; the host reaches each computer for its browser (MCP) and
-# screen (VNC). The forward chain is closed by default, which also keeps
-# the fleet's drones (host.mod.nix) unable to route now that forwarding
-# is on for this bridge.
-{ self, ... }:
+# The assistants' computers' host: the microvm.nix runner and their
+# network, a host-only bridge with NAT to the internet and nothing else.
+# A computer reaches any public address and no private one: not the host,
+# the LAN, the tailnet or another computer; the host reaches each
+# computer for its browser (MCP) and screen (VNC). The forward chain is
+# closed by default, so nothing else on the host routes.
+{ self, inputs, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.sokka-network;
   flake.nixosModules.sokka-network =
@@ -21,10 +20,25 @@
       private = filter (r: !hasInfix ":" r) (fences.privateRanges ++ singleton fences.tailnet);
     in
     {
+      imports = singleton inputs.microvm.nixosModules.host;
+      microvm.host.enable = true;
+      # Its own subvolume on water (water.mod.nix): the computers' disks.
+      microvm.stateDir = "/var/lib/agents/microvms";
+
+      # networkd owns the computers' links. A headless host also gives it
+      # the uplink; a desktop leaves that link to NetworkManager, which
+      # then supplies the network-online target networkd cannot.
+      networking.useNetworkd = true;
       networking.networkmanager.unmanaged = mkIf config.networking.networkmanager.enable [
         "interface-name:${bridge}"
         "interface-name:pc-*"
       ];
+      systemd.network.wait-online.enable = !config.networking.networkmanager.enable;
+      systemd.network.networks."10-uplink" = mkIf (!config.networking.networkmanager.enable) {
+        matchConfig.Name = "en*";
+        networkConfig.DHCP = "yes";
+        linkConfig.RequiredForOnline = "routable";
+      };
 
       systemd.network.netdevs."30-${bridge}".netdevConfig = {
         Name = bridge;

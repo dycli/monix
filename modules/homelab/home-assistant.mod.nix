@@ -1,7 +1,7 @@
 # Smart-home backend, tailnet-only on :8123 behind ha.<domain>.
 # Integration wiring is .storage state; Nix owns the service, its
 # components and its reachability. The fence allows the configured LAN
-# subnets; the fleet bridge and every other private range stay denied.
+# subnets; the computers' bridge and every other private range stay denied.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.home-assistant;

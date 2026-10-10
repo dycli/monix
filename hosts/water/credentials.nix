@@ -8,8 +8,6 @@ in
 {
   users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.katara-password.path;
 
-  fleetLogStream.credentialsEnvFile = config.secrets.matrix-alertbot-env.path;
-
   media.sabnzbdSecretsFile = config.secrets.sabnzbd-secrets.path;
 
   shipCameras.envFile = config.secrets.frigate-env.path;
@@ -32,16 +30,9 @@ in
     mailServer = "imap.migadu.com";
   };
 
-  agentFleet.credentials = {
-    claudeTokenFile = config.secrets.agent-claude-token.path;
-    codexAuthFile = config.secrets.agent-codex-auth.path;
-    opencodeKeyFile = config.secrets.opencode-key.path;
-  };
-
   secrets = {
     katara-password.file = ./secrets/katara-password.age;
     agent-claude-token.file = ./secrets/agent-claude-token.age;
-    agent-codex-auth.file = ./secrets/agent-codex-auth.age;
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
     matrix-sokka-env.file = ./secrets/matrix-sokka.env.age;
     matrix-suki-env.file = ./secrets/matrix-suki.env.age;
@@ -49,7 +40,6 @@ in
     sokka-mail-json.file = ./secrets/sokka-mail.json.age;
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     immich-cloudflare-tunnel-token.file = ./secrets/immich-cloudflare-tunnel-token.age;
-    matrix-alertbot-env.file = ./secrets/matrix-alertbot.env.age;
     cloudflare-dns-token = {
       file = ./secrets/cloudflare-dns-token.env.age;
       owner = "acme";
@@ -76,7 +66,6 @@ in
     ./secrets/matrix-suki.env.age
     ./secrets/sokka-caldav.json.age
   ];
-  systemd.services.fleet-log-stream.restartTriggers = singleton ./secrets/matrix-alertbot.env.age;
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
 }

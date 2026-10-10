@@ -98,7 +98,7 @@
                 # Not a share of the live store: host gc would corrupt a
                 # running guest.
                 storeOnDisk = true;
-                # systemd-notify from the guest; drones take 100 and up.
+                # systemd-notify from the guest.
                 vsock.cid = 200 + indexed.${n};
                 # Kept across starts: the browser profile with its logins.
                 volumes = singleton {

@@ -2,7 +2,7 @@
 # plus a Better than Adventure server. Every jar is pinned by URL and hash.
 #
 # online-mode requires Mojang's session servers, so the fence below allows
-# the internet while denying loopback, the LAN and the fleet bridge.
+# the internet while denying loopback, the LAN and the computers' bridge.
 { self, inputs, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.minecraft;
