@@ -82,6 +82,10 @@
               };
             in
             {
+              # The same Brave as the desktop: its extras, telemetry and
+              # password manager off by policy.
+              imports = singleton self.nixosModules.brave;
+
               microvm = {
                 hypervisor = "cloud-hypervisor";
                 vcpu = 2;
