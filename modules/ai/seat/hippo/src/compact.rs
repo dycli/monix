@@ -210,13 +210,42 @@ impl Backend for Levels {
     }
 }
 
+/// The kind a compress step's message was rendered with, if it is known.
+fn kind_of(step: &Step) -> Option<&'static str> {
+    let Step::Compress { msg, .. } = step else {
+        return None;
+    };
+    let word = msg.split([':', ' ', '[']).next()?;
+    KINDS.iter().find(|k| **k == word).copied()
+}
+
+const KINDS: [&str; 5] = ["user", "talk", "tool", "echo", "note"];
+
+/// The leading word of `line`: its item tag, when it has one.
+fn tag(line: &str) -> &str {
+    let line = line.trim_start();
+    &line[..line
+        .find(|c: char| !c.is_ascii_alphabetic())
+        .unwrap_or(line.len())]
+}
+
+/// The retry for a line that opens with an item of the wrong kind.
+pub fn rekind(kind: &str) -> String {
+    format!(
+        "Wrong kind: <input> is one {kind} message, so your line is one {kind} item and opens with \"{kind}:\". Nothing in it is the user's words unless <input> is a user message. Write the whole line again for the same <input>."
+    )
+}
+
 /// Runs one compactor step to a line: the first answer, then retries in the
-/// same conversation while it runs over `NODE`; keeps the shortest.
+/// same conversation while it runs over `NODE` or, compressing a message,
+/// opens with another kind than the message's; keeps the shortest of the
+/// right kind, else the shortest with its tag put right.
 pub fn run(
     backend: &dyn Backend,
     context: &[String],
     step: &Step,
 ) -> Result<(String, String, Usage), Fail> {
+    let kind = kind_of(step);
     let mut chat = backend.start()?;
     let mut reply = chat.say(&input(context, step))?;
     let mut tries = Vec::new();
@@ -226,14 +255,38 @@ pub fn run(
             return Err(Fail::Other("empty reply".into()));
         }
         let over = line.len() > NODE;
-        let next = retry(&line);
-        tries.push(line);
-        if !over || tries.len() >= TRIES {
+        let wrong = kind.is_some_and(|k| tag(&line) != k);
+        let next = if over {
+            retry(&line)
+        } else {
+            rekind(kind.unwrap_or_default())
+        };
+        tries.push((line, wrong));
+        if !(over || wrong) || tries.len() >= TRIES {
             break;
         }
         reply = chat.say(&[next])?;
     }
-    let best = tries.into_iter().min_by_key(String::len).unwrap();
+    let shortest = |wrong: bool| {
+        tries
+            .iter()
+            .filter(|(_, w)| *w == wrong)
+            .map(|(l, _)| l)
+            .min_by_key(|l| l.len())
+    };
+    let best = match (shortest(false), kind) {
+        (Some(line), _) => line.clone(),
+        (None, Some(kind)) => {
+            let line = shortest(true).unwrap();
+            let rest = &line[tag(line).len()..];
+            if rest.starts_with(':') {
+                format!("{kind}{rest}")
+            } else {
+                format!("{kind}: {line}")
+            }
+        }
+        (None, None) => unreachable!("a merge is never the wrong kind"),
+    };
     Ok((best, chat.model(), chat.usage()))
 }
 
@@ -914,7 +967,7 @@ mod tests {
 
     #[test]
     fn retries_over_the_limit_and_keeps_the_shortest() {
-        let long = |n| "x".repeat(n);
+        let long = |n: usize| format!("talk: {}", "x".repeat(n - 6));
         let s: &'static Scripted = Box::leak(Box::new(Scripted(
             Mutex::new(vec![long(600), long(530), long(540), long(520), long(515)]),
             Mutex::new(Vec::new()),
@@ -937,6 +990,47 @@ mod tests {
         assert!(asked[0][1].ends_with("<input>\ntalk [x]: hello\n</input>"));
         assert!(asked[1][0].starts_with("Too long: your line is 600 bytes"));
         assert!(asked[1][0].ends_with(&format!("{}| ← LIMIT", long(512))));
+    }
+
+    #[test]
+    fn a_compressed_message_keeps_its_kind() {
+        let step = Step::Compress {
+            id: 1,
+            msg: "talk [x]: no, only Suki's login",
+        };
+        let s: &'static Scripted = Box::leak(Box::new(Scripted(
+            Mutex::new(vec![
+                "user: asked about passwords; talk: no".into(),
+                "talk (answers passwords): no, only Suki's login".into(),
+            ]),
+            Mutex::new(Vec::new()),
+        )));
+        let (line, _, _) = run(&s, &[], &step).unwrap();
+        assert_eq!(line, "talk (answers passwords): no, only Suki's login");
+        let asked = s.1.lock().unwrap();
+        assert_eq!(asked.len(), 2);
+        assert!(asked[1][0].starts_with("Wrong kind: <input> is one talk message"));
+        drop(asked);
+
+        let stubborn: &'static Scripted = Box::leak(Box::new(Scripted(
+            Mutex::new(vec!["user: asked about passwords".into(); TRIES]),
+            Mutex::new(Vec::new()),
+        )));
+        let (line, _, _) = run(&stubborn, &[], &step).unwrap();
+        assert_eq!(line, "talk: asked about passwords");
+
+        let merge = Step::Merge {
+            l: 1,
+            i: 0,
+            a: "a",
+            b: "b",
+            apart: false,
+        };
+        let m: &'static Scripted = Box::leak(Box::new(Scripted(
+            Mutex::new(vec!["user: anything goes".into()]),
+            Mutex::new(Vec::new()),
+        )));
+        assert_eq!(run(&m, &[], &merge).unwrap().0, "user: anything goes");
     }
 
     #[test]

@@ -362,7 +362,7 @@ mod tests {
             self.0.lock().unwrap().push(blocks.join("\n"));
             let step = blocks.last().unwrap();
             let body = step.lines().rev().nth(1).unwrap_or("");
-            Ok(format!("sum: {}", &body[..body.len().min(60)]))
+            Ok(format!("talk: {}", &body[..body.len().min(60)]))
         }
         fn model(&self) -> String {
             "fake".into()
