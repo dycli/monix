@@ -18,6 +18,7 @@ in
 
   matrix.registrationTokenEnvFile = config.secrets.matrix-registration-env.path;
   matrix.tunnelTokenFile = config.secrets.matrix-cloudflare-tunnel-token.path;
+  immich.tunnelTokenFile = config.secrets.immich-cloudflare-tunnel-token.path;
 
   sokka = {
     instances.sokka = {
@@ -47,6 +48,7 @@ in
     sokka-caldav-json.file = ./secrets/sokka-caldav.json.age;
     sokka-mail-json.file = ./secrets/sokka-mail.json.age;
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
+    immich-cloudflare-tunnel-token.file = ./secrets/immich-cloudflare-tunnel-token.age;
     matrix-alertbot-env.file = ./secrets/matrix-alertbot.env.age;
     cloudflare-dns-token = {
       file = ./secrets/cloudflare-dns-token.env.age;
@@ -62,6 +64,7 @@ in
   # This agenix pin has no restartUnits, so each encrypted source is an
   # explicit trigger on its long-running consumer; oneshots need none.
   systemd.services.matrix-tunnel.restartTriggers = singleton ./secrets/matrix-cloudflare-tunnel-token.age;
+  systemd.services.immich-tunnel.restartTriggers = singleton ./secrets/immich-cloudflare-tunnel-token.age;
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
   systemd.services.sokka.restartTriggers = [
