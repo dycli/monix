@@ -166,7 +166,8 @@ Its home is composed in Nix, and one set of managed settings applies to every
 launcher, Paseo included, so an agent started from a phone has the same rules
 as one in a terminal. It can push to this repo; only the captain switches a
 host onto a commit. For the web it drives Brave over MCP, either headless
-inside the fence or the visible one on a desktop over Tailscale SSH.
+inside the fence or the visible one on a desktop, served over HTTP on the
+tailnet to Water alone.
 
 ### hippo
 

@@ -9,14 +9,10 @@
 }:
 let
   # A headless Brave on the seat's own host, plus the desktops whose visible
-  # Brave the seat drives over Tailscale SSH (browser.mod.nix).
-  browserTargets = {
-    earth = "dylan@earth";
-    fire = "zuko@fire";
-  };
-
+  # Brave the seat drives over HTTP on the tailnet (browser.mod.nix); each
+  # desktop admits Water alone at that door.
   browserServers =
-    pkgs:
+    topology:
     {
       browser = {
         command = "/run/current-system/sw/bin/kestrel-browser-headless";
@@ -24,15 +20,10 @@ let
       };
     }
     // (
-      browserTargets
+      topology.desktops
       |> lib.attrsets.mapAttrs (
-        _: target: {
-          command = lib.meta.getExe pkgs.tailscale;
-          args = [
-            "ssh"
-            target
-            "/run/current-system/sw/bin/kestrel-browser-mcp"
-          ];
+        host: _: {
+          url = "http://${host}.${topology.tailnetDomain}:${toString topology.browserPort}/mcp";
         }
       )
     );
@@ -197,13 +188,21 @@ in
             baseURL = "http://${topology.seatInferenceAddr}:${toString osConfig.inference.port}/v1";
             models = osConfig.inference.openCodeModels;
             extraMcp =
-              browserServers pkgs
+              browserServers topology
               |> mapAttrs (
-                _: server: {
-                  type = "local";
-                  command = singleton server.command ++ server.args;
-                  enabled = true;
-                }
+                _: server:
+                if server ? url then
+                  {
+                    type = "remote";
+                    inherit (server) url;
+                    enabled = true;
+                  }
+                else
+                  {
+                    type = "local";
+                    command = singleton server.command ++ server.args;
+                    enabled = true;
+                  }
               );
             inherit permission;
             # Appended after OpenCode's built-in agent rules.
@@ -241,7 +240,7 @@ in
       ...
     }:
     let
-      inherit (lib.attrsets) mapAttrs;
+      inherit (lib.attrsets) attrValues mapAttrs;
       inherit (lib.lists) singleton;
       inherit (lib.strings) toJSON;
       inherit (lib.ship) fences topology;
@@ -310,12 +309,15 @@ in
         # all interfaces, including the tailnet, which Tailscale ACLs cannot
         # restrict per-user. Filtering is port-blind, so admitting 127.0.0.1
         # would expose every loopback service; llama-swap gets a dedicated
-        # seat-plane address instead.
+        # seat-plane address instead. The desktops are admitted for their
+        # browser door, which is also port-blind: the seat can reach whatever
+        # a desktop serves on its tailnet address, and nothing else there.
         systemd.slices."user-${toString seat.uid}".sliceConfig = {
           IPAddressAllow = [
             "127.0.0.53/32"
             "${topology.seatInferenceAddr}/32"
-          ];
+          ]
+          ++ (topology.desktops |> attrValues |> map (a: "${a}/32"));
           IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
         };
 
@@ -346,7 +348,7 @@ in
           json.generate "claude-managed-settings.json" cfg.claudeSettings;
 
         seat.codexConfig.mcp_servers =
-          browserServers pkgs
+          browserServers topology
           |> mapAttrs (
             _: server:
             server
@@ -360,7 +362,9 @@ in
         # truth. Managed settings reach every launcher, Paseo included.
         seat.claudeSettings.autoMemoryEnabled = false;
         environment.etc."claude-code/managed-mcp.json".text = toJSON {
-          mcpServers = browserServers pkgs |> mapAttrs (_: server: server // { type = "stdio"; });
+          mcpServers =
+            browserServers topology
+            |> mapAttrs (_: server: server // { type = if server ? url then "http" else "stdio"; });
         };
       };
     };
