@@ -47,6 +47,9 @@
           "100.107.48.89"
           "fd7a:115c:a1e0::5436:305b"
         ];
+        # pix.su.is rides a Cloudflare tunnel to the share-only door; the
+        # tailnet gets the whole app at Water.
+        resolver.records."pix.su.is" = lib.ship.topology.hostTailnetAddr;
 
         # Vultr instances boot SeaBIOS, so grub carries the BIOS-boot
         # partition below; /boot lives on the root btrfs.

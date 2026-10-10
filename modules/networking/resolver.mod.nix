@@ -19,6 +19,7 @@
       ...
     }:
     let
+      inherit (lib.attrsets) mapAttrsToList;
       inherit (lib.lists) optional;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption mkOption;
@@ -59,6 +60,19 @@
           default = [ ];
           description = "Domains exempted from the blocklist, subdomains included.";
         };
+
+        records = mkOption {
+          type = types.attrsOf types.str;
+          default = { };
+          example = {
+            "pix.example.com" = "100.64.0.1";
+          };
+          description = ''
+            Names answered with a tailnet address here instead of their
+            public record: a service whose public name rides a tunnel to a
+            narrower door, while the tailnet gets the whole thing.
+          '';
+        };
       };
 
       config = mkIf cfg.enable {
@@ -89,6 +103,7 @@
               # publishes CGNAT addresses in public DNS by design.
               private-address = fences.privateRanges ++ [ fences.tailnet ];
               private-domain = ''"su.is"'';
+              local-data = cfg.records |> mapAttrsToList (name: addr: ''"${name}. A ${addr}"'');
 
               prefetch = true;
               # Answer from stale cache (up to a day) when upstream is
