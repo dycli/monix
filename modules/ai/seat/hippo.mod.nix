@@ -94,10 +94,14 @@ in
       # handoff.
       handoff = forSeat "hippo-handoff" ''
         This conversation is recorded word for word in hippo, the seat's
-        memory, and its view reloads into context by itself. Do not
-        summarize its history. Write only the task in progress and its
-        exact state, the next step, and anything decided in the last few
-        turns that is not yet acted on.'';
+        memory; its view reloads into context by itself and `hippo zoom`
+        opens any message. The summary is a handoff of at most 300 words,
+        not a record. Of the usual sections keep only Pending Tasks,
+        Current Work (with the exact state of uncommitted or unpushed
+        work) and Next Step, plus any decision or standing rule from the
+        last few turns not yet acted on. Leave Primary Request, Key
+        Technical Concepts, Files and Code Sections, Errors and Fixes,
+        Problem Solving and All User Messages empty: hippo holds them.'';
 
       # The compactor's own claude calls get the seat's managed settings
       # without hooks or managed MCP servers: those would start a browser and
