@@ -8,6 +8,7 @@ use crate::book::{self, Book, Repeat, Shelf};
 use crate::hippo::Hippo;
 use crate::house::House;
 use crate::pending::{self, Act};
+use crate::task;
 use chrono::NaiveDateTime;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -102,6 +103,11 @@ struct Show {
     /// The screenshot's file name on the desk, as the screenshot tool
     /// reported it.
     file: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Text {
+    text: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -347,6 +353,28 @@ impl Tools {
     fn show(&self, Parameters(Show { file }): Parameters<Show>) -> Result<String, String> {
         let desk = self.desk.as_ref().ok_or("There is no computer here.")?;
         show(desk, &self.dir.join("outbox"), &file)
+    }
+
+    #[tool(
+        description = "Start a task: work that takes a while (several sites, a long search, something to fill in on your computer). Give it as your person's request, in full; it runs on its own and its answer is sent when done. Then tell them it is under way and stop."
+    )]
+    fn task(&self, Parameters(Text { text }): Parameters<Text>) -> Result<String, String> {
+        task::start(&self.dir, &text)?;
+        Ok("Started. Say it is under way and stop; the answer is sent when it is done.".into())
+    }
+
+    #[tool(description = "Stop the task that is running.")]
+    fn cancel_task(&self) -> Result<String, String> {
+        task::cancel(&self.dir)?;
+        Ok("Stopping it.".into())
+    }
+
+    #[tool(
+        description = "In a task, tell your person something now rather than at the end: a question, or news worth the interruption."
+    )]
+    fn say(&self, Parameters(Text { text }): Parameters<Text>) -> Result<String, String> {
+        task::say(&self.dir, &text)?;
+        Ok("Said.".into())
     }
 
     #[tool(

@@ -340,6 +340,37 @@ the answer, or stays quiet when it has nothing new, so a daily price
 check speaks only when the price moves; hippo records the trigger as a
 routine, not as their words.
 
+Each assistant can have a computer of its own (`sokka-computer.mod.nix`): a
+persistent microVM, cloud-hypervisor like the drones, with a desktop that only
+it touches. Brave runs full screen under cage on a headless wlroots output,
+and Playwright MCP, the same server the seat's browser tool uses, drives it
+over HTTP from the host, so the model works a page by its accessibility tree
+and takes a screenshot when it needs to look. The browser profile lives on a
+volume that survives reboots and rebuilds, so site logins made there stay
+there, and nothing of the household goes in: no tailnet, no store share, no
+secret. The guest's network (`sokka-network.mod.nix`) is a host-only bridge
+with NAT: any public address, no private one, not the host, the LAN, the
+tailnet or another computer, while the host reaches each guest for its browser
+and screen. A folder shared over virtiofs is the desk: screenshots land there,
+and `show` copies one into the outbox so it goes out with the answer. The
+screen is also a page on the tailnet, `<name>-screen.<domain>`, noVNC through
+websockify to the guest's VNC, and the prompt tells the assistant to hand out
+the link when the person must take the keyboard (a captcha, a sign-in only they
+can do). On a turn an alert or a household message started, the computer is
+withheld like the other tools that act. `<name>-computer-reset` wipes the
+profile back to a clean desk. Browser actions are not gated: the VM holds no
+payment method or password manager, so the worst a page can do is what a
+logged-in site allows, and sending anything outward still goes through the
+draft-and-👍 path.
+
+Work that takes a while is a task: the model starts it with the request
+worded as the person's, says it is under way, and stops; the bot runs it on
+its 30-second tick as a turn of its own with no clock on it, posts whatever
+the task says along the way, and sends its answer when done. One task at a
+time per instance; "stop" cancels it, which kills the model call. A task is
+a person's turn, so it can act and draft, and its drafts wait for 👍 like
+any other.
+
 Photos, PDFs and text files sent to Sokka are decrypted, typed by their
 first bytes rather than the sender's word, and handed to the model with
 the message. They are read once and kept nowhere: hippo holds only text, so

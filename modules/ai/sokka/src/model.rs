@@ -7,6 +7,8 @@ use base64::engine::general_purpose::STANDARD as B64;
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -29,7 +31,7 @@ pub trait Model: Send + Sync {
         system: &str,
         prompt: &str,
         files: &[Attachment],
-        acts: bool,
+        run: Run,
     ) -> Result<String, String>;
 
     /// Whether answers have tools: web search and Sokka's own.
@@ -57,6 +59,13 @@ pub fn from_env() -> Result<Box<dyn Model>, String> {
 
 /// The `claude` CLI in print mode: no built-in tools, no settings sources
 /// (so no hooks), no session saved; only the MCP servers in SOKKA_MCP.
+/// How a turn runs. A task has no clock on it and can be stopped.
+#[derive(Clone, Default)]
+pub struct Run {
+    pub acts: bool,
+    pub stop: Option<Arc<AtomicBool>>,
+}
+
 /// Each call stands alone.
 pub struct Claude {
     pub command: String,
@@ -69,7 +78,8 @@ pub struct Claude {
 /// The tools that act on the world, by MCP name.
 const ACTS: &str = "mcp__sokka__remind,mcp__sokka__cancel_reminder,mcp__sokka__list_add,\
 mcp__sokka__share_list,mcp__sokka__list_remove,mcp__sokka__tell,mcp__sokka__draft_mail,mcp__calendar__add_event,\
-mcp__calendar__change_event,mcp__calendar__cancel_event,mcp__image__make_image,mcp__web__web_fetch";
+mcp__calendar__change_event,mcp__calendar__cancel_event,mcp__image__make_image,mcp__web__web_fetch,\
+mcp__computer,mcp__sokka__task";
 
 impl Model for Claude {
     fn answer(
@@ -77,7 +87,7 @@ impl Model for Claude {
         system: &str,
         prompt: &str,
         files: &[Attachment],
-        acts: bool,
+        run: Run,
     ) -> Result<String, String> {
         let mut cmd = Command::new(&self.command);
         // Stream-json is the only way to hand the CLI images and PDFs; it
@@ -106,7 +116,7 @@ impl Model for Claude {
         if let Some((file, servers)) = &self.mcp {
             let allowed: Vec<String> = servers.iter().map(|s| format!("mcp__{s}")).collect();
             cmd.args(["--mcp-config", file, "--allowedTools", &allowed.join(",")]);
-            if !acts {
+            if !run.acts {
                 cmd.args(["--disallowedTools", ACTS]);
             }
         }
@@ -137,15 +147,20 @@ impl Model for Claude {
             stdout.read_to_string(&mut out).map(|_| out)
         });
         let errors = drain(child.stderr.take().unwrap());
-        let deadline = Instant::now() + TIMEOUT;
+        let deadline = run.stop.is_none().then(|| Instant::now() + TIMEOUT);
         let status = loop {
             if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
                 break status;
             }
-            if Instant::now() > deadline {
+            let stopped = run.stop.as_ref().is_some_and(|s| s.load(Ordering::Relaxed));
+            if stopped || deadline.is_some_and(|d| Instant::now() > d) {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err("claude gave no answer in time".into());
+                return Err(if stopped {
+                    "stopped".into()
+                } else {
+                    "claude gave no answer in time".into()
+                });
             }
             thread::sleep(Duration::from_millis(100));
         };
@@ -213,7 +228,7 @@ impl Model for Http {
         system: &str,
         prompt: &str,
         files: &[Attachment],
-        _acts: bool,
+        _run: Run,
     ) -> Result<String, String> {
         let url = format!("{}/chat/completions", self.url.trim_end_matches('/'));
         let mut content: Vec<Value> = Vec::new();

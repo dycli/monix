@@ -9,6 +9,7 @@ mod house;
 mod matrix;
 mod model;
 mod pending;
+mod task;
 mod tools;
 
 use book::Book;
@@ -27,12 +28,13 @@ use matrix_sdk::ruma::events::room::message::{
 };
 use matrix_sdk::ruma::{OwnedEventId, OwnedRoomId};
 use matrix_sdk::{Client, Room, RoomState};
-use model::{Attachment, Model};
+use model::{Attachment, Model, Run};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -76,7 +78,20 @@ time rather than said (a weather check each morning) is a routine: a \
 reminder with ask, worded as {person}'s request; with share, its answer \
 also goes to the rest of the household. When a routine you are \
 running finds nothing {person} needs to hear, answer only {QUIET} and \
-nothing is sent.";
+nothing is sent. Work that takes a while is a task: start it, worded as \
+{person}'s request in full, say it is under way and stop; it runs on \
+its own and its answer is sent when done.";
+
+/// Added when the assistant has a computer of its own.
+const COMPUTER: &str = "\n\nYou have a computer of your own: the computer tools drive its \
+browser, which keeps its own site logins. Use it for sites that need \
+signing in, forms, and whatever a search cannot answer. A screenshot lands \
+on your desk; show it to {person} when they should see the page, and when \
+you are stuck (a code, a captcha, a choice) show it and ask.";
+
+/// Added when the computer's screen has a page the person can open.
+const SCREEN: &str = " When {person} must take the keyboard themselves (a captcha, a \
+sign-in only they can do), give them the screen: {screen}";
 
 /// A routine's whole answer when it has nothing to say; not sent.
 const QUIET: &str = "(nothing new)";
@@ -203,6 +218,7 @@ async fn fetch(client: &Client, file: &File) -> Result<Read, String> {
 enum From {
     Person,
     Routine,
+    Task,
     Alert,
     Message,
 }
@@ -210,7 +226,7 @@ enum From {
 /// Text the person didn't write is quoted, and its turn can't act.
 fn frame(from: From, said: String) -> (String, bool) {
     match from {
-        From::Person | From::Routine => (said, true),
+        From::Person | From::Routine | From::Task => (said, true),
         From::Alert => (format!("<alert>\n{said}\n</alert>"), false),
         From::Message => (format!("<message>\n{said}\n</message>"), false),
     }
@@ -224,6 +240,7 @@ fn answer(
     from: From,
     text: &str,
     file: Option<(String, bool, Read)>,
+    stop: Option<Arc<AtomicBool>>,
 ) -> Result<String, String> {
     let view = hippo.view()?;
     let (said, inline, files) = match file {
@@ -253,6 +270,14 @@ fn answer(
             "note",
             format!("(routine) {said}"),
             format!("Routine {person} set, due now"),
+        ),
+        From::Task => (
+            "note",
+            format!("(task) {said}"),
+            format!(
+                "Task {person} gave you, running now with no clock on it: see it \
+                 through, and answer with the outcome"
+            ),
         ),
         From::Alert => (
             "note",
@@ -286,11 +311,17 @@ fn answer(
     let style = std::env::var("SOKKA_STYLE")
         .map(|s| format!(" {s}"))
         .unwrap_or_default();
-    let system = format!("{PROMPT}{style}{tools}{FILES}")
+    let computer = match (model.tools(), std::env::var("SOKKA_SCREEN")) {
+        (false, _) => String::new(),
+        (true, Ok(screen)) => format!("{COMPUTER}{}", SCREEN.replace("{screen}", &screen)),
+        (true, Err(_)) if std::env::var_os("SOKKA_DESK").is_some() => COMPUTER.to_owned(),
+        (true, Err(_)) => String::new(),
+    };
+    let system = format!("{PROMPT}{style}{tools}{computer}{FILES}")
         .replace("{name}", &name)
         .replace("{person}", &person)
         .replace("{QUIET}", QUIET);
-    let reply = model.answer(&system, &prompt, &files, acts)?;
+    let reply = model.answer(&system, &prompt, &files, Run { acts, stop })?;
     if reply.is_empty() {
         return Err("the model answered nothing".into());
     }
@@ -429,7 +460,7 @@ async fn reply(
             e
         }
         Ok(file) => tokio::task::spawn_blocking(move || {
-            answer(&hippo, model.as_ref(), From::Person, &msg.text, file)
+            answer(&hippo, model.as_ref(), From::Person, &msg.text, file, None)
         })
         .await
         .unwrap_or_else(|e| Err(e.to_string()))
@@ -534,13 +565,14 @@ async fn drain(room: &Room, hippo: &Arc<Hippo>, model: &Arc<dyn Model>, dir: &Pa
         let said = texts.join("\n\n");
         let typing = Typing::start(room);
         let (h, m, ask) = (hippo.clone(), model.clone(), said.clone());
-        let text = tokio::task::spawn_blocking(move || answer(&h, m.as_ref(), from, &ask, None))
-            .await
-            .unwrap_or_else(|e| Err(e.to_string()))
-            .unwrap_or_else(|e| {
-                eprintln!("sokka: {}: {e}", dir.display());
-                said
-            });
+        let text =
+            tokio::task::spawn_blocking(move || answer(&h, m.as_ref(), from, &ask, None, None))
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()))
+                .unwrap_or_else(|e| {
+                    eprintln!("sokka: {}: {e}", dir.display());
+                    said
+                });
         drop(typing);
         let _ = room.typing_notice(false).await;
         if let Err(e) = room
@@ -572,6 +604,7 @@ async fn remind(
     house: Option<house::House>,
 ) {
     let mailbox = house.as_ref().map(|h| h.mailbox());
+    let mut task = None;
     let mut tick = tokio::time::interval(Duration::from_secs(30));
     loop {
         tick.tick().await;
@@ -589,6 +622,7 @@ async fn remind(
             drain(&room, &hippo, &model, dir, From::Message).await;
         }
         show_pending(&room, &hippo, &state).await;
+        tasks(&room, &hippo, &model, &state, &mut task).await;
         let now = Local::now().naive_local();
         let due = match Book::open(&state, None).and_then(|b| b.read(|db| book::due(db, now))) {
             Ok(due) => due,
@@ -605,7 +639,7 @@ async fn remind(
                     let typing = Typing::start(&room);
                     let (hippo, model, ask) = (hippo.clone(), model.clone(), r.text.clone());
                     let answered = tokio::task::spawn_blocking(move || {
-                        answer(&hippo, model.as_ref(), From::Routine, &ask, None)
+                        answer(&hippo, model.as_ref(), From::Routine, &ask, None, None)
                     })
                     .await
                     .unwrap_or_else(|e| Err(e.to_string()));
@@ -657,6 +691,71 @@ async fn remind(
                 eprintln!("sokka: reminder {}: {e}", r.id);
             }
         }
+    }
+}
+
+/// The task in flight, if any, and the flag that stops it.
+type Running = (
+    tokio::task::JoinHandle<Result<String, String>>,
+    Arc<AtomicBool>,
+);
+
+/// Starts the task that waits, passes on what the running one says,
+/// stops it when asked, and sends its answer when it ends.
+async fn tasks(
+    room: &Room,
+    hippo: &Arc<Hippo>,
+    model: &Arc<dyn Model>,
+    state: &Path,
+    running: &mut Option<Running>,
+) {
+    for (file, text) in task::said(state) {
+        if let Err(e) = room
+            .send(RoomMessageEventContent::text_markdown(&text))
+            .await
+        {
+            eprintln!("sokka: task: {e}");
+            return;
+        }
+        let _ = fs::remove_file(file);
+        let (hippo, text) = (hippo.clone(), text);
+        if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await {
+            eprintln!("sokka: {e}");
+        }
+    }
+    if let Some((handle, stop)) = running {
+        if task::cancelled(state) {
+            stop.store(true, Ordering::Relaxed);
+        }
+        if !handle.is_finished() {
+            return;
+        }
+        let (handle, _) = running.take().unwrap();
+        let text = match handle.await.unwrap_or_else(|e| Err(e.to_string())) {
+            Ok(text) => text,
+            Err(e) if e == "stopped" => "Stopped the task.".to_owned(),
+            Err(e) => {
+                eprintln!("sokka: task: {e}");
+                format!("(The task failed: {e})")
+            }
+        };
+        send_images(room, &state.join("outbox")).await;
+        if let Err(e) = room
+            .send(RoomMessageEventContent::text_markdown(&text))
+            .await
+        {
+            eprintln!("sokka: task: {e}");
+        }
+        task::finish(state);
+        return;
+    }
+    if let Some(text) = task::take(state) {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (hippo, model, flag) = (hippo.clone(), model.clone(), stop.clone());
+        let handle = tokio::task::spawn_blocking(move || {
+            answer(&hippo, model.as_ref(), From::Task, &text, None, Some(flag))
+        });
+        *running = Some((handle, stop));
     }
 }
 
@@ -772,6 +871,8 @@ async fn run() -> Result<(), String> {
             .await
             .map_err(|e| format!("sync: {e}"))?;
     }
+    // A run in flight at the last stop is lost; a task still waiting runs.
+    task::finish(&state);
     let (queue, mut inbox) = mpsc::unbounded_channel();
     on_messages(&client, users.clone(), queue);
     on_reactions(&client, users, state.clone(), hippo.clone());
