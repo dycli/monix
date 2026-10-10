@@ -1,5 +1,7 @@
-//! Secrets never enter the log. Every message is masked before it is
-//! written; the raw transcript archive (root-owned) keeps the originals.
+//! Secrets kept out of the log, best effort: every message is masked
+//! before it is written, against the known shapes below; a secret of any
+//! other shape gets through. The raw transcript archive (root-owned) keeps
+//! the originals.
 
 use regex::Regex;
 use std::sync::LazyLock;
@@ -26,6 +28,10 @@ const PATTERNS: &[&str] = &[
     r"(?i)(?P<keep>aws_secret_access_key\s*[=:]\s*)[A-Za-z0-9/+=]{30,}",
     // Bearer tokens in headers.
     r"(?i)(?P<keep>\bbearer\s+)[A-Za-z0-9._~+/=\-]{16,}",
+    // JSON web tokens, wherever they appear.
+    r"\beyJ[\w-]{10,}\.eyJ[\w-]{10,}(?:\.[\w-]*)?",
+    // Any long value given as a password, secret or token.
+    r#"(?i)(?P<keep>(?:password|passwd|secret|token)["']?\s*[=:]\s*)\S{8,}"#,
 ];
 
 static RES: LazyLock<Vec<Regex>> =
@@ -81,6 +87,12 @@ mod tests {
                 "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc"
             ),
             concat!(
+                "cookie eyJhbGciOiJIUzI1NiJ9",
+                ".eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig"
+            ),
+            concat!("DB_PASSWORD=", "hunter2hunter2"),
+            concat!(r#"{"refresh_token": ""#, "AbCdEfGh12345678\"}"),
+            concat!(
                 "-----BEGIN OPENSSH PRIVATE",
                 " KEY-----\nb3BlbnNzaC1rZXktdjEA\n-----END OPENSSH PRIVATE",
                 " KEY-----"
@@ -109,6 +121,8 @@ mod tests {
             "git commit -m 'Add ghp support'",
             "-----BEGIN PUBLIC KEY-----",
             "bearer of bad news",
+            "hippo: tokens model=claude-sonnet-5-5 input=2",
+            "token: String,",
         ] {
             assert_eq!(mask(plain), plain);
         }

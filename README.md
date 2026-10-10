@@ -170,15 +170,16 @@ inside the fence or the visible one on a desktop over Tailscale SSH.
 
 ### hippo
 
-hippo is the seat's episodic memory: about 4,200 lines of Rust in
+hippo is the seat's episodic memory, written in Rust in
 `modules/ai/seat/hippo`, with seven dependencies. The design follows Victor
 Taelin's OptChat: keep every message, and fold the whole history into a
 fixed-size summary that any session can read.
 
 **Recording.** A watcher follows Claude Code, Codex and OpenCode transcripts
 as they are written (OpenCode through its SQLite database) and appends each
-message to a day-file log. The log is append-only. Secrets are masked before
-they are written.
+message to a day-file log. The log is append-only. Secrets of known shapes (API
+keys, tokens, private keys, named passwords) are masked before they are
+written; masking is best effort, and other secrets get through.
 `hippo import` loaded three months of older transcripts, about 9,000
 messages.
 

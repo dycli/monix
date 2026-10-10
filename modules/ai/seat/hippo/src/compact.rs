@@ -285,6 +285,7 @@ struct ClaudeChat {
     child: Child,
     stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
+    errors: Option<std::thread::JoinHandle<String>>,
     model: String,
     used: Usage,
 }
@@ -326,10 +327,12 @@ impl Backend for ClaudeCli {
             .map_err(|e| Fail::Other(format!("{}: {e}", self.command)))?;
         let stdin = child.stdin.take();
         let stdout = BufReader::new(child.stdout.take().unwrap());
+        let errors = Some(drain(child.stderr.take().unwrap()));
         Ok(Box::new(ClaudeChat {
             child,
             stdin,
             stdout,
+            errors,
             model: self.model.clone(),
             used: Usage::default(),
         }))
@@ -339,12 +342,27 @@ impl Backend for ClaudeCli {
 impl ClaudeChat {
     fn stderr(&mut self) -> String {
         let _ = self.child.kill();
-        let mut err = String::new();
-        if let Some(mut e) = self.child.stderr.take() {
-            let _ = std::io::Read::read_to_string(&mut e, &mut err);
-        }
-        err.trim().chars().take(500).collect()
+        let _ = self.child.wait();
+        let err = self.errors.take().map(|e| e.join().unwrap_or_default());
+        let err = err.unwrap_or_default();
+        let err = err.trim();
+        let start = err.char_indices().rev().nth(499).map_or(0, |(i, _)| i);
+        err[start..].to_owned()
     }
+}
+
+/// Reads a pipe to its end on its own thread, so a chatty child never
+/// blocks on a full pipe, and keeps the last few kilobytes.
+fn drain(mut pipe: impl std::io::Read + Send + 'static) -> std::thread::JoinHandle<String> {
+    std::thread::spawn(move || {
+        let (mut kept, mut chunk) = (Vec::new(), [0u8; 4096]);
+        while let Ok(n @ 1..) = pipe.read(&mut chunk) {
+            kept.extend_from_slice(&chunk[..n]);
+            let over = kept.len().saturating_sub(8192);
+            kept.drain(..over);
+        }
+        String::from_utf8_lossy(&kept).into_owned()
+    })
 }
 
 impl Chat for ClaudeChat {

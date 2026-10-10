@@ -1,7 +1,7 @@
 # TRANSCRIPT ARCHIVE
 # Every agent harness prunes or deletes its own session logs. Root copies the
 # seat's into the NAS, which the nightly Restic run backs up, and never
-# deletes. hippo, the planned memory, will read it.
+# deletes. hippo checks its log against it and imports from it.
 {
   flake.nixosModules.seat =
     { lib, pkgs, ... }:

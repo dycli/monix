@@ -242,7 +242,13 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
             let c = core.lock().unwrap();
             search(&c.store, &re)
         }
+        // Only a store that follows nothing takes messages over the
+        // socket: one that follows transcripts learns everything there, and
+        // a logged `user` line would put words in the user's mouth.
         "log" => {
+            if core.lock().unwrap().live.is_some() {
+                return Err("This memory follows transcripts; it takes no logged messages.".into());
+            }
             let (kind, text) = a.split_first().ok_or("Missing kind.")?;
             let kind = match kind.as_str() {
                 "user" => Kind::User,
@@ -291,7 +297,9 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
 }
 
 /// `hippo view [page token]`: the whole view, paged. The first call waits
-/// for the compactor (up to `SETTLE`), renders once and keeps the pages,
+/// for the compactor (up to `SETTLE`, not while it is limited, paused or
+/// stuck on a failure),
+/// renders once and keeps the pages,
 /// so later pages come from the same render. `view whole`, for programs
 /// that put the view into a prompt, answers in one piece.
 fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
@@ -314,7 +322,12 @@ fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
         return Ok(paged(page, k, pages.len(), token));
     }
     let deadline = std::time::Instant::now() + SETTLE;
-    while c.view.unbuilt(&c.tree) > 0 {
+    let stalled = |c: &Core| {
+        c.pump.limit.is_some_and(|t| Local::now() < t)
+            || crate::compactor::paused(&c.store.dir)
+            || (c.pump.busy.is_empty() && !c.pump.parked.is_empty())
+    };
+    while c.view.unbuilt(&c.tree) > 0 && !stalled(&c) {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         if left.is_zero() {
             break;

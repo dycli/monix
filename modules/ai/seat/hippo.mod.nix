@@ -1,7 +1,7 @@
 # hippo: the AI seat's episodic memory. One service, running as the seat,
 # follows its Claude Code, Codex and OpenCode transcripts live and logs
 # every chat word for word; sessions read it through the `hippo` CLI.
-# Design: ~/cockpit/hippo/SPEC.md.
+# Design: README, "hippo".
 { self, ... }:
 let
   package =

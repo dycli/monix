@@ -11,12 +11,9 @@ use chrono::{DateTime, Local};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 
 /// Compactor calls running at once.
 pub const JOBS: usize = 8;
-/// Wait before retrying a failed node.
-pub const RETRY: Duration = Duration::from_secs(10);
 /// Wait on a limit that gives no reset time.
 const LIMIT_WAIT: i64 = 300;
 
@@ -96,6 +93,11 @@ pub struct Pump {
     pub busy: std::collections::HashSet<(u8, u64)>,
     /// First failure of each node still failing.
     pub failed: std::collections::BTreeMap<(u8, u64), String>,
+    /// Nodes that failed since the last message; a failed call is tried
+    /// again at the next message.
+    pub parked: HashSet<(u8, u64)>,
+    /// Messages when `parked` was last cleared.
+    pub t: u64,
     pub limit: Option<DateTime<Local>>,
     /// Lowest index per level that may still be unbuilt.
     pub lo: Vec<u64>,
@@ -210,6 +212,10 @@ pub fn pump(shared: &Arc<Shared>, c: &mut Core) {
     if shared.backend.is_none() || paused(&c.store.dir) {
         return;
     }
+    if c.pump.t != c.view.t {
+        c.pump.t = c.view.t;
+        c.pump.parked.clear();
+    }
     if let Some(until) = c.pump.limit {
         if Local::now() < until {
             return;
@@ -240,7 +246,11 @@ pub fn pump(shared: &Arc<Shared>, c: &mut Core) {
                 }
                 let ready =
                     l == 0 || (c.tree.built(l - 1, 2 * i) && c.tree.built(l - 1, 2 * i + 1));
-                if !c.tree.built(l, i) && !c.pump.busy.contains(&(l, i)) && ready {
+                if !c.tree.built(l, i)
+                    && !c.pump.busy.contains(&(l, i))
+                    && !c.pump.parked.contains(&(l, i))
+                    && ready
+                {
                     match prepare(c, l, i) {
                         Ok(Some(Job::Free(text))) => {
                             if let Err(e) = save(c, l, i, text, "", "") {
@@ -306,7 +316,7 @@ fn spawn(
                         eprintln!("hippo: compactor limited until {}", until.format("%H:%M"));
                     }
                     c.pump.limit = Some(until);
-                    (until - Local::now()).to_std().unwrap_or(RETRY)
+                    (until - Local::now()).to_std().unwrap_or_default()
                 }
                 Err(Fail::Other(e)) => {
                     let (s, n) = addr(l, i);
@@ -314,7 +324,10 @@ fn spawn(
                         eprintln!("hippo: node {s}+{n} failed: {e}");
                     }
                     c.pump.failed.entry((l, i)).or_insert(e);
-                    RETRY
+                    c.pump.parked.insert((l, i));
+                    c.pump.busy.remove(&(l, i));
+                    pump(&shared, &mut c);
+                    return;
                 }
             }
         };
@@ -333,6 +346,7 @@ mod tests {
     use crate::tree::Tree;
     use crate::view::{PLACEHOLDER, View};
     use std::sync::{Condvar, Mutex};
+    use std::time::Duration;
 
     /// Answers every step with a short line and records what it was shown.
     struct Fake(Arc<Mutex<Vec<String>>>);
@@ -419,6 +433,80 @@ mod tests {
         assert!(file.starts_with("<chat>\n") && file.ends_with("\n</chat>\n"));
         assert!(file.lines().nth(1).unwrap().starts_with("0+"));
         assert_eq!(file.lines().count(), c.view.parts.len() + 2);
+    }
+
+    /// Fails its first call, then answers.
+    struct Flaky(Arc<Mutex<u32>>);
+    struct FlakyChat(Arc<Mutex<u32>>);
+    impl Chat for FlakyChat {
+        fn say(&mut self, _: &[String]) -> Result<String, Fail> {
+            let mut n = self.0.lock().unwrap();
+            *n += 1;
+            if *n == 1 {
+                return Err(Fail::Other("boom".into()));
+            }
+            Ok("sum".into())
+        }
+        fn model(&self) -> String {
+            "fake".into()
+        }
+    }
+    impl Backend for Flaky {
+        fn start(&self) -> Result<Box<dyn Chat>, Fail> {
+            Ok(Box::new(FlakyChat(self.0.clone())))
+        }
+    }
+
+    #[test]
+    fn a_failed_call_waits_for_the_next_message() {
+        let dir = std::env::temp_dir().join(format!("hippo-park-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut store = crate::store::Store::open(&dir, true).unwrap();
+        let draft = |k: u32| crate::store::Draft {
+            kind: crate::store::Kind::Talk,
+            chat: Some("c".into()),
+            text: format!("message {k} ") + &"x".repeat(600),
+            date: chrono::Local::now(),
+            src: None,
+        };
+        store.append(vec![draft(0)]).unwrap();
+        let tree = Tree::open(&dir).unwrap();
+        let calls = Arc::new(Mutex::new(0));
+        let shared = Arc::new(Shared {
+            core: Mutex::new(Core::for_test(store, tree, View::default(), 100_000)),
+            cv: Condvar::new(),
+            backend: Some(Box::new(Flaky(calls.clone()))),
+        });
+        let settle = |shared: &Arc<Shared>| {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            let mut c = shared.core.lock().unwrap();
+            while !c.pump.busy.is_empty() && std::time::Instant::now() < deadline {
+                c = shared
+                    .cv
+                    .wait_timeout(c, Duration::from_millis(50))
+                    .unwrap()
+                    .0;
+            }
+        };
+        {
+            let mut c = shared.core.lock().unwrap();
+            c.sync();
+            pump(&shared, &mut c);
+        }
+        settle(&shared);
+        {
+            let mut c = shared.core.lock().unwrap();
+            assert!(c.pump.parked.contains(&(0, 0)));
+            pump(&shared, &mut c);
+            assert!(c.pump.busy.is_empty(), "retried before a message");
+            c.store.append(vec![draft(1)]).unwrap();
+            c.sync();
+            pump(&shared, &mut c);
+        }
+        settle(&shared);
+        let c = shared.core.lock().unwrap();
+        assert!(c.tree.built(0, 0));
+        assert!(c.pump.failed.is_empty());
     }
 
     #[test]

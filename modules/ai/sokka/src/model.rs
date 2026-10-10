@@ -112,6 +112,7 @@ impl Model for Claude {
             let mut out = String::new();
             stdout.read_to_string(&mut out).map(|_| out)
         });
+        let errors = drain(child.stderr.take().unwrap());
         let deadline = Instant::now() + TIMEOUT;
         let status = loop {
             if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
@@ -133,10 +134,7 @@ impl Model for Claude {
         let ev = match result {
             Some(ev) => ev,
             None => {
-                let mut err = String::new();
-                if let Some(mut e) = child.stderr.take() {
-                    let _ = e.read_to_string(&mut err);
-                }
+                let err = errors.join().unwrap_or_default();
                 return Err(format!("claude exited {status}: {}", tail(&err)));
             }
         };
@@ -224,6 +222,20 @@ impl Model for Http {
             .map(|t| t.trim().to_owned())
             .ok_or_else(|| format!("{url}: no content in {v}"))
     }
+}
+
+/// Reads a pipe to its end on its own thread, so a chatty child never
+/// blocks on a full pipe, and keeps the last few kilobytes.
+fn drain(mut pipe: impl Read + Send + 'static) -> thread::JoinHandle<String> {
+    thread::spawn(move || {
+        let (mut kept, mut chunk) = (Vec::new(), [0u8; 4096]);
+        while let Ok(n @ 1..) = pipe.read(&mut chunk) {
+            kept.extend_from_slice(&chunk[..n]);
+            let over = kept.len().saturating_sub(8192);
+            kept.drain(..over);
+        }
+        String::from_utf8_lossy(&kept).into_owned()
+    })
 }
 
 fn tail(s: &str) -> String {
