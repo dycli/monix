@@ -213,7 +213,7 @@ Compactions went from 97-113 seconds to 16-18.
 
 **CLI.** The agent drills down with `zoom` (a line into its two halves, down
 to the whole message), `date` and `search` (regex over
-every message). `status`, `pause`/`resume`, `browse`, `audit` and
+every message). `status`, `pause`/`resume`, `audit` and
 `replay` serve the operator. The service answers over a unix socket; reads
 take 2-15 ms.
 

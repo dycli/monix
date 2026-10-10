@@ -92,8 +92,8 @@ in
         carry nothing from it that is no longer live.'';
 
       # The compactor's own claude calls get the seat's managed settings
-      # without hooks or managed MCP servers: those would start a browser and
-      # Tailscale SSH sessions on every call, and forbid --strict-mcp-config.
+      # without hooks or managed MCP servers: those would open the desktops'
+      # browser doors on every call, and forbid --strict-mcp-config.
       claudeEtc = pkgs.writeTextDir "managed-settings.json" (
         toJSON (removeAttrs config.seat.claudeSettings (singleton "hooks"))
       );

@@ -63,8 +63,11 @@
         internalInterfaces = singleton bridge;
       };
       networking.firewall.filterForward = true;
+      # The NAT module appends its own blanket accept for the bridge; the
+      # drop here comes first and keeps the fence.
       networking.firewall.extraForwardRules = ''
         iifname "${bridge}" ip daddr != { ${concatStringsSep ", " private} } accept comment "the assistants' computers reach the internet only"
+        iifname "${bridge}" drop comment "and nothing private: not the host's networks, the tailnet or each other"
       '';
 
       assertions = singleton {

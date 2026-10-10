@@ -13,7 +13,6 @@ use chrono::{Days, Months, NaiveDateTime};
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -128,12 +127,7 @@ impl Book {
             db.execute_batch(&SCHEMA.replace("SCHEMA", "house"))
                 .map_err(|e| format!("household book: {e}"))?;
         }
-        let mut book = Book { db };
-        book.import(dir, "main")?;
-        if let Some(h) = house {
-            book.import(h, "house")?;
-        }
-        Ok(book)
+        Ok(Book { db })
     }
 
     /// One transaction that takes the write lock at once, so a read and the
@@ -154,68 +148,6 @@ impl Book {
     /// Reads without taking the write lock.
     pub fn read<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Result<T, String> {
         f(&self.db).map_err(|e| format!("book: {e}"))
-    }
-
-    /// One-time import of the JSON book this replaced, into `schema` unless
-    /// that already holds something; delete after the switch has run on
-    /// Water.
-    fn import(&mut self, dir: &Path, schema: &str) -> Result<(), String> {
-        #[derive(Deserialize, Default)]
-        struct Old {
-            #[serde(default)]
-            reminders: Vec<OldReminder>,
-            #[serde(default)]
-            lists: std::collections::BTreeMap<String, Vec<String>>,
-        }
-        #[derive(Deserialize)]
-        struct OldReminder {
-            at: NaiveDateTime,
-            text: String,
-            repeat: Option<Repeat>,
-            #[serde(default)]
-            ask: bool,
-            #[serde(default)]
-            share: bool,
-        }
-        let path = dir.join("book.json");
-        let Ok(bytes) = fs::read(&path) else {
-            return Ok(());
-        };
-        let old: Old = serde_json::from_slice(&bytes).map_err(|e| format!("old book: {e}"))?;
-        self.change(|db| {
-            let reminders = schema == "main";
-            let held: i64 = db.query_row(
-                &format!(
-                    "select (select count(*) from {schema}.lists){}",
-                    if reminders {
-                        " + (select count(*) from reminders)"
-                    } else {
-                        ""
-                    }
-                ),
-                [],
-                |r| r.get(0),
-            )?;
-            if held > 0 {
-                return Ok(());
-            }
-            if reminders {
-                for r in &old.reminders {
-                    remind(db, r.at, &r.text, r.repeat, r.ask, r.share)?;
-                }
-            }
-            for (name, items) in &old.lists {
-                db.execute(
-                    &format!("insert into {schema}.lists values (?1, ?2)"),
-                    params![name, serde_json::to_string(items).unwrap()],
-                )?;
-            }
-            Ok(())
-        })?;
-        match fs::rename(&path, dir.join("book.json.imported")) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("old book: {e}")),
-            _ => Ok(()),
-        }
     }
 }
 
@@ -355,6 +287,7 @@ pub fn set_list(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn t(s: &str) -> NaiveDateTime {
         NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M").unwrap()
@@ -433,27 +366,5 @@ mod tests {
             Some(vec!["milk".to_string()])
         );
         assert!(b.read(|db| lists(db, Shelf::Own)).unwrap().is_empty());
-    }
-
-    #[test]
-    fn imports_the_json_book_once() {
-        let d = dir("import");
-        fs::write(
-            d.join("book.json"),
-            r#"{"reminders":[{"id":3,"at":"2026-10-10T08:00:00","text":"mail digest","repeat":"daily","ask":true}],"lists":{"groceries":["milk"]},"next_id":3}"#,
-        )
-        .unwrap();
-        let b = Book::open(&d, None).unwrap();
-        let r = b.read(reminders).unwrap();
-        assert_eq!(r.len(), 1);
-        assert!(r[0].ask && matches!(r[0].repeat, Some(Repeat::Daily)));
-        assert_eq!(b.read(|db| lists(db, Shelf::Own)).unwrap().len(), 1);
-        assert!(!d.join("book.json").exists());
-        drop(b);
-        assert_eq!(
-            Book::open(&d, None).unwrap().read(reminders).unwrap().len(),
-            1
-        );
-        fs::remove_dir_all(&d).unwrap();
     }
 }

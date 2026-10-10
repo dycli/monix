@@ -8,6 +8,7 @@ draft in the room; the model has no tool that reaches it.
 import json
 import os
 import smtplib
+import ssl
 import sys
 from email.message import EmailMessage
 
@@ -28,7 +29,7 @@ msg["To"] = m["to"]
 msg["Subject"] = m["subject"]
 msg.set_content(m["body"])
 
-with smtplib.SMTP_SSL(HOST, 465, timeout=60) as s:
+with smtplib.SMTP_SSL(HOST, 465, timeout=60, context=ssl.create_default_context()) as s:
     s.login(a["username"], a["password"])
     s.send_message(msg)
 print(f"Sent to {m['to']}.")

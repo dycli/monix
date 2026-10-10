@@ -805,6 +805,10 @@ fn on_reactions(client: &Client, users: Arc<Vec<String>>, state: PathBuf, hippo:
             let Some(p) = pending::by_event(&state, ev.content.relates_to.event_id.as_str()) else {
                 return;
             };
+            // Claimed before it is carried out: a second thumb finds nothing.
+            if pending::remove(&state, p.id).is_err() {
+                return;
+            }
             tokio::spawn(async move {
                 let outcome = if yes {
                     let act = p.act.clone();
@@ -815,13 +819,13 @@ fn on_reactions(client: &Client, users: Arc<Vec<String>>, state: PathBuf, hippo:
                     Ok("Dropped it.".to_owned())
                 };
                 let text = match outcome {
-                    Ok(done) => {
-                        if let Err(e) = pending::remove(&state, p.id) {
+                    Ok(done) => done,
+                    Err(e) => {
+                        if let Err(e) = pending::save(&state, &p) {
                             eprintln!("sokka: pending {}: {e}", p.id);
                         }
-                        done
+                        format!("(I couldn't: {e}. The draft still stands.)")
                     }
-                    Err(e) => format!("(I couldn't: {e}. The draft still stands.)"),
                 };
                 if let Err(e) = room.send(RoomMessageEventContent::text_plain(&text)).await {
                     eprintln!("sokka: pending {}: {e}", p.id);

@@ -1,5 +1,5 @@
 # The public web role: static sites behind nginx with HTTP-01 certs. The
-# fleet's one internet-facing surface — the host exposes exactly 80/443 and
+# ship's one internet-facing surface — the host exposes exactly 80/443 and
 # keeps admin access tailnet-only.
 #
 # Site content is deliberately not in the store: the site repos build locally
