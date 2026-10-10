@@ -291,7 +291,6 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
             pump(shared, &mut c);
             Ok("Resumed.".into())
         }
-        "browse" => crate::browse::render(&core.lock().unwrap()),
         other => Err(format!("Unknown command {other}.")),
     }
 }

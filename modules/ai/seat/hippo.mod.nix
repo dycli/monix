@@ -52,27 +52,12 @@ in
       # The compactor's model, through the seat's own claude CLI and
       # subscription. HIPPO_LEVELS can give lower tree levels a cheaper model
       # (e.g. "0=claude/claude-haiku-5-5/xhigh"); off while a week on Sonnet
-      # alone measures the real cost. Qwen runs on the host's llama-swap at no
-      # subscription cost, one call at a time.
+      # alone measures the real cost.
       sonnet = {
         HIPPO_BACKEND = "claude";
         HIPPO_CLAUDE = "/etc/profiles/per-user/${seat.user}/bin/claude";
         HIPPO_MODEL = "sonnet";
         HIPPO_EFFORT = "medium";
-      };
-      qwen = {
-        HIPPO_BACKEND = "http";
-        HIPPO_URL = "http://${topology.seatInferenceAddr}:${toString config.inference.port}/v1";
-        HIPPO_MODEL = "qwen3.8-27b-q4-k-m";
-        # Qwen's reasoning level and its recommended thinking-mode sampling.
-        HIPPO_HTTP_EXTRA = toJSON {
-          chat_template_kwargs.reasoning_effort = "medium";
-          # Caps a reply that loops in its thinking; medium needs ~2k.
-          max_tokens = 8192;
-          temperature = 1.0;
-          top_p = 0.95;
-          top_k = 20;
-        };
       };
       compactor = sonnet;
 

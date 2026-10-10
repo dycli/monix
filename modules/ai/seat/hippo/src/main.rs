@@ -2,7 +2,6 @@
 //! seat word for word and serves it back. `hippo serve` is the service and
 //! the only writer; every other command asks it over its socket.
 
-mod browse;
 mod compact;
 mod compactor;
 mod live;
@@ -32,7 +31,6 @@ Usage:
   hippo status             what the service is doing
   hippo pause / resume     stop or restart the compactor's model calls;
                            logging goes on
-  hippo browse <file.html> write the whole memory as one HTML page
 Service and maintenance:
   hippo serve [--no-follow]
                            run the service (the only writer); without
@@ -151,15 +149,6 @@ fn serve(args: &[String]) -> Result<String, String> {
     server::serve(&dir(), follow.then(sources), backend).map(|_| String::new())
 }
 
-fn browse(args: &[String]) -> Result<String, String> {
-    let [path] = args else {
-        return Err(USAGE.into());
-    };
-    let html = ask("browse", &[])?;
-    std::fs::write(path, html).map_err(|e| format!("{path}: {e}"))?;
-    Ok(format!("Wrote {path}."))
-}
-
 fn import(args: &[String]) -> Result<String, String> {
     let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
     let sources = sources()
@@ -193,7 +182,6 @@ fn main() -> ExitCode {
         "replay" => replay(rest),
         "import" => import(rest),
         "view" | "zoom" | "date" | "search" | "status" | "pause" | "resume" => ask(cmd, rest),
-        "browse" => browse(rest),
         "help" | "-h" | "--help" => Ok(USAGE.into()),
         _ => Err(USAGE.into()),
     };
