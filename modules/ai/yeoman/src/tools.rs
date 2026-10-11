@@ -95,7 +95,8 @@ struct Name {
 
 #[derive(Deserialize, JsonSchema)]
 struct Tell {
-    /// Who it is for, by first name; leave out for everyone.
+    /// Who it is for, by first name, or Bridge for the ship's engineer;
+    /// leave out for everyone in the household.
     to: Option<String>,
     /// What to pass on, as your person put it.
     text: String,
@@ -505,7 +506,7 @@ impl Tools {
     }
 
     #[tool(
-        description = "Pass a message to someone else in the household (or everyone); their assistant tells them."
+        description = "Pass a message to someone else in the household (or everyone), their assistant tells them; or leave a note for Bridge, the ship's engineer."
     )]
     fn tell(&self, Parameters(Tell { to, text }): Parameters<Tell>) -> Result<String, String> {
         let house = self.house.as_ref().ok_or("There is no household here.")?;

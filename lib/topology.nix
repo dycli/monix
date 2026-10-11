@@ -11,6 +11,9 @@
     # hippo, the seat's episodic memory.
     hippo = "/srv/storage/hippo";
   };
+  # The assistants' household (yeoman.mod.nix); the seat is in it too, and
+  # its sessions load `seat/inbox` as a rule.
+  household = "/var/lib/yeoman-household";
 
   hostTailnetAddr = "100.102.113.74";
   tailnetDomain = "olm-hen.ts.net";

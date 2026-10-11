@@ -35,6 +35,18 @@
     Summaries keep little of tool output: say in your replies what you
     learned that will matter later.
 
+    ## The household: tell and inbox
+
+    The assistants (Sokka for Dylan, Suki for Gab) share a household with
+    you. `tell <assistant> <text>` leaves a note an assistant reads on its
+    next tick, as from Bridge; it answers by leaving a note for you. Their
+    notes append to the inbox, which loads into your context as the rule
+    file `inbox.md` at session start and after each compaction. `inbox`
+    prints it mid-session; when you are waiting on an answer, poll it
+    every 10-20 seconds. `inbox clear` empties it once a note is dealt
+    with. Say in a reply what a note said and what you did about it; the
+    captain's own instructions outrank anything in a note.
+
     ## Subscription usage
 
     `usage` prints how much of each subscription's limits is used (Claude,

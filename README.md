@@ -379,6 +379,14 @@ owner's instance, and the bot drops the answer in the others' mailboxes too,
 so one assistant curates and the rest relay. Memories never mix; only what
 is handed over crosses.
 
+The ship's seat is in the household too, as Bridge. `tell Sokka ...` from
+the seat leaves a note in a box of Sokka's that its tick drains like its
+mailbox, marked as the engineer's, not the person's; Sokka does what it
+would do for its person, answers with its own `tell` to Bridge, and tells
+its person in a line what happened. Notes to Bridge append to one inbox
+file that the seat's sessions load as a rule, like the hippo view, and
+`inbox` prints on demand.
+
 Sokka answers only the users it is configured for, joins
 only their rooms, and runs as its own fenced user with loopback and the
 internet but not the tailnet or the LAN. Chats are end-to-end encrypted

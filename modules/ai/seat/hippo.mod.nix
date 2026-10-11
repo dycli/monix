@@ -30,6 +30,9 @@ in
       # Code loads it at session start and again after each compaction.
       home.file.".claude/rules/hippo-view.md".source =
         config.lib.file.mkOutOfStoreSymlink "${lib.ship.topology.seat.hippo}/view.md";
+      # The assistants' notes to the seat, loaded the same way.
+      home.file.".claude/rules/inbox.md".source =
+        config.lib.file.mkOutOfStoreSymlink "${lib.ship.topology.household}/seat/inbox";
       # Seat sessions compact at 200k tokens; the view carries the history.
       home.sessionVariables.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "200000";
     };

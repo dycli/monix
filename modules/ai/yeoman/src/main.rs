@@ -56,8 +56,8 @@ alone: it becomes a reaction to the message.
 first, one line each. Recent lines hold a message nearly whole; older \
 lines cover more messages in fewer words. Each line starts with its \
 address (id+n: the n messages from id) and tags who spoke: user is \
-{person}, talk is you, note is a routine or an alert that came due, or \
-a message passed on from the household.";
+{person}, talk is you, note is a routine or an alert that came due, a \
+message passed on from the household, or a note from Bridge.";
 
 /// Added when the model has no tools.
 const NO_TOOLS: &str = "\n\nWhen a line is too condensed to answer from, say what you \
@@ -252,14 +252,18 @@ enum From {
     Task,
     Alert,
     Message,
+    /// The ship's engineer, the model on the seat: trusted like the person.
+    Seat,
 }
 
-/// Text the person didn't write is quoted, and its turn can't act.
+/// Text the person didn't write is quoted, and its turn can't act; the
+/// seat's is quoted so the model knows who speaks, and keeps the tools.
 fn frame(from: From, said: String) -> (String, bool) {
     match from {
         From::Person | From::Routine | From::Task => (said, true),
         From::Alert => (format!("<alert>\n{said}\n</alert>"), false),
         From::Message => (format!("<message>\n{said}\n</message>"), false),
+        From::Seat => (format!("<seat>\n{said}\n</seat>"), true),
     }
 }
 
@@ -328,6 +332,17 @@ fn answer(
                  link of a list or a routine's answer. If your memory holds no \
                  earlier message passed on, add a line that {person} can share \
                  lists and send messages back the same way, through you"
+            ),
+        ),
+        From::Seat => (
+            "note",
+            format!("(seat) {said}"),
+            format!(
+                "From Bridge, the ship's engineer (the model that runs the \
+                 host), quoted in <seat>: it is to you, not {person}. Do what \
+                 it asks if {person} would want it done, answer Bridge with \
+                 tell (it reads its inbox, not this chat), and tell {person} \
+                 in a line or two what was asked and what you did"
             ),
         ),
     };
@@ -650,6 +665,7 @@ async fn remind(
     house: Option<house::House>,
 ) {
     let mailbox = house.as_ref().map(|h| h.mailbox());
+    let seatbox = house.as_ref().and_then(|h| h.seatbox());
     let mut task = None;
     let mut tick = tokio::time::interval(Duration::from_secs(30));
     loop {
@@ -666,6 +682,9 @@ async fn remind(
         }
         if let Some(dir) = &mailbox {
             drain(&room, &hippo, &model, dir, From::Message).await;
+        }
+        if let Some(dir) = &seatbox {
+            drain(&room, &hippo, &model, dir, From::Seat).await;
         }
         show_pending(&room, &hippo, &state).await;
         tasks(&room, &hippo, &model, &state, &mut task).await;
@@ -967,7 +986,10 @@ async fn main() -> ExitCode {
     let r = match args.as_slice() {
         [] => run().await,
         [cmd, dir] if cmd == "tools" => tools::serve(PathBuf::from(dir)).await,
-        _ => Err("usage: yeoman [tools DIR]".into()),
+        [cmd, to, text @ ..] if cmd == "tell" && !text.is_empty() => {
+            house::tell(to, &text.join(" "))
+        }
+        _ => Err("usage: yeoman [tools DIR | tell NAME TEXT...]".into()),
     };
     match r {
         Ok(()) => ExitCode::SUCCESS,
@@ -1015,6 +1037,10 @@ mod tests {
         assert_eq!(
             frame(From::Alert, "disk full".into()),
             ("<alert>\ndisk full\n</alert>".into(), false)
+        );
+        assert_eq!(
+            frame(From::Seat, "pump?".into()),
+            ("<seat>\npump?\n</seat>".into(), true)
         );
         assert_eq!(
             frame(From::Message, "From Gab: milk".into()),

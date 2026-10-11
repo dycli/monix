@@ -39,7 +39,11 @@
 # The instances share a household directory their common group can write:
 # shared lists, and a mailbox each. "Tell Gab ..." leaves a message in hers,
 # and her assistant passes it on in its own words; sharing a list leaves
-# one too. Memories stay apart; only what is handed over crosses.
+# one too. Memories stay apart; only what is handed over crosses. The
+# ship's seat is in the household as Bridge: `tell` from the seat leaves a
+# note an instance drains on its tick, marked as the engineer's, and an
+# instance's `tell` to Bridge appends to `seat/inbox`, which the seat's
+# sessions load as a rule and `inbox` prints.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.yeoman;
@@ -74,16 +78,41 @@
         ;
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib) types;
-      inherit (lib.ship) fences computers;
+      inherit (lib.ship) fences computers topology;
 
       cfg = config.yeoman;
 
-      house = "/var/lib/yeoman-household";
+      house = topology.household;
       # The assistants' sites: a directory each, read by nginx as its group.
       pages = "/var/lib/yeoman-pages";
       households = {
         YEOMAN_HOUSE = house;
         YEOMAN_PEOPLE = concatStringsSep "," (mapAttrsToList (n: i: "${n}=${i.person}") cfg.instances);
+        # The ship's seat is in the household by this name (house.rs).
+        YEOMAN_SEAT = "Bridge";
+      };
+
+      # The seat's side of the household: `tell NAME TEXT` leaves a note for
+      # an assistant, `inbox` prints the assistants' notes to the seat (also
+      # loaded into its sessions as a rule), `inbox clear` empties it.
+      tell = pkgs.writeShellApplication {
+        name = "tell";
+        runtimeInputs = singleton yeoman;
+        text = ''
+          export YEOMAN_HOUSE=${house} YEOMAN_PEOPLE=${lib.strings.escapeShellArg households.YEOMAN_PEOPLE}
+          exec yeoman tell "$@"
+        '';
+      };
+      inbox = pkgs.writeShellApplication {
+        name = "inbox";
+        runtimeInputs = singleton pkgs.coreutils;
+        text = ''
+          if [ "''${1-}" = clear ]; then
+            : > ${house}/seat/inbox
+          else
+            cat ${house}/seat/inbox
+          fi
+        '';
       };
 
       yeoman = lib.ship.rustTool pkgs { src = ./yeoman; };
@@ -588,15 +617,24 @@
         # with the codex from the unit's script (not on PATH), after
         # `sudo install -d -o yeoman-image -g yeoman-image -m 700 /var/lib/yeoman-image`:
         # sudo -u yeoman-image env HOME=/var/lib/yeoman-image CODEX_HOME=/var/lib/yeoman-image <codex> login --device-auth
-        users.users = mapAttrs (n: _: {
-          isSystemUser = true;
-          group = n;
-          home = "/var/lib/${n}";
-        }) (cfg.instances // { yeoman-image = { }; });
+        users.users =
+          mapAttrs (n: _: {
+            isSystemUser = true;
+            group = n;
+            home = "/var/lib/${n}";
+          }) (cfg.instances // { yeoman-image = { }; })
+          // {
+            # The seat reads and writes the household's seat/ files as the group.
+            ${topology.seat.user}.extraGroups = singleton "yeoman-household";
+          };
         users.groups = mapAttrs (_: _: { }) cfg.instances // {
           yeoman-image = { };
           yeoman-household = { };
         };
+        environment.systemPackages = [
+          tell
+          inbox
+        ];
 
         # Each assistant's pages at https://<n>.<domain>/<page>/, for the
         # tailnet like every other route.
@@ -629,9 +667,27 @@
             group = "yeoman-household";
             mode = "2770";
           };
+          "${house}/seat".d = {
+            user = "root";
+            group = "yeoman-household";
+            mode = "2770";
+          };
+          "${house}/seat/inbox".f = {
+            user = "root";
+            group = "yeoman-household";
+            mode = "0660";
+          };
         }
         // lib.attrsets.mapAttrs' (n: _: {
           name = "${house}/mail/${n}";
+          value.d = {
+            user = "root";
+            group = "yeoman-household";
+            mode = "2770";
+          };
+        }) cfg.instances
+        // lib.attrsets.mapAttrs' (n: _: {
+          name = "${house}/seat/${n}";
           value.d = {
             user = "root";
             group = "yeoman-household";
