@@ -260,13 +260,12 @@ to reach. Fetch opens only links a search of its own returned or the
 person wrote, so a made-up link cannot carry what the model has read.
 The same server holds the calendar: plain CalDAV and iCalendar over the
 one HTTP client, the login read from a systemd credential; it lists, adds,
-moves and cancels events, with repeats expanded. Mail is a second server,
-read-only over IMAP: folders open with
-EXAMINE and bodies are fetched with `BODY.PEEK`, so nothing is moved or
-marked read. It cannot send: the model only drafts, the draft shows whole in
-the chat, and a 👍 reaction from the person's own account makes the assistant
-send it, through a sender that is the one process holding the SMTP login; 👎
-drops it. The model holds no tool that sends, so no text it reads can make it,
+moves and cancels events, with repeats expanded. Mail is read there too,
+over IMAP in plain protocol on a TLS stream: folders open with EXAMINE and
+bodies are fetched with `BODY.PEEK`, so nothing is moved or marked read. No
+tool sends: the model only drafts, the draft shows whole in the chat, and a
+👍 reaction from the person's own account makes the assistant itself send it
+over SMTP; 👎 drops it. The model holds no tool that sends, so no text it reads can make it,
 and a draft an injected page shaped is still read before it is approved. Since
 any sender or page can put text in
 front of the model, fetch opens only links that a search in the same call

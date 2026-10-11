@@ -13,10 +13,9 @@
 # MCP: the instance's own server (`yeoman tools`: web search and fetch in
 # front of Parallel's keyless server, reminders, lists, memory tools that
 # zoom, search and date in its hippo as the seat's hippo CLI does, the
-# shared calendar over CalDAV, and film and show requests), which reaches
-# only its book, its hippo and those services, mail
-# where the instance has some (yeoman-mail.py over IMAP, read-only), each
-# the only process that sees its login, and YouTube search and captions
+# shared calendar over CalDAV, mail where the instance has some, read-only
+# over IMAP, and film and show requests), which reaches only its book, its
+# hippo and those services, and YouTube search and captions
 # (yeoman-youtube.py), which reaches YouTube only, requests going over Seerr
 # on loopback only with `requestsKeyFile` set, and pictures (yeoman-image.py), drawn by the image service that alone holds the
 # household's Codex login; `yeoman tools` also reads the subscription
@@ -88,17 +87,6 @@
 
       yeoman = lib.ship.rustTool pkgs { src = ./yeoman; };
       hippo = lib.ship.rustTool pkgs { src = ./seat/hippo; };
-
-      mail = pkgs.writers.writePython3Bin "yeoman-mail" {
-        libraries = ps: [
-          ps.imapclient
-          ps.mcp
-        ];
-        flakeIgnore = singleton "E501";
-      } (readFile ./yeoman-mail.py);
-      send = pkgs.writers.writePython3Bin "yeoman-send" {
-        flakeIgnore = singleton "E501";
-      } (readFile ./yeoman-send.py);
 
       image = pkgs.writers.writePython3Bin "yeoman-image-mcp" {
         libraries = singleton pkgs.python3Packages.mcp;
@@ -269,7 +257,10 @@
                     YEOMAN_CALDAV = "${creds}/caldav";
                     YEOMAN_TZ = config.time.timeZone;
                   }
-                  // optionalAttrs (i.mailCredentialsFile != null) { YEOMAN_MAIL = "${creds}/mail"; };
+                  // optionalAttrs (i.mailCredentialsFile != null) {
+                    YEOMAN_MAIL = "${creds}/mail";
+                    YEOMAN_IMAP = cfg.mailServer;
+                  };
               };
               youtube = {
                 type = "stdio";
@@ -279,14 +270,6 @@
                 type = "stdio";
                 command = getExe image;
                 args = singleton "${state}/outbox";
-              };
-            }
-            // optionalAttrs (i.mailCredentialsFile != null) {
-              mail = {
-                type = "stdio";
-                command = getExe mail;
-                args = singleton "${creds}/mail";
-                env.YEOMAN_IMAP = cfg.mailServer;
               };
             }
             // optionalAttrs i.computer {
@@ -427,7 +410,6 @@
               // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
               // optionalAttrs (i.mailCredentialsFile != null) {
                 YEOMAN_MAIL = "${creds}/mail";
-                YEOMAN_SEND = getExe send;
                 YEOMAN_SMTP = cfg.smtpServer;
               };
             serviceConfig =

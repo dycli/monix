@@ -8,6 +8,7 @@ mod book;
 mod calendar;
 mod hippo;
 mod house;
+mod mail;
 mod matrix;
 mod media;
 mod model;

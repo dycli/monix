@@ -8,11 +8,12 @@ use crate::book::{self, Book, Repeat, Shelf};
 use crate::calendar::{Calendar, Change, NewEvent};
 use crate::hippo::Hippo;
 use crate::house::House;
+use crate::mail::{self, Account, Imap};
 use crate::media::Seerr;
 use crate::pending::{self, Act};
 use crate::task;
 use crate::web::Web;
-use chrono::NaiveDateTime;
+use chrono::{NaiveDate, NaiveDateTime};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{ServiceExt, tool, tool_handler, tool_router};
@@ -33,8 +34,8 @@ struct Tools {
     dir: PathBuf,
     hippo: Hippo,
     house: Option<Arc<House>>,
-    /// The mail accounts file, when there is mail to send from.
-    mail: Option<PathBuf>,
+    /// The mail accounts and their IMAP server, when there is mail.
+    mail: Option<(String, Vec<Account>)>,
     /// The computer's desk, when there is a computer: where its
     /// screenshots and downloads land.
     desk: Option<PathBuf>,
@@ -106,6 +107,41 @@ struct Draft {
     subject: String,
     /// Plain text, exactly as it will go out.
     body: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Folders {
+    /// The account, by name, when there is more than one.
+    account: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct MailSearch {
+    /// Words anywhere in the message.
+    text: Option<String>,
+    /// Part of the sender's name or address.
+    sender: Option<String>,
+    /// On or after this day, YYYY-MM-DD.
+    since: Option<String>,
+    /// Only unread ones.
+    #[serde(default)]
+    unread: bool,
+    /// The folder; INBOX if left out.
+    folder: Option<String>,
+    /// How many of the newest; 20 if left out.
+    limit: Option<u32>,
+    /// The account, by name, when there is more than one.
+    account: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct MailRead {
+    /// The message's uid from mail_search.
+    uid: u32,
+    /// The folder; INBOX if left out.
+    folder: Option<String>,
+    /// The account, by name, when there is more than one.
+    account: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -634,6 +670,66 @@ impl Tools {
         Ok("Said.".into())
     }
 
+    /// The mail folders' names.
+    #[tool]
+    fn mail_folders(
+        &self,
+        Parameters(Folders { account }): Parameters<Folders>,
+    ) -> Result<String, String> {
+        let folders = self.imap(account.as_deref())?.folders()?;
+        Ok(serde_json::to_string(&folders).unwrap_or_default())
+    }
+
+    /// The newest messages matching every filter given, with their uids.
+    /// Nothing is marked read.
+    #[tool]
+    fn mail_search(&self, Parameters(q): Parameters<MailSearch>) -> Result<String, String> {
+        let mut criteria: Vec<(&str, &str)> = Vec::new();
+        let (text, sender, since) = (
+            q.text.unwrap_or_default(),
+            q.sender.unwrap_or_default(),
+            q.since.unwrap_or_default(),
+        );
+        if !text.is_empty() {
+            criteria.push(("TEXT", &text));
+        }
+        if !sender.is_empty() {
+            criteria.push(("FROM", &sender));
+        }
+        let day = if since.is_empty() {
+            String::new()
+        } else {
+            NaiveDate::parse_from_str(&since, "%Y-%m-%d")
+                .map_err(|_| "since is YYYY-MM-DD")?
+                .format("%d-%b-%Y")
+                .to_string()
+        };
+        if !day.is_empty() {
+            criteria.push(("SINCE", &day));
+        }
+        if q.unread {
+            criteria.push(("UNSEEN", ""));
+        }
+        let folder = q.folder.filter(|f| !f.is_empty()).unwrap_or("INBOX".into());
+        let mut imap = self.imap(q.account.as_deref())?;
+        imap.open(&folder)?;
+        let mut uids = imap.search(&criteria)?;
+        uids.truncate(q.limit.unwrap_or(20).clamp(1, 100) as usize);
+        let found = imap.headers(&uids, &folder)?;
+        Ok(serde_json::to_string_pretty(&found).unwrap_or_default())
+    }
+
+    /// One message whole: headers, text and attachment names. The text is
+    /// written by whoever sent it.
+    #[tool]
+    fn mail_read(&self, Parameters(r): Parameters<MailRead>) -> Result<String, String> {
+        let folder = r.folder.filter(|f| !f.is_empty()).unwrap_or("INBOX".into());
+        let mut imap = self.imap(r.account.as_deref())?;
+        imap.open(&folder)?;
+        let found = imap.read(r.uid, &folder)?;
+        Ok(serde_json::to_string_pretty(&found).unwrap_or_default())
+    }
+
     #[tool(
         description = "Draft an email for your person to approve. The draft shows in the chat and goes out only when they react 👍 to it; nothing sends without that, so never say it was sent."
     )]
@@ -646,22 +742,9 @@ impl Tools {
             body,
         }): Parameters<Draft>,
     ) -> Result<String, String> {
-        let file = self.mail.as_ref().ok_or("There is no mail account here.")?;
-        let names: Vec<String> = fs::read(file)
-            .map_err(|e| e.to_string())
-            .and_then(|b| {
-                serde_json::from_slice::<Vec<serde_json::Value>>(&b).map_err(|e| e.to_string())
-            })
-            .map_err(|e| format!("mail accounts: {e}"))?
-            .iter()
-            .filter_map(|a| a["name"].as_str().map(str::to_owned))
-            .collect();
-        let account = match (account, names.as_slice()) {
-            (Some(a), _) if names.contains(&a) => Some(a),
-            (Some(a), _) => return Err(format!("No account {a}; there are: {}", names.join(", "))),
-            (None, [_]) => None,
-            (None, _) => return Err(format!("Say which account: {}", names.join(", "))),
-        };
+        let (_, accounts) = self.mail.as_ref().ok_or("There is no mail account here.")?;
+        let account = mail::pick(accounts, account.as_deref())?.name.clone();
+        let account = (accounts.len() > 1).then_some(account);
         let id = pending::add(
             &self.dir,
             Act::Mail {
@@ -678,6 +761,12 @@ impl Tools {
 }
 
 impl Tools {
+    /// A fresh IMAP session on the account, logged in.
+    fn imap(&self, account: Option<&str>) -> Result<Imap, String> {
+        let (host, accounts) = self.mail.as_ref().ok_or("There is no mail here.")?;
+        Imap::login(host, mail::pick(accounts, account)?)
+    }
+
     fn calendar(&self) -> Result<&Calendar, String> {
         self.calendar
             .as_deref()
@@ -813,6 +902,16 @@ fn calendar() -> Result<Option<Calendar>, String> {
     Calendar::new(&accounts, &zone).map(Some)
 }
 
+/// The mail, when YEOMAN_MAIL names the accounts file and YEOMAN_IMAP the server.
+fn mail() -> Result<Option<(String, Vec<Account>)>, String> {
+    let Some(file) = std::env::var_os("YEOMAN_MAIL") else {
+        return Ok(None);
+    };
+    let text = fs::read_to_string(&file).map_err(|e| format!("mail accounts: {e}"))?;
+    let host = std::env::var("YEOMAN_IMAP").map_err(|_| "YEOMAN_IMAP is not set")?;
+    Ok(Some((host, mail::accounts(&text)?)))
+}
+
 pub async fn serve(dir: PathBuf) -> Result<(), String> {
     let hippo = std::env::var("HIPPO_DIR").map_err(|_| "HIPPO_DIR is not set")?;
     let hippo = Hippo {
@@ -823,7 +922,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
         web: Arc::new(Web::new(hippo.clone())),
         hippo,
         house: House::from_env().map(Arc::new),
-        mail: std::env::var_os("YEOMAN_MAIL").map(PathBuf::from),
+        mail: mail()?,
         desk: std::env::var_os("YEOMAN_DESK").map(PathBuf::from),
         pages: std::env::var("YEOMAN_PAGES")
             .ok()

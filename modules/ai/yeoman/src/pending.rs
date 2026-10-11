@@ -4,11 +4,10 @@
 //! or drops it on 👎. No tool the model holds can act, so no text it reads
 //! can make it.
 
+use crate::mail;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -51,40 +50,23 @@ impl Act {
         }
     }
 
-    /// Carries the act out; the model never reaches this. Mail goes through
-    /// the sender at YEOMAN_SEND, the one process that holds the login.
+    /// Carries the act out; the model never reaches this. Mail goes out
+    /// from the account in the accounts file at YEOMAN_MAIL, over the SMTP
+    /// server at YEOMAN_SMTP.
     pub fn carry_out(&self) -> Result<String, String> {
         match self {
-            Act::Mail { .. } => {
-                let send = std::env::var("YEOMAN_SEND").map_err(|_| "no mail here")?;
-                let accounts = std::env::var("YEOMAN_MAIL").map_err(|_| "no mail here")?;
-                let mut child = Command::new(send)
-                    .arg(accounts)
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()
-                    .map_err(|e| format!("send: {e}"))?;
-                child
-                    .stdin
-                    .take()
-                    .ok_or("send: no stdin")?
-                    .write_all(
-                        serde_json::to_string(self)
-                            .map_err(|e| e.to_string())?
-                            .as_bytes(),
-                    )
-                    .map_err(|e| format!("send: {e}"))?;
-                let out = child.wait_with_output().map_err(|e| format!("send: {e}"))?;
-                if out.status.success() {
-                    Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
-                } else {
-                    Err(String::from_utf8_lossy(&out.stderr)
-                        .lines()
-                        .last()
-                        .unwrap_or("send failed")
-                        .to_owned())
-                }
+            Act::Mail {
+                account,
+                to,
+                subject,
+                body,
+            } => {
+                let host = std::env::var("YEOMAN_SMTP").map_err(|_| "no mail here")?;
+                let file = std::env::var("YEOMAN_MAIL").map_err(|_| "no mail here")?;
+                let text = fs::read_to_string(file).map_err(|e| format!("mail accounts: {e}"))?;
+                let accounts = mail::accounts(&text)?;
+                let from = mail::pick(&accounts, account.as_deref())?;
+                mail::send(&host, from, to, subject, body)
             }
         }
     }
