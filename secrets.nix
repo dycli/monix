@@ -53,6 +53,8 @@ in
   "hosts/water/secrets/yeoman-home-token.age".publicKeys = singleton water ++ admin;
   # Seerr's API key, raw (Settings > General), for the assistants' media requests.
   "hosts/water/secrets/yeoman-requests-key.age".publicKeys = singleton water ++ admin;
+  # Databento API key, raw (db-...), for the market-data recorder.
+  "hosts/water/secrets/databento-key.age".publicKeys = singleton water ++ admin;
   # INI merged over the declarative config at unit start.
   "hosts/water/secrets/sabnzbd-secrets.ini.age".publicKeys = singleton water ++ admin;
   # CLOUDFLARE_DNS_API_TOKEN=..., Zone→DNS→Edit on su.is, for DNS-01.
