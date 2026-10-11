@@ -13,6 +13,7 @@ use crate::media::Seerr;
 use crate::pending::{self, Act};
 use crate::task;
 use crate::web::Web;
+use crate::youtube::Youtube;
 use chrono::{NaiveDate, NaiveDateTime};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -46,6 +47,8 @@ struct Tools {
     /// The household's CalDAV calendars, when there is a login.
     calendar: Option<Arc<Calendar>>,
     web: Arc<Web>,
+    /// YouTube through yt-dlp, when there is a yt-dlp.
+    youtube: Option<Arc<Youtube>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -229,6 +232,21 @@ struct ChangeEvent {
 #[derive(Deserialize, JsonSchema)]
 struct Uid {
     uid: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct VideoSearch {
+    query: String,
+    /// How many videos; 10 if left out, at most 25.
+    count: Option<u64>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Video {
+    /// A youtube.com or youtu.be link.
+    url: String,
+    /// The captions' language code; en if left out.
+    language: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -592,6 +610,26 @@ impl Tools {
         self.seerr()?.requests(count.unwrap_or(15))
     }
 
+    /// Search YouTube: title, channel, length, views and link per video.
+    #[tool]
+    fn youtube_search(
+        &self,
+        Parameters(VideoSearch { query, count }): Parameters<VideoSearch>,
+    ) -> Result<String, String> {
+        self.youtube()?.search(&query, count.unwrap_or(10))
+    }
+
+    /// A YouTube video's title, channel, length and captions as plain
+    /// text, the uploader's own before automatic ones.
+    #[tool]
+    fn youtube_transcript(
+        &self,
+        Parameters(Video { url, language }): Parameters<Video>,
+    ) -> Result<String, String> {
+        self.youtube()?
+            .transcript(&url, language.as_deref().unwrap_or("en"))
+    }
+
     /// The calendars' names.
     #[tool]
     fn calendars(&self) -> Result<String, String> {
@@ -761,6 +799,12 @@ impl Tools {
 }
 
 impl Tools {
+    fn youtube(&self) -> Result<&Youtube, String> {
+        self.youtube
+            .as_deref()
+            .ok_or("There is no YouTube here.".into())
+    }
+
     /// A fresh IMAP session on the account, logged in.
     fn imap(&self, account: Option<&str>) -> Result<Imap, String> {
         let (host, accounts) = self.mail.as_ref().ok_or("There is no mail here.")?;
@@ -930,6 +974,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
             .map(|(d, u)| (PathBuf::from(d), u)),
         seerr: seerr()?,
         calendar: calendar()?.map(Arc::new),
+        youtube: std::env::var_os("YEOMAN_YTDLP").map(|b| Arc::new(Youtube::new(PathBuf::from(b)))),
         tool_router: Tools::tool_router(),
     };
     let running = tools

@@ -16,6 +16,7 @@ mod pending;
 mod task;
 mod tools;
 mod web;
+mod youtube;
 
 use book::Book;
 use chrono::Local;

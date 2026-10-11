@@ -14,11 +14,12 @@
 # front of Parallel's keyless server, reminders, lists, memory tools that
 # zoom, search and date in its hippo as the seat's hippo CLI does, the
 # shared calendar over CalDAV, mail where the instance has some, read-only
-# over IMAP, and film and show requests), which reaches only its book, its
-# hippo and those services, and YouTube search and captions
-# (yeoman-youtube.py), which reaches YouTube only, requests going over Seerr
-# on loopback only with `requestsKeyFile` set, and pictures (yeoman-image.py), drawn by the image service that alone holds the
-# household's Codex login; `yeoman tools` also reads the subscription
+# over IMAP, YouTube search and captions through yt-dlp, which reaches
+# YouTube only, and film and show requests, going over Seerr on loopback
+# only with `requestsKeyFile` set), which reaches only its book, its hippo
+# and those services, and pictures (yeoman-image.py), drawn by the image
+# service that alone holds the household's Codex login; `yeoman tools`
+# also reads the subscription
 # limits from the usage service (usage.mod.nix). Mail and pages let
 # anyone put text in front of the model, so fetch opens only links a
 # search returned or the person wrote: nothing it read can ride out in a
@@ -127,14 +128,6 @@
           exit 1
         '';
       };
-
-      youtube = pkgs.writers.writePython3Bin "yeoman-youtube" {
-        libraries = ps: [
-          ps.yt-dlp
-          ps.mcp
-        ];
-        flakeIgnore = singleton "E501";
-      } (readFile ./yeoman-youtube.py);
 
       # The token rides a systemd credential into the environment, never
       # the command line.
@@ -256,15 +249,12 @@
                     inherit (env) HIPPO_DIR;
                     YEOMAN_CALDAV = "${creds}/caldav";
                     YEOMAN_TZ = config.time.timeZone;
+                    YEOMAN_YTDLP = getExe pkgs.yt-dlp;
                   }
                   // optionalAttrs (i.mailCredentialsFile != null) {
                     YEOMAN_MAIL = "${creds}/mail";
                     YEOMAN_IMAP = cfg.mailServer;
                   };
-              };
-              youtube = {
-                type = "stdio";
-                command = getExe youtube;
               };
               image = {
                 type = "stdio";

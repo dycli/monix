@@ -271,9 +271,9 @@ any sender or page can put text in
 front of the model, fetch opens only links that a search in the same call
 returned or that the person wrote, as OpenAI's agents do: a link the model
 made up could carry what it read out in its path, but a link that existed
-before it read anything carries nothing. YouTube is a fifth, on `yt-dlp`: it
-searches and reads a video's captions as text, the uploader's own before
-automatic ones, and refuses any link that is not YouTube.
+before it read anything carries nothing. YouTube goes through `yt-dlp`, run
+as a subprocess: a search, and a video's captions as text, the uploader's
+own before automatic ones; any link that is not YouTube is refused.
 
 Who started a turn decides what it may do. A message from the person, or a
 routine they set, runs with every tool. A turn that an alert or another
