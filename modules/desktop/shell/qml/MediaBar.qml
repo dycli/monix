@@ -5,65 +5,15 @@ import QtQuick
 Item {
     id: root
 
-    property real maximumDetailsWidth: 240
-
-    readonly property real restingWidth: controls.implicitWidth
-    readonly property real detailsWidth: Math.min(maximumDetailsWidth, track.implicitWidth)
-    readonly property real revealedWidth: detailsWidth > 0
-        ? Style.barItemGap + detailsWidth : 0
-
-    implicitWidth: restingWidth + revealedWidth
+    implicitWidth: controls.implicitWidth
     implicitHeight: 24
     width: implicitWidth
     height: implicitHeight
-    clip: true
-
-    Item {
-        id: detailsViewport
-
-        anchors {
-            left: parent.left
-            verticalCenter: parent.verticalCenter
-        }
-        width: root.revealedWidth
-        height: 24
-        clip: true
-
-        Text {
-            id: track
-
-            anchors.verticalCenter: parent.verticalCenter
-            x: detailsViewport.width - width
-            width: root.detailsWidth
-            color: Style.foregroundColor
-            elide: Text.ElideRight
-            font {
-                family: Style.fontFamily
-                pixelSize: Style.textFontSize
-                weight: Style.fontWeight
-            }
-            horizontalAlignment: Text.AlignRight
-            renderType: Text.NativeRendering
-            text: MediaState.artist.length > 0
-                ? MediaState.artist + " — " + MediaState.title : MediaState.title
-
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: MediaState.player?.canRaise
-                    ? Qt.PointingHandCursor : Qt.ArrowCursor
-                enabled: MediaState.player?.canRaise || false
-                onClicked: MediaState.player.raise()
-            }
-        }
-    }
 
     Row {
         id: controls
 
-        anchors {
-            right: parent.right
-            verticalCenter: parent.verticalCenter
-        }
+        anchors.verticalCenter: parent.verticalCenter
         height: 24
         spacing: 2
 

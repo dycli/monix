@@ -3,8 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell.Services.UPower
 
-// The right rail: a pinned block (tray, privacy, battery, settings, clock)
-// and one popout that slides out to its left with everything else. The
+// The right rail: a pinned block (media controls, tray, privacy, battery,
+// settings, clock) and one popout that slides out to its left with everything else. The
 // popout opens while the pointer is on the rail, when a key flashes a
 // control, while the settings panel is open and when the battery is low.
 Item {
@@ -23,11 +23,12 @@ Item {
     readonly property bool detailVisible: ownsMode && BarModeService.activeMode === "session"
     readonly property bool popoutVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientVisible || settingsOpen || lowBatteryOpen)
+    readonly property real mediaLead: media.visible ? media.width + gap : 0
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
     readonly property real privacyLead: privacy.width > 0 ? privacy.width + gap : 0
     readonly property real pinnedControlsLead: pinnedControls.implicitWidth > 0
         ? pinnedControls.implicitWidth + gap : 0
-    readonly property real idleWidth: trayLead + privacyLead + pinnedControlsLead
+    readonly property real idleWidth: mediaLead + trayLead + privacyLead + pinnedControlsLead
         + settingsButton.width + gap + clock.width
     readonly property real popoutRoom: Math.max(0, maximumWidth - idleWidth - gap)
     readonly property real popoutWidth: Math.min(popoutRoom, popout.implicitWidth)
@@ -112,7 +113,7 @@ Item {
         id: popoutViewport
 
         anchors.verticalCenter: parent.verticalCenter
-        x: tray.x - root.gap - width
+        x: media.x - root.gap - width
         width: root.popoutWidth
         height: 24
         clip: true
@@ -121,8 +122,7 @@ Item {
         Row {
             id: popout
 
-            readonly property real fixedWidth: media.restingWidth + root.gap
-                + controlMenu.implicitWidth
+            readonly property real fixedWidth: controlMenu.implicitWidth
                 + (powerOverview.visible ? root.gap + powerOverview.implicitWidth : 0)
 
             anchors.verticalCenter: parent.verticalCenter
@@ -130,11 +130,8 @@ Item {
             height: 24
             spacing: root.gap
 
-            MediaBar {
-                id: media
-
-                maximumDetailsWidth: Math.max(0, root.popoutRoom - popout.fixedWidth - root.gap)
-                visible: MediaState.available
+            MediaTitle {
+                maximumWidth: Math.max(0, root.popoutRoom - popout.fixedWidth - root.gap)
             }
 
             ControlBarMenu {
@@ -173,11 +170,21 @@ Item {
         }
     }
 
+    MediaBar {
+        id: media
+
+        anchors.verticalCenter: parent.verticalCenter
+        x: root.popoutLead - root.detailProgress * (width + root.gap + root.popoutLead)
+        enabled: !root.detailVisible
+        opacity: 1 - root.detailProgress
+        visible: MediaState.available && width > 0
+    }
+
     SystemTrayView {
         id: tray
 
         anchors.verticalCenter: parent.verticalCenter
-        x: root.popoutLead - root.detailProgress * (width + root.gap + root.popoutLead)
+        x: media.x + root.mediaLead
         enabled: !root.detailVisible
         opacity: 1 - root.detailProgress
     }
@@ -194,7 +201,8 @@ Item {
         id: pinnedControls
 
         anchors.verticalCenter: parent.verticalCenter
-        x: (root.popoutLead + root.trayLead + root.privacyLead) * (1 - root.detailProgress)
+        x: (root.popoutLead + root.mediaLead + root.trayLead + root.privacyLead)
+            * (1 - root.detailProgress)
         onPowerActivated: {
             root.closeOthers();
             SettingsPanelService.openPower(root.screenName);
