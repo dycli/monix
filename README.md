@@ -402,20 +402,22 @@ run as `rootSensor`.
 ### NAS and backups
 
 Water's NAS is an encrypted Btrfs filesystem on a 4 TB SSD, backed up to an
-encrypted Restic repository on an 8 TB HDD (`modules/homelab/nas`).
-
-Setup is a script, not an activation. `prepare-water-nas` checks the exact
-drive serials and sizes, formats only those, and leaves a marker so it can
-never run twice. Bind mounts keep every service's original paths, so moving
-data onto the NAS changed no service configuration. A recovery bundle (key,
-LUKS header, backup password, commands) is written for off-machine storage.
+encrypted Restic repository on an 8 TB HDD (`modules/homelab/nas.mod.nix`).
+Bind mounts keep every service's original paths, so moving data onto the NAS
+changed no service configuration.
 
 Each night at 03:30 the backup pauses only the Immich server, dumps its
-PostgreSQL database, takes a read-only Btrfs snapshot and resumes Immich.
-Restic copies the snapshot to the HDD, then proves the copy: it restores a
+PostgreSQL database, takes a read-only Btrfs snapshot of the SSD and one of
+the OS subvolume, and resumes Immich. Restic copies the SSD snapshot and the
+OS-disk state no rebuild recreates (Matrix, Home Assistant, Minecraft,
+Prowlarr, the assistants) to the HDD, then proves the copy: it restores a
 probe file and the full database dump from the repository, compares bytes,
-and parses the dump. On Sundays it prunes old snapshots and reads back 5% of
-the stored data. Details are in `modules/homelab/nas/README.md`.
+and parses the dump. Only then does it record a success, and the alert sweep
+complains when that record is two days old. On Sundays it prunes old
+snapshots and reads back 5% of the stored data. `nas-backup` runs one by
+hand; `restic snapshots` and `restic restore` work from a root shell with the
+repository at `/srv/backup/restic` and its password in
+`/var/lib/nas/restic-password`.
 
 ### Alerts
 

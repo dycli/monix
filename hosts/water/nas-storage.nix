@@ -1,7 +1,3 @@
-{ lib, ... }:
-let
-  inherit (lib.lists) singleton;
-in
 {
   # Unlock after the encrypted OS is available; the key never enters the initrd.
   environment.etc."crypttab".text = ''
@@ -39,6 +35,4 @@ in
       "x-systemd.device-timeout=15s"
     ];
   };
-
-  networking.firewall.interfaces.enp209s0f0np0.allowedTCPPorts = singleton 445;
 }

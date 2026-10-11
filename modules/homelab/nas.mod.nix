@@ -1,22 +1,18 @@
+# The NAS: service data lives on the encrypted Btrfs SSD (hosts/water/
+# nas-storage.nix) and is bind-mounted back at each service's own path,
+# so no service knows it moved. One Samba share, tailnet-only, exports
+# /srv/storage/shared.
+#
+# Each night the backup pauses only Immich, dumps its PostgreSQL database,
+# takes read-only Btrfs snapshots of the SSD and of the OS subvolume (for
+# the state still on the OS disk: Matrix, Home Assistant, Minecraft,
+# Prowlarr, the assistants) and sends both to the encrypted Restic
+# repository on the 8-TB HDD. A backup counts only once its own restore
+# checks pass; Sunday maintenance prunes and reads back 5% of the data.
+# The repository is inside this machine: it covers a dead SSD, not a dead
+# machine.
 { self, ... }:
 {
-  perSystem = { pkgs, ... }: {
-    checks.nas-failure-paths =
-      pkgs.runCommand "nas-failure-paths"
-        {
-          nativeBuildInputs = [
-            pkgs.python3
-            pkgs.bash
-            pkgs.coreutils
-            pkgs.util-linux
-          ];
-        }
-        ''
-          python3 ${./nas}/test_failure_paths.py
-          touch $out
-        '';
-  };
-
   flake.nixosModules.lab = self.nixosModules.nas;
   flake.nixosModules.nas =
     {
@@ -29,82 +25,51 @@
       inherit (lib.attrsets) genAttrs listToAttrs nameValuePair;
       inherit (lib.lists) concatMap singleton unique;
       inherit (lib.modules) mkForce;
-      inherit (lib.strings)
-        concatMapStringsSep
-        concatStringsSep
-        escapeShellArg
-        escapeShellArgs
-        ;
+      inherit (lib.strings) concatMapStringsSep concatStringsSep escapeShellArgs;
       layout = import ./nas/layout.nix;
       services = unique (concatMap (item: item.services) layout);
-      layoutEnvironment = ''
-        sources=(${escapeShellArgs (map (item: item.path) layout)})
-        directories=(${escapeShellArgs (map (item: item.directory) layout)})
-      '';
-      runtimeInputs = [
-        pkgs.coreutils
-        pkgs.nix
-        pkgs.kmod
-        pkgs.util-linux
-        pkgs.systemd
-        pkgs.btrfs-progs
-        pkgs.cryptsetup
-        pkgs.parted
-        pkgs.e2fsprogs
-        pkgs.rsync
-        pkgs.restic
-        pkgs.gnutar
-        pkgs.gzip
-        pkgs.findutils
-        pkgs.gnugrep
-        pkgs.jq
-        pkgs.diffutils
-        config.services.postgresql.package
-        config.services.samba.package
+
+      # State on the OS disk that no rebuild can recreate, relative to /.
+      osPaths = [
+        "var/lib/private/tuwunel"
+        "var/lib/hass"
+        "var/lib/private/prowlarr"
+        "var/lib/sokka"
+        "var/lib/suki"
+        "var/lib/sokka-pages"
+        "srv/minecraft"
       ];
+
       backup = pkgs.writeShellApplication {
         name = "nas-backup";
-        inherit runtimeInputs;
-        text =
-          layoutEnvironment
-          + ''
-            immich_database=${escapeShellArg config.services.immich.database.name}
-            export RESTIC_REPOSITORY=/srv/backup/restic
-            export RESTIC_PASSWORD_FILE=/var/lib/nas/restic-password
-            export RESTIC_CACHE_DIR=/var/cache/restic-nas
-          ''
-          + lib.strings.fileContents ./nas/backup.sh;
-      };
-      migrationEnvironment = layoutEnvironment + ''
-        consumers=(${escapeShellArgs (map (name: "${name}.service") services)})
-        primary_user=${escapeShellArg config.primaryUser}
-      '';
-      prepare = pkgs.writeShellApplication {
-        name = "prepare-water-nas";
-        runtimeInputs = runtimeInputs ++ singleton backup;
-        text =
-          migrationEnvironment
-          + lib.strings.fileContents ./nas/prepare.sh
-          + "\n"
-          + lib.strings.fileContents ./nas/finish.sh;
-      };
-      resume = pkgs.writeShellApplication {
-        name = "resume-water-nas";
-        runtimeInputs = runtimeInputs ++ singleton backup;
-        text =
-          migrationEnvironment
-          + lib.strings.fileContents ./nas/resume.sh
-          + "\n"
-          + lib.strings.fileContents ./nas/finish.sh;
+        runtimeInputs = [
+          pkgs.coreutils
+          pkgs.util-linux
+          pkgs.systemd
+          pkgs.btrfs-progs
+          pkgs.restic
+          pkgs.diffutils
+          config.services.postgresql.package
+        ];
+        text = ''
+          sources=(${escapeShellArgs (map (item: item.path) layout)})
+          directories=(${escapeShellArgs (map (item: item.directory) layout)})
+          os_paths=(${escapeShellArgs osPaths})
+          immich_database=${lib.strings.escapeShellArg config.services.immich.database.name}
+          export RESTIC_REPOSITORY=/srv/backup/restic
+          export RESTIC_PASSWORD_FILE=/var/lib/nas/restic-password
+          export RESTIC_CACHE_DIR=/var/cache/restic-nas
+        ''
+        + lib.strings.fileContents ./nas/backup.sh;
       };
     in
     {
-      system.build.prepareNas = prepare;
-      system.build.resumeNas = resume;
       environment.systemPackages = [
         backup
         pkgs.restic
       ];
+      # Restored alongside the data so a restore knows where each
+      # directory belongs.
       environment.etc."nas/layout".text = concatMapStringsSep "\n" (
         item: "${item.path} ${item.directory}"
       ) layout;
@@ -134,7 +99,7 @@
             "server string" = "Water storage";
             "server min protocol" = "SMB2_10";
             "map to guest" = "Never";
-            "hosts allow" = "127.0.0.1 ::1 192.168.1.0/24 100.64.0.0/10 fd7a:115c:a1e0::/48";
+            "hosts allow" = "127.0.0.1 ::1 ${lib.ship.fences.tailnet} fd7a:115c:a1e0::/48";
             "hosts deny" = "ALL";
             "load printers" = "no";
             "printing" = "bsd";

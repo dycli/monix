@@ -1,4 +1,5 @@
-# The generated wrapper supplies the layout, tools and repository environment.
+# The generated wrapper supplies the layout, OS paths, tools and repository
+# environment.
 [[ $EUID == 0 ]] || { echo 'Run as root.' >&2; exit 1; }
 umask 077
 mkdir -p /var/cache/restic-nas
@@ -44,8 +45,20 @@ btrfs subvolume snapshot -r /srv/storage "$snapshot"
 resume
 active=()
 trap - EXIT
+# The OS subvolume holds the state no rebuild recreates. Its nested
+# subvolumes (agents, models) stay out of the snapshot by themselves.
+os=/var/lib/nas/os-nightly
+if [[ -e $os ]]; then btrfs subvolume delete "$os"; fi
+btrfs filesystem sync /
+btrfs subvolume snapshot -r / "$os"
+targets=("$snapshot")
+for path in "${os_paths[@]}"; do
+  [[ -d $os/$path ]] || { echo "missing $path on the OS disk" >&2; exit 1; }
+  targets+=("$os/$path")
+done
 if [[ ! -f /srv/backup/restic/config ]]; then restic init; fi
-restic backup --host water "$snapshot"
+restic backup --host water "${targets[@]}"
+btrfs subvolume delete "$os"
 # Recover actual bytes from the repository before recording success.
 restic dump latest "$snapshot/.backup-state/restore-probe" > /var/cache/restic-nas/restored-probe
 cmp /srv/storage/.backup-state/restore-probe /var/cache/restic-nas/restored-probe

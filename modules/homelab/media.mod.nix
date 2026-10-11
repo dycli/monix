@@ -112,23 +112,23 @@
         services.sonarr = {
           enable = true;
           group = "media";
-          openFirewall = false; # tailnet-only (UI on :8989)
+          openFirewall = false;
         };
         services.radarr = {
           enable = true;
           group = "media";
-          openFirewall = false; # tailnet-only (UI on :7878)
+          openFirewall = false;
         };
 
         services.bazarr = {
           enable = true;
           group = "media";
-          openFirewall = false; # tailnet-only (UI on :6767)
+          openFirewall = false;
         };
 
         services.prowlarr = {
           enable = true;
-          openFirewall = false; # tailnet-only (UI on :9696)
+          openFirewall = false;
         };
 
         # The ini is read-only, stamped from Nix on every start
@@ -137,7 +137,7 @@
         services.sabnzbd = {
           enable = true;
           group = "media";
-          openFirewall = false; # tailnet-only (UI on :8080)
+          openFirewall = false;
 
           secretFiles = mkIf (cfg.sabnzbdSecretsFile != null) (singleton cfg.sabnzbdSecretsFile);
 

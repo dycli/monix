@@ -207,6 +207,7 @@
               pkgs.systemd
               pkgs.gawk
               pkgs.coreutils
+              pkgs.findutils
               shipAlert
             ];
             script = ''
@@ -237,6 +238,12 @@
               done
               if [ -n "$hot" ]; then
                 problems=$(printf '%s\n🌡️ over ${toString cfg.tempCelsiusThreshold}°C:%s' "$problems" "$hot")
+              fi
+
+              # The NAS backup records a success only after its restore
+              # checks pass; a quiet failure or a stopped timer shows here.
+              if [ -d /var/lib/nas ] && [ -z "$(find /var/lib/nas/last-backup-success -mtime -2 2>/dev/null)" ]; then
+                problems=$(printf '%s\n💾 no verified NAS backup in two days' "$problems")
               fi
 
               # A new kernel, initrd or kernel parameter only takes effect

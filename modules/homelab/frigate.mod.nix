@@ -214,8 +214,8 @@
           listeners = singleton {
             address = "127.0.0.1";
             port = 1883;
+            # Loopback is the fence; anonymous means full access.
             settings.allow_anonymous = true;
-            acl = singleton "topic readwrite #";
           };
         };
         systemd.services.mosquitto.serviceConfig = {
