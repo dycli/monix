@@ -91,7 +91,7 @@
           bazarr.port = 6767;
           prowlarr.port = 9696;
           jellyfin.port = 8096;
-          requests.port = config.services.seerr.port;
+          q.port = config.services.seerr.port;
         };
 
         unfreePackages = singleton "unrar";

@@ -135,7 +135,7 @@
                     }
                     {
                       Seerr = {
-                        href = url "requests";
+                        href = url "q";
                         description = "Requests";
                         icon = "seerr.png";
                       };
