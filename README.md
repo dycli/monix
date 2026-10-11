@@ -258,10 +258,10 @@ lists in one SQLite book and can touch nothing else, so a page that tries
 to steer the model through search results finds no keys, memory or shell
 to reach. Fetch opens only links a search of its own returned or the
 person wrote, so a made-up link cannot carry what the model has read.
-The calendar is a third server, a short Python one on `caldav` and the
-official MCP SDK, and the only process that receives the CalDAV login, as
-a systemd credential; it lists, adds, moves and cancels events, with
-repeats expanded. Mail is a fourth, read-only over IMAP: folders open with
+The same server holds the calendar: plain CalDAV and iCalendar over the
+one HTTP client, the login read from a systemd credential; it lists, adds,
+moves and cancels events, with repeats expanded. Mail is a second server,
+read-only over IMAP: folders open with
 EXAMINE and bodies are fetched with `BODY.PEEK`, so nothing is moved or
 marked read. It cannot send: the model only drafts, the draft shows whole in
 the chat, and a 👍 reaction from the person's own account makes the assistant

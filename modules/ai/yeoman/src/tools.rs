@@ -5,6 +5,7 @@
 //! cannot steer them anywhere else.
 
 use crate::book::{self, Book, Repeat, Shelf};
+use crate::calendar::{Calendar, Change, NewEvent};
 use crate::hippo::Hippo;
 use crate::house::House;
 use crate::media::Seerr;
@@ -41,6 +42,8 @@ struct Tools {
     pages: Option<(PathBuf, String)>,
     /// The household's film and show library (Seerr), when there is one.
     seerr: Option<Seerr>,
+    /// The household's CalDAV calendars, when there is a login.
+    calendar: Option<Arc<Calendar>>,
     web: Arc<Web>,
     tool_router: ToolRouter<Self>,
 }
@@ -149,6 +152,47 @@ struct Request {
     seasons: Option<Vec<u64>>,
     /// A quality profile's name from media_profiles; leave out for the default.
     quality: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Events {
+    /// The first day, YYYY-MM-DD.
+    start: String,
+    /// How many days from it; 7 if left out.
+    days: Option<i64>,
+    /// One calendar's name; leave out for all.
+    calendar: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct AddEvent {
+    summary: String,
+    /// YYYY-MM-DD HH:MM local, or YYYY-MM-DD for a whole day.
+    start: String,
+    /// Same form; an hour on, or the next day, if left out.
+    end: Option<String>,
+    /// Which calendar, when there is more than one.
+    calendar: Option<String>,
+    location: Option<String>,
+    notes: Option<String>,
+    /// daily, weekly, monthly or yearly; leave out for once.
+    repeat: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ChangeEvent {
+    uid: String,
+    summary: Option<String>,
+    /// YYYY-MM-DD HH:MM local, or YYYY-MM-DD; a new start alone keeps the length.
+    start: Option<String>,
+    end: Option<String>,
+    location: Option<String>,
+    notes: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Uid {
+    uid: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -512,6 +556,62 @@ impl Tools {
         self.seerr()?.requests(count.unwrap_or(15))
     }
 
+    /// The calendars' names.
+    #[tool]
+    fn calendars(&self) -> Result<String, String> {
+        self.calendar()?.names()
+    }
+
+    /// The events of some days, repeats expanded, each with its uid.
+    #[tool]
+    fn events(
+        &self,
+        Parameters(Events {
+            start,
+            days,
+            calendar,
+        }): Parameters<Events>,
+    ) -> Result<String, String> {
+        self.calendar()?
+            .events(&start, days.unwrap_or(7).clamp(1, 366), calendar.as_deref())
+    }
+
+    /// Put an event on the calendar.
+    #[tool]
+    fn add_event(&self, Parameters(e): Parameters<AddEvent>) -> Result<String, String> {
+        self.calendar()?.add(NewEvent {
+            summary: &e.summary,
+            start: &e.start,
+            end: e.end.as_deref(),
+            calendar: e.calendar.as_deref(),
+            location: e.location.as_deref(),
+            notes: e.notes.as_deref(),
+            repeat: e.repeat.as_deref(),
+        })
+    }
+
+    /// Change an event's fields; only those given change. A repeating
+    /// event changes as a whole.
+    #[tool]
+    fn change_event(&self, Parameters(e): Parameters<ChangeEvent>) -> Result<String, String> {
+        self.calendar()?.change(
+            &e.uid,
+            Change {
+                summary: e.summary.as_deref(),
+                start: e.start.as_deref(),
+                end: e.end.as_deref(),
+                location: e.location.as_deref(),
+                notes: e.notes.as_deref(),
+            },
+        )
+    }
+
+    /// Take an event off the calendar.
+    #[tool]
+    fn cancel_event(&self, Parameters(Uid { uid }): Parameters<Uid>) -> Result<String, String> {
+        self.calendar()?.cancel(&uid)
+    }
+
     #[tool(
         description = "Start a task: work that takes a while (several sites, a long search, something to fill in on your computer). Give it as your person's request, in full; it runs on its own and its answer is sent when done. Then tell them it is under way and stop."
     )]
@@ -578,6 +678,12 @@ impl Tools {
 }
 
 impl Tools {
+    fn calendar(&self) -> Result<&Calendar, String> {
+        self.calendar
+            .as_deref()
+            .ok_or("There is no calendar here.".into())
+    }
+
     fn seerr(&self) -> Result<&Seerr, String> {
         self.seerr
             .as_ref()
@@ -697,6 +803,16 @@ fn seerr() -> Result<Option<Seerr>, String> {
     Ok(Some(Seerr::new(url, key, person)))
 }
 
+/// The calendars, when YEOMAN_CALDAV names the accounts file.
+fn calendar() -> Result<Option<Calendar>, String> {
+    let Some(file) = std::env::var_os("YEOMAN_CALDAV") else {
+        return Ok(None);
+    };
+    let accounts = fs::read_to_string(&file).map_err(|e| format!("caldav accounts: {e}"))?;
+    let zone = std::env::var("YEOMAN_TZ").map_err(|_| "YEOMAN_TZ is not set")?;
+    Calendar::new(&accounts, &zone).map(Some)
+}
+
 pub async fn serve(dir: PathBuf) -> Result<(), String> {
     let hippo = std::env::var("HIPPO_DIR").map_err(|_| "HIPPO_DIR is not set")?;
     let hippo = Hippo {
@@ -714,6 +830,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
             .zip(std::env::var("YEOMAN_PAGES_URL").ok())
             .map(|(d, u)| (PathBuf::from(d), u)),
         seerr: seerr()?,
+        calendar: calendar()?.map(Arc::new),
         tool_router: Tools::tool_router(),
     };
     let running = tools

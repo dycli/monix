@@ -5,6 +5,7 @@
 //! message and the answer go into hippo, so the next call remembers them.
 
 mod book;
+mod calendar;
 mod hippo;
 mod house;
 mod matrix;

@@ -12,9 +12,9 @@
 # token, without built-in tools or settings; their only tools come over
 # MCP: the instance's own server (`yeoman tools`: web search and fetch in
 # front of Parallel's keyless server, reminders, lists, memory tools that
-# zoom, search and date in its hippo as the seat's hippo CLI does, and
-# film and show requests), which reaches only its book, its hippo and
-# those services, the shared calendar (yeoman-calendar.py over CalDAV), mail
+# zoom, search and date in its hippo as the seat's hippo CLI does, the
+# shared calendar over CalDAV, and film and show requests), which reaches
+# only its book, its hippo and those services, mail
 # where the instance has some (yeoman-mail.py over IMAP, read-only), each
 # the only process that sees its login, and YouTube search and captions
 # (yeoman-youtube.py), which reaches YouTube only, requests going over Seerr
@@ -88,14 +88,6 @@
 
       yeoman = lib.ship.rustTool pkgs { src = ./yeoman; };
       hippo = lib.ship.rustTool pkgs { src = ./seat/hippo; };
-
-      calendar = pkgs.writers.writePython3Bin "yeoman-calendar" {
-        libraries = ps: [
-          ps.caldav
-          ps.mcp
-        ];
-        flakeIgnore = singleton "E501";
-      } (readFile ./yeoman-calendar.py);
 
       mail = pkgs.writers.writePython3Bin "yeoman-mail" {
         libraries = ps: [
@@ -274,14 +266,10 @@
                   shared
                   // {
                     inherit (env) HIPPO_DIR;
+                    YEOMAN_CALDAV = "${creds}/caldav";
+                    YEOMAN_TZ = config.time.timeZone;
                   }
                   // optionalAttrs (i.mailCredentialsFile != null) { YEOMAN_MAIL = "${creds}/mail"; };
-              };
-              calendar = {
-                type = "stdio";
-                command = getExe calendar;
-                args = singleton "${creds}/caldav";
-                env.YEOMAN_TZ = config.time.timeZone;
               };
               youtube = {
                 type = "stdio";
