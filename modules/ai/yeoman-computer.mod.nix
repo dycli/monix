@@ -41,7 +41,8 @@
       desk = n: "${computers.desks}/${n}";
       screenPort = n: computers.screenPort indexed.${n};
       screen = n: "${n}-screen";
-      screenUrl = n: "https://${screen n}.${config.shipProxy.domain}/vnc.html?autoconnect=1&resize=scale";
+      screenUrl =
+        n: "https://${screen n}.${config.shipProxy.domain}/vnc.html?autoconnect=1&resize=scale&show_dot=1";
 
       # The whole desktop inside: cage with the MCP server as its one app,
       # which launches Brave into the same session.
@@ -177,7 +178,9 @@
                 serviceConfig = {
                   User = "pc";
                   Group = "desk";
-                  ExecStart = "${getExe pkgs.wayvnc} 0.0.0.0 ${toString computers.vncPort}";
+                  # cage offers only wlr-screencopy, over which wayvnc sends no
+                  # cursor image; -r paints the pointer into the frame instead.
+                  ExecStart = "${getExe pkgs.wayvnc} -r 0.0.0.0 ${toString computers.vncPort}";
                   # The compositor's socket appears a moment after it starts.
                   Restart = "always";
                   RestartSec = 2;
