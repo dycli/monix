@@ -10,6 +10,7 @@ use crate::house::House;
 use crate::media::Seerr;
 use crate::pending::{self, Act};
 use crate::task;
+use crate::web::Web;
 use chrono::NaiveDateTime;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -40,6 +41,7 @@ struct Tools {
     pages: Option<(PathBuf, String)>,
     /// The household's film and show library (Seerr), when there is one.
     seerr: Option<Seerr>,
+    web: Arc<Web>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -147,6 +149,22 @@ struct Request {
     seasons: Option<Vec<u64>>,
     /// A quality profile's name from media_profiles; leave out for the default.
     quality: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Query {
+    /// What you are trying to find, in a sentence.
+    objective: String,
+    /// 1-3 keyword queries of 3-6 words.
+    search_queries: Vec<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Fetch {
+    /// The pages to read.
+    urls: Vec<String>,
+    /// What you want from the pages.
+    objective: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -436,6 +454,18 @@ impl Tools {
             .join("\n"))
     }
 
+    #[tool(description = "Search the web. Results carry excerpts that usually answer directly.")]
+    fn web_search(&self, Parameters(s): Parameters<Query>) -> Result<String, String> {
+        self.web.search(&s.objective, &s.search_queries)
+    }
+
+    #[tool(
+        description = "Read whole pages, when search excerpts are not enough. Only links a web_search in this conversation returned, or that the person sent, can be opened."
+    )]
+    fn web_fetch(&self, Parameters(f): Parameters<Fetch>) -> Result<String, String> {
+        self.web.fetch(&f.urls, f.objective.as_deref())
+    }
+
     #[tool(
         description = "Search films and shows: kind, tmdb id, title, year, overview and whether the library has it."
     )]
@@ -669,11 +699,13 @@ fn seerr() -> Result<Option<Seerr>, String> {
 
 pub async fn serve(dir: PathBuf) -> Result<(), String> {
     let hippo = std::env::var("HIPPO_DIR").map_err(|_| "HIPPO_DIR is not set")?;
+    let hippo = Hippo {
+        sock: PathBuf::from(hippo).join("hippo.sock"),
+    };
     let tools = Tools {
         dir,
-        hippo: Hippo {
-            sock: PathBuf::from(hippo).join("hippo.sock"),
-        },
+        web: Arc::new(Web::new(hippo.clone())),
+        hippo,
         house: House::from_env().map(Arc::new),
         mail: std::env::var_os("YEOMAN_MAIL").map(PathBuf::from),
         desk: std::env::var_os("YEOMAN_DESK").map(PathBuf::from),

@@ -13,6 +13,7 @@ mod model;
 mod pending;
 mod task;
 mod tools;
+mod web;
 
 use book::Book;
 use chrono::Local;

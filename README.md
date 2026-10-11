@@ -252,10 +252,12 @@ endless chat costs the same per call on its hundredth day as its thousandth.
 The model is configuration: the `claude` CLI on a subscription token, or
 any OpenAI-compatible endpoint, local or hosted. The CLI runs with built-in
 tools and settings off; its tools come over MCP, and the prompt mentions
-them only when the model has them. Web search and fetch go through a short
-Python server in front of Parallel's keyless one. Its own server, `yeoman tools`, keeps reminders and lists in one
-SQLite book and can touch nothing else, so a page that tries to steer
-the model through search results finds no keys, memory or shell to reach.
+them only when the model has them. Its own server, `yeoman tools`, searches
+and fetches the web through Parallel's keyless one, keeps reminders and
+lists in one SQLite book and can touch nothing else, so a page that tries
+to steer the model through search results finds no keys, memory or shell
+to reach. Fetch opens only links a search of its own returned or the
+person wrote, so a made-up link cannot carry what the model has read.
 The calendar is a third server, a short Python one on `caldav` and the
 official MCP SDK, and the only process that receives the CalDAV login, as
 a systemd credential; it lists, adds, moves and cancels events, with

@@ -10,16 +10,15 @@
 # hippo service that is the store's only writer, and the account
 # bootstrap. Model calls run the claude CLI on the ship's Claude subscription
 # token, without built-in tools or settings; their only tools come over
-# MCP: web search and fetch (yeoman-web.py, in front of Parallel's keyless
-# server), the instance's own
-# reminders, lists and memory tools (`yeoman tools`: zoom, search and date
-# in its hippo, as the seat's hippo CLI has), which reach only its book
-# and its hippo, the shared calendar (yeoman-calendar.py over CalDAV), mail
+# MCP: the instance's own server (`yeoman tools`: web search and fetch in
+# front of Parallel's keyless server, reminders, lists, memory tools that
+# zoom, search and date in its hippo as the seat's hippo CLI does, and
+# film and show requests), which reaches only its book, its hippo and
+# those services, the shared calendar (yeoman-calendar.py over CalDAV), mail
 # where the instance has some (yeoman-mail.py over IMAP, read-only), each
 # the only process that sees its login, and YouTube search and captions
-# (yeoman-youtube.py), which reaches YouTube only, film and show requests
-# (over Seerr, loopback only, with `requestsKeyFile`
-# set), and pictures (yeoman-image.py), drawn by the image service that alone holds the
+# (yeoman-youtube.py), which reaches YouTube only, requests going over Seerr
+# on loopback only with `requestsKeyFile` set, and pictures (yeoman-image.py), drawn by the image service that alone holds the
 # household's Codex login; `yeoman tools` also reads the subscription
 # limits from the usage service (usage.mod.nix). Mail and pages let
 # anyone put text in front of the model, so fetch opens only links a
@@ -108,11 +107,6 @@
       send = pkgs.writers.writePython3Bin "yeoman-send" {
         flakeIgnore = singleton "E501";
       } (readFile ./yeoman-send.py);
-
-      web = pkgs.writers.writePython3Bin "yeoman-web" {
-        libraries = singleton pkgs.python3Packages.mcp;
-        flakeIgnore = singleton "E501";
-      } (readFile ./yeoman-web.py);
 
       image = pkgs.writers.writePython3Bin "yeoman-image-mcp" {
         libraries = singleton pkgs.python3Packages.mcp;
@@ -269,11 +263,6 @@
 
           mcp = (pkgs.formats.json { }).generate "${n}-mcp.json" {
             mcpServers = {
-              web = {
-                type = "stdio";
-                command = getExe web;
-                env.HIPPO_DIR = env.HIPPO_DIR;
-              };
               yeoman = {
                 type = "stdio";
                 command = getExe yeoman;
