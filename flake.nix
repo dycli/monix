@@ -69,6 +69,13 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
+  # The market-data platform; the tape recorder is built from it.
+  inputs.lantern = {
+    url = "github:dycli/lantern";
+    inputs.nixpkgs.follows = "nixpkgs";
+    inputs.crate2nix.follows = "crate2nix";
+  };
+
   inputs.paseo = {
     url = "github:getpaseo/paseo";
     inputs.nixpkgs.follows = "nixpkgs";

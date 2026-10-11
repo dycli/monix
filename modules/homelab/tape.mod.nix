@@ -1,9 +1,9 @@
-# The market-data tape: a Rust recorder keeping Databento's CME order book
+# The market-data tape: Lantern's Rust recorder keeping Databento's CME order book
 # (GLBX.MDP3, MBO, the front and next contract of each root) on the NAS as
 # one Zstandard DBN file per UTC day and connection. `tape-pull` buys a
 # slice of history into the same archive after showing its price. Nothing
 # reads the tape yet; the charting client comes later.
-{ self, ... }:
+{ self, inputs, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.tape;
   flake.nixosModules.tape =
@@ -25,7 +25,7 @@
       cfg = config.tape;
       dir = "/srv/storage/tape";
 
-      tape = lib.ship.rustTool pkgs { src = ./tape; };
+      tape = inputs.lantern.packages.${pkgs.stdenv.hostPlatform.system}.tape;
 
       # Continuous contracts, front and next, so a roll never drops a book.
       roots = [

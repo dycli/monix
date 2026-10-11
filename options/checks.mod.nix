@@ -16,7 +16,6 @@
       crates = {
         hippo.path = "modules/ai/seat/hippo";
         yeoman.path = "modules/ai/yeoman";
-        tape.path = "modules/homelab/tape";
       };
       cratePaths = attrValues crates |> map (crate: crate.path);
 

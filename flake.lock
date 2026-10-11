@@ -244,6 +244,29 @@
         "type": "github"
       }
     },
+    "lantern": {
+      "inputs": {
+        "crate2nix": [
+          "crate2nix"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791758781,
+        "narHash": "sha256-KxyCtGKFINOCIDg3jbBsNdBdY/lGWwpmibuLEusD6lY=",
+        "owner": "dycli",
+        "repo": "lantern",
+        "rev": "b02af970d9d58c4882cfca287c4e5b6d9d659902",
+        "type": "github"
+      },
+      "original": {
+        "owner": "dycli",
+        "repo": "lantern",
+        "type": "github"
+      }
+    },
     "microvm": {
       "inputs": {
         "nixpkgs": [
@@ -441,6 +464,7 @@
         "flake-parts": "flake-parts",
         "home-manager": "home-manager",
         "hyprqt6engine": "hyprqt6engine",
+        "lantern": "lantern",
         "microvm": "microvm",
         "nix-minecraft": "nix-minecraft",
         "nix4nvchad": "nix4nvchad",
