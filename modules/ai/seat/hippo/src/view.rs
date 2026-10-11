@@ -73,11 +73,14 @@ impl View {
                 break;
             }
             // Due: messages since the pair's last one, per message it
-            // covers. Ties go to the oldest pair.
+            // covers. Ties go to the oldest pair. The most due pair is the
+            // one to merge; if its parent is not built yet, the batch waits
+            // for it rather than merging a readier pair out of turn, which
+            // would fold old history away while the new stays raw.
             let mut best: Option<(f64, usize)> = None;
             for k in 0..self.parts.len().saturating_sub(1) {
                 let (a, b) = (self.parts[k], self.parts[k + 1]);
-                if a.0 == b.0 && a.1 % 2 == 0 && b.1 == a.1 + 1 && tree.built(a.0 + 1, a.1 / 2) {
+                if a.0 == b.0 && a.1 % 2 == 0 && b.1 == a.1 + 1 {
                     let (start, len) = addr(b.0, b.1);
                     let last = start + len - 1;
                     let due = (self.t - 1 - last) as f64 / (1u64 << a.0) as f64;
@@ -89,6 +92,9 @@ impl View {
             let Some((_, k)) = best else { break };
             let (a, b) = (self.parts[k], self.parts[k + 1]);
             let parent = (a.0 + 1, a.1 / 2);
+            if !tree.built(parent.0, parent.1) {
+                break;
+            }
             self.size =
                 self.size - part_size(tree, a) - part_size(tree, b) + part_size(tree, parent);
             self.parts.splice(k..k + 2, [parent]);
@@ -166,6 +172,53 @@ mod tests {
             prompt: String::new(),
         })
         .unwrap();
+    }
+
+    #[test]
+    fn a_batch_waits_for_the_due_pair_instead_of_folding_old_history() {
+        // A bulk run: the whole log is there before any folding, and the
+        // compactor has built the old half's nodes but none of the new.
+        let dir = std::env::temp_dir().join(format!("hippo-view-bulk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut t = Tree::open(&dir).unwrap();
+        let n = 64u64;
+        for i in 0..n {
+            node(&mut t, 0, i, 100);
+        }
+        for l in 1..6u8 {
+            for i in 0..(n >> l) / 2 {
+                node(&mut t, l, i, 100);
+            }
+        }
+        let mut v = View::default();
+        for _ in 0..n {
+            v.append(&t, u64::MAX);
+        }
+        v.fit(&t, 1000);
+        // Merges go by due: the old half's raw pairs, then its first
+        // level-1 pair, which ties with the new half's oldest raw pair
+        // and wins as the older. The next old pair is less due than that
+        // raw one, whose parent is unbuilt, so the batch stops and waits
+        // instead of folding the old half to one line.
+        assert!(v.shrinking);
+        let mut want = vec![(2, 0)];
+        want.extend((2..16).map(|i| (1, i)));
+        want.extend((32..64).map(|i| (0, i)));
+        assert_eq!(v.parts, want);
+        // Once the rest is built the batch goes on and ends under half.
+        for l in 1..7u8 {
+            for i in 0..(n >> l) {
+                if !t.built(l, i) {
+                    node(&mut t, l, i, 100);
+                }
+            }
+        }
+        v.fit(&t, 1000);
+        assert!(
+            !v.shrinking && v.size() <= 500 && v.tiles(),
+            "{:?}",
+            v.parts
+        );
     }
 
     #[test]
