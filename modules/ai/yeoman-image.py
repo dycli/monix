@@ -1,6 +1,6 @@
 """Sokka's pictures: a stdio MCP server in front of the image service.
 
-The service (`steward-image`) holds the household's one Codex login and
+The service (`yeoman-image`) holds the household's one Codex login and
 answers a description with a PNG; this server never sees that login. It
 leaves each picture in the instance's outbox, and the assistant sends
 what waits there with its answer, then deletes it.
@@ -13,7 +13,7 @@ import time
 
 from mcp.server.fastmcp import FastMCP
 
-SOCKET = "/run/steward-image.sock"
+SOCKET = "/run/yeoman-image.sock"
 LIMIT = 30 * 1024 * 1024
 OUTBOX = sys.argv[1]
 

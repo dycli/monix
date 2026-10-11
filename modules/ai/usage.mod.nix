@@ -4,7 +4,7 @@
 # tool both read it; only this service sees the logins. Claude's usage
 # endpoint takes only a full login, so it reads the seat's, which the seat
 # keeps fresh, and never renews it; Codex runs on the household login
-# (steward.mod.nix) and renews that itself. Undocumented endpoints; expect
+# (yeoman.mod.nix) and renews that itself. Undocumented endpoints; expect
 # them to change.
 { self, ... }:
 {
@@ -31,7 +31,7 @@
     {
       users.groups.usage = { };
       users.users.${seat.user}.extraGroups = singleton "usage";
-      users.users.steward-image.extraGroups = singleton "usage";
+      users.users.yeoman-image.extraGroups = singleton "usage";
 
       systemd.sockets.usage = {
         description = "Subscription limits";
@@ -83,14 +83,14 @@
         description = "One subscription-limits report";
         path = singleton pkgs.codex;
         environment = {
-          HOME = "/var/lib/steward-image";
-          CODEX_HOME = "/var/lib/steward-image";
+          HOME = "/var/lib/yeoman-image";
+          CODEX_HOME = "/var/lib/yeoman-image";
           USAGE_SHARE = "/run/usage-share.sock";
         };
         serviceConfig = lib.ship.hardened.tenant // {
-          User = "steward-image";
-          Group = "steward-image";
-          StateDirectory = "steward-image";
+          User = "yeoman-image";
+          Group = "yeoman-image";
+          StateDirectory = "yeoman-image";
           StateDirectoryMode = "0700";
           LoadCredential = [
             "claude:${seat.home}/.claude/.credentials.json"

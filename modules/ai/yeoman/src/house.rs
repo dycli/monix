@@ -18,12 +18,12 @@ pub struct House {
 }
 
 impl House {
-    /// From STEWARD_HOUSE (the directory), STEWARD_UNIT and STEWARD_PEOPLE
+    /// From YEOMAN_HOUSE (the directory), YEOMAN_UNIT and YEOMAN_PEOPLE
     /// (unit=Person,...); None when the assistant lives alone.
     pub fn from_env() -> Option<House> {
-        let dir = env::var_os("STEWARD_HOUSE")?;
-        let me = env::var("STEWARD_UNIT").ok()?;
-        let people = env::var("STEWARD_PEOPLE")
+        let dir = env::var_os("YEOMAN_HOUSE")?;
+        let me = env::var("YEOMAN_UNIT").ok()?;
+        let people = env::var("YEOMAN_PEOPLE")
             .ok()?
             .split(',')
             .filter_map(|p| p.split_once('='))
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn posts_only_to_the_others() {
-        let dir = env::temp_dir().join(format!("steward-house-{}", std::process::id()));
+        let dir = env::temp_dir().join(format!("yeoman-house-{}", std::process::id()));
         for u in ["sokka", "suki"] {
             fs::create_dir_all(dir.join("mail").join(u)).unwrap();
         }

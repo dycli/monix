@@ -1,4 +1,4 @@
-//! `steward tools DIR`: the steward's own tools, an MCP server on stdio that the
+//! `yeoman tools DIR`: the yeoman's own tools, an MCP server on stdio that the
 //! claude CLI starts for each model call. They reach only the book in DIR,
 //! the memory (hippo at HIPPO_DIR) and the household's shared lists and
 //! mailboxes, never the Matrix keys, so text pulled in by a web search
@@ -52,7 +52,7 @@ struct Remind {
     text: String,
     /// Repeat after each send; leave out for once.
     repeat: Option<Repeat>,
-    /// A routine: at that time the steward carries out the text as a request
+    /// A routine: at that time the yeoman carries out the text as a request
     /// (check the mail, look at the calendar) and sends its answer.
     #[serde(default)]
     ask: bool,
@@ -377,7 +377,7 @@ impl Tools {
         description = "How much of each AI subscription's limits (Claude, ChatGPT/Codex, OpenCode Go) is used, and when each resets."
     )]
     fn usage(&self) -> Result<String, String> {
-        let sock = std::env::var("STEWARD_USAGE").map_err(|_| "No usage service here.")?;
+        let sock = std::env::var("YEOMAN_USAGE").map_err(|_| "No usage service here.")?;
         let mut out = String::new();
         UnixStream::connect(&sock)
             .and_then(|mut s| {
@@ -656,14 +656,14 @@ fn publish(dir: &Path, url: &str, name: &str, html: &str) -> Result<String, Stri
     ))
 }
 
-/// The library, when STEWARD_REQUESTS names the Seerr key's file.
+/// The library, when YEOMAN_REQUESTS names the Seerr key's file.
 fn seerr() -> Result<Option<Seerr>, String> {
-    let Some(file) = std::env::var_os("STEWARD_REQUESTS") else {
+    let Some(file) = std::env::var_os("YEOMAN_REQUESTS") else {
         return Ok(None);
     };
     let key = fs::read_to_string(&file).map_err(|e| format!("seerr key: {e}"))?;
-    let url = std::env::var("STEWARD_SEERR").map_err(|_| "STEWARD_SEERR is not set")?;
-    let person = std::env::var("STEWARD_PERSON").unwrap_or_default();
+    let url = std::env::var("YEOMAN_SEERR").map_err(|_| "YEOMAN_SEERR is not set")?;
+    let person = std::env::var("YEOMAN_PERSON").unwrap_or_default();
     Ok(Some(Seerr::new(url, key, person)))
 }
 
@@ -675,11 +675,11 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
             sock: PathBuf::from(hippo).join("hippo.sock"),
         },
         house: House::from_env().map(Arc::new),
-        mail: std::env::var_os("STEWARD_MAIL").map(PathBuf::from),
-        desk: std::env::var_os("STEWARD_DESK").map(PathBuf::from),
-        pages: std::env::var("STEWARD_PAGES")
+        mail: std::env::var_os("YEOMAN_MAIL").map(PathBuf::from),
+        desk: std::env::var_os("YEOMAN_DESK").map(PathBuf::from),
+        pages: std::env::var("YEOMAN_PAGES")
             .ok()
-            .zip(std::env::var("STEWARD_PAGES_URL").ok())
+            .zip(std::env::var("YEOMAN_PAGES_URL").ok())
             .map(|(d, u)| (PathBuf::from(d), u)),
         seerr: seerr()?,
         tool_router: Tools::tool_router(),
@@ -698,7 +698,7 @@ mod tests {
 
     #[test]
     fn a_page_is_published_under_a_plain_name_only() {
-        let dir = std::env::temp_dir().join(format!("steward-pages-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("yeoman-pages-{}", std::process::id()));
         let url = "https://sokka.example";
         assert!(publish(&dir, url, "trip-plan", "<p>hi</p>").is_ok());
         assert!(dir.join("trip-plan/index.html").is_file());
@@ -717,7 +717,7 @@ mod tests {
 
     #[test]
     fn a_screenshot_is_shown_by_name_only_and_only_a_png() {
-        let dir = std::env::temp_dir().join(format!("steward-show-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("yeoman-show-{}", std::process::id()));
         let desk = dir.join("desk");
         let outbox = dir.join("outbox");
         fs::create_dir_all(&desk).unwrap();

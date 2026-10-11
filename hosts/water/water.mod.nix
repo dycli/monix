@@ -146,7 +146,7 @@
                     "compress=zstd"
                   ];
                 };
-                # The assistants' computers' disks (steward-network.mod.nix).
+                # The assistants' computers' disks (yeoman-network.mod.nix).
                 subvolumes."@agents" = {
                   mountpoint = "/var/lib/agents";
                   mountOptions = [

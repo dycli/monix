@@ -1,4 +1,4 @@
-//! The model behind the steward, one call per message. Which backend runs it is
+//! The model behind the yeoman, one call per message. Which backend runs it is
 //! configuration: the `claude` CLI on a subscription, or any
 //! OpenAI-compatible endpoint (local llama.cpp, a hosted API).
 
@@ -34,7 +34,7 @@ pub trait Model: Send + Sync {
         run: Run,
     ) -> Result<String, String>;
 
-    /// Whether answers have tools: web search and the steward's own.
+    /// Whether answers have tools: web search and the yeoman's own.
     fn tools(&self) -> bool {
         false
     }
@@ -42,23 +42,23 @@ pub trait Model: Send + Sync {
 
 pub fn from_env() -> Result<Box<dyn Model>, String> {
     let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
-    match var("STEWARD_BACKEND").as_deref().unwrap_or("claude") {
+    match var("YEOMAN_BACKEND").as_deref().unwrap_or("claude") {
         "claude" => Ok(Box::new(Claude {
-            command: var("STEWARD_CLAUDE").unwrap_or_else(|| "claude".into()),
-            model: var("STEWARD_MODEL").unwrap_or_else(|| "sonnet".into()),
-            effort: var("STEWARD_EFFORT"),
-            mcp: var("STEWARD_MCP").map(mcp).transpose()?,
+            command: var("YEOMAN_CLAUDE").unwrap_or_else(|| "claude".into()),
+            model: var("YEOMAN_MODEL").unwrap_or_else(|| "sonnet".into()),
+            effort: var("YEOMAN_EFFORT"),
+            mcp: var("YEOMAN_MCP").map(mcp).transpose()?,
         })),
         "http" => Ok(Box::new(Http {
-            url: var("STEWARD_URL").ok_or("STEWARD_URL is not set")?,
-            model: var("STEWARD_MODEL").ok_or("STEWARD_MODEL is not set")?,
+            url: var("YEOMAN_URL").ok_or("YEOMAN_URL is not set")?,
+            model: var("YEOMAN_MODEL").ok_or("YEOMAN_MODEL is not set")?,
         })),
-        other => Err(format!("Unknown STEWARD_BACKEND {other}.")),
+        other => Err(format!("Unknown YEOMAN_BACKEND {other}.")),
     }
 }
 
 /// The `claude` CLI in print mode: no built-in tools, no settings sources
-/// (so no hooks), no session saved; only the MCP servers in STEWARD_MCP.
+/// (so no hooks), no session saved; only the MCP servers in YEOMAN_MCP.
 /// How a turn runs. A task has no clock on it and can be stopped.
 #[derive(Clone, Default)]
 pub struct Run {
@@ -76,10 +76,10 @@ pub struct Claude {
 }
 
 /// The tools that act on the world, by MCP name.
-const ACTS: &str = "mcp__steward__remind,mcp__steward__cancel_reminder,mcp__steward__list_add,\
-mcp__steward__share_list,mcp__steward__list_remove,mcp__steward__tell,mcp__steward__draft_mail,mcp__calendar__add_event,\
+const ACTS: &str = "mcp__yeoman__remind,mcp__yeoman__cancel_reminder,mcp__yeoman__list_add,\
+mcp__yeoman__share_list,mcp__yeoman__list_remove,mcp__yeoman__tell,mcp__yeoman__draft_mail,mcp__calendar__add_event,\
 mcp__calendar__change_event,mcp__calendar__cancel_event,mcp__image__make_image,mcp__web__web_fetch,\
-mcp__computer,mcp__home,mcp__steward__media_request,mcp__steward__task";
+mcp__computer,mcp__home,mcp__yeoman__media_request,mcp__yeoman__task";
 
 impl Model for Claude {
     fn answer(
@@ -183,7 +183,7 @@ impl Model for Claude {
         for (model, u) in models.into_iter().flatten() {
             let n = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0);
             eprintln!(
-                "steward: tokens model={model} input={} cache_read={} cache_write={} output={}",
+                "yeoman: tokens model={model} input={} cache_read={} cache_write={} output={}",
                 n("inputTokens"),
                 n("cacheReadInputTokens"),
                 n("cacheCreationInputTokens"),

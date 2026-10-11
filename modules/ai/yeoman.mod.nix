@@ -1,5 +1,5 @@
-# The steward (steward/), the household's assistant program: one endless
-# Matrix chat with no sessions, run once per person (`steward.instances`,
+# The yeoman (yeoman/), the household's assistant program: one endless
+# Matrix chat with no sessions, run once per person (`yeoman.instances`,
 # Sokka for one, Suki for another), each with its own account, memory,
 # book and chat. Each message from its person becomes one
 # fresh model call over the prompt, the whole memory and the message;
@@ -10,17 +10,17 @@
 # hippo service that is the store's only writer, and the account
 # bootstrap. Model calls run the claude CLI on the ship's Claude subscription
 # token, without built-in tools or settings; their only tools come over
-# MCP: web search and fetch (steward-web.py, in front of Parallel's keyless
+# MCP: web search and fetch (yeoman-web.py, in front of Parallel's keyless
 # server), the instance's own
-# reminders, lists and memory tools (`steward tools`: zoom, search and date
+# reminders, lists and memory tools (`yeoman tools`: zoom, search and date
 # in its hippo, as the seat's hippo CLI has), which reach only its book
-# and its hippo, the shared calendar (steward-calendar.py over CalDAV), mail
-# where the instance has some (steward-mail.py over IMAP, read-only), each
+# and its hippo, the shared calendar (yeoman-calendar.py over CalDAV), mail
+# where the instance has some (yeoman-mail.py over IMAP, read-only), each
 # the only process that sees its login, and YouTube search and captions
-# (steward-youtube.py), which reaches YouTube only, film and show requests
+# (yeoman-youtube.py), which reaches YouTube only, film and show requests
 # (over Seerr, loopback only, with `requestsKeyFile`
-# set), and pictures (steward-image.py), drawn by the image service that alone holds the
-# household's Codex login; `steward tools` also reads the subscription
+# set), and pictures (yeoman-image.py), drawn by the image service that alone holds the
+# household's Codex login; `yeoman tools` also reads the subscription
 # limits from the usage service (usage.mod.nix). Mail and pages let
 # anyone put text in front of the model, so fetch opens only links a
 # search returned or the person wrote: nothing it read can ride out in a
@@ -29,7 +29,7 @@
 # sent to it without keeping them, and on the one instance that takes
 # them, reads the host's alerts from their spool and sends its own account
 # of them (alerts.mod.nix). An instance with `computer = true` also drives
-# a browser in a microVM of its own (steward-computer.mod.nix) over
+# a browser in a microVM of its own (yeoman-computer.mod.nix) over
 # Playwright MCP, reads its desk for screenshots, and can start a task:
 # a turn of its own with no clock on it, run on the tick, for work that
 # outlives the message. Each has a site, `<n>.<domain>` on the tailnet
@@ -43,8 +43,8 @@
 # one too. Memories stay apart; only what is handed over crosses.
 { self, ... }:
 {
-  flake.nixosModules.lab = self.nixosModules.steward;
-  flake.nixosModules.steward =
+  flake.nixosModules.lab = self.nixosModules.yeoman;
+  flake.nixosModules.yeoman =
     {
       config,
       lib,
@@ -77,52 +77,52 @@
       inherit (lib) types;
       inherit (lib.ship) fences computers;
 
-      cfg = config.steward;
+      cfg = config.yeoman;
 
-      house = "/var/lib/steward-household";
+      house = "/var/lib/yeoman-household";
       # The assistants' sites: a directory each, read by nginx as its group.
-      pages = "/var/lib/steward-pages";
+      pages = "/var/lib/yeoman-pages";
       households = {
-        STEWARD_HOUSE = house;
-        STEWARD_PEOPLE = concatStringsSep "," (mapAttrsToList (n: i: "${n}=${i.person}") cfg.instances);
+        YEOMAN_HOUSE = house;
+        YEOMAN_PEOPLE = concatStringsSep "," (mapAttrsToList (n: i: "${n}=${i.person}") cfg.instances);
       };
 
-      steward = lib.ship.rustTool pkgs { src = ./steward; };
+      yeoman = lib.ship.rustTool pkgs { src = ./yeoman; };
       hippo = lib.ship.rustTool pkgs { src = ./seat/hippo; };
 
-      calendar = pkgs.writers.writePython3Bin "steward-calendar" {
+      calendar = pkgs.writers.writePython3Bin "yeoman-calendar" {
         libraries = ps: [
           ps.caldav
           ps.mcp
         ];
         flakeIgnore = singleton "E501";
-      } (readFile ./steward-calendar.py);
+      } (readFile ./yeoman-calendar.py);
 
-      mail = pkgs.writers.writePython3Bin "steward-mail" {
+      mail = pkgs.writers.writePython3Bin "yeoman-mail" {
         libraries = ps: [
           ps.imapclient
           ps.mcp
         ];
         flakeIgnore = singleton "E501";
-      } (readFile ./steward-mail.py);
-      send = pkgs.writers.writePython3Bin "steward-send" {
+      } (readFile ./yeoman-mail.py);
+      send = pkgs.writers.writePython3Bin "yeoman-send" {
         flakeIgnore = singleton "E501";
-      } (readFile ./steward-send.py);
+      } (readFile ./yeoman-send.py);
 
-      web = pkgs.writers.writePython3Bin "steward-web" {
+      web = pkgs.writers.writePython3Bin "yeoman-web" {
         libraries = singleton pkgs.python3Packages.mcp;
         flakeIgnore = singleton "E501";
-      } (readFile ./steward-web.py);
+      } (readFile ./yeoman-web.py);
 
-      image = pkgs.writers.writePython3Bin "steward-image-mcp" {
+      image = pkgs.writers.writePython3Bin "yeoman-image-mcp" {
         libraries = singleton pkgs.python3Packages.mcp;
         flakeIgnore = singleton "E501";
-      } (readFile ./steward-image.py);
+      } (readFile ./yeoman-image.py);
 
       # One connection, one picture: the description on stdin, the PNG out.
       # Codex keeps each thread's pictures under its thread id.
       draw = pkgs.writeShellApplication {
-        name = "steward-image";
+        name = "yeoman-image";
         runtimeInputs = [
           pkgs.codex
           pkgs.jq
@@ -141,7 +141,7 @@
           # One journal line per picture, where `usage` counts the
           # household's share of the subscription.
           jq -rR --arg m "$model" 'fromjson? | select(.type == "turn.completed") | .usage
-            | "steward-image: tokens model=\($m) input=\(.input_tokens - .cached_input_tokens) cache_read=\(.cached_input_tokens) cache_write=0 output=\(.output_tokens)"' <<< "$out" >&2
+            | "yeoman-image: tokens model=\($m) input=\(.input_tokens - .cached_input_tokens) cache_read=\(.cached_input_tokens) cache_write=0 output=\(.output_tokens)"' <<< "$out" >&2
           id=$(jq -rR 'fromjson? | select(.type == "thread.started") | .thread_id' <<< "$out" | head -1)
           [ -n "$id" ] || exit 1
           dir="$CODEX_HOME/generated_images/$id"
@@ -154,18 +154,18 @@
         '';
       };
 
-      youtube = pkgs.writers.writePython3Bin "steward-youtube" {
+      youtube = pkgs.writers.writePython3Bin "yeoman-youtube" {
         libraries = ps: [
           ps.yt-dlp
           ps.mcp
         ];
         flakeIgnore = singleton "E501";
-      } (readFile ./steward-youtube.py);
+      } (readFile ./yeoman-youtube.py);
 
       # The token rides a systemd credential into the environment, never
       # the command line.
       claude = pkgs.writeShellApplication {
-        name = "steward-claude";
+        name = "yeoman-claude";
         text = ''
           CLAUDE_CODE_OAUTH_TOKEN=$(< "$CREDENTIALS_DIRECTORY/claude-token")
           export CLAUDE_CODE_OAUTH_TOKEN
@@ -179,7 +179,7 @@
 
       # Idempotent: logs in first, else walks the registration-token flow.
       register = pkgs.writeShellApplication {
-        name = "steward-register";
+        name = "yeoman-register";
         runtimeInputs = [
           pkgs.curl
           pkgs.jq
@@ -242,7 +242,7 @@
             HOME = state;
             HIPPO_DIR = "${state}/hippo";
           };
-          # The assistant's computer (steward-computer.mod.nix), if it has one.
+          # The assistant's computer (yeoman-computer.mod.nix), if it has one.
           pc = optionalAttrs i.computer {
             addr = computers.addr (computers.indexes cfg.instances).${n};
             desk = "${computers.desks}/${n}";
@@ -255,16 +255,16 @@
           shared =
             households
             // {
-              STEWARD_UNIT = n;
-              STEWARD_USAGE = "/run/usage.sock";
-              STEWARD_PAGES = site.dir;
-              STEWARD_PAGES_URL = site.url;
+              YEOMAN_UNIT = n;
+              YEOMAN_USAGE = "/run/usage.sock";
+              YEOMAN_PAGES = site.dir;
+              YEOMAN_PAGES_URL = site.url;
             }
-            // optionalAttrs i.computer { STEWARD_DESK = pc.desk; }
-            // optionalAttrs (cfg.homeTokenFile != null) { STEWARD_HOME = "1"; }
+            // optionalAttrs i.computer { YEOMAN_DESK = pc.desk; }
+            // optionalAttrs (cfg.homeTokenFile != null) { YEOMAN_HOME = "1"; }
             // optionalAttrs (cfg.requestsKeyFile != null) {
-              STEWARD_REQUESTS = "${creds}/requests";
-              STEWARD_SEERR = "http://127.0.0.1:${toString config.shipProxy.routes.q.port}";
+              YEOMAN_REQUESTS = "${creds}/requests";
+              YEOMAN_SEERR = "http://127.0.0.1:${toString config.shipProxy.routes.q.port}";
             };
 
           mcp = (pkgs.formats.json { }).generate "${n}-mcp.json" {
@@ -274,9 +274,9 @@
                 command = getExe web;
                 env.HIPPO_DIR = env.HIPPO_DIR;
               };
-              steward = {
+              yeoman = {
                 type = "stdio";
-                command = getExe steward;
+                command = getExe yeoman;
                 args = [
                   "tools"
                   state
@@ -286,13 +286,13 @@
                   // {
                     inherit (env) HIPPO_DIR;
                   }
-                  // optionalAttrs (i.mailCredentialsFile != null) { STEWARD_MAIL = "${creds}/mail"; };
+                  // optionalAttrs (i.mailCredentialsFile != null) { YEOMAN_MAIL = "${creds}/mail"; };
               };
               calendar = {
                 type = "stdio";
                 command = getExe calendar;
                 args = singleton "${creds}/caldav";
-                env.STEWARD_TZ = config.time.timeZone;
+                env.YEOMAN_TZ = config.time.timeZone;
               };
               youtube = {
                 type = "stdio";
@@ -309,7 +309,7 @@
                 type = "stdio";
                 command = getExe mail;
                 args = singleton "${creds}/mail";
-                env.STEWARD_IMAP = cfg.mailServer;
+                env.YEOMAN_IMAP = cfg.mailServer;
               };
             }
             // optionalAttrs i.computer {
@@ -334,7 +334,7 @@
           # is made in the runtime directory and the bot pointed at it.
           start =
             if cfg.homeTokenFile == null then
-              getExe steward
+              getExe yeoman
             else
               getExe (
                 pkgs.writeShellApplication {
@@ -346,7 +346,7 @@
                   text = ''
                     umask 077
                     sed "s|@HOME_TOKEN@|$(cat "$CREDENTIALS_DIRECTORY/home")|" ${mcp} > "$RUNTIME_DIRECTORY/mcp.json"
-                    STEWARD_MCP="$RUNTIME_DIRECTORY/mcp.json" exec ${getExe steward}
+                    YEOMAN_MCP="$RUNTIME_DIRECTORY/mcp.json" exec ${getExe yeoman}
                   '';
                 }
               );
@@ -355,8 +355,8 @@
             User = n;
             Group = n;
             SupplementaryGroups = [
-              "steward-image"
-              "steward-household"
+              "yeoman-image"
+              "yeoman-household"
               "usage"
             ];
             StateDirectory = n;
@@ -437,21 +437,21 @@
               env
               // shared
               // {
-                STEWARD_NAME = i.name;
-                STEWARD_PERSON = i.person;
-                STEWARD_HOMESERVER = "http://127.0.0.1:${toString config.matrix.port}";
-                STEWARD_USERS = concatStringsSep "," i.users;
-                STEWARD_BACKEND = "claude";
-                STEWARD_CLAUDE = getExe claude;
-                STEWARD_MODEL = cfg.model;
-                STEWARD_MCP = toString mcp;
+                YEOMAN_NAME = i.name;
+                YEOMAN_PERSON = i.person;
+                YEOMAN_HOMESERVER = "http://127.0.0.1:${toString config.matrix.port}";
+                YEOMAN_USERS = concatStringsSep "," i.users;
+                YEOMAN_BACKEND = "claude";
+                YEOMAN_CLAUDE = getExe claude;
+                YEOMAN_MODEL = cfg.model;
+                YEOMAN_MCP = toString mcp;
               }
-              // optionalAttrs (i.style != null) { STEWARD_STYLE = i.style; }
-              // optionalAttrs i.alerts { STEWARD_ALERTS = config.alerts.spool; }
+              // optionalAttrs (i.style != null) { YEOMAN_STYLE = i.style; }
+              // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
               // optionalAttrs (i.mailCredentialsFile != null) {
-                STEWARD_MAIL = "${creds}/mail";
-                STEWARD_SEND = getExe send;
-                STEWARD_SMTP = cfg.smtpServer;
+                YEOMAN_MAIL = "${creds}/mail";
+                YEOMAN_SEND = getExe send;
+                YEOMAN_SMTP = cfg.smtpServer;
               };
             serviceConfig =
               sandbox
@@ -489,7 +489,7 @@
       alerted = attrNames (filterAttrs (_: i: i.alerts) cfg.instances);
     in
     {
-      options.steward = {
+      options.yeoman = {
         instances = mkOption {
           description = ''
             One assistant per person, keyed by its unit, user and state
@@ -627,32 +627,32 @@
       config = {
         assertions = singleton {
           assertion = length alerted <= 1;
-          message = "steward: only one instance can take the alerts.";
+          message = "yeoman: only one instance can take the alerts.";
         };
 
         # Sensors and the receiver write alerts in as root or the reader;
         # nobody else may, since what it posts its memory keeps.
         alerts.reader = mkIf (alerted != [ ]) (head alerted);
 
-        # steward-image holds the household's one Codex login, on the ChatGPT
+        # yeoman-image holds the household's one Codex login, on the ChatGPT
         # subscription; the assistants reach only its socket. Log in once,
         # with the codex from the unit's script (not on PATH), after
-        # `sudo install -d -o steward-image -g steward-image -m 700 /var/lib/steward-image`:
-        # sudo -u steward-image env HOME=/var/lib/steward-image CODEX_HOME=/var/lib/steward-image <codex> login --device-auth
+        # `sudo install -d -o yeoman-image -g yeoman-image -m 700 /var/lib/yeoman-image`:
+        # sudo -u yeoman-image env HOME=/var/lib/yeoman-image CODEX_HOME=/var/lib/yeoman-image <codex> login --device-auth
         users.users = mapAttrs (n: _: {
           isSystemUser = true;
           group = n;
           home = "/var/lib/${n}";
-        }) (cfg.instances // { steward-image = { }; });
+        }) (cfg.instances // { yeoman-image = { }; });
         users.groups = mapAttrs (_: _: { }) cfg.instances // {
-          steward-image = { };
-          steward-household = { };
+          yeoman-image = { };
+          yeoman-household = { };
         };
 
         # Each assistant's pages at https://<n>.<domain>/<page>/, for the
         # tailnet like every other route.
         shipProxy.routes = mapAttrs (n: _: { root = "${pages}/${n}"; }) cfg.instances;
-        systemd.tmpfiles.settings.steward-pages = {
+        systemd.tmpfiles.settings.yeoman-pages = {
           ${pages}.d = {
             user = "root";
             group = "root";
@@ -669,15 +669,15 @@
         }) cfg.instances;
 
         # Setgid, so what one assistant writes stays the group's.
-        systemd.tmpfiles.settings.steward-household = {
+        systemd.tmpfiles.settings.yeoman-household = {
           ${house}.d = {
             user = "root";
-            group = "steward-household";
+            group = "yeoman-household";
             mode = "2770";
           };
           "${house}/mail".d = {
             user = "root";
-            group = "steward-household";
+            group = "yeoman-household";
             mode = "2770";
           };
         }
@@ -685,39 +685,39 @@
           name = "${house}/mail/${n}";
           value.d = {
             user = "root";
-            group = "steward-household";
+            group = "yeoman-household";
             mode = "2770";
           };
         }) cfg.instances;
 
-        systemd.sockets.steward-image = {
+        systemd.sockets.yeoman-image = {
           description = "Pictures for the household assistants";
           wantedBy = singleton "sockets.target";
           socketConfig = {
-            ListenStream = "/run/steward-image.sock";
+            ListenStream = "/run/yeoman-image.sock";
             Accept = true;
             MaxConnections = 2;
             SocketMode = "0660";
-            SocketGroup = "steward-image";
+            SocketGroup = "yeoman-image";
           };
         };
 
         systemd.services = mkMerge (
           mapAttrsToList services cfg.instances
           ++ singleton {
-            "steward-image@" = {
+            "yeoman-image@" = {
               description = "One picture for a household assistant";
               environment = {
-                HOME = "/var/lib/steward-image";
-                CODEX_HOME = "/var/lib/steward-image";
+                HOME = "/var/lib/yeoman-image";
+                CODEX_HOME = "/var/lib/yeoman-image";
               };
               serviceConfig =
                 lib.ship.hardened.tenant
                 // fence
                 // {
-                  User = "steward-image";
-                  Group = "steward-image";
-                  StateDirectory = "steward-image";
+                  User = "yeoman-image";
+                  Group = "yeoman-image";
+                  StateDirectory = "yeoman-image";
                   StateDirectoryMode = "0700";
                   ExecStart = getExe draw;
                   StandardInput = "socket";

@@ -239,9 +239,9 @@ harnesses prune them.
 llama-swap starts one `llama-server` per model on demand and unloads it when
 idle, so a host holds no model memory until something asks.
 
-### The steward
+### The yeoman
 
-The steward (`modules/ai/steward`) is the household assistant program, a small
+The yeoman (`modules/ai/yeoman`) is the household assistant program, a small
 Rust service on Matrix, run once per person: Sokka for Dylan, Suki for Gab. It has no sessions and never compacts: every message becomes one
 fresh model call over its prompt, its whole memory and the new message.
 The memory is a second hippo store, written directly instead of by
@@ -253,7 +253,7 @@ The model is configuration: the `claude` CLI on a subscription token, or
 any OpenAI-compatible endpoint, local or hosted. The CLI runs with built-in
 tools and settings off; its tools come over MCP, and the prompt mentions
 them only when the model has them. Web search and fetch go through a short
-Python server in front of Parallel's keyless one. Its own server, `steward tools`, keeps reminders and lists in one
+Python server in front of Parallel's keyless one. Its own server, `yeoman tools`, keeps reminders and lists in one
 SQLite book and can touch nothing else, so a page that tries to steer
 the model through search results finds no keys, memory or shell to reach.
 The calendar is a third server, a short Python one on `caldav` and the
@@ -304,7 +304,7 @@ the answer, or stays quiet when it has nothing new, so a daily price
 check speaks only when the price moves; hippo records the trigger as a
 routine, not as their words.
 
-Each assistant can have a computer of its own (`steward-computer.mod.nix`): a
+Each assistant can have a computer of its own (`yeoman-computer.mod.nix`): a
 persistent microVM under cloud-hypervisor, with a desktop that only
 it touches. Brave runs full screen under cage on a headless wlroots output,
 and Playwright MCP, the same server the seat's browser tool uses, drives it
@@ -312,7 +312,7 @@ over HTTP from the host, so the model works a page by its accessibility tree
 and takes a screenshot when it needs to look. The browser profile lives on a
 volume that survives reboots and rebuilds, so site logins made there stay
 there, and nothing of the household goes in: no tailnet, no store share, no
-secret. The guest's network (`steward-network.mod.nix`) is a host-only bridge
+secret. The guest's network (`yeoman-network.mod.nix`) is a host-only bridge
 with NAT: any public address, no private one, not the host, the LAN, the
 tailnet or another computer, while the host reaches each guest for its browser
 and screen. A folder shared over virtiofs is the desk: screenshots land there,

@@ -15,7 +15,7 @@
       # Check name → crate directory and the tools its tests shell out to.
       crates = {
         hippo.path = "modules/ai/seat/hippo";
-        steward.path = "modules/ai/steward";
+        yeoman.path = "modules/ai/yeoman";
       };
       cratePaths = attrValues crates |> map (crate: crate.path);
 

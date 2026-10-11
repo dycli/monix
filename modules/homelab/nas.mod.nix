@@ -37,7 +37,7 @@
         "var/lib/private/seerr"
         "var/lib/sokka"
         "var/lib/suki"
-        "var/lib/steward-pages"
+        "var/lib/yeoman-pages"
         "srv/minecraft"
       ];
 

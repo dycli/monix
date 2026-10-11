@@ -45,14 +45,14 @@ in
   "hosts/water/secrets/matrix-sokka.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-suki.env.age".publicKeys = singleton water ++ admin;
   # Sokka's CalDAV accounts: [{"name","url","username","password"}, ...].
-  "hosts/water/secrets/steward-caldav.json.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/yeoman-caldav.json.age".publicKeys = singleton water ++ admin;
   # Sokka's IMAP accounts: [{"name","username","password"}, ...].
   "hosts/water/secrets/sokka-mail.json.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/suki-mail.json.age".publicKeys = singleton water ++ admin;
   # A Home Assistant long-lived access token, raw, for the assistants' home tools.
-  "hosts/water/secrets/steward-home-token.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/yeoman-home-token.age".publicKeys = singleton water ++ admin;
   # Seerr's API key, raw (Settings > General), for the assistants' media requests.
-  "hosts/water/secrets/steward-requests-key.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/yeoman-requests-key.age".publicKeys = singleton water ++ admin;
   # INI merged over the declarative config at unit start.
   "hosts/water/secrets/sabnzbd-secrets.ini.age".publicKeys = singleton water ++ admin;
   # CLOUDFLARE_DNS_API_TOKEN=..., Zone→DNS→Edit on su.is, for DNS-01.

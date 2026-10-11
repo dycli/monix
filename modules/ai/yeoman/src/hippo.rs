@@ -1,4 +1,4 @@
-//! The steward's memory: its own hippo service, asked over `hippo.sock` as the
+//! The yeoman's memory: its own hippo service, asked over `hippo.sock` as the
 //! hippo CLI does. hippo stores every message and folds them into the view.
 
 use serde::Deserialize;
@@ -42,7 +42,7 @@ impl Hippo {
         self.ask("view", &["whole"])
     }
 
-    /// Logs one message: `user` for the captain's words, `talk` for the steward's.
+    /// Logs one message: `user` for the captain's words, `talk` for the yeoman's.
     pub fn log(&self, kind: &str, text: &str) -> Result<(), String> {
         self.ask("log", &[kind, text]).map(|_| ())
     }

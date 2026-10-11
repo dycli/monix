@@ -122,13 +122,13 @@ LINE = re.compile(r"tokens model=(\S+) input=(\d+) cache_read=(\d+) cache_write=
 
 def who(unit):
     """`hippo` is the seat's memory, `<name>-hippo` an assistant's,
-    `steward-image@` the household's pictures, any other unit an assistant."""
+    `yeoman-image@` the household's pictures, any other unit an assistant."""
     stem = unit.removesuffix(".service").split("@")[0]
     if stem == "hippo":
         return SEAT, "memory"
     if stem.endswith("-hippo"):
         return stem.removesuffix("-hippo"), "memory"
-    if stem == "steward-image":
+    if stem == "yeoman-image":
         return "pictures", ""
     return stem, ""
 

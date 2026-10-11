@@ -3215,24 +3215,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
-name = "steward"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "matrix-sdk",
- "mime",
- "rmcp",
- "rusqlite",
- "rustls",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
- "ureq",
-]
-
-[[package]]
 name = "string_cache"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4168,6 +4150,24 @@ name = "xxhash-rust"
 version = "0.8.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "550a2b930b62486a393c52d5c3b84bff264b28aa437ed64694d31e93b1757af7"
+
+[[package]]
+name = "yeoman"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "matrix-sdk",
+ "mime",
+ "rmcp",
+ "rusqlite",
+ "rustls",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "ureq",
+]
 
 [[package]]
 name = "yoke"

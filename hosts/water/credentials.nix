@@ -18,7 +18,7 @@ in
   matrix.tunnelTokenFile = config.secrets.matrix-cloudflare-tunnel-token.path;
   immich.tunnelTokenFile = config.secrets.immich-cloudflare-tunnel-token.path;
 
-  steward = {
+  yeoman = {
     instances.sokka = {
       credentialsEnvFile = config.secrets.matrix-sokka-env.path;
       mailCredentialsFile = config.secrets.sokka-mail-json.path;
@@ -29,9 +29,9 @@ in
     };
     registrationEnvFile = config.secrets.matrix-registration-env.path;
     claudeTokenFile = config.secrets.agent-claude-token.path;
-    calendarCredentialsFile = config.secrets.steward-caldav-json.path;
-    homeTokenFile = config.secrets.steward-home-token.path;
-    requestsKeyFile = config.secrets.steward-requests-key.path;
+    calendarCredentialsFile = config.secrets.yeoman-caldav-json.path;
+    homeTokenFile = config.secrets.yeoman-home-token.path;
+    requestsKeyFile = config.secrets.yeoman-requests-key.path;
     mailServer = "imap.migadu.com";
   };
 
@@ -41,11 +41,11 @@ in
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
     matrix-sokka-env.file = ./secrets/matrix-sokka.env.age;
     matrix-suki-env.file = ./secrets/matrix-suki.env.age;
-    steward-caldav-json.file = ./secrets/steward-caldav.json.age;
+    yeoman-caldav-json.file = ./secrets/yeoman-caldav.json.age;
     sokka-mail-json.file = ./secrets/sokka-mail.json.age;
     suki-mail-json.file = ./secrets/suki-mail.json.age;
-    steward-home-token.file = ./secrets/steward-home-token.age;
-    steward-requests-key.file = ./secrets/steward-requests-key.age;
+    yeoman-home-token.file = ./secrets/yeoman-home-token.age;
+    yeoman-requests-key.file = ./secrets/yeoman-requests-key.age;
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     immich-cloudflare-tunnel-token.file = ./secrets/immich-cloudflare-tunnel-token.age;
     cloudflare-dns-token = {
@@ -67,17 +67,17 @@ in
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
   systemd.services.sokka.restartTriggers = [
     ./secrets/matrix-sokka.env.age
-    ./secrets/steward-caldav.json.age
+    ./secrets/yeoman-caldav.json.age
     ./secrets/sokka-mail.json.age
-    ./secrets/steward-home-token.age
-    ./secrets/steward-requests-key.age
+    ./secrets/yeoman-home-token.age
+    ./secrets/yeoman-requests-key.age
   ];
   systemd.services.suki.restartTriggers = [
     ./secrets/matrix-suki.env.age
     ./secrets/suki-mail.json.age
-    ./secrets/steward-caldav.json.age
-    ./secrets/steward-home-token.age
-    ./secrets/steward-requests-key.age
+    ./secrets/yeoman-caldav.json.age
+    ./secrets/yeoman-home-token.age
+    ./secrets/yeoman-requests-key.age
   ];
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;

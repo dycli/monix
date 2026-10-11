@@ -97,7 +97,7 @@ mod tests {
 
     #[test]
     fn one_task_at_a_time_from_start_to_finish() {
-        let state = std::env::temp_dir().join(format!("steward-task-{}", std::process::id()));
+        let state = std::env::temp_dir().join(format!("yeoman-task-{}", std::process::id()));
         fs::create_dir_all(&state).unwrap();
         assert!(say(&state, "hi").is_err());
         start(&state, "find a plumber").unwrap();
