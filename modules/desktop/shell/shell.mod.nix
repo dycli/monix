@@ -56,6 +56,7 @@
           KESTREL_IDLE_DISPLAY_OFF_MINUTES = toString config.kestrel.idle.displayOffMinutes;
           KESTREL_MICROFETCH = getExe pkgs.microfetch;
           KESTREL_SCREENSHOT = getExe pkgs.hyprshot;
+          HYPRSHOT_DIR = "/home/${config.primaryUser}/box/pix/shots";
           KESTREL_SYSTEM_MONITOR = getExe pkgs.btop;
           KESTREL_TERMINAL = getExe pkgs.ghostty;
         };
