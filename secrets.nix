@@ -48,6 +48,7 @@ in
   "hosts/water/secrets/sokka-caldav.json.age".publicKeys = singleton water ++ admin;
   # Sokka's IMAP accounts: [{"name","username","password"}, ...].
   "hosts/water/secrets/sokka-mail.json.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/suki-mail.json.age".publicKeys = singleton water ++ admin;
   # INI merged over the declarative config at unit start.
   "hosts/water/secrets/sabnzbd-secrets.ini.age".publicKeys = singleton water ++ admin;
   # CLOUDFLARE_DNS_API_TOKEN=..., Zone→DNS→Edit on su.is, for DNS-01.
