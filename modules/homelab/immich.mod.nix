@@ -124,8 +124,8 @@
         services.immich = {
           enable = true;
           inherit port;
-          # Bind wide so the tailnet reaches the port without the vhost.
-          host = mkDefault "0.0.0.0";
+          # Only the proxy and the share tunnel speak to it, over loopback.
+          host = "127.0.0.1";
           mediaLocation = mkDefault "/srv/photos";
         };
 

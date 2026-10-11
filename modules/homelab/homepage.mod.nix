@@ -4,16 +4,9 @@
 {
   flake.nixosModules.lab = self.nixosModules.homepage;
   flake.nixosModules.homepage =
-    {
-      config,
-      lib,
-      pkgs,
-      ...
-    }:
+    { config, lib, ... }:
     let
       inherit (lib.lists) singleton;
-      inherit (lib.meta) getExe';
-      inherit (lib.modules) mkIf;
       inherit (lib.ship) fences topology;
 
       url =
@@ -140,36 +133,6 @@
                     };
                   };
               }
-              # No native NUT widget, so this reads the shim below.
-              {
-                Status = lib.lists.optional config.alerts.ups.enable {
-                  UPS = {
-                    description = "EcoFlow via NUT";
-                    icon = "mdi-battery-charging";
-                    widget = {
-                      type = "customapi";
-                      url = "http://127.0.0.1:3494/ups";
-                      mappings = [
-                        {
-                          field = "battery_charge";
-                          label = "battery";
-                          suffix = "%";
-                        }
-                        {
-                          field = "battery_runtime_hours";
-                          label = "runtime";
-                          suffix = "h";
-                        }
-                        {
-                          field = "ups_status";
-                          label = "status";
-                          format = "text";
-                        }
-                      ];
-                    };
-                  };
-                };
-              }
             ];
         };
 
@@ -179,51 +142,6 @@
           # The internet is allowed for the icon CDN.
           IPAddressAllow = fences.loopback ++ singleton fences.tailnet;
           IPAddressDeny = fences.privateRanges;
-        };
-
-        # GET /ups returns upsc output as JSON with dots in NUT names
-        # replaced by underscores, since customapi reads a dot as nesting.
-        systemd.sockets.ship-stats = mkIf config.alerts.ups.enable {
-          wantedBy = singleton "sockets.target";
-          socketConfig = {
-            ListenStream = "127.0.0.1:3494";
-            Accept = true;
-          };
-        };
-        systemd.services."ship-stats@" = mkIf config.alerts.ups.enable {
-          description = "host stats as JSON for the homepage tiles";
-          serviceConfig = {
-            DynamicUser = true;
-            StandardInput = "socket";
-            StandardOutput = "socket";
-            IPAddressAllow = fences.loopback;
-            IPAddressDeny = "any";
-          };
-          # awk only: printf and read are bash builtins, upsc is absolute.
-          path = singleton pkgs.gawk;
-          script = ''
-            read -r _ reqpath _ || true
-            while IFS= read -r line; do
-              line=''${line%$'\r'}
-              [ -z "$line" ] && break
-            done
-
-            case "$reqpath" in
-              /ups)
-                body=$(${getExe' pkgs.nut "upsc"} house 2>/dev/null | awk -F': ' '
-                  $1 == "battery.charge"  { printf "\"battery_charge\":%s,", $2 }
-                  $1 == "battery.runtime" { printf "\"battery_runtime_hours\":%.1f,", $2 / 3600 }
-                  $1 == "ups.status"      { printf "\"ups_status\":\"%s\",", $2 }
-                ')
-                ;;
-              *)
-                body=""
-                ;;
-            esac
-
-            body="{''${body%,}}"
-            printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' "''${#body}" "$body"
-          '';
         };
       };
     };
