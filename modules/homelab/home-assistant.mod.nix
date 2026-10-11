@@ -83,14 +83,8 @@
               time_zone = config.time.timeZone;
             };
 
-            # Trust loopback's X-Forwarded-For across the nginx hop.
-            http = {
-              use_x_forwarded_for = true;
-              trusted_proxies = [
-                "127.0.0.1"
-                "::1"
-              ];
-            };
+            # The http block (trusted proxies for the nginx hop) lives in the
+            # UI since 2026.8: Settings > System > Network.
           };
         };
 
