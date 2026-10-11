@@ -1,6 +1,6 @@
-# Jellyfin and the Usenet automation chain (Sonarr, Radarr, Bazarr,
-# Prowlarr, SABnzbd), tailnet-only, plus Calibre-Web. Indexer and *arr
-# wiring is web-UI state. downloads/ and library/ share one filesystem so
+# Jellyfin, Seerr and the Usenet automation chain (Sonarr, Radarr,
+# Bazarr, Prowlarr, SABnzbd), tailnet-only, plus Calibre-Web. Indexer and
+# *arr wiring is web-UI state. downloads/ and library/ share one filesystem so
 # *arr imports hardlink.
 { self, ... }:
 {
@@ -91,6 +91,7 @@
           bazarr.port = 6767;
           prowlarr.port = 9696;
           jellyfin.port = 8096;
+          requests.port = config.services.seerr.port;
         };
 
         unfreePackages = singleton "unrar";
@@ -214,7 +215,13 @@
           "video"
         ];
 
+        # Seerr: one request page over Sonarr and Radarr, signed in with
+        # Jellyfin accounts, so anyone in the house can ask for a title.
+        # Wired to the three of them from its own setup page.
+        services.seerr.enable = true;
+
         systemd.services.prowlarr.serviceConfig = egressFence;
+        systemd.services.seerr.serviceConfig = egressFence;
         systemd.services.jellyfin.serviceConfig = egressFence;
         systemd.services.calibre-web.serviceConfig = calibreWebFence;
 

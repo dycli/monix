@@ -125,13 +125,22 @@
                       icon = "immich.png";
                     };
                   }
-                  ++ singleton {
-                    Jellyfin = {
-                      href = url "jellyfin";
-                      description = "Movies & TV";
-                      icon = "jellyfin.png";
-                    };
-                  };
+                  ++ [
+                    {
+                      Jellyfin = {
+                        href = url "jellyfin";
+                        description = "Movies & TV";
+                        icon = "jellyfin.png";
+                      };
+                    }
+                    {
+                      Seerr = {
+                        href = url "requests";
+                        description = "Requests";
+                        icon = "seerr.png";
+                      };
+                    }
+                  ];
               }
             ];
         };
