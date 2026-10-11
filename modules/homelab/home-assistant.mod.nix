@@ -53,6 +53,10 @@
             # directly with the same camera account Frigate's RTSP uses.
             "mqtt"
             "tplink"
+            # The assistants' home tools: HA's own MCP server, added once
+            # in the UI (Settings → Integrations → Model Context Protocol
+            # Server) over the Assist API, reached with a long-lived token.
+            "mcp_server"
           ];
 
           # UI setup points this at http://127.0.0.1:5000.
@@ -63,6 +67,15 @@
           config = {
             # The standard integration bundle.
             default_config = { };
+
+            # An automation that calls rest_command.ship_alert with a
+            # `message` wakes the assistant (alerts.mod.nix's door).
+            rest_command.ship_alert = {
+              url = "http://127.0.0.1:${toString config.alerts.port}/";
+              method = "post";
+              content_type = "text/plain";
+              payload = "{{ message }}";
+            };
 
             homeassistant = {
               name = "Home";

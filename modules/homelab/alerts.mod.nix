@@ -3,7 +3,9 @@
 # cannot see, smartd's -M exec hook, and upsmon's NOTIFYCMD spool. Each
 # writes through ship-alert into the spool; on Water, Sokka sends what
 # lands there and deletes it, and on other hosts a relay hands each alert
-# to Water's receiver over the tailnet, deleting it once Water has it.
+# to Water's door over the tailnet, deleting it once Water has it. The
+# door takes a plain HTTP POST, so anything else on Water (Home Assistant
+# automations, a script) can wake the assistant the same way.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.alerts;
@@ -23,8 +25,7 @@
 
       cfg = config.alerts;
       hostname = config.networking.hostName;
-      inherit (cfg) spool;
-      port = 7749;
+      inherit (cfg) spool port;
       # Longest alert kept; the rest is cut.
       max = 4000;
 
@@ -115,6 +116,13 @@
           default = "/var/spool/alerts";
           readOnly = true;
           description = "Directory the sensors write alerts into, one file each.";
+        };
+
+        port = mkOption {
+          type = types.port;
+          default = 7749;
+          readOnly = true;
+          description = "The door: POST a body to http://<host>:port/ and it is an alert.";
         };
 
         reader = mkOption {
@@ -374,12 +382,13 @@
             };
             path = [
               pkgs.coreutils
-              pkgs.socat
+              pkgs.curl
             ];
             script = ''
               for alert in ${spool}/[0-9]*; do
                 [ -f "$alert" ] || continue
-                reply=$(socat -T 30 - "TCP:${cfg.relay.to}:${toString port},connect-timeout=10" < "$alert" || true)
+                reply=$(curl -sS --max-time 30 --connect-timeout 10 -H 'Expect:' \
+                  --data-binary "@$alert" "http://${cfg.relay.to}:${toString port}/" || true)
                 if [ "$reply" = ok ]; then
                   rm -f "$alert"
                 else
@@ -392,22 +401,23 @@
         })
 
         (mkIf (cfg.relay.from != [ ]) {
+          # The door: POST a body to http://<host>:7749/ and it is an alert.
           # The tailnet interface is trusted by the firewall; the socket
-          # itself admits only the listed senders.
+          # itself admits only the listed senders and this host.
           systemd.sockets.alert-receive = {
-            description = "Alerts from other hosts";
+            description = "Alerts from other hosts and local services";
             wantedBy = singleton "sockets.target";
             socketConfig = {
               ListenStream = port;
               Accept = true;
               MaxConnections = 8;
-              IPAddressAllow = cfg.relay.from;
+              IPAddressAllow = cfg.relay.from ++ lib.ship.fences.loopback;
               IPAddressDeny = "any";
             };
           };
 
           systemd.services."alert-receive@" = {
-            description = "Spool one alert from another host";
+            description = "Spool one posted alert";
             serviceConfig = lib.ship.hardened.tenant // {
               User = cfg.reader;
               Group = config.users.users.${cfg.reader}.group;
@@ -420,11 +430,24 @@
               InaccessiblePaths = singleton config.users.users.${cfg.reader}.home;
             };
             path = singleton pkgs.coreutils;
+            # Enough HTTP to take a POST: the headers up to the blank
+            # line, then Content-Length bytes of body.
             script = ''
-              body=$(head -c ${toString max})
+              read -r request || exit 0
+              length=0
+              while IFS= read -r line; do
+                line=''${line%$'\r'}
+                [ -n "$line" ] || break
+                case "''${line,,}" in
+                  content-length:*) length=''${line#*:}; length=''${length// /} ;;
+                esac
+              done
+              case "$request" in POST*) ;; *) length=0 ;; esac
+              [ "$length" -gt ${toString max} ] && length=${toString max}
+              body=$(head -c "$length")
               [ -n "$body" ] || exit 0
               ${enqueue}
-              echo ok
+              printf 'HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\nok\n'
             '';
           };
         })

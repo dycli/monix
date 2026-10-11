@@ -93,6 +93,20 @@ you are stuck (a code, a captcha, a choice) show it and ask.";
 const SCREEN: &str = " When {person} must take the keyboard themselves (a captcha, a \
 sign-in only they can do), give them the screen: {screen}";
 
+/// Added when the assistant has the home's tools (Home Assistant).
+const HOME: &str = "\n\nThe home tools are the house itself: lights, switches, \
+climate, media, sensors. Read its state before you speak about it and act \
+on it only when {person} asks. On a turn an alert started they are withheld \
+with the rest; say what should be checked instead.";
+
+/// Added when the assistant has a site of its own.
+const PAGES: &str = "\n\nYou have a site of your own: show_page publishes a page of \
+HTML you write (a chart, a table, a plan, an explainer with pictures in \
+it) at a name you choose, and gives you its link to send; the same name \
+again replaces the page, the older versions stay at their own links. Use \
+it when a chat message would be too long or too flat; it is one file, \
+nothing runs on it, and it loads only for the household.";
+
 /// A routine's whole answer when it has nothing to say; not sent.
 const QUIET: &str = "(nothing new)";
 
@@ -317,7 +331,17 @@ fn answer(
         (true, Err(_)) if std::env::var_os("SOKKA_DESK").is_some() => COMPUTER.to_owned(),
         (true, Err(_)) => String::new(),
     };
-    let system = format!("{PROMPT}{style}{tools}{computer}{FILES}")
+    let home = if model.tools() && std::env::var_os("SOKKA_HOME").is_some() {
+        HOME
+    } else {
+        ""
+    };
+    let pages = if model.tools() && std::env::var_os("SOKKA_PAGES").is_some() {
+        PAGES
+    } else {
+        ""
+    };
+    let system = format!("{PROMPT}{style}{tools}{computer}{home}{pages}{FILES}")
         .replace("{name}", &name)
         .replace("{person}", &person)
         .replace("{QUIET}", QUIET);

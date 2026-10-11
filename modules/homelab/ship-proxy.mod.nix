@@ -63,8 +63,14 @@
                     description = "Host label under the domain; defaults to the attr name.";
                   };
                   port = mkOption {
-                    type = lib.types.port;
-                    description = "Upstream port on 127.0.0.1.";
+                    type = lib.types.nullOr lib.types.port;
+                    default = null;
+                    description = "Upstream port on 127.0.0.1; or set root instead.";
+                  };
+                  root = mkOption {
+                    type = lib.types.nullOr lib.types.str;
+                    default = null;
+                    description = "A directory to serve as static files instead of proxying.";
                   };
                   proxyExtra = mkOption {
                     type = lib.types.lines;
@@ -116,11 +122,18 @@
               |> mapAttrs' (
                 _: route:
                 nameValuePair "${route.subdomain}.${cfg.domain}" (
-                  proxy route.port (
-                    optionalAttrs (route.proxyExtra != "") {
-                      extraConfig = route.proxyExtra;
+                  if route.root != null then
+                    {
+                      useACMEHost = cfg.domain;
+                      forceSSL = true;
+                      inherit (route) root;
                     }
-                  )
+                  else
+                    proxy route.port (
+                      optionalAttrs (route.proxyExtra != "") {
+                        extraConfig = route.proxyExtra;
+                      }
+                    )
                 )
               )
             )

@@ -335,6 +335,20 @@ time per instance; "stop" cancels it, which kills the model call. A task is
 a person's turn, so it can act and draft, and its drafts wait for 👍 like
 any other.
 
+Each assistant has a site, `<name>.<domain>` on the tailnet proxy: `show_page`
+writes one HTML document under a name of plain letters, digits and dashes,
+and hands back its link, for anything a chat message would flatten (a chart,
+a table, a plan). The same name again replaces the page, and every version
+stays at its own dated link. It is a directory of files that nginx serves
+read-only as the assistant's group; nothing runs on it.
+
+With `homeTokenFile` set, both assistants also hold Home Assistant's own MCP
+server, the one that ships with it, over its Assist API: state of what is
+exposed to Assist, and the intents to act on it. The long-lived token lives
+in a systemd credential and is filled into a private copy of the MCP file at
+unit start. On a turn an alert or a household message started, the home is
+withheld like every other tool that acts.
+
 Photos, PDFs and text files sent to Sokka are decrypted, typed by their
 first bytes rather than the sender's word, and handed to the model with
 the message. They are read once and kept nowhere: hippo holds only text, so
@@ -415,5 +429,9 @@ request and sends the answer, an admin's read of what happened, whether it
 needs Dylan and what to do, and deletes them only once that is sent, so
 alerts wait out a homeserver outage. If the model fails, the alerts go out
 word for word instead.
-Air has no Sokka: a relay hands each alert over the tailnet to a socket on
-Water that admits only Air's address, and deletes it once Water answers.
+The spool has a door: a plain HTTP POST to port 7749 on Water is an alert,
+from Air's tailnet address or from Water itself. Air has no Sokka: a relay
+posts each alert there and deletes it once Water answers. Home Assistant
+has a `ship_alert` rest command on the same door, so any automation built
+in its UI (the UPS on battery, a camera seeing someone at night) wakes the
+assistant with a message of its choosing.

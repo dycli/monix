@@ -35,6 +35,8 @@ struct Tools {
     /// The computer's desk, when there is a computer: where its
     /// screenshots and downloads land.
     desk: Option<PathBuf>,
+    /// The site's directory and its URL, when the assistant has one.
+    pages: Option<(PathBuf, String)>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -103,6 +105,15 @@ struct Show {
     /// The screenshot's file name on the desk, as the screenshot tool
     /// reported it.
     file: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Page {
+    /// The page's name, its path on the site: lowercase letters, digits
+    /// and dashes, e.g. trip-plan.
+    name: String,
+    /// The whole page, one HTML document; styles and scripts inline.
+    html: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -356,6 +367,37 @@ impl Tools {
     }
 
     #[tool(
+        description = "Publish a page of HTML on your site at a name and get its link; the same name again replaces the page, older versions keep their own links."
+    )]
+    fn show_page(
+        &self,
+        Parameters(Page { name, html }): Parameters<Page>,
+    ) -> Result<String, String> {
+        let (dir, url) = self.pages.as_ref().ok_or("There is no site here.")?;
+        publish(dir, url, &name, &html)
+    }
+
+    #[tool(description = "The pages on your site, by name.")]
+    fn pages(&self) -> Result<String, String> {
+        let (dir, url) = self.pages.as_ref().ok_or("There is no site here.")?;
+        let mut names: Vec<String> = fs::read_dir(dir)
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .filter(|d| d.path().join("index.html").is_file())
+            .filter_map(|d| d.file_name().into_string().ok())
+            .collect();
+        names.sort();
+        if names.is_empty() {
+            return Ok("No pages yet.".into());
+        }
+        Ok(names
+            .iter()
+            .map(|n| format!("{url}/{n}/"))
+            .collect::<Vec<_>>()
+            .join("\n"))
+    }
+
+    #[tool(
         description = "Start a task: work that takes a while (several sites, a long search, something to fill in on your computer). Give it as your person's request, in full; it runs on its own and its answer is sent when done. Then tell them it is under way and stop."
     )]
     fn task(&self, Parameters(Text { text }): Parameters<Text>) -> Result<String, String> {
@@ -489,9 +531,59 @@ fn show(desk: &Path, outbox: &Path, file: &str) -> Result<String, String> {
     Ok("It goes out with your answer.".into())
 }
 
+/// Writes a page under its name: a dated copy that stays, and index.html
+/// swapped in whole. The name is the only path the model chooses, so it is
+/// held to one plain label; the web server reads as the group.
+fn publish(dir: &Path, url: &str, name: &str, html: &str) -> Result<String, String> {
+    use std::os::unix::fs::PermissionsExt;
+    let plain = !name.is_empty()
+        && name.len() <= 40
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && !name.starts_with('-');
+    if !plain {
+        return Err("The name is lowercase letters, digits and dashes, 40 at most.".into());
+    }
+    let page = dir.join(name);
+    fs::create_dir_all(&page).map_err(|e| e.to_string())?;
+    fs::set_permissions(&page, fs::Permissions::from_mode(0o750)).map_err(|e| e.to_string())?;
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let readable = fs::Permissions::from_mode(0o640);
+    let kept = page.join(format!("{stamp}.html"));
+    fs::write(&kept, html).map_err(|e| e.to_string())?;
+    fs::set_permissions(&kept, readable.clone()).map_err(|e| e.to_string())?;
+    let tmp = page.join(".index.html");
+    fs::write(&tmp, html).map_err(|e| e.to_string())?;
+    fs::set_permissions(&tmp, readable).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, page.join("index.html")).map_err(|e| e.to_string())?;
+    Ok(format!(
+        "Published: {url}/{name}/ (this version stays at {url}/{name}/{stamp}.html)"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_page_is_published_under_a_plain_name_only() {
+        let dir = std::env::temp_dir().join(format!("sokka-pages-{}", std::process::id()));
+        let url = "https://sokka.example";
+        assert!(publish(&dir, url, "trip-plan", "<p>hi</p>").is_ok());
+        assert!(dir.join("trip-plan/index.html").is_file());
+        assert_eq!(fs::read_dir(dir.join("trip-plan")).unwrap().count(), 2);
+        assert!(publish(&dir, url, "trip-plan", "<p>again</p>").is_ok());
+        assert_eq!(
+            fs::read_to_string(dir.join("trip-plan/index.html")).unwrap(),
+            "<p>again</p>"
+        );
+        assert!(publish(&dir, url, "../etc", "x").is_err());
+        assert!(publish(&dir, url, "Trip", "x").is_err());
+        assert!(publish(&dir, url, "", "x").is_err());
+        assert!(publish(&dir, url, "-x", "x").is_err());
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn a_screenshot_is_shown_by_name_only_and_only_a_png() {
@@ -520,6 +612,10 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
         house: House::from_env().map(Arc::new),
         mail: std::env::var_os("SOKKA_MAIL").map(PathBuf::from),
         desk: std::env::var_os("SOKKA_DESK").map(PathBuf::from),
+        pages: std::env::var("SOKKA_PAGES")
+            .ok()
+            .zip(std::env::var("SOKKA_PAGES_URL").ok())
+            .map(|(d, u)| (PathBuf::from(d), u)),
         tool_router: Tools::tool_router(),
     };
     let running = tools

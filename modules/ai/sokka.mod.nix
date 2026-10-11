@@ -30,7 +30,10 @@
 # a browser in a microVM of its own (sokka-computer.mod.nix) over
 # Playwright MCP, reads its desk for screenshots, and can start a task:
 # a turn of its own with no clock on it, run on the tick, for work that
-# outlives the message.
+# outlives the message. Each has a site, `<n>.<domain>` on the tailnet
+# proxy: `show_page` writes a page of HTML there and hands back its link.
+# With `homeTokenFile` set, both reach Home Assistant's own MCP server as
+# well, its tools withheld on quoted turns like the rest that act.
 #
 # The instances share a household directory their common group can write:
 # shared lists, and a mailbox each. "Tell Gab ..." leaves a message in hers,
@@ -75,6 +78,8 @@
       cfg = config.sokka;
 
       house = "/var/lib/sokka-household";
+      # The assistants' sites: a directory each, read by nginx as its group.
+      pages = "/var/lib/sokka-pages";
       households = {
         SOKKA_HOUSE = house;
         SOKKA_PEOPLE = concatStringsSep "," (mapAttrsToList (n: i: "${n}=${i.person}") cfg.instances);
@@ -240,13 +245,21 @@
             addr = computers.addr (computers.indexes cfg.instances).${n};
             desk = "${computers.desks}/${n}";
           };
+          # The assistant's site: pages it writes, served by the proxy.
+          site = {
+            dir = "${pages}/${n}";
+            url = "https://${n}.${config.shipProxy.domain}";
+          };
           shared =
             households
             // {
               SOKKA_UNIT = n;
               SOKKA_USAGE = "/run/usage.sock";
+              SOKKA_PAGES = site.dir;
+              SOKKA_PAGES_URL = site.url;
             }
-            // optionalAttrs i.computer { SOKKA_DESK = pc.desk; };
+            // optionalAttrs i.computer { SOKKA_DESK = pc.desk; }
+            // optionalAttrs (cfg.homeTokenFile != null) { SOKKA_HOME = "1"; };
 
           mcp = (pkgs.formats.json { }).generate "${n}-mcp.json" {
             mcpServers = {
@@ -299,8 +312,38 @@
                 type = "http";
                 url = "http://${pc.addr}:${toString computers.mcpPort}/mcp";
               };
+            }
+            // optionalAttrs (cfg.homeTokenFile != null) {
+              # Home Assistant's own MCP server; the token is filled in at
+              # unit start from the credential, into a copy of this file.
+              home = {
+                type = "http";
+                url = "http://127.0.0.1:${toString config.shipProxy.routes.ha.port}/api/mcp";
+                headers.Authorization = "Bearer @HOME_TOKEN@";
+              };
             };
           };
+
+          # With the home on, the MCP file holds a token, so a private copy
+          # is made in the runtime directory and the bot pointed at it.
+          start =
+            if cfg.homeTokenFile == null then
+              getExe sokka
+            else
+              getExe (
+                pkgs.writeShellApplication {
+                  name = "${n}-start";
+                  runtimeInputs = [
+                    pkgs.coreutils
+                    pkgs.gnused
+                  ];
+                  text = ''
+                    umask 077
+                    sed "s|@HOME_TOKEN@|$(cat "$CREDENTIALS_DIRECTORY/home")|" ${mcp} > "$RUNTIME_DIRECTORY/mcp.json"
+                    SOKKA_MCP="$RUNTIME_DIRECTORY/mcp.json" exec ${getExe sokka}
+                  '';
+                }
+              );
 
           sandbox = lib.ship.hardened.tenant // {
             User = n;
@@ -409,17 +452,24 @@
               // fence
               // claudeUnit
               // {
-                ExecStart = getExe sokka;
+                ExecStart = start;
                 EnvironmentFile = i.credentialsEnvFile;
                 LoadCredential = [
                   "claude-token:${cfg.claudeTokenFile}"
                   "caldav:${cfg.calendarCredentialsFile}"
                 ]
-                ++ optional (i.mailCredentialsFile != null) "mail:${i.mailCredentialsFile}";
+                ++ optional (i.mailCredentialsFile != null) "mail:${i.mailCredentialsFile}"
+                ++ optional (cfg.homeTokenFile != null) "home:${cfg.homeTokenFile}";
+                RuntimeDirectory = n;
+                RuntimeDirectoryMode = "0700";
                 Restart = "always";
                 RestartSec = 10;
-                ReadWritePaths =
-                  singleton house ++ optional i.alerts config.alerts.spool ++ optional i.computer pc.desk;
+                ReadWritePaths = [
+                  house
+                  site.dir
+                ]
+                ++ optional i.alerts config.alerts.spool
+                ++ optional i.computer pc.desk;
               }
               // optionalAttrs i.computer {
                 # Through the fence to its own computer, and into its desk.
@@ -522,6 +572,16 @@
           '';
         };
 
+        homeTokenFile = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = ''
+            agenix file holding a Home Assistant long-lived access token,
+            for its MCP server; shared by the instances. Null leaves the
+            home out.
+          '';
+        };
+
         mailServer = mkOption {
           type = types.str;
           example = "imap.example.com";
@@ -572,6 +632,25 @@
           sokka-image = { };
           sokka-household = { };
         };
+
+        # Each assistant's pages at https://<n>.<domain>/<page>/, for the
+        # tailnet like every other route.
+        shipProxy.routes = mapAttrs (n: _: { root = "${pages}/${n}"; }) cfg.instances;
+        systemd.tmpfiles.settings.sokka-pages = {
+          ${pages}.d = {
+            user = "root";
+            group = "root";
+            mode = "0751";
+          };
+        }
+        // lib.attrsets.mapAttrs' (n: _: {
+          name = "${pages}/${n}";
+          value.d = {
+            user = n;
+            group = "nginx";
+            mode = "2750";
+          };
+        }) cfg.instances;
 
         # Setgid, so what one assistant writes stays the group's.
         systemd.tmpfiles.settings.sokka-household = {
