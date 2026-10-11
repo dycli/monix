@@ -254,6 +254,15 @@
                 problems=$(printf '%s\n🔁 running an older kernel than the config — reboot when convenient' "$problems")
               fi
 
+              # The flake's inputs are updated by hand, about weekly; the
+              # running system's version carries the date nixpkgs was
+              # pinned at, so an overdue update shows here.
+              pinned=$(cut -d. -f3 /run/current-system/nixos-version)
+              age=$(( ($(date +%s) - $(date -d "$pinned" +%s)) / 86400 ))
+              if [ "$age" -ge 10 ]; then
+                problems=$(printf '%s\n📦 nixpkgs pinned %s days ago — ask Bridge to update the flake' "$problems" "$age")
+              fi
+
               if [ -n "$problems" ]; then
                 printf '%s sweep:\n%s' ${hostname} "$problems" | ship-alert
               fi
