@@ -23,7 +23,10 @@ in
       credentialsEnvFile = config.secrets.matrix-sokka-env.path;
       mailCredentialsFile = config.secrets.sokka-mail-json.path;
     };
-    instances.suki.credentialsEnvFile = config.secrets.matrix-suki-env.path;
+    instances.suki = {
+      credentialsEnvFile = config.secrets.matrix-suki-env.path;
+      mailCredentialsFile = config.secrets.suki-mail-json.path;
+    };
     registrationEnvFile = config.secrets.matrix-registration-env.path;
     claudeTokenFile = config.secrets.agent-claude-token.path;
     calendarCredentialsFile = config.secrets.sokka-caldav-json.path;
@@ -38,6 +41,7 @@ in
     matrix-suki-env.file = ./secrets/matrix-suki.env.age;
     sokka-caldav-json.file = ./secrets/sokka-caldav.json.age;
     sokka-mail-json.file = ./secrets/sokka-mail.json.age;
+    suki-mail-json.file = ./secrets/suki-mail.json.age;
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     immich-cloudflare-tunnel-token.file = ./secrets/immich-cloudflare-tunnel-token.age;
     cloudflare-dns-token = {
@@ -64,6 +68,7 @@ in
   ];
   systemd.services.suki.restartTriggers = [
     ./secrets/matrix-suki.env.age
+    ./secrets/suki-mail.json.age
     ./secrets/sokka-caldav.json.age
   ];
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
