@@ -102,8 +102,10 @@ with the rest; say what should be checked instead.";
 /// Added when the assistant can request films and shows (Seerr).
 const REQUESTS: &str = "\n\nThe media tools are the household's film and show \
 library: media_search finds a title and says whether the library has it, \
-media_seasons lists a show's seasons, media_request asks for a film or for \
-seasons of a show, and media_requests shows what has been asked for. When \
+media_seasons lists a show's seasons, media_profiles lists the qualities it \
+can come in, media_request asks for a film or for seasons of a show, at the \
+default quality unless {person} names one, and media_requests shows what has \
+been asked for. When \
 a search gives more than one plausible match, ask which before requesting. \
 A request is made under {person}'s own name; say it is in once the tool \
 has made it, and that it arrives when the downloads do.";

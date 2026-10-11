@@ -1,8 +1,9 @@
 """Sokka's requests: a stdio MCP server over Seerr.
 
 Usage: sokka-requests KEYFILE, Seerr's API key, raw, on the server
-SOKKA_SEERR. Searches the catalogue, requests a film or a show's seasons
-and lists what has been requested. A request is made under the Seerr
+SOKKA_SEERR. Searches the catalogue, requests a film or a show's seasons, at
+the default quality or a named profile, and lists what has been
+requested. A request is made under the Seerr
 user whose name is SOKKA_PERSON when there is one, else under the key's
 own account.
 """
@@ -83,6 +84,26 @@ def media_seasons(tmdb_id: int) -> dict:
     }
 
 
+def service(kind):
+    """The default Sonarr or Radarr behind Seerr, with its quality profiles."""
+    name = "radarr" if kind == "movie" else "sonarr"
+    servers = call(f"/service/{name}")
+    server = next((s for s in servers if s.get("isDefault")), servers[0] if servers else None)
+    if server is None:
+        raise ValueError(f"no {name} behind Seerr")
+    detail = call(f"/service/{name}/{server['id']}")
+    return server, detail.get("profiles") or []
+
+
+@server.tool()
+def media_profiles(kind: str) -> list[dict]:
+    """The quality profiles a film (kind movie) or show (kind tv) can be requested in; one is the default."""
+    if kind not in ("movie", "tv"):
+        raise ValueError("kind is movie or tv")
+    srv, profiles = service(kind)
+    return [{"quality": p["name"], "default": p["id"] == srv.get("activeProfileId")} for p in profiles]
+
+
 def requester():
     """The Seerr user named like the person, if any."""
     if not PERSON:
@@ -95,13 +116,21 @@ def requester():
 
 
 @server.tool()
-def media_request(kind: str, tmdb_id: int, seasons: list[int] | None = None) -> dict:
-    """Request a film (kind movie) or a show (kind tv), the given seasons or, with none, all of them."""
+def media_request(kind: str, tmdb_id: int, seasons: list[int] | None = None, quality: str | None = None) -> dict:
+    """Request a film (kind movie) or a show (kind tv), the given seasons or, with none, all of them; quality is a profile name from media_profiles, else the default."""
     if kind not in ("movie", "tv"):
         raise ValueError("kind is movie or tv")
     body = {"mediaType": kind, "mediaId": tmdb_id}
     if kind == "tv":
         body["seasons"] = seasons or "all"
+    if quality:
+        srv, profiles = service(kind)
+        profile = next((p for p in profiles if p["name"].lower() == quality.lower()), None)
+        if profile is None:
+            raise ValueError("no such quality; the options are " + ", ".join(p["name"] for p in profiles))
+        body["serverId"] = srv["id"]
+        body["profileId"] = profile["id"]
+        body["rootFolder"] = srv.get("activeDirectory")
     user = requester()
     if user is not None:
         body["userId"] = user
@@ -110,6 +139,7 @@ def media_request(kind: str, tmdb_id: int, seasons: list[int] | None = None) -> 
         "request": made["id"],
         "status": REQUEST.get(made.get("status"), "pending"),
         "requested_by": (made.get("requestedBy") or {}).get("displayName"),
+        "quality": quality or "default",
     }
 
 
