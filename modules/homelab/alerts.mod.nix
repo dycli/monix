@@ -263,6 +263,13 @@
                 problems=$(printf '%s\n📦 nixpkgs pinned %s days ago — ask Bridge to update the flake' "$problems" "$age")
               fi
 
+              # The tape writes a file a day while Globex trades; a silent
+              # Tuesday-to-Friday means the recorder or the feed is out.
+              if [ -d /srv/storage/tape ] && [ "$(date +%u)" -ge 2 ] && [ "$(date +%u)" -le 5 ] \
+                && [ -z "$(find /srv/storage/tape -name '*.dbn.zst' -mtime -1 -print -quit)" ]; then
+                problems=$(printf '%s\n📼 the tape has not written a file in a day' "$problems")
+              fi
+
               if [ -n "$problems" ]; then
                 printf '%s sweep:\n%s' ${hostname} "$problems" | ship-alert
               fi
