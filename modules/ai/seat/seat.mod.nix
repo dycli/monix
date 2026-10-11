@@ -10,7 +10,10 @@
 let
   # A headless Brave on the seat's own host, plus the desktops whose visible
   # Brave the seat drives over HTTP on the tailnet (browser.mod.nix); each
-  # desktop admits Water alone at that door.
+  # desktop admits Water alone at that door. Parallel's keyless search, the
+  # one the assistants use, answers in well under a second where the
+  # launchers' own search takes several and reads worse on technical
+  # lookups.
   browserServers =
     topology:
     {
@@ -18,6 +21,7 @@ let
         command = "/run/current-system/sw/bin/kestrel-browser-headless";
         args = [ ];
       };
+      web.url = "https://search.parallel.ai/mcp";
     }
     // (
       topology.desktops
