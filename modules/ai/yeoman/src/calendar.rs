@@ -102,6 +102,8 @@ impl Calendar {
         let config = Agent::config_builder()
             .timeout_global(Some(TIMEOUT))
             .http_status_as_error(false)
+            // PROPFIND and REPORT are WebDAV verbs, not HTTP's own.
+            .allow_non_standard_methods(true)
             .build();
         Ok(Calendar {
             accounts,

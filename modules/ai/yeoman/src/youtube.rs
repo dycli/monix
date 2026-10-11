@@ -179,14 +179,24 @@ fn pick<'a>(info: &'a Value, language: &str) -> Option<(&'a Value, &'static str,
 
 /// The words of a json3 caption file, one space between them.
 fn json3_text(events: &Value) -> String {
-    let words: String = events["events"]
+    let lines: Vec<String> = events["events"]
         .as_array()
         .into_iter()
         .flatten()
-        .flat_map(|e| e["segs"].as_array().into_iter().flatten())
-        .filter_map(|s| s["utf8"].as_str())
+        .map(|e| {
+            e["segs"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|s| s["utf8"].as_str())
+                .collect()
+        })
         .collect();
-    words.split_whitespace().collect::<Vec<_>>().join(" ")
+    lines
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// The words of a WebVTT file: cue text only, with the repeats automatic
@@ -288,9 +298,9 @@ mod tests {
     #[test]
     fn caption_files_become_words() {
         let events = json!({"events": [
-            {"segs": [{"utf8": "Hello "}, {"utf8": "there\n"}]},
+            {"segs": [{"utf8": "Hello "}, {"utf8": "there"}]},
             {"tStartMs": 1},
-            {"segs": [{"utf8": "  friend"}]},
+            {"segs": [{"utf8": "friend"}]},
         ]});
         assert_eq!(json3_text(&events), "Hello there friend");
         let vtt = "WEBVTT\nKind: captions\nLanguage: en\n\n00:00:00.000 --> 00:00:01.000\nHello <c>there</c>\n\n00:00:01.000 --> 00:00:02.000\nHello there\n\n00:00:02.000 --> 00:00:03.000 align:start\nfriend &amp; co\n";
