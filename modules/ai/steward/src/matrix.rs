@@ -1,4 +1,4 @@
-//! Sokka's Matrix connection, end-to-end encrypted. matrix-sdk keeps room
+//! The steward's Matrix connection, end-to-end encrypted. matrix-sdk keeps room
 //! state and the device's keys in a sqlite store under the state directory,
 //! with the login beside it, so a restart resumes the same device and the
 //! sync picks up where it stopped.
@@ -16,7 +16,7 @@ async fn client(homeserver: &str, store: &Path) -> Result<Client, String> {
         .homeserver_url(homeserver)
         .sqlite_store(store, None)
         .with_encryption_settings(EncryptionSettings {
-            // A device signed by Sokka's own identity, so clients that
+            // A device signed by the steward's own identity, so clients that
             // refuse unsigned devices still share room keys with it.
             auto_enable_cross_signing: true,
             ..Default::default()
@@ -35,7 +35,7 @@ async fn login(homeserver: &str, user: &str, password: &str, dir: &Path) -> Resu
         .matrix_auth()
         .login_username(user, password)
         .initial_device_display_name(
-            &std::env::var("SOKKA_NAME").map_err(|_| "SOKKA_NAME is not set")?,
+            &std::env::var("STEWARD_NAME").map_err(|_| "STEWARD_NAME is not set")?,
         )
         .send()
         .await
@@ -46,7 +46,7 @@ async fn login(homeserver: &str, user: &str, password: &str, dir: &Path) -> Resu
         .ok_or("login left no session")?;
     let raw = serde_json::to_string(&session).map_err(|e| e.to_string())?;
     fs::write(dir.join("session.json"), raw).map_err(|e| format!("session.json: {e}"))?;
-    eprintln!("sokka: logged in as a new device");
+    eprintln!("steward: logged in as a new device");
     Ok(client)
 }
 
@@ -82,7 +82,7 @@ pub async fn connect(
                     Some(ErrorKind::UnknownToken { .. })
                 ) =>
             {
-                eprintln!("sokka: the server forgot this device; logging in again");
+                eprintln!("steward: the server forgot this device; logging in again");
             }
             Err(e) => return Err(format!("whoami: {e}")),
         }

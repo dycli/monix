@@ -13,11 +13,11 @@
 #
 # Nothing of the household is in the guest: no tailnet, no store share,
 # no secret, no login but the ones the assistant makes on sites. Its
-# network is the internet only (sokka-network.mod.nix).
+# network is the internet only (steward-network.mod.nix).
 { self, ... }:
 {
-  flake.nixosModules.lab = self.nixosModules.sokka-computer;
-  flake.nixosModules.sokka-computer =
+  flake.nixosModules.lab = self.nixosModules.steward-computer;
+  flake.nixosModules.steward-computer =
     {
       config,
       lib,
@@ -33,7 +33,7 @@
       inherit (lib) types;
       inherit (lib.ship) computers;
 
-      indexed = computers.indexes config.sokka.instances;
+      indexed = computers.indexes config.steward.instances;
       owners = attrNames indexed;
       addr = n: computers.addr indexed.${n};
 
@@ -209,7 +209,7 @@
         };
     in
     {
-      options.sokka.instances = mkOption {
+      options.steward.instances = mkOption {
         type = types.attrsOf (
           types.submodule {
             options.computer = mkOption {
@@ -268,7 +268,9 @@
             )
             |> listToAttrs
           )
-          // (owners |> map (n: nameValuePair n { environment.SOKKA_SCREEN = screenUrl n; }) |> listToAttrs);
+          // (
+            owners |> map (n: nameValuePair n { environment.STEWARD_SCREEN = screenUrl n; }) |> listToAttrs
+          );
       };
     };
 }

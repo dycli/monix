@@ -1,4 +1,4 @@
-//! Sokka's book: the reminders and lists its tools keep, one SQLite file in
+//! The steward's book: the reminders and lists its tools keep, one SQLite file in
 //! its state directory. The tool server (one per model call) and the bot
 //! both change it, each change one transaction. The household's shared
 //! lists are a book of the same kind in the household directory, attached
@@ -56,7 +56,7 @@ pub struct Reminder {
     pub at: NaiveDateTime,
     pub text: String,
     pub repeat: Option<Repeat>,
-    /// A routine: at `at`, Sokka carries out `text` as a request and sends
+    /// A routine: at `at`, the steward carries out `text` as a request and sends
     /// its answer, instead of sending `text` itself.
     pub ask: bool,
     /// A routine whose answer also goes to the rest of the household.
@@ -295,7 +295,7 @@ mod tests {
 
     fn dir(name: &str) -> PathBuf {
         let d: PathBuf =
-            std::env::temp_dir().join(format!("sokka-book-{name}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("steward-book-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d

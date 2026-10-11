@@ -1,6 +1,7 @@
-# Sokka, the household assistant (sokka/): one endless Matrix chat with no
-# sessions, run once per person (`sokka.instances`), each with its own
-# account, memory, book and chat. Each message from its person becomes one
+# The steward (steward/), the household's assistant program: one endless
+# Matrix chat with no sessions, run once per person (`steward.instances`,
+# Sokka for one, Suki for another), each with its own account, memory,
+# book and chat. Each message from its person becomes one
 # fresh model call over the prompt, the whole memory and the message;
 # message and answer both go into that instance's own hippo store, so the
 # next call remembers them.
@@ -9,17 +10,17 @@
 # hippo service that is the store's only writer, and the account
 # bootstrap. Model calls run the claude CLI on the ship's Claude subscription
 # token, without built-in tools or settings; their only tools come over
-# MCP: web search and fetch (sokka-web.py, in front of Parallel's keyless
+# MCP: web search and fetch (steward-web.py, in front of Parallel's keyless
 # server), the instance's own
-# reminders, lists and memory tools (`sokka tools`: zoom, search and date
+# reminders, lists and memory tools (`steward tools`: zoom, search and date
 # in its hippo, as the seat's hippo CLI has), which reach only its book
-# and its hippo, the shared calendar (sokka-calendar.py over CalDAV), mail
-# where the instance has some (sokka-mail.py over IMAP, read-only), each
+# and its hippo, the shared calendar (steward-calendar.py over CalDAV), mail
+# where the instance has some (steward-mail.py over IMAP, read-only), each
 # the only process that sees its login, and YouTube search and captions
-# (sokka-youtube.py), which reaches YouTube only, film and show requests
+# (steward-youtube.py), which reaches YouTube only, film and show requests
 # (over Seerr, loopback only, with `requestsKeyFile`
-# set), and pictures (sokka-image.py), drawn by the image service that alone holds the
-# household's Codex login; `sokka tools` also reads the subscription
+# set), and pictures (steward-image.py), drawn by the image service that alone holds the
+# household's Codex login; `steward tools` also reads the subscription
 # limits from the usage service (usage.mod.nix). Mail and pages let
 # anyone put text in front of the model, so fetch opens only links a
 # search returned or the person wrote: nothing it read can ride out in a
@@ -28,7 +29,7 @@
 # sent to it without keeping them, and on the one instance that takes
 # them, reads the host's alerts from their spool and sends its own account
 # of them (alerts.mod.nix). An instance with `computer = true` also drives
-# a browser in a microVM of its own (sokka-computer.mod.nix) over
+# a browser in a microVM of its own (steward-computer.mod.nix) over
 # Playwright MCP, reads its desk for screenshots, and can start a task:
 # a turn of its own with no clock on it, run on the tick, for work that
 # outlives the message. Each has a site, `<n>.<domain>` on the tailnet
@@ -42,8 +43,8 @@
 # one too. Memories stay apart; only what is handed over crosses.
 { self, ... }:
 {
-  flake.nixosModules.lab = self.nixosModules.sokka;
-  flake.nixosModules.sokka =
+  flake.nixosModules.lab = self.nixosModules.steward;
+  flake.nixosModules.steward =
     {
       config,
       lib,
@@ -76,52 +77,52 @@
       inherit (lib) types;
       inherit (lib.ship) fences computers;
 
-      cfg = config.sokka;
+      cfg = config.steward;
 
-      house = "/var/lib/sokka-household";
+      house = "/var/lib/steward-household";
       # The assistants' sites: a directory each, read by nginx as its group.
-      pages = "/var/lib/sokka-pages";
+      pages = "/var/lib/steward-pages";
       households = {
-        SOKKA_HOUSE = house;
-        SOKKA_PEOPLE = concatStringsSep "," (mapAttrsToList (n: i: "${n}=${i.person}") cfg.instances);
+        STEWARD_HOUSE = house;
+        STEWARD_PEOPLE = concatStringsSep "," (mapAttrsToList (n: i: "${n}=${i.person}") cfg.instances);
       };
 
-      sokka = lib.ship.rustTool pkgs { src = ./sokka; };
+      steward = lib.ship.rustTool pkgs { src = ./steward; };
       hippo = lib.ship.rustTool pkgs { src = ./seat/hippo; };
 
-      calendar = pkgs.writers.writePython3Bin "sokka-calendar" {
+      calendar = pkgs.writers.writePython3Bin "steward-calendar" {
         libraries = ps: [
           ps.caldav
           ps.mcp
         ];
         flakeIgnore = singleton "E501";
-      } (readFile ./sokka-calendar.py);
+      } (readFile ./steward-calendar.py);
 
-      mail = pkgs.writers.writePython3Bin "sokka-mail" {
+      mail = pkgs.writers.writePython3Bin "steward-mail" {
         libraries = ps: [
           ps.imapclient
           ps.mcp
         ];
         flakeIgnore = singleton "E501";
-      } (readFile ./sokka-mail.py);
-      send = pkgs.writers.writePython3Bin "sokka-send" {
+      } (readFile ./steward-mail.py);
+      send = pkgs.writers.writePython3Bin "steward-send" {
         flakeIgnore = singleton "E501";
-      } (readFile ./sokka-send.py);
+      } (readFile ./steward-send.py);
 
-      web = pkgs.writers.writePython3Bin "sokka-web" {
+      web = pkgs.writers.writePython3Bin "steward-web" {
         libraries = singleton pkgs.python3Packages.mcp;
         flakeIgnore = singleton "E501";
-      } (readFile ./sokka-web.py);
+      } (readFile ./steward-web.py);
 
-      image = pkgs.writers.writePython3Bin "sokka-image-mcp" {
+      image = pkgs.writers.writePython3Bin "steward-image-mcp" {
         libraries = singleton pkgs.python3Packages.mcp;
         flakeIgnore = singleton "E501";
-      } (readFile ./sokka-image.py);
+      } (readFile ./steward-image.py);
 
       # One connection, one picture: the description on stdin, the PNG out.
       # Codex keeps each thread's pictures under its thread id.
       draw = pkgs.writeShellApplication {
-        name = "sokka-image";
+        name = "steward-image";
         runtimeInputs = [
           pkgs.codex
           pkgs.jq
@@ -140,7 +141,7 @@
           # One journal line per picture, where `usage` counts the
           # household's share of the subscription.
           jq -rR --arg m "$model" 'fromjson? | select(.type == "turn.completed") | .usage
-            | "sokka-image: tokens model=\($m) input=\(.input_tokens - .cached_input_tokens) cache_read=\(.cached_input_tokens) cache_write=0 output=\(.output_tokens)"' <<< "$out" >&2
+            | "steward-image: tokens model=\($m) input=\(.input_tokens - .cached_input_tokens) cache_read=\(.cached_input_tokens) cache_write=0 output=\(.output_tokens)"' <<< "$out" >&2
           id=$(jq -rR 'fromjson? | select(.type == "thread.started") | .thread_id' <<< "$out" | head -1)
           [ -n "$id" ] || exit 1
           dir="$CODEX_HOME/generated_images/$id"
@@ -153,18 +154,18 @@
         '';
       };
 
-      youtube = pkgs.writers.writePython3Bin "sokka-youtube" {
+      youtube = pkgs.writers.writePython3Bin "steward-youtube" {
         libraries = ps: [
           ps.yt-dlp
           ps.mcp
         ];
         flakeIgnore = singleton "E501";
-      } (readFile ./sokka-youtube.py);
+      } (readFile ./steward-youtube.py);
 
       # The token rides a systemd credential into the environment, never
       # the command line.
       claude = pkgs.writeShellApplication {
-        name = "sokka-claude";
+        name = "steward-claude";
         text = ''
           CLAUDE_CODE_OAUTH_TOKEN=$(< "$CREDENTIALS_DIRECTORY/claude-token")
           export CLAUDE_CODE_OAUTH_TOKEN
@@ -178,7 +179,7 @@
 
       # Idempotent: logs in first, else walks the registration-token flow.
       register = pkgs.writeShellApplication {
-        name = "sokka-register";
+        name = "steward-register";
         runtimeInputs = [
           pkgs.curl
           pkgs.jq
@@ -241,7 +242,7 @@
             HOME = state;
             HIPPO_DIR = "${state}/hippo";
           };
-          # The assistant's computer (sokka-computer.mod.nix), if it has one.
+          # The assistant's computer (steward-computer.mod.nix), if it has one.
           pc = optionalAttrs i.computer {
             addr = computers.addr (computers.indexes cfg.instances).${n};
             desk = "${computers.desks}/${n}";
@@ -254,16 +255,16 @@
           shared =
             households
             // {
-              SOKKA_UNIT = n;
-              SOKKA_USAGE = "/run/usage.sock";
-              SOKKA_PAGES = site.dir;
-              SOKKA_PAGES_URL = site.url;
+              STEWARD_UNIT = n;
+              STEWARD_USAGE = "/run/usage.sock";
+              STEWARD_PAGES = site.dir;
+              STEWARD_PAGES_URL = site.url;
             }
-            // optionalAttrs i.computer { SOKKA_DESK = pc.desk; }
-            // optionalAttrs (cfg.homeTokenFile != null) { SOKKA_HOME = "1"; }
+            // optionalAttrs i.computer { STEWARD_DESK = pc.desk; }
+            // optionalAttrs (cfg.homeTokenFile != null) { STEWARD_HOME = "1"; }
             // optionalAttrs (cfg.requestsKeyFile != null) {
-              SOKKA_REQUESTS = "${creds}/requests";
-              SOKKA_SEERR = "http://127.0.0.1:${toString config.shipProxy.routes.q.port}";
+              STEWARD_REQUESTS = "${creds}/requests";
+              STEWARD_SEERR = "http://127.0.0.1:${toString config.shipProxy.routes.q.port}";
             };
 
           mcp = (pkgs.formats.json { }).generate "${n}-mcp.json" {
@@ -273,9 +274,9 @@
                 command = getExe web;
                 env.HIPPO_DIR = env.HIPPO_DIR;
               };
-              sokka = {
+              steward = {
                 type = "stdio";
-                command = getExe sokka;
+                command = getExe steward;
                 args = [
                   "tools"
                   state
@@ -285,13 +286,13 @@
                   // {
                     inherit (env) HIPPO_DIR;
                   }
-                  // optionalAttrs (i.mailCredentialsFile != null) { SOKKA_MAIL = "${creds}/mail"; };
+                  // optionalAttrs (i.mailCredentialsFile != null) { STEWARD_MAIL = "${creds}/mail"; };
               };
               calendar = {
                 type = "stdio";
                 command = getExe calendar;
                 args = singleton "${creds}/caldav";
-                env.SOKKA_TZ = config.time.timeZone;
+                env.STEWARD_TZ = config.time.timeZone;
               };
               youtube = {
                 type = "stdio";
@@ -308,7 +309,7 @@
                 type = "stdio";
                 command = getExe mail;
                 args = singleton "${creds}/mail";
-                env.SOKKA_IMAP = cfg.mailServer;
+                env.STEWARD_IMAP = cfg.mailServer;
               };
             }
             // optionalAttrs i.computer {
@@ -333,7 +334,7 @@
           # is made in the runtime directory and the bot pointed at it.
           start =
             if cfg.homeTokenFile == null then
-              getExe sokka
+              getExe steward
             else
               getExe (
                 pkgs.writeShellApplication {
@@ -345,7 +346,7 @@
                   text = ''
                     umask 077
                     sed "s|@HOME_TOKEN@|$(cat "$CREDENTIALS_DIRECTORY/home")|" ${mcp} > "$RUNTIME_DIRECTORY/mcp.json"
-                    SOKKA_MCP="$RUNTIME_DIRECTORY/mcp.json" exec ${getExe sokka}
+                    STEWARD_MCP="$RUNTIME_DIRECTORY/mcp.json" exec ${getExe steward}
                   '';
                 }
               );
@@ -354,8 +355,8 @@
             User = n;
             Group = n;
             SupplementaryGroups = [
-              "sokka-image"
-              "sokka-household"
+              "steward-image"
+              "steward-household"
               "usage"
             ];
             StateDirectory = n;
@@ -436,21 +437,21 @@
               env
               // shared
               // {
-                SOKKA_NAME = i.name;
-                SOKKA_PERSON = i.person;
-                SOKKA_HOMESERVER = "http://127.0.0.1:${toString config.matrix.port}";
-                SOKKA_USERS = concatStringsSep "," i.users;
-                SOKKA_BACKEND = "claude";
-                SOKKA_CLAUDE = getExe claude;
-                SOKKA_MODEL = cfg.model;
-                SOKKA_MCP = toString mcp;
+                STEWARD_NAME = i.name;
+                STEWARD_PERSON = i.person;
+                STEWARD_HOMESERVER = "http://127.0.0.1:${toString config.matrix.port}";
+                STEWARD_USERS = concatStringsSep "," i.users;
+                STEWARD_BACKEND = "claude";
+                STEWARD_CLAUDE = getExe claude;
+                STEWARD_MODEL = cfg.model;
+                STEWARD_MCP = toString mcp;
               }
-              // optionalAttrs (i.style != null) { SOKKA_STYLE = i.style; }
-              // optionalAttrs i.alerts { SOKKA_ALERTS = config.alerts.spool; }
+              // optionalAttrs (i.style != null) { STEWARD_STYLE = i.style; }
+              // optionalAttrs i.alerts { STEWARD_ALERTS = config.alerts.spool; }
               // optionalAttrs (i.mailCredentialsFile != null) {
-                SOKKA_MAIL = "${creds}/mail";
-                SOKKA_SEND = getExe send;
-                SOKKA_SMTP = cfg.smtpServer;
+                STEWARD_MAIL = "${creds}/mail";
+                STEWARD_SEND = getExe send;
+                STEWARD_SMTP = cfg.smtpServer;
               };
             serviceConfig =
               sandbox
@@ -488,7 +489,7 @@
       alerted = attrNames (filterAttrs (_: i: i.alerts) cfg.instances);
     in
     {
-      options.sokka = {
+      options.steward = {
         instances = mkOption {
           description = ''
             One assistant per person, keyed by its unit, user and state
@@ -626,32 +627,32 @@
       config = {
         assertions = singleton {
           assertion = length alerted <= 1;
-          message = "sokka: only one instance can take the alerts.";
+          message = "steward: only one instance can take the alerts.";
         };
 
         # Sensors and the receiver write alerts in as root or the reader;
         # nobody else may, since what it posts its memory keeps.
         alerts.reader = mkIf (alerted != [ ]) (head alerted);
 
-        # sokka-image holds the household's one Codex login, on the ChatGPT
+        # steward-image holds the household's one Codex login, on the ChatGPT
         # subscription; the assistants reach only its socket. Log in once,
         # with the codex from the unit's script (not on PATH), after
-        # `sudo install -d -o sokka-image -g sokka-image -m 700 /var/lib/sokka-image`:
-        # sudo -u sokka-image env HOME=/var/lib/sokka-image CODEX_HOME=/var/lib/sokka-image <codex> login --device-auth
+        # `sudo install -d -o steward-image -g steward-image -m 700 /var/lib/steward-image`:
+        # sudo -u steward-image env HOME=/var/lib/steward-image CODEX_HOME=/var/lib/steward-image <codex> login --device-auth
         users.users = mapAttrs (n: _: {
           isSystemUser = true;
           group = n;
           home = "/var/lib/${n}";
-        }) (cfg.instances // { sokka-image = { }; });
+        }) (cfg.instances // { steward-image = { }; });
         users.groups = mapAttrs (_: _: { }) cfg.instances // {
-          sokka-image = { };
-          sokka-household = { };
+          steward-image = { };
+          steward-household = { };
         };
 
         # Each assistant's pages at https://<n>.<domain>/<page>/, for the
         # tailnet like every other route.
         shipProxy.routes = mapAttrs (n: _: { root = "${pages}/${n}"; }) cfg.instances;
-        systemd.tmpfiles.settings.sokka-pages = {
+        systemd.tmpfiles.settings.steward-pages = {
           ${pages}.d = {
             user = "root";
             group = "root";
@@ -668,15 +669,15 @@
         }) cfg.instances;
 
         # Setgid, so what one assistant writes stays the group's.
-        systemd.tmpfiles.settings.sokka-household = {
+        systemd.tmpfiles.settings.steward-household = {
           ${house}.d = {
             user = "root";
-            group = "sokka-household";
+            group = "steward-household";
             mode = "2770";
           };
           "${house}/mail".d = {
             user = "root";
-            group = "sokka-household";
+            group = "steward-household";
             mode = "2770";
           };
         }
@@ -684,39 +685,39 @@
           name = "${house}/mail/${n}";
           value.d = {
             user = "root";
-            group = "sokka-household";
+            group = "steward-household";
             mode = "2770";
           };
         }) cfg.instances;
 
-        systemd.sockets.sokka-image = {
+        systemd.sockets.steward-image = {
           description = "Pictures for the household assistants";
           wantedBy = singleton "sockets.target";
           socketConfig = {
-            ListenStream = "/run/sokka-image.sock";
+            ListenStream = "/run/steward-image.sock";
             Accept = true;
             MaxConnections = 2;
             SocketMode = "0660";
-            SocketGroup = "sokka-image";
+            SocketGroup = "steward-image";
           };
         };
 
         systemd.services = mkMerge (
           mapAttrsToList services cfg.instances
           ++ singleton {
-            "sokka-image@" = {
+            "steward-image@" = {
               description = "One picture for a household assistant";
               environment = {
-                HOME = "/var/lib/sokka-image";
-                CODEX_HOME = "/var/lib/sokka-image";
+                HOME = "/var/lib/steward-image";
+                CODEX_HOME = "/var/lib/steward-image";
               };
               serviceConfig =
                 lib.ship.hardened.tenant
                 // fence
                 // {
-                  User = "sokka-image";
-                  Group = "sokka-image";
-                  StateDirectory = "sokka-image";
+                  User = "steward-image";
+                  Group = "steward-image";
+                  StateDirectory = "steward-image";
                   StateDirectoryMode = "0700";
                   ExecStart = getExe draw;
                   StandardInput = "socket";

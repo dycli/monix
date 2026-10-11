@@ -1,7 +1,7 @@
 """Sokka's one way out by mail: sends the message given on stdin as JSON
 {"account", "to", "subject", "body"} from that account's address in
 ACCOUNTS.json (the mail server's accounts file) over SMTP, TLS on 465, at
-SOKKA_SMTP. Only Sokka itself runs it, after the person approved the
+STEWARD_SMTP. Only Sokka itself runs it, after the person approved the
 draft in the room; the model has no tool that reaches it.
 """
 
@@ -12,7 +12,7 @@ import ssl
 import sys
 from email.message import EmailMessage
 
-HOST = os.environ["SOKKA_SMTP"]
+HOST = os.environ["STEWARD_SMTP"]
 
 with open(sys.argv[1]) as f:
     ACCOUNTS = {a["name"]: a for a in json.load(f)}

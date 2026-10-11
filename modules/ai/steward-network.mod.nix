@@ -6,8 +6,8 @@
 # closed by default, so nothing else on the host routes.
 { self, inputs, ... }:
 {
-  flake.nixosModules.lab = self.nixosModules.sokka-network;
-  flake.nixosModules.sokka-network =
+  flake.nixosModules.lab = self.nixosModules.steward-network;
+  flake.nixosModules.steward-network =
     { config, lib, ... }:
     let
       inherit (lib.lists) filter singleton;

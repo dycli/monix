@@ -1,9 +1,9 @@
 """Sokka's calendar: a stdio MCP server over CalDAV.
 
 The only part of Sokka that holds the calendar login. Usage:
-sokka-calendar ACCOUNTS.json, where the file is
+steward-calendar ACCOUNTS.json, where the file is
 [{"name", "url", "username", "password"}, ...]. Times are local to
-SOKKA_TZ, written YYYY-MM-DD HH:MM, or YYYY-MM-DD for all-day events.
+STEWARD_TZ, written YYYY-MM-DD HH:MM, or YYYY-MM-DD for all-day events.
 """
 
 import json
@@ -16,7 +16,7 @@ import caldav
 from caldav.lib.error import NotFoundError
 from mcp.server.fastmcp import FastMCP
 
-ZONE = ZoneInfo(os.environ.get("SOKKA_TZ", "UTC"))
+ZONE = ZoneInfo(os.environ.get("STEWARD_TZ", "UTC"))
 REPEATS = ("daily", "weekly", "monthly", "yearly")
 
 with open(sys.argv[1]) as f:

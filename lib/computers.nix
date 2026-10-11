@@ -1,6 +1,6 @@
-# The assistants' computers (sokka-computer.mod.nix), their own network
-# (sokka-network.mod.nix) and the assistant that drives them
-# (sokka.mod.nix) agree on these.
+# The assistants' computers (steward-computer.mod.nix), their own network
+# (steward-network.mod.nix) and the assistant that drives them
+# (steward.mod.nix) agree on these.
 lib:
 let
   inherit (lib.attrsets)
@@ -39,8 +39,8 @@ in
   screen = "1280x720";
 
   # Each assistant's desk: screenshots and downloads out, uploads in.
-  desks = "/var/lib/sokka-desks";
+  desks = "/var/lib/steward-desks";
   deskMount = "/desk";
-  deskGroup = "sokka-desk";
+  deskGroup = "steward-desk";
   deskGid = 3001;
 }

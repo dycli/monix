@@ -37,7 +37,7 @@
 
       matrix.serverName = "chat.su.is";
 
-      sokka.instances = {
+      steward.instances = {
         sokka = {
           person = "Dylan";
           users = singleton "@dylan:chat.su.is";

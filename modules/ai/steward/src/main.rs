@@ -1,5 +1,6 @@
-//! Sokka: the household assistant. One endless chat with no sessions: each
-//! message from the captain becomes one fresh model call that sees Sokka's
+//! The steward: the household assistant program, run once per person
+//! (Sokka, Suki). One endless chat with no sessions: each
+//! message from the captain becomes one fresh model call that sees its
 //! prompt, its whole memory (its hippo view) and the new message. Both the
 //! message and the answer go into hippo, so the next call remembers them.
 
@@ -289,7 +290,7 @@ fn answer(
             }
         }
     };
-    let (name, person) = (var("SOKKA_NAME")?, var("SOKKA_PERSON")?);
+    let (name, person) = (var("STEWARD_NAME")?, var("STEWARD_PERSON")?);
     let (kind, logged, who) = match from {
         From::Person => ("user", said.clone(), person.clone()),
         From::Routine => (
@@ -334,26 +335,26 @@ fn answer(
     );
     let tools = if model.tools() { TOOLS } else { NO_TOOLS };
     // A per-instance line on tone, if the person wants one.
-    let style = std::env::var("SOKKA_STYLE")
+    let style = std::env::var("STEWARD_STYLE")
         .map(|s| format!(" {s}"))
         .unwrap_or_default();
-    let computer = match (model.tools(), std::env::var("SOKKA_SCREEN")) {
+    let computer = match (model.tools(), std::env::var("STEWARD_SCREEN")) {
         (false, _) => String::new(),
         (true, Ok(screen)) => format!("{COMPUTER}{}", SCREEN.replace("{screen}", &screen)),
-        (true, Err(_)) if std::env::var_os("SOKKA_DESK").is_some() => COMPUTER.to_owned(),
+        (true, Err(_)) if std::env::var_os("STEWARD_DESK").is_some() => COMPUTER.to_owned(),
         (true, Err(_)) => String::new(),
     };
-    let home = if model.tools() && std::env::var_os("SOKKA_HOME").is_some() {
+    let home = if model.tools() && std::env::var_os("STEWARD_HOME").is_some() {
         HOME
     } else {
         ""
     };
-    let requests = if model.tools() && std::env::var_os("SOKKA_REQUESTS").is_some() {
+    let requests = if model.tools() && std::env::var_os("STEWARD_REQUESTS").is_some() {
         REQUESTS
     } else {
         ""
     };
-    let pages = if model.tools() && std::env::var_os("SOKKA_PAGES").is_some() {
+    let pages = if model.tools() && std::env::var_os("STEWARD_PAGES").is_some() {
         PAGES
     } else {
         ""
@@ -370,7 +371,7 @@ fn answer(
     Ok(reply)
 }
 
-/// Joins rooms the allowed users invite Sokka to and leaves the rest. Off
+/// Joins rooms the allowed users invite the steward to and leaves the rest. Off
 /// the sync loop: joining waits for a sync to see the room.
 fn on_invites(client: &Client, users: Arc<Vec<String>>) {
     client.add_event_handler(
@@ -389,7 +390,7 @@ fn on_invites(client: &Client, users: Arc<Vec<String>>) {
                         room.leave().await
                     };
                     if let Err(e) = r {
-                        eprintln!("sokka: invite to {id}: {e}");
+                        eprintln!("steward: invite to {id}: {e}");
                     }
                 });
             }
@@ -446,7 +447,7 @@ fn on_messages(
     client.add_event_handler(
         |ev: OriginalSyncRoomEncryptedEvent, room: Room| async move {
             eprintln!(
-                "sokka: could not decrypt {} from {} in {}",
+                "steward: could not decrypt {} from {} in {}",
                 ev.event_id,
                 ev.sender,
                 room.room_id()
@@ -497,7 +498,7 @@ async fn reply(
     };
     let reply = match file {
         Err(e) => {
-            eprintln!("sokka: {e}");
+            eprintln!("steward: {e}");
             e
         }
         Ok(file) => tokio::task::spawn_blocking(move || {
@@ -506,7 +507,7 @@ async fn reply(
         .await
         .unwrap_or_else(|e| Err(e.to_string()))
         .unwrap_or_else(|e| {
-            eprintln!("sokka: {e}");
+            eprintln!("steward: {e}");
             format!("(I couldn't answer that: {e})")
         }),
     };
@@ -521,7 +522,7 @@ async fn reply(
             .await
     };
     if let Err(e) = sent {
-        eprintln!("sokka: send to {}: {e}", room.room_id());
+        eprintln!("steward: send to {}: {e}", room.room_id());
     }
 }
 
@@ -554,7 +555,7 @@ async fn send_images(room: &Room, outbox: &Path) {
             Ok(()) => {
                 let _ = fs::remove_file(&path);
             }
-            Err(e) => eprintln!("sokka: picture {}: {e}", path.display()),
+            Err(e) => eprintln!("steward: picture {}: {e}", path.display()),
         }
     }
 }
@@ -596,7 +597,7 @@ async fn drain(room: &Room, hippo: &Arc<Hippo>, model: &Arc<dyn Model>, dir: &Pa
                     .to_owned(),
             ),
             Err(e) => {
-                eprintln!("sokka: {}: {e}", p.display());
+                eprintln!("steward: {}: {e}", p.display());
                 None
             }
         })
@@ -611,7 +612,7 @@ async fn drain(room: &Room, hippo: &Arc<Hippo>, model: &Arc<dyn Model>, dir: &Pa
                 .await
                 .unwrap_or_else(|e| Err(e.to_string()))
                 .unwrap_or_else(|e| {
-                    eprintln!("sokka: {}: {e}", dir.display());
+                    eprintln!("steward: {}: {e}", dir.display());
                     said
                 });
         drop(typing);
@@ -620,13 +621,13 @@ async fn drain(room: &Room, hippo: &Arc<Hippo>, model: &Arc<dyn Model>, dir: &Pa
             .send(RoomMessageEventContent::text_markdown(text))
             .await
         {
-            eprintln!("sokka: {}: {e}", dir.display());
+            eprintln!("steward: {}: {e}", dir.display());
             return;
         }
     }
     for p in paths {
         if let Err(e) = fs::remove_file(&p) {
-            eprintln!("sokka: {}: {e}", p.display());
+            eprintln!("steward: {}: {e}", p.display());
         }
     }
 }
@@ -668,7 +669,7 @@ async fn remind(
         let due = match Book::open(&state, None).and_then(|b| b.read(|db| book::due(db, now))) {
             Ok(due) => due,
             Err(e) => {
-                eprintln!("sokka: {e}");
+                eprintln!("steward: {e}");
                 continue;
             }
         };
@@ -690,12 +691,12 @@ async fn remind(
                     match answered {
                         Ok(text) => {
                             if let Err(e) = on_book(&state, |db| book::keep_answer(db, &r, &text)) {
-                                eprintln!("sokka: routine {}: {e}", r.id);
+                                eprintln!("steward: routine {}: {e}", r.id);
                             }
                             (text, r.share)
                         }
                         Err(e) => {
-                            eprintln!("sokka: routine {}: {e}", r.id);
+                            eprintln!("steward: routine {}: {e}", r.id);
                             (format!("(The routine \"{}\" failed: {e})", r.text), false)
                         }
                     }
@@ -706,7 +707,7 @@ async fn remind(
                     .send(RoomMessageEventContent::text_markdown(&text))
                     .await
                 {
-                    eprintln!("sokka: reminder {}: {e}", r.id);
+                    eprintln!("steward: reminder {}: {e}", r.id);
                     continue;
                 }
                 if let (true, Some(h)) = (share, &house) {
@@ -716,7 +717,7 @@ async fn remind(
                         r.text
                     );
                     if let Err(e) = h.post(None, &note) {
-                        eprintln!("sokka: routine {}: {e}", r.id);
+                        eprintln!("steward: routine {}: {e}", r.id);
                     }
                 }
                 if !r.ask {
@@ -724,12 +725,12 @@ async fn remind(
                     let logged =
                         tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await;
                     if let Ok(Err(e)) = logged {
-                        eprintln!("sokka: {e}");
+                        eprintln!("steward: {e}");
                     }
                 }
             }
             if let Err(e) = on_book(&state, |db| book::done(db, &r, now)) {
-                eprintln!("sokka: reminder {}: {e}", r.id);
+                eprintln!("steward: reminder {}: {e}", r.id);
             }
         }
     }
@@ -755,13 +756,13 @@ async fn tasks(
             .send(RoomMessageEventContent::text_markdown(&text))
             .await
         {
-            eprintln!("sokka: task: {e}");
+            eprintln!("steward: task: {e}");
             return;
         }
         let _ = fs::remove_file(file);
         let (hippo, text) = (hippo.clone(), text);
         if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await {
-            eprintln!("sokka: {e}");
+            eprintln!("steward: {e}");
         }
     }
     if let Some((handle, stop)) = running {
@@ -776,7 +777,7 @@ async fn tasks(
             Ok(text) => text,
             Err(e) if e == "stopped" => "Stopped the task.".to_owned(),
             Err(e) => {
-                eprintln!("sokka: task: {e}");
+                eprintln!("steward: task: {e}");
                 format!("(The task failed: {e})")
             }
         };
@@ -785,7 +786,7 @@ async fn tasks(
             .send(RoomMessageEventContent::text_markdown(&text))
             .await
         {
-            eprintln!("sokka: task: {e}");
+            eprintln!("steward: task: {e}");
         }
         task::finish(state);
         return;
@@ -806,7 +807,7 @@ async fn show_pending(room: &Room, hippo: &Arc<Hippo>, state: &Path) {
     let waiting = match pending::all(state) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("sokka: pending: {e}");
+            eprintln!("steward: pending: {e}");
             return;
         }
     };
@@ -815,17 +816,17 @@ async fn show_pending(room: &Room, hippo: &Arc<Hippo>, state: &Path) {
         let sent = match room.send(RoomMessageEventContent::text_plain(&text)).await {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("sokka: pending {}: {e}", p.id);
+                eprintln!("steward: pending {}: {e}", p.id);
                 continue;
             }
         };
         p.event = Some(sent.response.event_id.to_string());
         if let Err(e) = pending::save(state, &p) {
-            eprintln!("sokka: pending {}: {e}", p.id);
+            eprintln!("steward: pending {}: {e}", p.id);
         }
         let hippo = hippo.clone();
         if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await {
-            eprintln!("sokka: {e}");
+            eprintln!("steward: {e}");
         }
     }
 }
@@ -863,18 +864,18 @@ fn on_reactions(client: &Client, users: Arc<Vec<String>>, state: PathBuf, hippo:
                     Ok(done) => done,
                     Err(e) => {
                         if let Err(e) = pending::save(&state, &p) {
-                            eprintln!("sokka: pending {}: {e}", p.id);
+                            eprintln!("steward: pending {}: {e}", p.id);
                         }
                         format!("(I couldn't: {e}. The draft still stands.)")
                     }
                 };
                 if let Err(e) = room.send(RoomMessageEventContent::text_plain(&text)).await {
-                    eprintln!("sokka: pending {}: {e}", p.id);
+                    eprintln!("steward: pending {}: {e}", p.id);
                 }
                 if let Ok(Err(e)) =
                     tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await
                 {
-                    eprintln!("sokka: {e}");
+                    eprintln!("steward: {e}");
                 }
             });
         }
@@ -892,7 +893,7 @@ fn on_book<T>(
 async fn run() -> Result<(), String> {
     let state = PathBuf::from(var("STATE_DIRECTORY")?);
     let users: Arc<Vec<String>> = Arc::new(
-        var("SOKKA_USERS")?
+        var("STEWARD_USERS")?
             .split(',')
             .map(|u| u.trim().to_owned())
             .collect(),
@@ -902,7 +903,7 @@ async fn run() -> Result<(), String> {
     });
     let model: Arc<dyn Model> = model::from_env()?.into();
     let (client, fresh) = matrix::connect(
-        &var("SOKKA_HOMESERVER")?,
+        &var("STEWARD_HOMESERVER")?,
         &var("MATRIX_USER")?,
         &var("MATRIX_PASSWORD")?,
         &state.join("matrix"),
@@ -926,14 +927,14 @@ async fn run() -> Result<(), String> {
         hippo.clone(),
         model.clone(),
         state.clone(),
-        env::var_os("SOKKA_ALERTS").map(PathBuf::from),
+        env::var_os("STEWARD_ALERTS").map(PathBuf::from),
         house::House::from_env(),
     ));
     let worker = client.clone();
     tokio::spawn(async move {
         while let Some((room, msg)) = inbox.recv().await {
             if let Err(e) = fs::write(state.join("room"), room.room_id().as_str()) {
-                eprintln!("sokka: room: {e}");
+                eprintln!("steward: room: {e}");
             }
             reply(
                 &worker,
@@ -946,7 +947,7 @@ async fn run() -> Result<(), String> {
             .await;
         }
     });
-    eprintln!("sokka: listening");
+    eprintln!("steward: listening");
     client
         .sync(SyncSettings::default())
         .await
@@ -962,12 +963,12 @@ async fn main() -> ExitCode {
     let r = match args.as_slice() {
         [] => run().await,
         [cmd, dir] if cmd == "tools" => tools::serve(PathBuf::from(dir)).await,
-        _ => Err("usage: sokka [tools DIR]".into()),
+        _ => Err("usage: steward [tools DIR]".into()),
     };
     match r {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("sokka: {e}");
+            eprintln!("steward: {e}");
             ExitCode::FAILURE
         }
     }

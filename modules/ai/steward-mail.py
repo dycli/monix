@@ -1,7 +1,7 @@
 """Sokka's mail: a read-only stdio MCP server over IMAP.
 
-Usage: sokka-mail ACCOUNTS.json, the calendar's accounts file
-[{"name", "username", "password"}, ...], on the IMAP server SOKKA_IMAP.
+Usage: steward-mail ACCOUNTS.json, the calendar's accounts file
+[{"name", "username", "password"}, ...], on the IMAP server STEWARD_IMAP.
 Folders open with EXAMINE and bodies are fetched with BODY.PEEK, so
 nothing is moved, flagged or marked read. It cannot send.
 """
@@ -17,7 +17,7 @@ from html.parser import HTMLParser
 from imapclient import IMAPClient
 from mcp.server.fastmcp import FastMCP
 
-HOST = os.environ["SOKKA_IMAP"]
+HOST = os.environ["STEWARD_IMAP"]
 BODY = 20000
 
 with open(sys.argv[1]) as f:

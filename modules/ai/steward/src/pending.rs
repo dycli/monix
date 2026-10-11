@@ -52,12 +52,12 @@ impl Act {
     }
 
     /// Carries the act out; the model never reaches this. Mail goes through
-    /// the sender at SOKKA_SEND, the one process that holds the login.
+    /// the sender at STEWARD_SEND, the one process that holds the login.
     pub fn carry_out(&self) -> Result<String, String> {
         match self {
             Act::Mail { .. } => {
-                let send = std::env::var("SOKKA_SEND").map_err(|_| "no mail here")?;
-                let accounts = std::env::var("SOKKA_MAIL").map_err(|_| "no mail here")?;
+                let send = std::env::var("STEWARD_SEND").map_err(|_| "no mail here")?;
+                let accounts = std::env::var("STEWARD_MAIL").map_err(|_| "no mail here")?;
                 let mut child = Command::new(send)
                     .arg(accounts)
                     .stdin(Stdio::piped())
@@ -208,7 +208,7 @@ mod tests {
 
     fn tempdir() -> PathBuf {
         let d = std::env::temp_dir().join(format!(
-            "sokka-pending-{}-{}",
+            "steward-pending-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
