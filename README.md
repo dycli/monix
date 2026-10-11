@@ -350,7 +350,7 @@ unit start. On a turn an alert or a household message started, the home is
 withheld like every other tool that acts.
 
 With `requestsKeyFile` set, they can also request films and shows through
-Seerr on loopback: search the catalogue, list a show's seasons, make the
+Seerr on loopback, from the same Rust tool server: search the catalogue, list a show's seasons, make the
 request and read back what is pending. The request goes in under the Seerr
 user named like the person when there is one, so it shows as theirs; only
 the request itself is a tool that acts.

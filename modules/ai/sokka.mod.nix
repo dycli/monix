@@ -17,7 +17,7 @@
 # where the instance has some (sokka-mail.py over IMAP, read-only), each
 # the only process that sees its login, and YouTube search and captions
 # (sokka-youtube.py), which reaches YouTube only, film and show requests
-# (sokka-requests.py over Seerr, loopback only, with `requestsKeyFile`
+# (over Seerr, loopback only, with `requestsKeyFile`
 # set), and pictures (sokka-image.py), drawn by the image service that alone holds the
 # household's Codex login; `sokka tools` also reads the subscription
 # limits from the usage service (usage.mod.nix). Mail and pages let
@@ -161,11 +161,6 @@
         flakeIgnore = singleton "E501";
       } (readFile ./sokka-youtube.py);
 
-      requests = pkgs.writers.writePython3Bin "sokka-requests" {
-        libraries = singleton pkgs.python3Packages.mcp;
-        flakeIgnore = singleton "E501";
-      } (readFile ./sokka-requests.py);
-
       # The token rides a systemd credential into the environment, never
       # the command line.
       claude = pkgs.writeShellApplication {
@@ -266,7 +261,10 @@
             }
             // optionalAttrs i.computer { SOKKA_DESK = pc.desk; }
             // optionalAttrs (cfg.homeTokenFile != null) { SOKKA_HOME = "1"; }
-            // optionalAttrs (cfg.requestsKeyFile != null) { SOKKA_REQUESTS = "1"; };
+            // optionalAttrs (cfg.requestsKeyFile != null) {
+              SOKKA_REQUESTS = "${creds}/requests";
+              SOKKA_SEERR = "http://127.0.0.1:${toString config.shipProxy.routes.q.port}";
+            };
 
           mcp = (pkgs.formats.json { }).generate "${n}-mcp.json" {
             mcpServers = {
@@ -311,17 +309,6 @@
                 command = getExe mail;
                 args = singleton "${creds}/mail";
                 env.SOKKA_IMAP = cfg.mailServer;
-              };
-            }
-            // optionalAttrs (cfg.requestsKeyFile != null) {
-              requests = {
-                type = "stdio";
-                command = getExe requests;
-                args = singleton "${creds}/requests";
-                env = {
-                  SOKKA_SEERR = "http://127.0.0.1:${toString config.shipProxy.routes.q.port}";
-                  SOKKA_PERSON = i.person;
-                };
               };
             }
             // optionalAttrs i.computer {

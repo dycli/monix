@@ -7,6 +7,7 @@ mod book;
 mod hippo;
 mod house;
 mod matrix;
+mod media;
 mod model;
 mod pending;
 mod task;

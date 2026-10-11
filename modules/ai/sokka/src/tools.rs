@@ -7,6 +7,7 @@
 use crate::book::{self, Book, Repeat, Shelf};
 use crate::hippo::Hippo;
 use crate::house::House;
+use crate::media::Seerr;
 use crate::pending::{self, Act};
 use crate::task;
 use chrono::NaiveDateTime;
@@ -37,6 +38,8 @@ struct Tools {
     desk: Option<PathBuf>,
     /// The site's directory and its URL, when the assistant has one.
     pages: Option<(PathBuf, String)>,
+    /// The household's film and show library (Seerr), when there is one.
+    seerr: Option<Seerr>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -114,6 +117,42 @@ struct Page {
     name: String,
     /// The whole page, one HTML document; styles and scripts inline.
     html: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Title {
+    /// A film or show title to look for.
+    title: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Tmdb {
+    /// The show's tmdb id, as media_search gave it.
+    tmdb_id: u64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Kind {
+    /// movie or tv.
+    kind: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Request {
+    /// movie or tv.
+    kind: String,
+    /// The tmdb id, as media_search gave it.
+    tmdb_id: u64,
+    /// For a show, the seasons wanted; leave out for all of them.
+    seasons: Option<Vec<u64>>,
+    /// A quality profile's name from media_profiles; leave out for the default.
+    quality: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Count {
+    /// How many of the latest to show; 15 if left out.
+    count: Option<u64>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -398,6 +437,52 @@ impl Tools {
     }
 
     #[tool(
+        description = "Search films and shows: kind, tmdb id, title, year, overview and whether the library has it."
+    )]
+    fn media_search(
+        &self,
+        Parameters(Title { title }): Parameters<Title>,
+    ) -> Result<String, String> {
+        self.seerr()?.search(&title)
+    }
+
+    #[tool(
+        description = "A show's seasons, with how many episodes each has and which the library already holds."
+    )]
+    fn media_seasons(
+        &self,
+        Parameters(Tmdb { tmdb_id }): Parameters<Tmdb>,
+    ) -> Result<String, String> {
+        self.seerr()?.seasons(tmdb_id)
+    }
+
+    #[tool(
+        description = "The quality profiles a film (kind movie) or show (kind tv) can be requested in; one is the default."
+    )]
+    fn media_profiles(
+        &self,
+        Parameters(Kind { kind }): Parameters<Kind>,
+    ) -> Result<String, String> {
+        self.seerr()?.profiles(&kind)
+    }
+
+    #[tool(
+        description = "Request a film (kind movie) or a show (kind tv), the given seasons or, with none, all of them; quality is a profile name from media_profiles, else the default."
+    )]
+    fn media_request(&self, Parameters(r): Parameters<Request>) -> Result<String, String> {
+        self.seerr()?
+            .request(&r.kind, r.tmdb_id, r.seasons, r.quality.as_deref())
+    }
+
+    #[tool(description = "The latest requests: what was asked for, by whom, and where it stands.")]
+    fn media_requests(
+        &self,
+        Parameters(Count { count }): Parameters<Count>,
+    ) -> Result<String, String> {
+        self.seerr()?.requests(count.unwrap_or(15))
+    }
+
+    #[tool(
         description = "Start a task: work that takes a while (several sites, a long search, something to fill in on your computer). Give it as your person's request, in full; it runs on its own and its answer is sent when done. Then tell them it is under way and stop."
     )]
     fn task(&self, Parameters(Text { text }): Parameters<Text>) -> Result<String, String> {
@@ -463,6 +548,12 @@ impl Tools {
 }
 
 impl Tools {
+    fn seerr(&self) -> Result<&Seerr, String> {
+        self.seerr
+            .as_ref()
+            .ok_or("There is no film and show library here.".into())
+    }
+
     fn household(&self) -> Result<&House, String> {
         self.house
             .as_deref()
@@ -565,6 +656,42 @@ fn publish(dir: &Path, url: &str, name: &str, html: &str) -> Result<String, Stri
     ))
 }
 
+/// The library, when SOKKA_REQUESTS names the Seerr key's file.
+fn seerr() -> Result<Option<Seerr>, String> {
+    let Some(file) = std::env::var_os("SOKKA_REQUESTS") else {
+        return Ok(None);
+    };
+    let key = fs::read_to_string(&file).map_err(|e| format!("seerr key: {e}"))?;
+    let url = std::env::var("SOKKA_SEERR").map_err(|_| "SOKKA_SEERR is not set")?;
+    let person = std::env::var("SOKKA_PERSON").unwrap_or_default();
+    Ok(Some(Seerr::new(url, key, person)))
+}
+
+pub async fn serve(dir: PathBuf) -> Result<(), String> {
+    let hippo = std::env::var("HIPPO_DIR").map_err(|_| "HIPPO_DIR is not set")?;
+    let tools = Tools {
+        dir,
+        hippo: Hippo {
+            sock: PathBuf::from(hippo).join("hippo.sock"),
+        },
+        house: House::from_env().map(Arc::new),
+        mail: std::env::var_os("SOKKA_MAIL").map(PathBuf::from),
+        desk: std::env::var_os("SOKKA_DESK").map(PathBuf::from),
+        pages: std::env::var("SOKKA_PAGES")
+            .ok()
+            .zip(std::env::var("SOKKA_PAGES_URL").ok())
+            .map(|(d, u)| (PathBuf::from(d), u)),
+        seerr: seerr()?,
+        tool_router: Tools::tool_router(),
+    };
+    let running = tools
+        .serve(rmcp::transport::stdio())
+        .await
+        .map_err(|e| format!("tools: {e}"))?;
+    running.waiting().await.map_err(|e| format!("tools: {e}"))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -603,28 +730,4 @@ mod tests {
         assert!(show(&desk, &outbox, "missing.png").is_err());
         fs::remove_dir_all(&dir).unwrap();
     }
-}
-
-pub async fn serve(dir: PathBuf) -> Result<(), String> {
-    let hippo = std::env::var("HIPPO_DIR").map_err(|_| "HIPPO_DIR is not set")?;
-    let tools = Tools {
-        dir,
-        hippo: Hippo {
-            sock: PathBuf::from(hippo).join("hippo.sock"),
-        },
-        house: House::from_env().map(Arc::new),
-        mail: std::env::var_os("SOKKA_MAIL").map(PathBuf::from),
-        desk: std::env::var_os("SOKKA_DESK").map(PathBuf::from),
-        pages: std::env::var("SOKKA_PAGES")
-            .ok()
-            .zip(std::env::var("SOKKA_PAGES_URL").ok())
-            .map(|(d, u)| (PathBuf::from(d), u)),
-        tool_router: Tools::tool_router(),
-    };
-    let running = tools
-        .serve(rmcp::transport::stdio())
-        .await
-        .map_err(|e| format!("tools: {e}"))?;
-    running.waiting().await.map_err(|e| format!("tools: {e}"))?;
-    Ok(())
 }
