@@ -30,6 +30,7 @@ in
     registrationEnvFile = config.secrets.matrix-registration-env.path;
     claudeTokenFile = config.secrets.agent-claude-token.path;
     calendarCredentialsFile = config.secrets.sokka-caldav-json.path;
+    homeTokenFile = config.secrets.sokka-home-token.path;
     mailServer = "imap.migadu.com";
   };
 
@@ -42,6 +43,7 @@ in
     sokka-caldav-json.file = ./secrets/sokka-caldav.json.age;
     sokka-mail-json.file = ./secrets/sokka-mail.json.age;
     suki-mail-json.file = ./secrets/suki-mail.json.age;
+    sokka-home-token.file = ./secrets/sokka-home-token.age;
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     immich-cloudflare-tunnel-token.file = ./secrets/immich-cloudflare-tunnel-token.age;
     cloudflare-dns-token = {
@@ -65,11 +67,13 @@ in
     ./secrets/matrix-sokka.env.age
     ./secrets/sokka-caldav.json.age
     ./secrets/sokka-mail.json.age
+    ./secrets/sokka-home-token.age
   ];
   systemd.services.suki.restartTriggers = [
     ./secrets/matrix-suki.env.age
     ./secrets/suki-mail.json.age
     ./secrets/sokka-caldav.json.age
+    ./secrets/sokka-home-token.age
   ];
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
