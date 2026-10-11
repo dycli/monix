@@ -545,11 +545,14 @@ fn publish(dir: &Path, url: &str, name: &str, html: &str) -> Result<String, Stri
     if !plain {
         return Err("The name is lowercase letters, digits and dashes, 40 at most.".into());
     }
+    // The site directory is the assistant's and the proxy's alone, so
+    // inside it everything is world-readable: the sandbox's uid map
+    // cannot hand files to the proxy's group.
     let page = dir.join(name);
     fs::create_dir_all(&page).map_err(|e| e.to_string())?;
-    fs::set_permissions(&page, fs::Permissions::from_mode(0o750)).map_err(|e| e.to_string())?;
+    fs::set_permissions(&page, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-    let readable = fs::Permissions::from_mode(0o640);
+    let readable = fs::Permissions::from_mode(0o644);
     let kept = page.join(format!("{stamp}.html"));
     fs::write(&kept, html).map_err(|e| e.to_string())?;
     fs::set_permissions(&kept, readable.clone()).map_err(|e| e.to_string())?;
