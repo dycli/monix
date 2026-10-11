@@ -16,8 +16,9 @@
 # and its hippo, the shared calendar (sokka-calendar.py over CalDAV), mail
 # where the instance has some (sokka-mail.py over IMAP, read-only), each
 # the only process that sees its login, and YouTube search and captions
-# (sokka-youtube.py), which reaches YouTube only, and pictures
-# (sokka-image.py), drawn by the image service that alone holds the
+# (sokka-youtube.py), which reaches YouTube only, film and show requests
+# (sokka-requests.py over Seerr, loopback only, with `requestsKeyFile`
+# set), and pictures (sokka-image.py), drawn by the image service that alone holds the
 # household's Codex login; `sokka tools` also reads the subscription
 # limits from the usage service (usage.mod.nix). Mail and pages let
 # anyone put text in front of the model, so fetch opens only links a
@@ -160,6 +161,11 @@
         flakeIgnore = singleton "E501";
       } (readFile ./sokka-youtube.py);
 
+      requests = pkgs.writers.writePython3Bin "sokka-requests" {
+        libraries = singleton pkgs.python3Packages.mcp;
+        flakeIgnore = singleton "E501";
+      } (readFile ./sokka-requests.py);
+
       # The token rides a systemd credential into the environment, never
       # the command line.
       claude = pkgs.writeShellApplication {
@@ -259,7 +265,8 @@
               SOKKA_PAGES_URL = site.url;
             }
             // optionalAttrs i.computer { SOKKA_DESK = pc.desk; }
-            // optionalAttrs (cfg.homeTokenFile != null) { SOKKA_HOME = "1"; };
+            // optionalAttrs (cfg.homeTokenFile != null) { SOKKA_HOME = "1"; }
+            // optionalAttrs (cfg.requestsKeyFile != null) { SOKKA_REQUESTS = "1"; };
 
           mcp = (pkgs.formats.json { }).generate "${n}-mcp.json" {
             mcpServers = {
@@ -304,6 +311,17 @@
                 command = getExe mail;
                 args = singleton "${creds}/mail";
                 env.SOKKA_IMAP = cfg.mailServer;
+              };
+            }
+            // optionalAttrs (cfg.requestsKeyFile != null) {
+              requests = {
+                type = "stdio";
+                command = getExe requests;
+                args = singleton "${creds}/requests";
+                env = {
+                  SOKKA_SEERR = "http://127.0.0.1:${toString config.shipProxy.routes.q.port}";
+                  SOKKA_PERSON = i.person;
+                };
               };
             }
             // optionalAttrs i.computer {
@@ -459,7 +477,8 @@
                   "caldav:${cfg.calendarCredentialsFile}"
                 ]
                 ++ optional (i.mailCredentialsFile != null) "mail:${i.mailCredentialsFile}"
-                ++ optional (cfg.homeTokenFile != null) "home:${cfg.homeTokenFile}";
+                ++ optional (cfg.homeTokenFile != null) "home:${cfg.homeTokenFile}"
+                ++ optional (cfg.requestsKeyFile != null) "requests:${cfg.requestsKeyFile}";
                 RuntimeDirectory = n;
                 RuntimeDirectoryMode = "0700";
                 Restart = "always";
@@ -579,6 +598,15 @@
             agenix file holding a Home Assistant long-lived access token,
             for its MCP server; shared by the instances. Null leaves the
             home out.
+          '';
+        };
+
+        requestsKeyFile = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = ''
+            agenix file holding Seerr's API key, raw, for requesting films
+            and shows; shared by the instances. Null leaves requests out.
           '';
         };
 

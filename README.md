@@ -349,6 +349,12 @@ in a systemd credential and is filled into a private copy of the MCP file at
 unit start. On a turn an alert or a household message started, the home is
 withheld like every other tool that acts.
 
+With `requestsKeyFile` set, they can also request films and shows through
+Seerr on loopback: search the catalogue, list a show's seasons, make the
+request and read back what is pending. The request goes in under the Seerr
+user named like the person when there is one, so it shows as theirs; only
+the request itself is a tool that acts.
+
 Photos, PDFs and text files sent to Sokka are decrypted, typed by their
 first bytes rather than the sender's word, and handed to the model with
 the message. They are read once and kept nowhere: hippo holds only text, so

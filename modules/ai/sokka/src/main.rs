@@ -99,6 +99,15 @@ climate, media, sensors. Read its state before you speak about it and act \
 on it only when {person} asks. On a turn an alert started they are withheld \
 with the rest; say what should be checked instead.";
 
+/// Added when the assistant can request films and shows (Seerr).
+const REQUESTS: &str = "\n\nThe media tools are the household's film and show \
+library: media_search finds a title and says whether the library has it, \
+media_seasons lists a show's seasons, media_request asks for a film or for \
+seasons of a show, and media_requests shows what has been asked for. When \
+a search gives more than one plausible match, ask which before requesting. \
+A request is made under {person}'s own name; say it is in once the tool \
+has made it, and that it arrives when the downloads do.";
+
 /// Added when the assistant has a site of its own.
 const PAGES: &str = "\n\nYou have a site of your own: show_page publishes a page of \
 HTML you write (a chart, a table, a plan, an explainer with pictures in \
@@ -336,12 +345,17 @@ fn answer(
     } else {
         ""
     };
+    let requests = if model.tools() && std::env::var_os("SOKKA_REQUESTS").is_some() {
+        REQUESTS
+    } else {
+        ""
+    };
     let pages = if model.tools() && std::env::var_os("SOKKA_PAGES").is_some() {
         PAGES
     } else {
         ""
     };
-    let system = format!("{PROMPT}{style}{tools}{computer}{home}{pages}{FILES}")
+    let system = format!("{PROMPT}{style}{tools}{computer}{home}{requests}{pages}{FILES}")
         .replace("{name}", &name)
         .replace("{person}", &person)
         .replace("{QUIET}", QUIET);
