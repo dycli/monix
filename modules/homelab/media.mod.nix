@@ -90,7 +90,7 @@
           sonarr.port = 8989;
           bazarr.port = 6767;
           prowlarr.port = 9696;
-          jellyfin.port = 8096;
+          fin.port = 8096;
           q.port = config.services.seerr.port;
         };
 

@@ -128,7 +128,7 @@
                   ++ [
                     {
                       Jellyfin = {
-                        href = url "jellyfin";
+                        href = url "fin";
                         description = "Movies & TV";
                         icon = "jellyfin.png";
                       };
