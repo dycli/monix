@@ -7,7 +7,6 @@ Item {
 
     signal activated
 
-    readonly property bool hovered: pointer.containsMouse
     readonly property bool lowBattery: PowerService.percentage <= 15
         && !PowerService.charging
     readonly property color batteryColor: lowBattery
@@ -33,12 +32,9 @@ Item {
     }
 
     MouseArea {
-        id: pointer
-
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        hoverEnabled: true
         onClicked: event => {
             if (event.button === Qt.RightButton) {
                 PowerService.cycleProfile();

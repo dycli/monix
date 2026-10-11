@@ -5,8 +5,6 @@ Item {
 
     signal menuToggleRequested
 
-    readonly property bool hovered: pointer.containsMouse
-
     width: 28
     height: 24
 
@@ -49,12 +47,9 @@ Item {
     }
 
     MouseArea {
-        id: pointer
-
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        hoverEnabled: true
         onClicked: event => {
             if (event.button === Qt.MiddleButton) {
                 PowerService.idleInhibited = !PowerService.idleInhibited;

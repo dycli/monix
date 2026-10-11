@@ -6,23 +6,17 @@ Item {
     id: root
 
     property real maximumDetailsWidth: 240
-    property real revealProgress: 0
 
-    readonly property bool hovered: pointer.hovered
     readonly property real restingWidth: controls.implicitWidth
     readonly property real detailsWidth: Math.min(maximumDetailsWidth, track.implicitWidth)
     readonly property real revealedWidth: detailsWidth > 0
         ? Style.barItemGap + detailsWidth : 0
 
-    implicitWidth: restingWidth + revealProgress * revealedWidth
+    implicitWidth: restingWidth + revealedWidth
     implicitHeight: 24
     width: implicitWidth
     height: implicitHeight
     clip: true
-
-    HoverHandler {
-        id: pointer
-    }
 
     Item {
         id: detailsViewport
@@ -31,7 +25,7 @@ Item {
             left: parent.left
             verticalCenter: parent.verticalCenter
         }
-        width: root.revealProgress * root.revealedWidth
+        width: root.revealedWidth
         height: 24
         clip: true
 

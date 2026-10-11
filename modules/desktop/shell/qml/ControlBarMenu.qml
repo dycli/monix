@@ -40,6 +40,12 @@ Row {
         onSecondaryActivated: AudioState.toggleMute()
     }
 
+    BarModeButton {
+        enabled: AudioState.sourceAvailable
+        icon: AudioState.sourceIcon
+        onActivated: AudioState.toggleSourceMute()
+    }
+
     BarSlider {
         available: BrightnessState.available
         icon: BrightnessState.internalAvailable ? "󰌢" : "󰍹"

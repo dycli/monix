@@ -3,6 +3,10 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell.Services.UPower
 
+// The right rail: a pinned block (tray, privacy, battery, settings, clock)
+// and one popout that slides out to its left with everything else. The
+// popout opens while the pointer is on the rail, when a key flashes a
+// control, while the settings panel is open and when the battery is low.
 Item {
     id: root
 
@@ -16,53 +20,32 @@ Item {
     readonly property bool settingsOpen: SettingsPanelService.isOpen(screenName)
     readonly property bool lowBatteryOpen: PowerService.hasBattery
         && PowerService.percentage <= 15 && !PowerService.charging
-    readonly property bool sessionDetail: ownsMode && BarModeService.activeMode === "session"
-    readonly property bool detailVisible: sessionDetail
-    readonly property bool overviewVisible: !detailVisible && BarModeService.activeMode === ""
+    readonly property bool detailVisible: ownsMode && BarModeService.activeMode === "session"
+    readonly property bool popoutVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientVisible || settingsOpen || lowBatteryOpen)
-    readonly property string overviewMode: {
-        if (settingsOpen)
-            return "control";
-        if (transientVisible)
-            return transientMode === "profile" || !hoverOpen ? transientMode : hoverMode;
-        if (hoverOpen)
-            return hoverMode;
-        if (lowBatteryOpen)
-            return "battery";
-        return transientMode !== "" ? transientMode : hoverMode;
-    }
-    readonly property bool powerAnchoredOverview: overviewMode === "battery"
-        || overviewMode === "profile"
-    readonly property bool controlBatteryVisible: overviewMode === "control"
-        && PowerService.hasBattery
-    readonly property bool pinned: ownsMode
-    readonly property real mediaRestingLead: media.visible
-        ? media.restingWidth + gap : 0
-    readonly property real mediaLead: media.visible ? media.width + gap : 0
     readonly property real trayLead: tray.width > 0 ? tray.width + gap : 0
     readonly property real privacyLead: privacy.width > 0 ? privacy.width + gap : 0
-    readonly property real externalControlsWidth: mediaRestingLead + trayLead + privacyLead
-    readonly property real positionedExternalControlsWidth: mediaLead + trayLead + privacyLead
     readonly property real pinnedControlsLead: pinnedControls.implicitWidth > 0
         ? pinnedControls.implicitWidth + gap : 0
-    readonly property real leadingControlsWidth: externalControlsWidth + pinnedControlsLead
-    readonly property real nonMediaIdleWidth: trayLead + privacyLead + pinnedControlsLead
+    readonly property real idleWidth: trayLead + privacyLead + pinnedControlsLead
         + settingsButton.width + gap + clock.width
+    readonly property real popoutRoom: Math.max(0, maximumWidth - idleWidth - gap)
+    readonly property real popoutWidth: Math.min(popoutRoom, popout.implicitWidth)
+    readonly property real popoutLead: popoutProgress * (popoutWidth + gap)
+    readonly property real endControlWidth: sessionDetailVisual ? 0 : settingsButton.width
+    readonly property real endControlGap: endControlWidth > 0 ? gap : 0
+    readonly property real detailContentWidth: Math.min(sessionMenu.implicitWidth, Math.max(0,
+        maximumWidth - pinnedControlsLead - endControlWidth - endControlGap))
+    readonly property real detailWidth: pinnedControlsLead + detailContentWidth
+        + endControlGap + endControlWidth
+    readonly property real restingWidth: idleWidth + popoutLead
 
     property bool hoverOpen: false
-    property string hoverMode: "control"
-    property bool mediaOpen: false
     property bool sessionDetailVisual: false
-    property real mediaProgress: mediaOpen && media.visible && !detailVisible ? 1 : 0
-    property real overviewProgress: overviewVisible ? 1 : 0
+    property real popoutProgress: popoutVisible ? 1 : 0
     property real detailProgress: detailVisible ? 1 : 0
 
-    function scheduleHoverClose(): void {
-        if (hoverOpen && !railHover.hovered)
-            hoverCloseTimer.restart();
-    }
-
-    function openPowerSettings(): void {
+    function closeOthers(): void {
         hoverOpen = false;
         SystemMenuService.close();
         ToolsMenuService.close();
@@ -71,28 +54,9 @@ Item {
         BarModeService.close();
         ClockPanelService.close();
         ClipboardPanelService.close();
-        SettingsPanelService.openPower(screenName);
     }
 
-    readonly property real idleWidth: leadingControlsWidth + settingsButton.width + gap + clock.width
-    readonly property real overviewWidth: Math.min(maximumWidth,
-        idleWidth + gap + overviewContent.implicitWidth
-            + (controlBatteryVisible ? gap + powerOverview.implicitWidth : 0))
-    readonly property real endControlWidth: sessionDetailVisual ? 0 : settingsButton.width
-    readonly property real endControlGap: endControlWidth > 0 ? gap : 0
-    readonly property real availableDetailWidth: Math.max(0,
-        maximumWidth - pinnedControlsLead - endControlWidth - endControlGap)
-    readonly property real requestedDetailWidth: sessionMenu.implicitWidth
-    readonly property real detailContentWidth: Math.min(availableDetailWidth, requestedDetailWidth)
-    readonly property real detailWidth: pinnedControlsLead + detailContentWidth
-        + endControlGap + endControlWidth
-    readonly property real restingWidth: idleWidth
-        + overviewProgress * (overviewWidth - idleWidth)
-    readonly property real targetWidth: restingWidth
-        + detailProgress * (detailWidth - restingWidth)
-        + mediaProgress * media.revealedWidth * (1 - detailProgress)
-
-    width: targetWidth
+    width: restingWidth + detailProgress * (detailWidth - restingWidth)
     height: 28
     clip: true
 
@@ -106,11 +70,7 @@ Item {
             sessionDetailVisual = false;
     }
 
-    Behavior on overviewProgress {
-        NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
-    }
-
-    Behavior on mediaProgress {
+    Behavior on popoutProgress {
         NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
     }
 
@@ -122,10 +82,13 @@ Item {
         id: railHover
 
         onHoveredChanged: {
-            if (hovered)
+            if (hovered) {
                 hoverCloseTimer.stop();
-            else
-                root.scheduleHoverClose();
+                if (!root.detailVisible && BarModeService.activeMode === "")
+                    root.hoverOpen = true;
+            } else {
+                hoverCloseTimer.restart();
+            }
         }
     }
 
@@ -139,38 +102,73 @@ Item {
         }
     }
 
-    Timer {
-        id: mediaCloseTimer
-
-        interval: 1000
-        onTriggered: {
-            if (!media.hovered)
-                root.mediaOpen = false;
-        }
-    }
-
     Shortcut {
-        enabled: root.pinned
+        enabled: root.ownsMode
         sequence: "Escape"
         onActivated: BarModeService.close()
     }
 
-    MediaBar {
-        id: media
+    Item {
+        id: popoutViewport
 
         anchors.verticalCenter: parent.verticalCenter
-        maximumDetailsWidth: Math.max(0, root.maximumWidth - root.restingWidth)
-        x: -root.detailProgress * (width + root.gap)
-        revealProgress: root.mediaProgress
-        visible: MediaState.available && root.maximumWidth
-            >= root.nonMediaIdleWidth + restingWidth + root.gap
-            && restingWidth > 0
-        onHoveredChanged: {
-            if (hovered) {
-                mediaCloseTimer.stop();
-                root.mediaOpen = true;
-            } else {
-                mediaCloseTimer.restart();
+        x: tray.x - root.gap - width
+        width: root.popoutWidth
+        height: 24
+        clip: true
+        enabled: root.popoutVisible
+
+        Row {
+            id: popout
+
+            readonly property real fixedWidth: media.restingWidth + root.gap
+                + controlMenu.implicitWidth
+                + (powerOverview.visible ? root.gap + powerOverview.implicitWidth : 0)
+
+            anchors.verticalCenter: parent.verticalCenter
+            x: parent.width - width + parent.width * (1 - root.popoutProgress)
+            height: 24
+            spacing: root.gap
+
+            MediaBar {
+                id: media
+
+                maximumDetailsWidth: Math.max(0, root.popoutRoom - popout.fixedWidth - root.gap)
+                visible: MediaState.available
+            }
+
+            ControlBarMenu {
+                id: controlMenu
+
+                settingsOpen: root.settingsOpen
+                onSettingsRequested: section => {
+                    root.closeOthers();
+                    SettingsPanelService.openSection(root.screenName, section);
+                }
+                onDisplayRequested: {
+                    root.closeOthers();
+                    SettingsPanelService.openDisplay(root.screenName);
+                }
+            }
+
+            PowerOverviewCarousel {
+                id: powerOverview
+
+                generation: BarModeService.transientGeneration
+                mode: root.transientVisible && root.transientMode === "profile"
+                    ? "profile" : "battery"
+                profileLabel: PowerService.profilesAvailable
+                    ? PowerService.profileName(PowerProfiles.profile) : "Power"
+                visible: PowerService.hasBattery
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        root.closeOthers();
+                        SettingsPanelService.openPower(root.screenName);
+                    }
+                }
             }
         }
     }
@@ -179,8 +177,7 @@ Item {
         id: tray
 
         anchors.verticalCenter: parent.verticalCenter
-        x: root.mediaLead + root.detailProgress
-            * (-width - root.gap - root.mediaLead)
+        x: root.popoutLead - root.detailProgress * (width + root.gap + root.popoutLead)
         enabled: !root.detailVisible
         opacity: 1 - root.detailProgress
     }
@@ -189,8 +186,7 @@ Item {
         id: privacy
 
         anchors.verticalCenter: parent.verticalCenter
-        x: root.mediaLead + root.trayLead + root.detailProgress
-            * (-width - root.gap - root.mediaLead - root.trayLead)
+        x: tray.x + root.trayLead
         opacity: 1 - root.detailProgress
     }
 
@@ -198,176 +194,10 @@ Item {
         id: pinnedControls
 
         anchors.verticalCenter: parent.verticalCenter
-        x: {
-            const previewWidth = root.controlBatteryVisible
-                ? powerOverview.implicitWidth : overviewContent.implicitWidth;
-            const previewOffset = root.powerAnchoredOverview || root.controlBatteryVisible
-                ? root.overviewProgress * (root.gap + previewWidth) : 0;
-            return (root.positionedExternalControlsWidth + previewOffset)
-                * (1 - root.detailProgress);
-        }
-        onPowerHoveredChanged: {
-            if (powerHovered && PowerService.hasBattery && !root.detailVisible
-                    && BarModeService.activeMode === ""
-                    && !(root.overviewVisible && root.overviewMode === "control")) {
-                root.hoverMode = "battery";
-                root.hoverOpen = true;
-            }
-        }
-        onPowerActivated: root.openPowerSettings()
-    }
-
-    Item {
-        id: overviewViewport
-
-        anchors.verticalCenter: parent.verticalCenter
-        x: (root.powerAnchoredOverview
-            ? pinnedControls.x + pinnedControls.powerX : settingsButton.x)
-            - root.gap - width
-        width: overviewContent.implicitWidth
-        height: 24
-        clip: true
-        enabled: root.overviewVisible
-
-        Item {
-            id: overviewContent
-
-            anchors.verticalCenter: parent.verticalCenter
-            x: implicitWidth * (1 - root.overviewProgress)
-            width: implicitWidth
-            height: implicitHeight
-            implicitWidth: {
-                switch (root.overviewMode) {
-                case "battery": return powerOverview.implicitWidth;
-                case "volume": return volumeOsd.implicitWidth;
-                case "brightness": return brightnessOsd.implicitWidth;
-                case "microphone": return microphoneOsd.implicitWidth;
-                case "profile": return powerOverview.implicitWidth;
-                default: return controlMenu.implicitWidth;
-                }
-            }
-            implicitHeight: 24
-
-            ControlBarMenu {
-                id: controlMenu
-
-                anchors.right: parent.right
-                settingsOpen: root.settingsOpen
-                visible: root.overviewMode === "control"
-                onSettingsRequested: section => {
-                    root.hoverOpen = false;
-                    SystemMenuService.close();
-                    ToolsMenuService.close();
-                    ViewMenuService.close();
-                    LauncherService.close();
-                    BarModeService.close();
-                    ClockPanelService.close();
-                    ClipboardPanelService.close();
-                    SettingsPanelService.openSection(root.screenName, section);
-                }
-                onDisplayRequested: {
-                    root.hoverOpen = false;
-                    SystemMenuService.close();
-                    ToolsMenuService.close();
-                    ViewMenuService.close();
-                    LauncherService.close();
-                    BarModeService.close();
-                    ClockPanelService.close();
-                    ClipboardPanelService.close();
-                    SettingsPanelService.openDisplay(root.screenName);
-                }
-            }
-
-            PowerOverviewCarousel {
-                id: powerOverview
-
-                anchors.right: parent.right
-                generation: BarModeService.transientGeneration
-                mode: root.overviewMode === "profile" ? "profile" : "battery"
-                profileLabel: PowerService.profilesAvailable
-                    ? PowerService.profileName(PowerProfiles.profile) : "Power"
-                visible: root.overviewMode === "battery" || root.overviewMode === "profile"
-            }
-
-            BarSlider {
-                id: volumeOsd
-
-                anchors.right: parent.right
-                available: AudioState.available
-                icon: AudioState.icon
-                value: AudioState.volume / 100
-                visible: root.overviewMode === "volume"
-                onMoved: value => {
-                    AudioState.setVolume(value);
-                    BarModeService.flash("volume", root.screenName);
-                }
-                onSecondaryActivated: {
-                    AudioState.toggleMute();
-                    BarModeService.flash("volume", root.screenName);
-                }
-            }
-
-            BarSlider {
-                id: brightnessOsd
-
-                anchors.right: parent.right
-                available: BrightnessState.available
-                icon: BrightnessState.icon
-                value: BrightnessState.level
-                visible: root.overviewMode === "brightness"
-                onMoved: value => {
-                    BrightnessState.setLevel(value);
-                    BarModeService.flash("brightness", root.screenName);
-                }
-            }
-
-            BarModeButton {
-                id: microphoneOsd
-
-                anchors.right: parent.right
-                enabled: AudioState.sourceAvailable
-                icon: AudioState.sourceIcon
-                label: AudioState.sourceMuted ? "Muted" : "Live"
-                visible: root.overviewMode === "microphone"
-                onActivated: {
-                    AudioState.toggleSourceMute();
-                    BarModeService.flash("microphone", root.screenName);
-                }
-            }
-
-        }
-    }
-
-    Item {
-        id: controlBatteryViewport
-
-        anchors.verticalCenter: parent.verticalCenter
-        x: pinnedControls.x + pinnedControls.powerX - root.gap - width
-        width: powerOverview.implicitWidth
-        height: 24
-        clip: true
-        enabled: root.overviewVisible && root.controlBatteryVisible
-        visible: root.controlBatteryVisible
-
-        Item {
-            x: width * (1 - root.overviewProgress)
-            width: powerOverview.implicitWidth
-            height: 24
-
-            BatteryBarStatus {
-                id: batteryStatus
-
-                anchors {
-                    right: parent.right
-                    verticalCenter: parent.verticalCenter
-                }
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.openPowerSettings()
-            }
+        x: (root.popoutLead + root.trayLead + root.privacyLead) * (1 - root.detailProgress)
+        onPowerActivated: {
+            root.closeOthers();
+            SettingsPanelService.openPower(root.screenName);
         }
     }
 
@@ -384,6 +214,7 @@ Item {
 
         SessionBarMenu {
             id: sessionMenu
+
             active: root.detailVisible
             anchors {
                 right: parent.right
@@ -399,22 +230,8 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         x: root.width - clock.width - root.gap - width
             + root.detailProgress * (clock.width + root.gap + width + root.gap)
-        onHoveredChanged: {
-            if (hovered && !root.detailVisible && BarModeService.activeMode === ""
-                    && !SettingsPanelService.isOpen(root.screenName)) {
-                root.hoverMode = "control";
-                root.hoverOpen = true;
-            }
-        }
         onMenuToggleRequested: {
-            root.hoverOpen = false;
-            SystemMenuService.close();
-            ToolsMenuService.close();
-            ViewMenuService.close();
-            LauncherService.close();
-            BarModeService.close();
-            ClockPanelService.close();
-            ClipboardPanelService.close();
+            root.closeOthers();
             SettingsPanelService.toggle(root.screenName);
         }
     }
@@ -448,5 +265,4 @@ Item {
         anchorItem: settingsButton
         screenName: root.screenName
     }
-
 }
