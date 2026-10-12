@@ -174,7 +174,15 @@ tailnet to Water alone.
 hippo is the seat's episodic memory, written in Rust in
 `modules/ai/seat/hippo`, with seven dependencies. The design follows Victor
 Taelin's OptChat: keep every message, and fold the whole history into a
-fixed-size summary that any session can read.
+fixed-size summary that any session can read. It is developed here and
+mirrored to [dycli/hippo](https://github.com/dycli/hippo) as its own repo,
+with its own flake and README, by
+
+```
+git subtree push --prefix=modules/ai/seat/hippo git@github.com:dycli/hippo.git main
+```
+
+after a push that touches it.
 
 **Recording.** A watcher follows Claude Code, Codex and OpenCode transcripts
 as they are written (OpenCode through its SQLite database) and appends each
