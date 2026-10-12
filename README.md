@@ -209,7 +209,13 @@ every compaction with no tool call. Codex and OpenCode page it in with
 **Session compaction.** Claude Code compacts at 200k tokens, and a
 PreCompact hook has the agent write a short handoff first. A session comes
 back as handoff plus fresh view rather than a long transcript summary.
-Compactions went from 97-113 seconds to 16-18.
+Compactions went from 97-113 seconds to 16-18. The same hook runs
+`hippo fold` first: the seat is the one reader that keeps a live context
+between reads of the view, so its raw lines only duplicate that context,
+and its cache is rewritten at compaction anyway. Folding there, instead of
+at 128 KB, is the batch at the boundary where it is free; the fresh
+context opens on a 64 KB view whose tail is the end of the last stretch at
+the usual falling resolution, and the chat itself is the raw frontier.
 
 **CLI.** The agent drills down with `zoom` (a line into its two halves, down
 to the whole message), `date` and `search` (regex over

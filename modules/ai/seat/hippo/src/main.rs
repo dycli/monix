@@ -29,6 +29,8 @@ Usage:
   hippo date <id>          date and time of message id
   hippo search <regex>     search every message, word for word
   hippo status             what the service is doing
+  hippo fold               merge the view down to half its budget now (the
+                           seat's PreCompact hook, before its context goes)
   hippo pause / resume     stop or restart the compactor's model calls;
                            logging goes on
 Service and maintenance:
@@ -181,7 +183,9 @@ fn main() -> ExitCode {
         "audit" => audit(rest.first()),
         "replay" => replay(rest),
         "import" => import(rest),
-        "view" | "zoom" | "date" | "search" | "status" | "pause" | "resume" => ask(cmd, rest),
+        "view" | "zoom" | "date" | "search" | "status" | "fold" | "pause" | "resume" => {
+            ask(cmd, rest)
+        }
         "help" | "-h" | "--help" => Ok(USAGE.into()),
         _ => Err(USAGE.into()),
     };

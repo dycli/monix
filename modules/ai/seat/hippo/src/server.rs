@@ -272,6 +272,21 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
             pump(shared, &mut c);
             Ok(format!("Logged as message {}.", ids[0]))
         }
+        // The seat's PreCompact hook: its cache is about to go, so the batch
+        // that would come at the budget comes now, and the view the fresh
+        // context loads is already folded.
+        "fold" => {
+            let mut guard = core.lock().unwrap();
+            let c = &mut *guard;
+            let before = c.view.size();
+            c.view.batch(&c.tree, c.budget);
+            publish(c)?;
+            Ok(format!(
+                "Folded the view from {before} to {} bytes, {} lines.",
+                c.view.size(),
+                c.view.parts.len()
+            ))
+        }
         "status" => Ok(status(&core.lock().unwrap(), shared.backend.is_some())),
         "pause" => {
             let c = core.lock().unwrap();

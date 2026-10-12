@@ -72,6 +72,12 @@ in
         name: text:
         pkgs.writeShellScript name ''
           [ "$(${pkgs.coreutils}/bin/id -u)" = ${toString seat.uid} ] || exit 0
+          # The seat's context is about to be rewritten, so the view's next
+          # batch of merges comes now: the fresh context opens on a view
+          # folded to half its budget, with the stretch the summary covers
+          # merged rather than raw. Milliseconds; a view that cannot fold
+          # yet is fine as it is.
+          ${lib.meta.getExe (package lib pkgs)} fold >&2 || true
           ${pkgs.coreutils}/bin/cat <<'EOF'
           ${text}
           EOF

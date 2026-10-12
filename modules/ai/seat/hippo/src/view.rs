@@ -3,7 +3,8 @@
 //! the most due pairs; once merged a part never splits, so consecutive views
 //! share all but their end. Merges come in batches: past the budget the view
 //! shrinks to half of it, then grows again, so its head stays the same, and
-//! cached, between batches.
+//! cached, between batches. A reader whose cache is about to go anyway (the
+//! seat, before a compaction) asks for a batch early with `batch` (the `fold` command).
 
 use std::fs;
 use std::path::Path;
@@ -99,6 +100,13 @@ impl View {
                 self.size - part_size(tree, a) - part_size(tree, b) + part_size(tree, parent);
             self.parts.splice(k..k + 2, [parent]);
         }
+    }
+
+    /// A batch now, whatever the size: merges down to half the budget as
+    /// far as built parents allow, the rest at later appends.
+    pub fn batch(&mut self, tree: &Tree, budget: u64) {
+        self.shrinking = true;
+        self.fit(tree, budget);
     }
 
     /// First message whose view line is not built, or `t` if all are.
@@ -219,6 +227,37 @@ mod tests {
             "{:?}",
             v.parts
         );
+    }
+
+    #[test]
+    fn a_fold_batches_early_and_the_view_grows_again() {
+        let dir = std::env::temp_dir().join(format!("hippo-view-fold-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut t = Tree::open(&dir).unwrap();
+        let n = 32u64;
+        for l in 0..6u8 {
+            for i in 0..(n >> l) {
+                node(&mut t, l, i, 100);
+            }
+        }
+        let mut v = View::default();
+        for _ in 0..n {
+            v.append(&t, 10_000);
+        }
+        // Well under budget, so nothing has merged.
+        assert_eq!(v.parts.len(), 32);
+        v.batch(&t, 10_000);
+        assert!(
+            !v.shrinking && v.size() <= 5_000 && v.tiles(),
+            "{:?}",
+            v.parts
+        );
+        // The newest end stays the finest: the last parts are still raw.
+        assert_eq!(v.parts.last(), Some(&(0, 31)));
+        // Afterwards the view grows as before, with no further merging.
+        let before = v.parts.len();
+        v.append(&t, 10_000);
+        assert_eq!(v.parts.len(), before + 1);
     }
 
     #[test]
