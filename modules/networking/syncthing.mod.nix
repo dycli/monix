@@ -39,11 +39,11 @@
             path = "/home/${config.primaryUser}/crate/sync";
             devices = attrNames devices;
           };
-          # The seat's vault (vault.mod.nix): written on Water, read and
+          # The seat's notes (notes.mod.nix): written on Water, read and
           # edited in Obsidian on the captain's devices.
-          settings.folders.vault = {
-            label = "vault";
-            path = mkDefault "/home/${config.primaryUser}/crate/vault";
+          settings.folders.bridge = {
+            label = "bridge";
+            path = mkDefault "/home/${config.primaryUser}/crate/bridge";
             devices = [
               "water"
               "earth"

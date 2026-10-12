@@ -38,7 +38,7 @@
         "var/lib/sokka"
         "var/lib/suki"
         "var/lib/yeoman-pages"
-        "var/lib/vault"
+        "var/lib/bridge"
         "srv/minecraft"
       ];
 
