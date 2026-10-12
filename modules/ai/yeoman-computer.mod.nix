@@ -2,7 +2,11 @@
 # only it touches. Brave runs full screen under cage on a headless
 # wlroots output, driven by Playwright MCP over HTTP on the guest's
 # address, and wayvnc shows the same screen so the person can take over
-# (captcha, two-factor) from a viewer on the host. The browser profile
+# (captcha, two-factor) from a viewer on the host. The MCP server shares
+# one browser between its clients and closes it when the last one leaves;
+# the assistant connects once per reply, so a keeper in the guest holds a
+# standing session and the browser, with its open pages, outlives every
+# turn. The browser profile
 # lives on a volume that survives reboots and rebuilds, so site logins
 # stay; `<name>-computer-reset` wipes it back to a clean desk. A folder
 # shared over virtiofs is the desk: screenshots and downloads land there
@@ -30,7 +34,7 @@
       inherit (lib.meta) getExe getExe';
       inherit (lib.options) mkOption;
       inherit (lib.strings) fixedWidthString;
-      inherit (lib) types;
+      inherit (lib) readFile types;
       inherit (lib.ship) computers;
 
       indexed = computers.indexes config.yeoman.instances;
@@ -60,6 +64,10 @@
                 WAYLAND_DISPLAY = "wayland-0";
               };
               playwright = import ./playwright-mcp.nix pkgs;
+              mcpUrl = "http://localhost:${toString computers.mcpPort}/mcp";
+              keeper = pkgs.writers.writePython3Bin "desk-keeper" {
+                libraries = singleton pkgs.python3Packages.mcp;
+              } (readFile ./yeoman-computer/keeper.py);
               desktop = pkgs.writeShellApplication {
                 name = "desk";
                 runtimeInputs = [
@@ -72,11 +80,14 @@
                   # device; wayvnc supplies the keyboard and mouse.
                   export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
                   export NIXOS_OZONE_WL=1
+                  # The profile goes by environment: the nixpkgs wrapper turns
+                  # on isolated mode, which refuses a profile, unless this is set.
+                  export PLAYWRIGHT_MCP_USER_DATA_DIR=/home/pc/profile
                   exec cage -- ${getExe playwright} \
                     --host 0.0.0.0 --port ${toString computers.mcpPort} \
-                    --allowed-hosts ${addr n},${addr n}:${toString computers.mcpPort},localhost \
-                    --browser chrome --executable-path ${getExe pkgs.brave} --sandbox \
-                    --user-data-dir /home/pc/profile --shared-browser-context \
+                    --allowed-hosts ${addr n},${addr n}:${toString computers.mcpPort},localhost,localhost:${toString computers.mcpPort} \
+                    --browser chrome --executable-path ${getExe pkgs.brave} --sandbox --headed \
+                    --shared-browser-context \
                     --output-dir ${computers.deskMount} \
                     --viewport-size ${computers.screen}
                 '';
@@ -165,6 +176,22 @@
                   RuntimeDirectory = "desk";
                   RuntimeDirectoryMode = "0700";
                   ExecStart = getExe desktop;
+                  Restart = "always";
+                  RestartSec = 3;
+                };
+              };
+              systemd.services.desk-keeper = {
+                description = "A standing MCP client so the browser outlives each reply";
+                wantedBy = singleton "multi-user.target";
+                after = singleton "desk.service";
+                requires = singleton "desk.service";
+                environment.DESK_MCP = mcpUrl;
+                serviceConfig = {
+                  User = "pc";
+                  Group = "desk";
+                  ExecStart = getExe keeper;
+                  # The server listens a moment after the desktop starts, and
+                  # a dropped session is simply opened again.
                   Restart = "always";
                   RestartSec = 3;
                 };

@@ -321,7 +321,10 @@ persistent microVM under cloud-hypervisor, with a desktop that only
 it touches. Brave runs full screen under cage on a headless wlroots output,
 and Playwright MCP, the same server the seat's browser tool uses, drives it
 over HTTP from the host, so the model works a page by its accessibility tree
-and takes a screenshot when it needs to look. The browser profile lives on a
+and takes a screenshot when it needs to look. The server closes its shared
+browser when the last client leaves, and the assistant connects once per
+reply, so a keeper in the guest holds a standing session: the browser and its
+open pages outlive every turn. The browser profile lives on a
 volume that survives reboots and rebuilds, so site logins made there stay
 there, and nothing of the household goes in: no tailnet, no store share, no
 secret. The guest's network (`yeoman-network.mod.nix`) is a host-only bridge
