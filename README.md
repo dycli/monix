@@ -238,12 +238,13 @@ harnesses prune them.
 
 `/var/lib/bridge` (`notes.mod.nix`) is the seat's folder of markdown notes,
 the curated layer over hippo: hippo records what was said, the notes hold
-what is true now and are rewritten in place. Syncthing carries the folder
-to the captain's desktop and phone, where Obsidian opens it as the vault
-"bridge"; nothing on the server side depends on Obsidian. The Syncthing
-user joins the seat's group, Syncthing ignores remote modes and runs with
-a group-writable umask, so either side can edit the other's files. The
-folder is in the OS backup set.
+what is true now and are rewritten in place. The folder is bind-mounted
+as `bridge` inside the primary user's Syncthing folder, so it reaches the
+captain's desktop and phone with the rest of that folder and Obsidian
+opens the subfolder as the vault "bridge"; nothing on the server side
+depends on Obsidian. The Syncthing user joins the seat's group and runs
+with a group-writable umask, so either side can edit the other's files.
+The folder is in the OS backup set.
 
 ### Local inference
 

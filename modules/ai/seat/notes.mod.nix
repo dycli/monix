@@ -1,7 +1,8 @@
 # bridge, the seat's notes: a folder of markdown where the engineer keeps
 # plans and the facts that are true now, as hippo keeps what was said.
-# Syncthing carries it to the captain's devices (syncthing.mod.nix), where
-# Obsidian opens it as the vault "bridge".
+# It is bind-mounted as `bridge` inside the primary user's Syncthing folder
+# (syncthing.mod.nix), so it reaches the captain's devices with no new
+# folder to accept; Obsidian opens that subfolder as the vault "bridge".
 { self, ... }:
 {
   flake.nixosModules.seat = self.nixosModules.notes;
@@ -18,14 +19,18 @@
         users.users.${config.services.syncthing.user}.extraGroups = singleton seat.user;
         systemd.tmpfiles.rules = singleton "d ${seat.notes} 2770 ${seat.user} ${seat.user} -";
 
-        services.syncthing.settings.folders.bridge = {
-          path = seat.notes;
-          # Modes come from the umask, not from the device that last wrote.
-          ignorePerms = true;
+        fileSystems."${config.services.syncthing.settings.folders."zahzi-nepxh".path}/bridge" = {
+          device = seat.notes;
+          fsType = "none";
+          options = [
+            "bind"
+            "nofail"
+          ];
         };
         # Syncthing replaces a file by rename, so the seat's own files need
         # only the shared directory; files Syncthing creates must leave the
-        # group write so the seat can edit them in place.
+        # group write so the seat can edit them in place. The sync folder
+        # carries modes, and a phone sends none, so the umask decides.
         systemd.services.syncthing.serviceConfig.UMask = "0002";
       };
     };

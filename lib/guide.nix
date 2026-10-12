@@ -37,8 +37,9 @@
 
     ## Notes: bridge
 
-    `/var/lib/bridge` is your folder of markdown notes, synced to the
-    captain's devices where Obsidian opens it as the vault "bridge". hippo
+    `/var/lib/bridge` is your folder of markdown notes, carried to the
+    captain's devices as `bridge` inside his Syncthing folder, where
+    Obsidian opens it as the vault "bridge". hippo
     holds what was said; bridge holds what is true now: plans, open items,
     decisions and the facts behind them, each rewritten in place as it
     changes. Before planning or resuming a project, read its page; when a

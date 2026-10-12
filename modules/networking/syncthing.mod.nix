@@ -39,17 +39,6 @@
             path = "/home/${config.primaryUser}/crate/sync";
             devices = attrNames devices;
           };
-          # The seat's notes (notes.mod.nix): written on Water, read and
-          # edited in Obsidian on the captain's devices.
-          settings.folders.bridge = {
-            label = "bridge";
-            path = mkDefault "/home/${config.primaryUser}/crate/bridge";
-            devices = [
-              "water"
-              "earth"
-              "px1"
-            ];
-          };
         };
       };
     };
