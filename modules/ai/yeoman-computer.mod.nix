@@ -86,7 +86,7 @@
                   exec cage -- ${getExe playwright} \
                     --host 0.0.0.0 --port ${toString computers.mcpPort} \
                     --allowed-hosts ${addr n},${addr n}:${toString computers.mcpPort},localhost,localhost:${toString computers.mcpPort} \
-                    --browser chrome --executable-path ${getExe pkgs.brave} --sandbox --headed \
+                    --browser chrome --executable-path ${getExe pkgs.brave} --sandbox \
                     --shared-browser-context \
                     --output-dir ${computers.deskMount} \
                     --viewport-size ${computers.screen}
