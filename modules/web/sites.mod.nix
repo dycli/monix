@@ -27,6 +27,12 @@
 
       # Parked domains keep their certs warm and answer 503.
       parked = singleton "cleary.is";
+
+      # su.is keeps its small projects under /labs/; the old top-level
+      # paths send visitors there.
+      moved = {
+        "su.is".locations."~ ^/(endgrain|lifespan|liberi)(/|$)".return = "301 /labs$request_uri";
+      };
     in
     {
       config = {
@@ -37,11 +43,15 @@
           recommendedOptimisation = true;
 
           virtualHosts =
-            genAttrs live (domain: {
-              forceSSL = true;
-              enableACME = true;
-              root = "${webRoot}/${domain}";
-            })
+            genAttrs live (
+              domain:
+              {
+                forceSSL = true;
+                enableACME = true;
+                root = "${webRoot}/${domain}";
+              }
+              // moved.${domain} or { }
+            )
             // genAttrs parked (domain: {
               forceSSL = true;
               enableACME = true;
