@@ -45,20 +45,29 @@ btrfs subvolume snapshot -r /srv/storage "$snapshot"
 resume
 active=()
 trap - EXIT
-# The OS subvolume holds the state no rebuild recreates. Its nested
-# subvolumes (agents, models) stay out of the snapshot by themselves.
+# The OS subvolume holds the state no rebuild recreates. Nested subvolumes
+# stay out of its snapshot by themselves: agents and models by design, and
+# /srv, which the install left as one, so /srv gets a snapshot of its own.
 os=/var/lib/nas/os-nightly
-if [[ -e $os ]]; then btrfs subvolume delete "$os"; fi
+srv=/var/lib/nas/srv-nightly
+for copy in "$os" "$srv"; do
+  if [[ -e $copy ]]; then btrfs subvolume delete "$copy"; fi
+done
 btrfs filesystem sync /
 btrfs subvolume snapshot -r / "$os"
+btrfs subvolume snapshot -r /srv "$srv"
 targets=("$snapshot")
 for path in "${os_paths[@]}"; do
-  [[ -d $os/$path ]] || { echo "missing $path on the OS disk" >&2; exit 1; }
-  targets+=("$os/$path")
+  case $path in
+    srv/*) copy=$srv/${path#srv/} ;;
+    *) copy=$os/$path ;;
+  esac
+  [[ -d $copy ]] || { echo "missing $path on the OS disk" >&2; exit 1; }
+  targets+=("$copy")
 done
 if [[ ! -f /srv/backup/restic/config ]]; then restic init; fi
 restic backup --host water "${targets[@]}"
-btrfs subvolume delete "$os"
+btrfs subvolume delete "$os" "$srv"
 # Recover actual bytes from the repository before recording success.
 restic dump latest "$snapshot/.backup-state/restore-probe" > /var/cache/restic-nas/restored-probe
 cmp /srv/storage/.backup-state/restore-probe /var/cache/restic-nas/restored-probe
