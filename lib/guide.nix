@@ -15,11 +15,11 @@
     hippo records every chat of this seat automatically, word for word; you
     never write to it. To keep something, say it in a reply.
 
-    In Claude Code the view loads into your context by itself, as the rules
-    file `hippo-view.md`, at session start and after each compaction; it is
-    a snapshot from that moment. Run `hippo view` to refresh it mid-session,
-    and in Codex or OpenCode, where it does not load, at session start;
-    read every page it prints, whole.
+    The view loads into your context by itself at session start and after
+    each compaction: in Claude Code as the rules file `hippo-view.md`, in
+    Codex from a session-start hook. It is a snapshot from that moment. Run
+    `hippo view` to refresh it mid-session, and in OpenCode, where it does
+    not load, at session start; read every page it prints, whole.
 
     The view is the whole history as one-line summaries, oldest first. Each
     line `id+n|text` covers n messages from id, tagged with kinds (user = the

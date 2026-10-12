@@ -66,27 +66,25 @@ in
 
       compactWindow = 200000;
 
-      # Managed settings and their hooks reach every user on the host; the
-      # hooks speak only to the seat.
+      # Managed settings and system config, and so their hooks, reach every
+      # user on the host; the hooks speak only to the seat.
       forSeat =
-        name: text:
+        name: body:
         pkgs.writeShellScript name ''
           [ "$(${pkgs.coreutils}/bin/id -u)" = ${toString seat.uid} ] || exit 0
-          # The seat's context is about to be rewritten, so the view's next
-          # batch of merges comes now: the fresh context opens on a view
-          # folded to half its budget, with the stretch the summary covers
-          # merged rather than raw. Milliseconds; a view that cannot fold
-          # yet is fine as it is.
-          ${lib.meta.getExe (package lib pkgs)} fold >&2 || true
-          ${pkgs.coreutils}/bin/cat <<'EOF'
-          ${text}
-          EOF
+          ${body}
         '';
 
-      # What Claude Code keeps of a conversation it compacts: hippo holds the
-      # history and its view reloads with the rules, so the summary is only a
+      # The seat's context is about to be rewritten, so the view's next batch
+      # of merges comes now: the fresh context opens on a view folded to half
+      # its budget, with the stretch the summary covers merged rather than
+      # raw. Milliseconds; a view that cannot fold yet is fine as it is.
+      fold = "${lib.meta.getExe (package lib pkgs)} fold >&2 || true";
+
+      # What a harness keeps of a conversation it compacts: hippo holds the
+      # history and its view reloads afterwards, so the summary is only a
       # handoff.
-      handoff = forSeat "hippo-handoff" ''
+      handoffText = ''
         This conversation is recorded word for word in hippo, the seat's
         memory; its view reloads into context by itself and `hippo zoom`
         opens any message. So the summary is a handoff, not a record, and
@@ -101,6 +99,23 @@ in
         never repeat. Hard limit 300 words. An earlier summary in this
         conversation is not a record either: carry nothing from it that is
         no longer live.'';
+
+      # Claude Code takes the hook's output as its compaction instructions.
+      handoff = forSeat "hippo-handoff" ''
+        ${fold}
+        ${pkgs.coreutils}/bin/cat <<'EOF'
+        ${handoffText}
+        EOF
+      '';
+
+      # Harnesses without rules files get the view and the inbox from a
+      # session-start hook, at startup and again after each compaction.
+      context = forSeat "hippo-context" ''
+        ${pkgs.coreutils}/bin/cat ${seat.hippo}/view.md
+        echo
+        echo '# Inbox: notes from the household assistants'
+        ${pkgs.coreutils}/bin/cat ${lib.ship.topology.household}/seat/inbox 2>/dev/null || true
+      '';
 
       # The compactor's own claude calls get the seat's managed settings
       # without hooks or managed MCP servers: those would open the desktops'
@@ -117,6 +132,30 @@ in
             command = toString handoff;
           };
         };
+      };
+
+      # Codex, as close as its hooks allow: the view and inbox open every
+      # session and every compacted context, the view folds before each
+      # compaction, the summary is the same handoff, and its own memories
+      # stay off. Hooks in the system layer are managed, so need no trust.
+      seat.codexConfig = {
+        hooks.SessionStart = singleton {
+          matcher = "startup|resume|clear|compact";
+          hooks = singleton {
+            type = "command";
+            command = toString context;
+            additionalContextLimit = 0;
+          };
+        };
+        hooks.PreCompact = singleton {
+          hooks = singleton {
+            type = "command";
+            command = toString (forSeat "hippo-fold" fold);
+          };
+        };
+        compact_prompt = handoffText;
+        model_auto_compact_token_limit = compactWindow;
+        features.memories = false;
       };
 
       # Seat sessions compact at 200k tokens; the view carries the history.
