@@ -156,6 +156,11 @@
               };
               systemd.tmpfiles.rules = singleton "d /home/pc 0700 pc desk -";
 
+              # The browser's clock and locale match the house, as a real
+              # computer here would.
+              time.timeZone = config.time.timeZone;
+              i18n.defaultLocale = config.i18n.defaultLocale;
+
               fonts.packages = [
                 pkgs.noto-fonts
                 pkgs.noto-fonts-cjk-sans
