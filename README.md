@@ -234,6 +234,17 @@ take 2-15 ms.
 A separate job copies every harness's transcripts to the NAS before the
 harnesses prune them.
 
+### The vault
+
+`/var/lib/vault` (`vault.mod.nix`) is the seat's folder of markdown notes,
+the curated layer over hippo: hippo records what was said, the vault holds
+what is true now and is rewritten in place. Syncthing carries it to the
+captain's desktop and phone, where Obsidian opens it; nothing on the server
+side depends on Obsidian. The seat and the Syncthing user share the `vault`
+group, Syncthing ignores remote modes and runs with a group-writable umask,
+so either side can edit the other's files. The folder is in the OS backup
+set.
+
 ### Local inference
 
 llama-swap starts one `llama-server` per model on demand and unloads it when

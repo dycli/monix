@@ -39,6 +39,17 @@
             path = "/home/${config.primaryUser}/crate/sync";
             devices = attrNames devices;
           };
+          # The seat's vault (vault.mod.nix): written on Water, read and
+          # edited in Obsidian on the captain's devices.
+          settings.folders.vault = {
+            label = "vault";
+            path = mkDefault "/home/${config.primaryUser}/crate/vault";
+            devices = [
+              "water"
+              "earth"
+              "px1"
+            ];
+          };
         };
       };
     };

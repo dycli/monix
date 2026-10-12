@@ -38,6 +38,7 @@
         "var/lib/sokka"
         "var/lib/suki"
         "var/lib/yeoman-pages"
+        "var/lib/vault"
         "srv/minecraft"
       ];
 

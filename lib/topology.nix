@@ -10,6 +10,8 @@
     transcripts = "/srv/storage/transcripts";
     # hippo, the seat's episodic memory.
     hippo = "/srv/storage/hippo";
+    # The vault, the seat's notes and plans (vault.mod.nix).
+    vault = "/var/lib/vault";
   };
   # The assistants' household (yeoman.mod.nix); the seat is in it too, and
   # its sessions load `seat/inbox` as a rule.
