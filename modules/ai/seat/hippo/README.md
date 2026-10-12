@@ -11,10 +11,20 @@ agent reads the view at session start, and drills into any line with `zoom`.
 Nothing is ever forgotten; it only gets further away.
 
 The design is Victor Taelin's [OptChat](https://gist.github.com/VictorTaelin/91837951a5ce5b38f341ec1ba1df6449).
-This is a working implementation of it, in about 5,000 lines of Rust with
-seven dependencies, that has run as the memory of a household of agents since
-2026. It is developed inside [monix](https://github.com/dycli/monix), the
-NixOS flake those agents live in, and mirrored here with `git subtree`.
+OptChat is a chat client of its own; hippo is the same memory bolted onto the
+harnesses you already use. It never replaces Claude Code, Codex or OpenCode:
+it reads the transcripts they write, builds the tree beside them, and hands
+the view back as a file they load as a rule, so a session opens with the
+whole history already in context and no tool call. The compactor runs
+through the `claude` CLI on a plain subscription, so there is no API bill;
+any chat-completions endpoint works as well. One harness's compaction
+becomes a handoff, not a loss: Claude Code's PreCompact hook folds the view
+first, and the fresh context picks up where the old one stopped.
+
+It is about 5,000 lines of Rust with seven dependencies and has been the
+memory of a household of agents since 2026. It is developed inside
+[monix](https://github.com/dycli/monix), the NixOS flake those agents live
+in, and mirrored here with `git subtree`.
 
 ## How it works
 
