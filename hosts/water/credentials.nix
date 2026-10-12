@@ -17,7 +17,6 @@ in
   matrix.registrationTokenEnvFile = config.secrets.matrix-registration-env.path;
   matrix.tunnelTokenFile = config.secrets.matrix-cloudflare-tunnel-token.path;
   immich.tunnelTokenFile = config.secrets.immich-cloudflare-tunnel-token.path;
-  tape.keyFile = config.secrets.databento-key.path;
 
   yeoman = {
     instances.sokka = {
@@ -47,10 +46,6 @@ in
     suki-mail-json.file = ./secrets/suki-mail.json.age;
     yeoman-home-token.file = ./secrets/yeoman-home-token.age;
     yeoman-requests-key.file = ./secrets/yeoman-requests-key.age;
-    databento-key = {
-      file = ./secrets/databento-key.age;
-      owner = "tape";
-    };
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     immich-cloudflare-tunnel-token.file = ./secrets/immich-cloudflare-tunnel-token.age;
     cloudflare-dns-token = {
@@ -84,7 +79,6 @@ in
     ./secrets/yeoman-home-token.age
     ./secrets/yeoman-requests-key.age
   ];
-  systemd.services.tape.restartTriggers = singleton ./secrets/databento-key.age;
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
 }

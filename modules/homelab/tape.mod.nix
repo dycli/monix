@@ -2,7 +2,9 @@
 # (GLBX.MDP3, MBO, the front and next contract of each root) on the NAS as
 # one Zstandard DBN file per UTC day and connection. `tape-pull` buys a
 # slice of history into the same archive after showing its price. Nothing
-# reads the tape yet; the charting client comes later.
+# reads the tape yet; the charting client comes later. Water leaves
+# `tape.keyFile` unset until the Databento subscription starts, so the
+# recorder is built but not installed.
 { self, inputs, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.tape;
