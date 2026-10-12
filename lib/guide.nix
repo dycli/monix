@@ -17,9 +17,9 @@
 
     The view loads into your context by itself at session start and after
     each compaction: in Claude Code as the rules file `hippo-view.md`, in
-    Codex from a session-start hook. It is a snapshot from that moment. Run
-    `hippo view` to refresh it mid-session, and in OpenCode, where it does
-    not load, at session start; read every page it prints, whole.
+    Codex from a session-start hook, in OpenCode from a plugin. It is a
+    snapshot from that moment. Run `hippo view` to refresh it mid-session;
+    read every page it prints, whole.
 
     The view is the whole history as one-line summaries, oldest first. Each
     line `id+n|text` covers n messages from id, tagged with kinds (user = the

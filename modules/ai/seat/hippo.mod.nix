@@ -158,6 +158,35 @@ in
         features.memories = false;
       };
 
+      # OpenCode, through a plugin: its instruction files are re-read on
+      # every prompt, which would change the system prompt with each
+      # message and void the cache, so the plugin holds one snapshot of the
+      # view and inbox per session, as the others do, and takes a fresh one
+      # after the session compacts, folding first and summarising with the
+      # handoff.
+      home-manager.users.${seat.user}.home.file.".config/opencode/plugins/hippo.js".text = ''
+        import { execFileSync } from "node:child_process";
+
+        const context = ${toJSON (toString context)};
+        const fold = ${toJSON (toString (forSeat "hippo-fold" fold))};
+        const handoff = ${toJSON handoffText};
+        const views = new Map();
+
+        export const Hippo = async () => ({
+          "experimental.chat.system.transform": async (input, output) => {
+            if (!input.sessionID) return;
+            if (!views.has(input.sessionID))
+              views.set(input.sessionID, execFileSync(context, { encoding: "utf8" }));
+            output.system.push(views.get(input.sessionID));
+          },
+          "experimental.session.compacting": async (input, output) => {
+            execFileSync(fold, { stdio: "ignore" });
+            views.delete(input.sessionID);
+            output.prompt = handoff;
+          },
+        });
+      '';
+
       # Seat sessions compact at 200k tokens; the view carries the history.
       # The variable, unlike the setting, leaves other users' sessions alone.
       systemd.services.paseo.environment.CLAUDE_CODE_AUTO_COMPACT_WINDOW = toString compactWindow;
