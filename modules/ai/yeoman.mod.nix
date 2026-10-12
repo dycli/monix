@@ -256,7 +256,10 @@
               YEOMAN_PAGES = site.dir;
               YEOMAN_PAGES_URL = site.url;
             }
-            // optionalAttrs i.computer { YEOMAN_DESK = pc.desk; }
+            // optionalAttrs i.computer {
+              YEOMAN_DESK = pc.desk;
+              YEOMAN_KEEP = "http://${pc.addr}:${toString computers.keepPort}";
+            }
             // optionalAttrs (cfg.homeTokenFile != null) { YEOMAN_HOME = "1"; }
             // optionalAttrs (cfg.requestsKeyFile != null) {
               YEOMAN_REQUESTS = "${creds}/requests";

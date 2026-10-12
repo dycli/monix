@@ -5,8 +5,8 @@
 # (captcha, two-factor) from a viewer on the host. The MCP server shares
 # one browser between its clients and closes it when the last one leaves;
 # the assistant connects once per reply, so a keeper in the guest holds a
-# standing session and the browser, with its open pages, outlives every
-# turn. The browser profile
+# session of its own while the assistant has a lease on the browser: half
+# an hour past each use, or until told to let go. The browser profile
 # lives on a volume that survives reboots and rebuilds, so site logins
 # stay; `<name>-computer-reset` wipes it back to a clean desk. A folder
 # shared over virtiofs is the desk: screenshots and downloads land there
@@ -134,6 +134,7 @@
                 nameservers = computers.nameservers;
                 firewall.allowedTCPPorts = [
                   computers.mcpPort
+                  computers.keepPort
                   computers.vncPort
                 ];
               };
@@ -181,11 +182,14 @@
                 };
               };
               systemd.services.desk-keeper = {
-                description = "A standing MCP client so the browser outlives each reply";
+                description = "Holds the browser open while the assistant has a lease on it";
                 wantedBy = singleton "multi-user.target";
                 after = singleton "desk.service";
                 requires = singleton "desk.service";
-                environment.DESK_MCP = mcpUrl;
+                environment = {
+                  DESK_MCP = mcpUrl;
+                  DESK_KEEP_PORT = toString computers.keepPort;
+                };
                 serviceConfig = {
                   User = "pc";
                   Group = "desk";

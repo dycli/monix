@@ -8,6 +8,7 @@ use crate::book::{self, Book, Repeat, Shelf};
 use crate::calendar::{Calendar, Change, NewEvent};
 use crate::hippo::Hippo;
 use crate::house::House;
+use crate::keep;
 use crate::mail::{self, Account, Imap};
 use crate::media::Seerr;
 use crate::pending::{self, Act};
@@ -40,6 +41,8 @@ struct Tools {
     /// The computer's desk, when there is a computer: where its
     /// screenshots and downloads land.
     desk: Option<PathBuf>,
+    /// The computer's keeper, which leases the browser.
+    keep: Option<String>,
     /// The site's directory and its URL, when the assistant has one.
     pages: Option<(PathBuf, String)>,
     /// The household's film and show library (Seerr), when there is one.
@@ -523,6 +526,22 @@ impl Tools {
     }
 
     #[tool(
+        description = "Keep your computer's browser open until your person says to close it; otherwise it closes half an hour after its last use."
+    )]
+    fn computer_keep(&self) -> Result<String, String> {
+        let url = self.keep.as_ref().ok_or("There is no computer here.")?;
+        keep::hold(url, 0).map(|_| "The browser stays open until closed.".into())
+    }
+
+    #[tool(
+        description = "Close your computer's browser now; its logins stay, its open pages do not."
+    )]
+    fn computer_close(&self) -> Result<String, String> {
+        let url = self.keep.as_ref().ok_or("There is no computer here.")?;
+        keep::release(url).map(|_| "The browser is closed.".into())
+    }
+
+    #[tool(
         description = "Publish a page of HTML on your site at a name and get its link; the same name again replaces the page, older versions keep their own links."
     )]
     fn show_page(
@@ -969,6 +988,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
         house: House::from_env().map(Arc::new),
         mail: mail()?,
         desk: std::env::var_os("YEOMAN_DESK").map(PathBuf::from),
+        keep: std::env::var("YEOMAN_KEEP").ok(),
         pages: std::env::var("YEOMAN_PAGES")
             .ok()
             .zip(std::env::var("YEOMAN_PAGES_URL").ok())

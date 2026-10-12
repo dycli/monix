@@ -5,7 +5,9 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use serde_json::{Value, json};
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
+
+use crate::keep;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -48,6 +50,7 @@ pub fn from_env() -> Result<Box<dyn Model>, String> {
             model: var("YEOMAN_MODEL").unwrap_or_else(|| "sonnet".into()),
             effort: var("YEOMAN_EFFORT"),
             mcp: var("YEOMAN_MCP").map(mcp).transpose()?,
+            keep: var("YEOMAN_KEEP"),
         })),
         "http" => Ok(Box::new(Http {
             url: var("YEOMAN_URL").ok_or("YEOMAN_URL is not set")?,
@@ -73,6 +76,9 @@ pub struct Claude {
     pub effort: Option<String>,
     /// An MCP config file and the servers it names, all allowed.
     pub mcp: Option<(String, Vec<String>)>,
+    /// The computer's keeper, when there is a computer: the browser is
+    /// leased for a while whenever a reply drives it.
+    pub keep: Option<String>,
 }
 
 /// The tools that act on the world, by MCP name.
@@ -141,10 +147,27 @@ impl Model for Claude {
         let mut stdin = child.stdin.take().unwrap();
         let line = format!("{line}\n");
         let writer = thread::spawn(move || stdin.write_all(line.as_bytes()));
-        let mut stdout = child.stdout.take().unwrap();
-        let reader = thread::spawn(move || {
+        let stdout = child.stdout.take().unwrap();
+        let keep = self.keep.clone();
+        let reader = thread::spawn(move || -> std::io::Result<(String, bool)> {
             let mut out = String::new();
-            stdout.read_to_string(&mut out).map(|_| out)
+            let mut used = false;
+            for line in BufReader::new(stdout).lines() {
+                let line = line?;
+                // The browser is leased the moment the reply first drives
+                // it, before the reply's own session ends and closes it.
+                if let (false, Some(url)) = (used, &keep)
+                    && keep::uses_computer(&line)
+                {
+                    used = true;
+                    if let Err(e) = keep::hold(url, keep::LEASE) {
+                        eprintln!("yeoman: {e}");
+                    }
+                }
+                out.push_str(&line);
+                out.push('\n');
+            }
+            Ok((out, used))
         });
         let errors = drain(child.stderr.take().unwrap());
         let deadline = run.stop.is_none().then(|| Instant::now() + TIMEOUT);
@@ -165,7 +188,12 @@ impl Model for Claude {
             thread::sleep(Duration::from_millis(100));
         };
         let _ = writer.join();
-        let out = reader.join().unwrap().map_err(|e| e.to_string())?;
+        let (out, used) = reader.join().unwrap().map_err(|e| e.to_string())?;
+        if let (true, Some(url)) = (used, &self.keep)
+            && let Err(e) = keep::hold(url, keep::LEASE)
+        {
+            eprintln!("yeoman: {e}");
+        }
         let result = out
             .lines()
             .filter_map(|l| serde_json::from_str::<Value>(l).ok())

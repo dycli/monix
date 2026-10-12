@@ -8,6 +8,7 @@ mod book;
 mod calendar;
 mod hippo;
 mod house;
+mod keep;
 mod mail;
 mod matrix;
 mod media;
@@ -93,7 +94,10 @@ const COMPUTER: &str = "\n\nYou have a computer of your own: the computer tools 
 browser, which keeps its own site logins. Use it for sites that need \
 signing in, forms, and whatever a search cannot answer. A screenshot lands \
 on your desk; show it to {person} when they should see the page, and when \
-you are stuck (a code, a captcha, a choice) show it and ask.";
+you are stuck (a code, a captcha, a choice) show it and ask. The browser \
+closes half an hour after its last use, keeping its logins but not its \
+pages; computer_keep holds it open until {person} says to close it, and \
+computer_close closes it now.";
 
 /// Added when the computer's screen has a page the person can open.
 const SCREEN: &str = " When {person} must take the keyboard themselves (a captcha, a \

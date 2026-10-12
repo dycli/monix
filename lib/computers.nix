@@ -33,6 +33,8 @@ in
   ];
 
   mcpPort = 8931;
+  # The keeper's lease on the browser (yeoman-computer/keeper.py).
+  keepPort = 8933;
   vncPort = 5900;
   # The nth screen on the host's loopback, for the person's browser.
   screenPort = index: 6080 + index;
