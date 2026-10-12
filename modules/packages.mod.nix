@@ -110,8 +110,25 @@
   flake.homeModules.dev = self.homeModules.packages-dev-extras;
   flake.homeModules.packages-dev-extras =
     { pkgs, ... }:
+    let
+      # Meta's terminal coding agent: a static binary, pinned by version from
+      # the release manifest its launcher reads (no package in nixpkgs). Bump
+      # the version and hash together; the launcher's self-update is skipped.
+      muse-code = pkgs.stdenvNoCC.mkDerivation (final: {
+        pname = "muse-code";
+        version = "1.4.6-R6000.1";
+        src = pkgs.fetchurl {
+          url = "https://lookaside.facebook.com/lookaside/muse/download/?channel=muse&version=${final.version}&file=muse-x86-linux";
+          hash = "sha256-gqSVVCllpbYlb3rNuBaTRRwoZApBnVUorYNA6pPzb28=";
+        };
+        dontUnpack = true;
+        installPhase = "install -D $src $out/bin/muse";
+        meta.mainProgram = "muse";
+      });
+    in
     {
       home.packages = [
+        muse-code
         pkgs.cargo
         pkgs.claude-code
         pkgs.clippy

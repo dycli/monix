@@ -156,7 +156,7 @@ IPC, so a key and a click take the same path.
 
 ### The seat
 
-Coding agents (Claude Code, Codex, OpenCode) run in `bridge`, one
+Coding agents (Claude Code, Codex, OpenCode, Muse Code) run in `bridge`, one
 unprivileged account with a fixed uid. It has no wheel, no Nix trust and no
 host secrets. A per-user network fence applies to every process it starts:
 it cannot reach the LAN or the tailnet, and reaches the local model server
