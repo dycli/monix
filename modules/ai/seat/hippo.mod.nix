@@ -91,14 +91,16 @@ in
         memory; its view reloads into context by itself and `hippo zoom`
         opens any message. So the summary is a handoff, not a record, and
         it replaces the usual template: write exactly three short sections,
-        Pending Tasks, Current Work (the exact state of uncommitted or
-        unpushed work) and Next Step, plus one line for any decision or
-        standing rule from the last few turns not yet acted on. Do not
-        write Primary Request, Key Technical Concepts, Files and Code
-        Sections, Errors and Fixes, Problem Solving or All User Messages,
-        not even as empty headings: hippo holds them. Hard limit 300 words.
-        An earlier summary in this conversation is not a record either:
-        carry nothing from it that is no longer live.'';
+        Pending Tasks, Current Work (which files are dirty, what has been
+        verified on them and how, what has not) and Next Step, plus one
+        line for any decision or standing rule from the last few turns not
+        yet acted on. Do not write Primary Request, Key Technical Concepts,
+        Files and Code Sections, Errors and Fixes, Problem Solving or All
+        User Messages, not even as empty headings: hippo holds them. What
+        the bridge notes or the inbox already hold, name in a few words,
+        never repeat. Hard limit 300 words. An earlier summary in this
+        conversation is not a record either: carry nothing from it that is
+        no longer live.'';
 
       # The compactor's own claude calls get the seat's managed settings
       # without hooks or managed MCP servers: those would open the desktops'
