@@ -31,7 +31,12 @@
       extra = {
         # su.is keeps its small projects under /labs/; the old top-level
         # paths send visitors there.
-        "su.is".locations."~ ^/(endgrain|lifespan|liberi)(/|$)".return = "301 /labs$request_uri";
+        # Its files keep fixed names across deploys, so browsers must
+        # revalidate every load (a cheap 304) or they run a stale lab.
+        "su.is" = {
+          locations."~ ^/(endgrain|lifespan|liberi)(/|$)".return = "301 /labs$request_uri";
+          extraConfig = "add_header Cache-Control no-cache;";
+        };
         # lfish writes each file's page as <path>.html and content-hashes
         # everything under /_/.
         "dylanc.com" = {
