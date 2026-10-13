@@ -27,10 +27,13 @@ pub trait Model: Send + Sync {
     /// Answers a prompt. With `acts` false the tools that change anything
     /// (reminders, lists, the mailbox, the calendar, pictures, fetching a
     /// page) are withheld: the turn was started by an alert or someone
-    /// else's message, not by the person.
+    /// else's message, not by the person. `memory` is the hippo view, sent
+    /// ahead of everything else in the message so its settled part can be
+    /// read from the prompt cache on the next call.
     fn answer(
         &self,
         system: &str,
+        memory: &str,
         prompt: &str,
         files: &[Attachment],
         run: Run,
@@ -91,11 +94,16 @@ impl Model for Claude {
     fn answer(
         &self,
         system: &str,
+        memory: &str,
         prompt: &str,
         files: &[Attachment],
         run: Run,
     ) -> Result<String, String> {
         let mut cmd = Command::new(&self.command);
+        // One-hour cache entries, pinned rather than left to Claude Code's
+        // default: the memory's mark must match the lifetime of Claude
+        // Code's own marks, or the API refuses the call.
+        cmd.env("ENABLE_PROMPT_CACHING_1H", "1");
         // Stream-json is the only way to hand the CLI images and PDFs; it
         // needs stream-json out, which ends with the result event.
         cmd.args([
@@ -132,16 +140,14 @@ impl Model for Claude {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("{}: {e}", self.command))?;
-        let mut content: Vec<Value> = files
-            .iter()
-            .map(|f| match f {
-                Attachment::Image { mime, data } => json!({"type": "image",
+        let mut content = cached(memory);
+        content.extend(files.iter().map(|f| match f {
+            Attachment::Image { mime, data } => json!({"type": "image",
                     "source": {"type": "base64", "media_type": mime, "data": B64.encode(data)}}),
-                Attachment::Pdf(data) => json!({"type": "document",
+            Attachment::Pdf(data) => json!({"type": "document",
                     "source": {"type": "base64", "media_type": "application/pdf",
                                "data": B64.encode(data)}}),
-            })
-            .collect();
+        }));
         content.push(json!({"type": "text", "text": prompt}));
         let line = json!({"type": "user", "message": {"role": "user", "content": content}});
         let mut stdin = child.stdin.take().unwrap();
@@ -230,6 +236,42 @@ impl Model for Claude {
     }
 }
 
+/// Lines per content block of the memory. The API looks back up to 20
+/// blocks from a cache mark for an entry an earlier call wrote, so the next
+/// call, its memory grown by a few lines, still finds this one's. The same
+/// scheme as hippo's compactor.
+const BLOCK: usize = 4;
+
+/// What hippo shows for a line the compactor has not written yet.
+const PLACEHOLDER: &str = "(not summarized yet: zoom it)";
+
+/// The memory as content blocks of `BLOCK` lines, the last whole block of
+/// its settled part marked for the cache. Lines from the first one not yet
+/// summarized on, and hippo's note after `</chat>`, change before the next
+/// call, so the mark stays ahead of them. The API allows four marks and
+/// Claude Code uses three.
+fn cached(memory: &str) -> Vec<Value> {
+    let lines: Vec<&str> = memory.split_inclusive('\n').collect();
+    let settled = lines
+        .iter()
+        .position(|l| l.contains(PLACEHOLDER) || l.starts_with("</chat>"))
+        .unwrap_or(lines.len());
+    let mark = settled / BLOCK;
+    lines
+        .chunks(BLOCK)
+        .enumerate()
+        .map(|(n, chunk)| {
+            let text = chunk.concat();
+            if n + 1 == mark {
+                json!({"type": "text", "text": text,
+                    "cache_control": {"type": "ephemeral", "ttl": "1h"}})
+            } else {
+                json!({"type": "text", "text": text})
+            }
+        })
+        .collect()
+}
+
 /// Reads the server names out of an MCP config file.
 fn mcp(file: String) -> Result<(String, Vec<String>), String> {
     let text = std::fs::read_to_string(&file).map_err(|e| format!("{file}: {e}"))?;
@@ -254,12 +296,13 @@ impl Model for Http {
     fn answer(
         &self,
         system: &str,
+        memory: &str,
         prompt: &str,
         files: &[Attachment],
         _run: Run,
     ) -> Result<String, String> {
         let url = format!("{}/chat/completions", self.url.trim_end_matches('/'));
-        let mut content: Vec<Value> = Vec::new();
+        let mut content = vec![json!({"type": "text", "text": memory})];
         for f in files {
             match f {
                 Attachment::Image { mime, data } => content.push(json!({"type": "image_url",
@@ -315,4 +358,44 @@ fn tail(s: &str) -> String {
     let s = s.trim();
     let start = s.char_indices().rev().nth(299).map_or(0, |(i, _)| i);
     s[start..].to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn marks(blocks: &[Value]) -> Vec<usize> {
+        (0..blocks.len())
+            .filter(|&k| blocks[k].get("cache_control").is_some())
+            .collect()
+    }
+
+    #[test]
+    fn memory_rejoins_and_marks_its_settled_part() {
+        let lines: String = (0..10).map(|i| format!("{i}+1|line {i}\n")).collect();
+        let memory =
+            format!("<chat>\n{lines}</chat>\n3 recent lines are not summarized yet: zoom them.\n");
+        let blocks = cached(&memory);
+        let text: String = blocks.iter().map(|b| b["text"].as_str().unwrap()).collect();
+        assert_eq!(text, memory);
+        // Eleven lines before </chat>: two whole blocks, the second marked.
+        assert_eq!(marks(&blocks), vec![1]);
+        assert_eq!(blocks[1]["cache_control"]["ttl"], "1h");
+    }
+
+    #[test]
+    fn mark_stays_ahead_of_unsummarized_lines() {
+        let memory = format!(
+            "<chat>\n0+4|a\n4+1|b\n5+1|c\n6+1|d\n7+1|e\n8+1|{PLACEHOLDER}\n9+1|{PLACEHOLDER}\n</chat>\n"
+        );
+        let blocks = cached(&memory);
+        // Six settled lines: one whole block, marked.
+        assert_eq!(marks(&blocks), vec![0]);
+        assert!(!blocks[0]["text"].as_str().unwrap().contains(PLACEHOLDER));
+    }
+
+    #[test]
+    fn short_memory_has_no_mark() {
+        assert!(marks(&cached("<chat>\n0+1|a\n</chat>\n")).is_empty());
+    }
 }

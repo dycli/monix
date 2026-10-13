@@ -351,8 +351,8 @@ fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
     if whole {
         return text(&c);
     }
-    let (head, lines) = render(&c)?;
-    let mut pages = vec![format!("{head}<chat>")];
+    let (note, lines) = render(&c)?;
+    let mut pages = vec!["<chat>".to_owned()];
     for line in lines {
         let page = pages.last_mut().unwrap();
         if page.len() + line.len() + 1 > PAGE {
@@ -362,7 +362,12 @@ fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
             page.push_str(&line);
         }
     }
-    pages.last_mut().unwrap().push_str("\n</chat>");
+    let last = pages.last_mut().unwrap();
+    last.push_str("\n</chat>");
+    if !note.is_empty() {
+        last.push('\n');
+        last.push_str(note.trim_end());
+    }
     let token = format!("{}", c.view.t);
     let n = pages.len();
     let first = paged(&pages[0], 1, n, &token);
@@ -374,8 +379,10 @@ fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
     Ok(first)
 }
 
-/// The view as text: a head line when recent lines wait for the
-/// compactor, then one line per part, oldest first.
+/// The view as text: one line per part, oldest first, and a note when
+/// recent lines wait for the compactor. The note goes last: it changes
+/// from turn to turn, and anything after it would miss the model's
+/// prompt cache.
 fn render(c: &Core) -> Result<(String, Vec<String>), String> {
     let mut lines = Vec::new();
     for &(l, i) in &c.view.parts {
@@ -384,21 +391,21 @@ fn render(c: &Core) -> Result<(String, Vec<String>), String> {
         lines.push(format!("{s}+{n}|{}", flat(&text)));
     }
     let unbuilt = c.view.unbuilt(&c.tree);
-    let mut head = String::new();
+    let mut note = String::new();
     if unbuilt > 0 {
         let why = match c.pump.limit {
             Some(t) => format!(" (compactor rate-limited until {})", t.format("%H:%M")),
             None => String::new(),
         };
-        head = format!("{unbuilt} recent lines are not summarized yet{why}: zoom them.\n");
+        note = format!("{unbuilt} recent lines are not summarized yet{why}: zoom them.\n");
     }
-    Ok((head, lines))
+    Ok((note, lines))
 }
 
 /// The whole view as one text, as `view.md` holds it.
 fn text(c: &Core) -> Result<String, String> {
-    let (head, lines) = render(c)?;
-    Ok(format!("{head}<chat>\n{}\n</chat>\n", lines.join("\n")))
+    let (note, lines) = render(c)?;
+    Ok(format!("<chat>\n{}\n</chat>\n{note}", lines.join("\n")))
 }
 
 /// Writes the whole view to `view.md` in the store, which the seat's Claude

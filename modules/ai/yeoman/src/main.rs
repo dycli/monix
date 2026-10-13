@@ -353,7 +353,7 @@ fn answer(
     let (said, acts) = frame(from, said);
     hippo.log(kind, &logged)?;
     let prompt = format!(
-        "{view}\nNow: {}\n\n{who}: {said}{inline}",
+        "\nNow: {}\n\n{who}: {said}{inline}",
         Local::now().format("%Y-%m-%d %a %H:%M")
     );
     let tools = if model.tools() { TOOLS } else { NO_TOOLS };
@@ -386,7 +386,7 @@ fn answer(
         .replace("{name}", &name)
         .replace("{person}", &person)
         .replace("{QUIET}", QUIET);
-    let reply = model.answer(&system, &prompt, &files, Run { acts, stop })?;
+    let reply = model.answer(&system, &view, &prompt, &files, Run { acts, stop })?;
     if reply.is_empty() {
         return Err("the model answered nothing".into());
     }
