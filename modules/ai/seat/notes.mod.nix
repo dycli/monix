@@ -12,6 +12,7 @@
       inherit (lib.lists) singleton;
       inherit (lib.modules) mkIf;
       inherit (lib.ship.topology) seat;
+      mount = "${config.services.syncthing.settings.folders."zahzi-nepxh".path}/bridge";
     in
     {
       config = mkIf config.services.syncthing.enable {
@@ -19,7 +20,7 @@
         users.users.${config.services.syncthing.user}.extraGroups = singleton seat.user;
         systemd.tmpfiles.rules = singleton "d ${seat.notes} 2770 ${seat.user} ${seat.user} -";
 
-        fileSystems."${config.services.syncthing.settings.folders."zahzi-nepxh".path}/bridge" = {
+        fileSystems.${mount} = {
           device = seat.notes;
           fsType = "none";
           options = [
@@ -32,6 +33,10 @@
         # group write so the seat can edit them in place. The sync folder
         # carries modes, and a phone sends none, so the umask decides.
         systemd.services.syncthing.serviceConfig.UMask = "0002";
+        # Syncthing's watcher holds the directory it found at start; started
+        # before the mount, it watches the empty one underneath and misses
+        # every change the seat makes.
+        systemd.services.syncthing.unitConfig.RequiresMountsFor = singleton mount;
       };
     };
 }
