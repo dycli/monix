@@ -35,15 +35,21 @@ const BODY_MAX: u64 = 1 << 20;
 /// A wrong passphrase holds the page this long, one guess at a time.
 const WRONG: Duration = Duration::from_secs(3);
 
-const INSTRUCTIONS: &str = "\
-hippo is Dylan's memory of his work with Bridge, the AI engineer that runs \
-his homelab (the ship): every chat word for word since July 2026. `view` \
-gives the history as one-line summaries, oldest first; each line \
-`id+n|text` covers n messages from id, tagged with kinds (user = Dylan's \
-own words, talk = Bridge's replies, tool, echo = tool output, note). \
-Recent lines cover one message; older lines cover more. `zoom` opens a \
-line into its two halves, and n = 1 gives a message whole; `search` finds \
-words in every message. Zoom before you rely on what a line only mentions.";
+/// What the server tells apps it is, for one memory: `agent`'s chats with
+/// `person`.
+fn instructions(agent: &str, person: &str) -> String {
+    format!(
+        "hippo is the memory of {agent}, {person}'s AI assistant: every chat \
+         between them, word for word. `view` gives the history as one-line \
+         summaries, oldest first; each line `id+n|text` covers n messages \
+         from id, tagged with kinds (user = {person}'s own words, talk = \
+         {agent}'s replies, tool, echo = tool output, note). Recent lines \
+         cover one message; older lines cover more. `zoom` opens a line into \
+         its two halves, and n = 1 gives a message whole; `search` finds \
+         words in every message. Zoom before you rely on what a line only \
+         mentions."
+    )
+}
 
 /// Asks the hippo service, as `main::ask` does; a parameter for tests.
 pub type Ask = fn(&str, &[String]) -> Result<String, String>;
@@ -88,6 +94,9 @@ struct Code {
 pub struct Door {
     /// The public origin, as apps reach it: `https://host`.
     url: String,
+    /// Whose memory this is: the agent and the person it serves.
+    agent: String,
+    person: String,
     passphrase: String,
     state: Option<PathBuf>,
     saved: Mutex<Saved>,
@@ -214,7 +223,13 @@ fn newest(view: &str, lines: usize) -> String {
 }
 
 impl Door {
-    pub fn new(url: &str, passphrase: &str, state: Option<PathBuf>, ask: Ask) -> Door {
+    pub fn new(
+        url: &str,
+        (agent, person): (&str, &str),
+        passphrase: &str,
+        state: Option<PathBuf>,
+        ask: Ask,
+    ) -> Door {
         let saved = state
             .as_ref()
             .and_then(|d| fs::read(d.join("door.json")).ok())
@@ -222,6 +237,8 @@ impl Door {
             .unwrap_or_default();
         Door {
             url: url.trim_end_matches('/').to_owned(),
+            agent: agent.to_owned(),
+            person: person.to_owned(),
             passphrase: passphrase.trim().to_owned(),
             state,
             saved: Mutex::new(saved),
@@ -436,13 +453,14 @@ impl Door {
         Answer::html(
             200,
             page(&format!(
-                "<p><b>{}</b> asks to read hippo, your memory with Bridge. \
+                "<p><b>{}</b> asks to read {}'s memory. \
                  It will send you back to <b>{}</b>.</p>{wrong}\
                  <form method=post action=/authorize>{hidden}\
                  <input type=password name=passphrase autofocus \
                  autocomplete=current-password placeholder=Passphrase>\
                  <button>Allow</button></form>",
                 esc(&client.name),
+                esc(&self.agent),
                 esc(host),
             )),
         )
@@ -547,7 +565,7 @@ impl Door {
                     "protocolVersion": version,
                     "capabilities": { "tools": {} },
                     "serverInfo": { "name": "hippo", "version": env!("CARGO_PKG_VERSION") },
-                    "instructions": INSTRUCTIONS,
+                    "instructions": instructions(&self.agent, &self.person),
                 })
             }
             "ping" => json!({}),
@@ -700,7 +718,14 @@ pub fn run(listen: &str, url: &str, ask: Ask) -> Result<(), String> {
         return Err("The passphrase is shorter than 12 characters.".into());
     }
     let state = std::env::var_os("STATE_DIRECTORY").map(PathBuf::from);
-    let door = Arc::new(Door::new(url, &passphrase, state, ask));
+    let name = |k: &str, or: &str| {
+        std::env::var(k)
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| or.to_owned())
+    };
+    let (agent, person) = (name("HIPPO_AGENT", "Bridge"), name("HIPPO_PERSON", "Dylan"));
+    let door = Arc::new(Door::new(url, (&agent, &person), &passphrase, state, ask));
     let server = Server::http(listen).map_err(|e| format!("{listen}: {e}"))?;
     eprintln!("hippo door: serving {url} on {listen}");
     for req in server.incoming_requests() {
@@ -726,6 +751,7 @@ mod tests {
     fn door() -> Door {
         Door::new(
             "https://hippo.example/",
+            ("Sokka", "Dylan"),
             "correct horse battery",
             None,
             fake,
@@ -759,6 +785,7 @@ mod tests {
         let page = d.route("GET", &format!("/authorize?{q}"), None, "");
         assert_eq!(page.status, 200);
         assert!(page.body.contains("<b>Claude</b>") && page.body.contains("claude.ai"));
+        assert!(page.body.contains("Sokka's memory"));
         let ok = d.route(
             "POST",
             "/authorize",
@@ -826,6 +853,8 @@ mod tests {
             r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#,
         ));
         assert_eq!(init["result"]["protocolVersion"], "2025-06-18");
+        let says = init["result"]["instructions"].as_str().unwrap();
+        assert!(says.contains("memory of Sokka, Dylan's") && !says.contains("Bridge"));
         assert_eq!(
             rpc(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#).status,
             202

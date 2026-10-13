@@ -14,6 +14,7 @@ inputs.nixpkgs.lib.extend (
       keys = import ../keys.nix;
       opencode = import ./opencode.nix final;
       rustTool = import ./rust-tool.nix final inputs.crate2nix;
+      hippoDoor = import ./hippo-door.nix final;
 
       # `ship.host "name" module` is a flake-parts module defining
       # nixosConfigurations.name. Every host gets the `default` bundle.

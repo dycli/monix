@@ -376,6 +376,21 @@
               };
           };
 
+          # The memory's door, after the seat's on 8940, by sorted name.
+          "${n}-door" = mkIf (i.doorPassphraseFile != null) (
+            lib.ship.hippoDoor {
+              inherit hippo;
+              service = "${n}-hippo.service";
+              dir = env.HIPPO_DIR;
+              user = n;
+              agent = i.name;
+              inherit (i) person;
+              port = 8940 + lib.lists.findFirstIndex (m: m == n) 0 (attrNames cfg.instances) + 1;
+              host = "hippo-${n}.${config.shipProxy.domain}";
+              passphraseFile = i.doorPassphraseFile;
+            }
+          );
+
           "${n}-hippo" = {
             description = "${i.name}'s memory";
             wantedBy = singleton "multi-user.target";
@@ -532,6 +547,16 @@
                     type = types.bool;
                     default = false;
                     description = "Whether it posts the host's alerts.";
+                  };
+
+                  doorPassphraseFile = mkOption {
+                    type = types.nullOr types.str;
+                    default = null;
+                    description = ''
+                      Passphrase for its memory's door (lib/hippo-door.nix),
+                      hippo-<name>.<domain>, 12 characters or more; the
+                      hippo tunnel carries it. null = no door.
+                    '';
                   };
                 };
               }

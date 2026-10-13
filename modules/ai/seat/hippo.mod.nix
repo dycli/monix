@@ -126,20 +126,15 @@ in
     in
     {
       options.hippo.door = {
-        host = mkOption {
-          type = types.str;
-          default = "hippo.${config.shipProxy.domain}";
-          description = "Public hostname of the door; the tunnel's mapping to http://127.0.0.1:${toString doorPort} is dashboard-side.";
-        };
         passphraseFile = mkOption {
           type = types.nullOr types.str;
           default = null;
-          description = "Passphrase apps' sign-in pages ask for, 12 characters or more; null = no door.";
+          description = "Passphrase for the seat's door (hippo.<domain> -> http://127.0.0.1:${toString doorPort}), 12 characters or more; null = no door.";
         };
         tunnelTokenFile = mkOption {
           type = types.nullOr types.str;
           default = null;
-          description = "Cloudflare Tunnel connector token carrying the door out; null = no tunnel.";
+          description = "Cloudflare Tunnel connector token carrying every hippo door out, the yeomen's too; null = no tunnel.";
         };
       };
 
@@ -301,47 +296,29 @@ in
           };
         };
 
-        # The door: the memory, read-only, as a remote MCP server for apps
-        # outside the ship (Claude, Grok). A client of hippo.sock like the CLI;
-        # apps sign in by OAuth, the gate being the passphrase.
-        systemd.services.hippo-door = mkIf (door.passphraseFile != null) {
-          description = "hippo's door, the memory as a remote MCP server";
-          wantedBy = singleton "multi-user.target";
-          after = singleton "hippo.service";
-          unitConfig.RequiresMountsFor = singleton "/srv/storage";
-          serviceConfig = lib.ship.hardened.tenant // {
-            User = seat.user;
-            Group = seat.user;
-            ExecStart = "${lib.meta.getExe (package lib pkgs)} door 127.0.0.1:${toString doorPort} https://${door.host}";
-            LoadCredential = singleton "passphrase:${door.passphraseFile}";
-            # Registered apps and token hashes.
-            StateDirectory = "hippo-door";
-            Restart = "always";
-            RestartSec = 5;
-            # A socket on a read-only path still connects; the store stays
-            # read-only to the door.
-            ReadOnlyPaths = singleton seat.hippo;
-            RestrictAddressFamilies = [
-              "AF_UNIX"
-              "AF_INET"
-            ];
-            SocketBindAllow = singleton "tcp:${toString doorPort}";
-            IPAddressAllow = fences.loopback;
-            IPAddressDeny = "any";
-          };
-        };
+        # The doors: each memory, read-only, as a remote MCP server for
+        # apps outside the ship (Claude, Grok), on its own hostname and
+        # passphrase (lib/hippo-door.nix); this one is the seat's. One
+        # tunnel carries every door; hostnames map to ports dashboard-side.
+        systemd.services.hippo-door = mkIf (door.passphraseFile != null) (
+          lib.ship.hippoDoor {
+            hippo = package lib pkgs;
+            service = "hippo.service";
+            dir = seat.hippo;
+            inherit (seat) user;
+            agent = "Bridge";
+            person = "Dylan";
+            port = doorPort;
+            host = "hippo.${config.shipProxy.domain}";
+            inherit (door) passphraseFile;
+          }
+        );
 
         systemd.services.hippo-tunnel = mkIf (door.tunnelTokenFile != null) {
-          description = "Cloudflare Tunnel for hippo's door";
+          description = "Cloudflare Tunnel for the hippo doors";
           wantedBy = singleton "multi-user.target";
-          wants = [
-            "network-online.target"
-            "hippo-door.service"
-          ];
-          after = [
-            "network-online.target"
-            "hippo-door.service"
-          ];
+          wants = singleton "network-online.target";
+          after = singleton "network-online.target";
           serviceConfig = {
             DynamicUser = true;
             LoadCredential = singleton "token:${door.tunnelTokenFile}";

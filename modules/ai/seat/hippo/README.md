@@ -94,7 +94,8 @@ The service reads its configuration from the environment:
 | `HIPPO_MODEL`, `HIPPO_EFFORT` | the compactor's model and reasoning effort |
 | `HIPPO_LEVELS` | per-level overrides, `level=backend/model/effort` separated by spaces, say `0=claude/haiku/xhigh` |
 | `HIPPO_VIEW` | the view budget in bytes, default 128000 |
-| `HIPPO_AGENT` | the agent's name in the compactor's prompt |
+| `HIPPO_AGENT` | the agent's name, in the compactor's prompt and on the door's page; default Bridge |
+| `HIPPO_PERSON` | the person the agent works for, named on the door's page; default Dylan |
 
 The door reads its passphrase from `$CREDENTIALS_DIRECTORY/passphrase` (a
 systemd credential) and keeps registered apps and token hashes in
