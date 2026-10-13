@@ -184,7 +184,7 @@ git subtree push --prefix=modules/ai/seat/hippo git@github.com:dycli/hippo.git m
 
 after a push that touches it.
 
-**Recording.** A watcher follows Claude Code, Codex and OpenCode transcripts
+**Recording.** A watcher follows Claude Code, Codex, Muse Code and OpenCode transcripts
 as they are written (OpenCode through its SQLite database) and appends each
 message to a day-file log. The log is append-only. Secrets of known shapes (API
 keys, tokens, private keys, named passwords) are masked before they are
@@ -214,12 +214,15 @@ links to it, so Claude Code loads the whole view at session start and after
 every compaction with no tool call. Codex gets the same from a SessionStart
 hook in its system config, which prints the view and inbox at startup and
 after each compaction. In OpenCode a plugin appends one snapshot per session
-to the system prompt and takes a fresh one after compaction.
+to the system prompt and takes a fresh one after compaction. Muse Code
+kills a hook that prints over 16 KB, so twelve start hooks each print one
+slice of under 15,000 bytes, which Muse joins in order.
 
 **Session compaction.** Claude Code and Codex compact at 200k tokens, and
-all three harnesses write a short handoff instead of the usual summary:
+they and OpenCode write a short handoff instead of the usual summary:
 Claude Code's from a PreCompact hook, Codex's from its `compact_prompt`,
-OpenCode's from the plugin. A session comes
+OpenCode's from the plugin. Muse's summary prompt is not configurable, so
+it keeps its own. A session comes
 back as handoff plus fresh view rather than a long transcript summary.
 Compactions went from 97-113 seconds to 16-18. Each harness first runs
 `hippo fold`: the seat is the one reader that keeps a live context

@@ -262,6 +262,11 @@ in
           default = { };
           description = "Codex's system config layer.";
         };
+        museHooks = lib.options.mkOption {
+          inherit (json) type;
+          default = { };
+          description = "Muse Code's managed hooks, by event.";
+        };
       };
 
       config = {
@@ -292,6 +297,22 @@ in
             self.homeModules.default
             self.homeModules.dev
             self.homeModules.cockpit
+            (
+              { lib, ... }:
+              {
+                # Muse writes its own preferences to settings.json, so the managed
+                # hooks key is merged in rather than the file owned.
+                home.activation.museManagedHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+                  settings=$HOME/.config/muse/settings.json
+                  mkdir -p "$(dirname "$settings")"
+                  [ -s "$settings" ] || echo '{}' > "$settings"
+                  ${pkgs.jq}/bin/jq '.schema_version = 1
+                    | .managed_hooks_path = "/etc/muse/managed-hooks.json"' \
+                    "$settings" > "$settings.tmp"
+                  mv "$settings.tmp" "$settings"
+                '';
+              }
+            )
           ];
           home.username = seat.user;
           home.homeDirectory = seat.home;
@@ -342,6 +363,11 @@ in
         # agent frontend.
         environment.etc."codex/config.toml".source =
           toml.generate "codex-system-config.toml" cfg.codexConfig;
+        # Muse has no system settings layer on Linux, only a managed hooks
+        # file named from each user's settings; the seat's points here.
+        environment.etc."muse/managed-hooks.json".source = json.generate "muse-managed-hooks.json" {
+          hooks = cfg.museHooks;
+        };
         environment.etc."claude-code/managed-settings.json".source =
           json.generate "claude-managed-settings.json" cfg.claudeSettings;
 

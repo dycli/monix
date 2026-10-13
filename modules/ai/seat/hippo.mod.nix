@@ -1,5 +1,5 @@
 # hippo: the AI seat's episodic memory. One service, running as the seat,
-# follows its Claude Code, Codex and OpenCode transcripts live and logs
+# follows its Claude Code, Codex, Muse Code and OpenCode transcripts live and logs
 # every chat word for word; sessions read it through the `hippo` CLI.
 # Design: README, "hippo".
 { self, ... }:
@@ -157,6 +157,38 @@ in
         model_auto_compact_token_limit = compactWindow;
         features.memories = false;
       };
+
+      # Muse, through its managed hooks file, which runs without a trust
+      # step. Muse kills a hook printing over 16 KB and cuts a rules file at
+      # about 32 KB, so the view and inbox come as consecutive slices of
+      # under 15,000 bytes, one hook each, which Muse joins in order: twelve
+      # cover the 128 KB view and the inbox with room to spare. Its
+      # compaction prompt is not configurable; the fold still runs first.
+      seat.museHooks =
+        let
+          slice =
+            n:
+            forSeat "hippo-context-${toString n}" ''
+              ${context} | LC_ALL=C ${pkgs.gawk}/bin/awk -v n=${toString n} '
+                { l = length($0) + 1; if (b > 0 && b + l > 15000) { p++; b = 0 }; b += l }
+                p == n { print }'
+            '';
+        in
+        {
+          SessionStart = singleton {
+            matcher = "startup|resume|compact";
+            hooks = lib.lists.genList (n: {
+              type = "command";
+              command = toString (slice n);
+            }) 12;
+          };
+          PreCompact = singleton {
+            hooks = singleton {
+              type = "command";
+              command = toString (forSeat "hippo-fold" fold);
+            };
+          };
+        };
 
       # OpenCode, through a plugin: its instruction files are re-read on
       # every prompt, which would change the system prompt with each

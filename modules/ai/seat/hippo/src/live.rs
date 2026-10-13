@@ -1,7 +1,7 @@
 //! Following the harnesses' transcripts: where they are, how far each is
 //! read, and the same readers run over whole days for replay and audit.
 
-use crate::source::{self, Event, claude, codex, opencode};
+use crate::source::{self, Event, claude, codex, muse, opencode};
 use crate::store::{Kind, Store, fmt_date, parse_date};
 use crate::watcher::Watcher;
 use chrono::{DateTime, Local};
@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 pub struct Sources {
     pub claude: Vec<PathBuf>,
     pub codex: Vec<PathBuf>,
+    pub muse: Vec<PathBuf>,
     pub opencode: PathBuf,
     /// More OpenCode databases, read by the import only.
     pub opencode_more: Vec<PathBuf>,
@@ -30,6 +31,7 @@ impl Sources {
                 home.join(".codex/sessions"),
                 home.join(".codex/archived_sessions"),
             ],
+            muse: vec![home.join(".local/share/muse/sessions")],
             opencode: home.join(".local/share/opencode/opencode-stable.db"),
             opencode_more: Vec::new(),
             paseo: home.join(".paseo/agents"),
@@ -41,6 +43,7 @@ impl Sources {
     pub fn with_archive(mut self, archive: &Path) -> Sources {
         self.claude.push(archive.join("claude"));
         self.codex.push(archive.join("codex"));
+        self.muse.push(archive.join("muse"));
         self
     }
 
@@ -50,6 +53,7 @@ impl Sources {
     pub fn with_drop(mut self, dir: &Path) -> Sources {
         self.claude.push(dir.join("claude"));
         self.codex.push(dir.join("codex"));
+        self.muse.push(dir.join("muse"));
         self.opencode_more.extend(
             read_dir(&dir.join("opencode"))
                 .into_iter()
@@ -88,6 +92,26 @@ impl Sources {
                     } else if path.extension().is_some_and(|x| x == "jsonl") {
                         let session = codex::session_of(&stem(&path)).to_owned();
                         found.push((path, "codex", session));
+                    }
+                }
+            }
+        }
+        // A session is a directory holding its `session.jsonl`; subagents'
+        // logs sit deeper, under `subagent/`, and are never read.
+        for root in &self.muse {
+            let mut stack = vec![root.clone()];
+            while let Some(dir) = stack.pop() {
+                let log = dir.join("session.jsonl");
+                if log.is_file() {
+                    found.push((log, "muse", stem(&dir)));
+                    continue;
+                }
+                for path in read_dir(&dir) {
+                    let hidden = path
+                        .file_name()
+                        .is_some_and(|n| n.to_string_lossy().starts_with('.'));
+                    if path.is_dir() && !hidden {
+                        stack.push(path);
                     }
                 }
             }
@@ -138,12 +162,16 @@ pub fn parse_line(
         Ok(v) => v,
         Err(e) => return (None, vec![Event::Unparsed(format!("not JSON: {e}"))]),
     };
-    let at = r
-        .get("timestamp")
-        .and_then(Value::as_str)
-        .and_then(source::iso);
+    let at = match harness {
+        "muse" => muse::date(&r),
+        _ => r
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .and_then(source::iso),
+    };
     let events = match harness {
         "claude" => claude::parse(&r, session),
+        "muse" => muse::parse(&r, session),
         _ => codex::parse(&r, session, off),
     };
     (at, events)
@@ -559,6 +587,7 @@ mod tests {
         Sources {
             claude: vec![claude],
             codex: vec![fixtures().join("codex/sessions")],
+            muse: Vec::new(),
             opencode: db,
             opencode_more: Vec::new(),
             paseo: tmp.join("no-paseo"),

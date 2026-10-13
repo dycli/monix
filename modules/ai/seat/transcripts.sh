@@ -1,7 +1,7 @@
 # The generated wrapper supplies $home, $archive and $group.
 mountpoint -q /srv/storage
 umask 027
-install -d -m 0750 -g "$group" "$archive" "$archive"/{claude,codex,opencode}
+install -d -m 0750 -g "$group" "$archive" "$archive"/{claude,codex,muse,opencode}
 
 # Never --delete: keeping what the harnesses prune is the point.
 copy() {
@@ -11,6 +11,13 @@ copy() {
 copy "$home/.claude/projects" "$archive/claude"
 copy "$home/.codex/sessions" "$archive/codex"
 copy "$home/.codex/archived_sessions" "$archive/codex"
+# Muse keeps each session in a directory of runtime state; only the chat
+# log itself is copied, never a subagent's.
+[[ -d $home/.local/share/muse/sessions ]] &&
+  rsync -rt --chown="root:$group" --chmod=D750,F640 --prune-empty-dirs \
+    --exclude='.*' --exclude='subagent/' --include='*/' \
+    --include='session.jsonl' --exclude='*' \
+    "$home/.local/share/muse/sessions/" "$archive/muse/"
 
 # OpenCode deletes a session's rows outright, so each session is exported
 # to its own file, rewritten whenever any of its rows changes.

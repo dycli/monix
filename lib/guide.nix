@@ -17,7 +17,7 @@
 
     The view loads into your context by itself at session start and after
     each compaction: in Claude Code as the rules file `hippo-view.md`, in
-    Codex from a session-start hook, in OpenCode from a plugin. It is a
+    Codex and Muse from session-start hooks, in OpenCode from a plugin. It is a
     snapshot from that moment. Run `hippo view` to refresh it mid-session;
     read every page it prints, whole.
 

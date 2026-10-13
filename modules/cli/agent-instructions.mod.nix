@@ -43,6 +43,11 @@
       force = true;
       source = config.home.file.".config/agents/AGENTS.md".source;
     };
+    # Muse's own user rules; without them it borrows Codex's.
+    home.file.".config/muse/AGENTS.md" = {
+      force = true;
+      source = config.home.file.".config/agents/AGENTS.md".source;
+    };
     # Claude's AGENTS.md discovery is project-scoped; user rules load everywhere.
     home.file.".claude/rules/AGENTS.md" = {
       force = true;

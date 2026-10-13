@@ -576,7 +576,7 @@ fn status(c: &Core, compacting: bool) -> String {
             out.push_str(&format!("  {s}+{n}: {e}\n"));
         }
     }
-    for h in ["claude", "codex", "opencode"] {
+    for h in ["claude", "codex", "muse", "opencode"] {
         match s.last.get(h) {
             Some((i, date)) => {
                 let d = DateTime::from_timestamp(*date, 0)

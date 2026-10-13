@@ -41,7 +41,7 @@ Service and maintenance:
   hippo import [--since YYYY-MM-DD]
                            bootstrap an empty store with every past chat,
                            reduced, including any dropped in ~/hold/import
-                           (claude/, codex/, opencode/); the service starts
+                           (claude/, codex/, muse/, opencode/); the service starts
                            after
   hippo replay <store> <from> <to>
                            rebuild a scratch store from transcripts

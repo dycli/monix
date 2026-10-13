@@ -28,7 +28,7 @@ in, and mirrored here with `git subtree`.
 
 ## How it works
 
-**Recording.** A watcher follows Claude Code, Codex and OpenCode transcripts
+**Recording.** A watcher follows Claude Code, Codex, Muse Code and OpenCode transcripts
 (OpenCode through its SQLite database) and appends each message to an
 append-only day-file log. Secrets of known shapes (API keys, tokens, private
 keys, named passwords) are masked before they are written. Nothing else is
