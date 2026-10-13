@@ -28,10 +28,17 @@
       # Parked domains keep their certs warm and answer 503.
       parked = singleton "cleary.is";
 
-      # su.is keeps its small projects under /labs/; the old top-level
-      # paths send visitors there.
-      moved = {
+      extra = {
+        # su.is keeps its small projects under /labs/; the old top-level
+        # paths send visitors there.
         "su.is".locations."~ ^/(endgrain|lifespan|liberi)(/|$)".return = "301 /labs$request_uri";
+        # lfish writes each file's page as <path>.html and content-hashes
+        # everything under /_/.
+        "dylanc.com" = {
+          locations."/".tryFiles = "$uri $uri.html $uri/index.html =404";
+          locations."/_/".extraConfig = "expires max;";
+          extraConfig = "error_page 404 /404.html;";
+        };
       };
     in
     {
@@ -50,7 +57,7 @@
                 enableACME = true;
                 root = "${webRoot}/${domain}";
               }
-              // moved.${domain} or { }
+              // extra.${domain} or { }
             )
             // genAttrs parked (domain: {
               forceSSL = true;
