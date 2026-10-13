@@ -44,8 +44,9 @@
     decisions and the facts behind them, each rewritten in place as it
     changes. Before planning or resuming a project, read its page; when a
     plan or a fact changes, update the page in the same turn. Keep pages
-    short and plain markdown, one topic each, `Open items.md` for the
-    running list. A page nobody has touched in months is suspect; check it
+    short and plain markdown, one topic each, `open-items.md` for the
+    running list. File and folder names are lowercase with hyphens, no
+    spaces. A page nobody has touched in months is suspect; check it
     against hippo.
 
     ## The household: tell and inbox
