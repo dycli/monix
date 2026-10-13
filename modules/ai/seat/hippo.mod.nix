@@ -30,9 +30,6 @@ in
       # Code loads it at session start and again after each compaction.
       home.file.".claude/rules/hippo-view.md".source =
         config.lib.file.mkOutOfStoreSymlink "${lib.ship.topology.seat.hippo}/view.md";
-      # The assistants' notes to the seat, loaded the same way.
-      home.file.".claude/rules/inbox.md".source =
-        config.lib.file.mkOutOfStoreSymlink "${lib.ship.topology.household}/seat/inbox";
       # Seat sessions compact at 200k tokens; the view carries the history.
       home.sessionVariables.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "200000";
     };
@@ -51,6 +48,12 @@ in
       inherit (lib.attrsets) removeAttrs;
       inherit (lib.strings) toJSON;
       inherit (topology) seat;
+      inherit (lib.modules) mkIf;
+      inherit (lib.options) mkOption;
+      inherit (lib) types;
+
+      door = config.hippo.door;
+      doorPort = 8940;
 
       # The compactor's model, through the seat's own claude CLI and
       # subscription. HIPPO_LEVELS can give lower tree levels a cheaper model
@@ -95,7 +98,7 @@ in
         yet acted on. Do not write Primary Request, Key Technical Concepts,
         Files and Code Sections, Errors and Fixes, Problem Solving or All
         User Messages, not even as empty headings: hippo holds them. What
-        the bridge notes or the inbox already hold, name in a few words,
+        the bridge notes already hold, name in a few words,
         never repeat. Hard limit 300 words. An earlier summary in this
         conversation is not a record either: carry nothing from it that is
         no longer live.'';
@@ -108,13 +111,10 @@ in
         EOF
       '';
 
-      # Harnesses without rules files get the view and the inbox from a
+      # Harnesses without rules files get the view from a
       # session-start hook, at startup and again after each compaction.
       context = forSeat "hippo-context" ''
         ${pkgs.coreutils}/bin/cat ${seat.hippo}/view.md
-        echo
-        echo '# Inbox: notes from the household assistants'
-        ${pkgs.coreutils}/bin/cat ${lib.ship.topology.household}/seat/inbox 2>/dev/null || true
       '';
 
       # The compactor's own claude calls get the seat's managed settings
@@ -125,160 +125,235 @@ in
       );
     in
     {
-      seat.claudeSettings.hooks = {
-        PreCompact = singleton {
-          hooks = singleton {
-            type = "command";
-            command = toString handoff;
-          };
+      options.hippo.door = {
+        host = mkOption {
+          type = types.str;
+          default = "hippo.${config.shipProxy.domain}";
+          description = "Public hostname of the door; the tunnel's mapping to http://127.0.0.1:${toString doorPort} is dashboard-side.";
+        };
+        passphraseFile = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Passphrase apps' sign-in pages ask for, 12 characters or more; null = no door.";
+        };
+        tunnelTokenFile = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Cloudflare Tunnel connector token carrying the door out; null = no tunnel.";
         };
       };
 
-      # Codex, as close as its hooks allow: the view and inbox open every
-      # session and every compacted context, the view folds before each
-      # compaction, the summary is the same handoff, and its own memories
-      # stay off. Hooks in the system layer are managed, so need no trust.
-      seat.codexConfig = {
-        hooks.SessionStart = singleton {
-          matcher = "startup|resume|clear|compact";
-          hooks = singleton {
-            type = "command";
-            command = toString context;
-            additionalContextLimit = 0;
-          };
-        };
-        hooks.PreCompact = singleton {
-          hooks = singleton {
-            type = "command";
-            command = toString (forSeat "hippo-fold" fold);
-          };
-        };
-        compact_prompt = handoffText;
-        model_auto_compact_token_limit = compactWindow;
-        features.memories = false;
-      };
-
-      # Muse, through its managed hooks file, which runs without a trust
-      # step. Muse kills a hook printing over 16 KB and cuts a rules file at
-      # about 32 KB, so the view and inbox come as consecutive slices of
-      # under 15,000 bytes, one hook each, which Muse joins in order: twelve
-      # cover the 128 KB view and the inbox with room to spare. Its
-      # compaction prompt is not configurable; the fold still runs first.
-      seat.museHooks =
-        let
-          slice =
-            n:
-            forSeat "hippo-context-${toString n}" ''
-              ${context} | LC_ALL=C ${pkgs.gawk}/bin/awk -v n=${toString n} '
-                { l = length($0) + 1; if (b > 0 && b + l > 15000) { p++; b = 0 }; b += l }
-                p == n { print }'
-            '';
-        in
-        {
-          SessionStart = singleton {
-            matcher = "startup|resume|compact";
-            hooks = lib.lists.genList (n: {
-              type = "command";
-              command = toString (slice n);
-            }) 12;
-          };
+      config = {
+        seat.claudeSettings.hooks = {
           PreCompact = singleton {
+            hooks = singleton {
+              type = "command";
+              command = toString handoff;
+            };
+          };
+        };
+
+        # Codex, as close as its hooks allow: the view opens every
+        # session and every compacted context, the view folds before each
+        # compaction, the summary is the same handoff, and its own memories
+        # stay off. Hooks in the system layer are managed, so need no trust.
+        seat.codexConfig = {
+          hooks.SessionStart = singleton {
+            matcher = "startup|resume|clear|compact";
+            hooks = singleton {
+              type = "command";
+              command = toString context;
+              additionalContextLimit = 0;
+            };
+          };
+          hooks.PreCompact = singleton {
             hooks = singleton {
               type = "command";
               command = toString (forSeat "hippo-fold" fold);
             };
           };
+          compact_prompt = handoffText;
+          model_auto_compact_token_limit = compactWindow;
+          features.memories = false;
         };
 
-      # OpenCode, through a plugin: its instruction files are re-read on
-      # every prompt, which would change the system prompt with each
-      # message and void the cache, so the plugin holds one snapshot of the
-      # view and inbox per session, as the others do, and takes a fresh one
-      # after the session compacts, folding first and summarising with the
-      # handoff.
-      home-manager.users.${seat.user}.home.file.".config/opencode/plugins/hippo.js".text = ''
-        import { execFileSync } from "node:child_process";
+        # Muse, through its managed hooks file, which runs without a trust
+        # step. Muse kills a hook printing over 16 KB and cuts a rules file at
+        # about 32 KB, so the view comes as consecutive slices of
+        # under 15,000 bytes, one hook each, which Muse joins in order: twelve
+        # cover the 128 KB view with room to spare. Its
+        # compaction prompt is not configurable; the fold still runs first.
+        seat.museHooks =
+          let
+            slice =
+              n:
+              forSeat "hippo-context-${toString n}" ''
+                ${context} | LC_ALL=C ${pkgs.gawk}/bin/awk -v n=${toString n} '
+                  { l = length($0) + 1; if (b > 0 && b + l > 15000) { p++; b = 0 }; b += l }
+                  p == n { print }'
+              '';
+          in
+          {
+            SessionStart = singleton {
+              matcher = "startup|resume|compact";
+              hooks = lib.lists.genList (n: {
+                type = "command";
+                command = toString (slice n);
+              }) 12;
+            };
+            PreCompact = singleton {
+              hooks = singleton {
+                type = "command";
+                command = toString (forSeat "hippo-fold" fold);
+              };
+            };
+          };
 
-        const context = ${toJSON (toString context)};
-        const fold = ${toJSON (toString (forSeat "hippo-fold" fold))};
-        const handoff = ${toJSON handoffText};
-        const views = new Map();
+        # OpenCode, through a plugin: its instruction files are re-read on
+        # every prompt, which would change the system prompt with each
+        # message and void the cache, so the plugin holds one snapshot of the
+        # view per session, as the others do, and takes a fresh one
+        # after the session compacts, folding first and summarising with the
+        # handoff.
+        home-manager.users.${seat.user}.home.file.".config/opencode/plugins/hippo.js".text = ''
+          import { execFileSync } from "node:child_process";
 
-        export const Hippo = async () => ({
-          "experimental.chat.system.transform": async (input, output) => {
-            if (!input.sessionID) return;
-            if (!views.has(input.sessionID))
-              views.set(input.sessionID, execFileSync(context, { encoding: "utf8" }));
-            output.system.push(views.get(input.sessionID));
-          },
-          "experimental.session.compacting": async (input, output) => {
-            execFileSync(fold, { stdio: "ignore" });
-            views.delete(input.sessionID);
-            output.prompt = handoff;
-          },
-        });
-      '';
+          const context = ${toJSON (toString context)};
+          const fold = ${toJSON (toString (forSeat "hippo-fold" fold))};
+          const handoff = ${toJSON handoffText};
+          const views = new Map();
 
-      # Seat sessions compact at 200k tokens; the view carries the history.
-      # The variable, unlike the setting, leaves other users' sessions alone.
-      systemd.services.paseo.environment.CLAUDE_CODE_AUTO_COMPACT_WINDOW = toString compactWindow;
+          export const Hippo = async () => ({
+            "experimental.chat.system.transform": async (input, output) => {
+              if (!input.sessionID) return;
+              if (!views.has(input.sessionID))
+                views.set(input.sessionID, execFileSync(context, { encoding: "utf8" }));
+              output.system.push(views.get(input.sessionID));
+            },
+            "experimental.session.compacting": async (input, output) => {
+              execFileSync(fold, { stdio: "ignore" });
+              views.delete(input.sessionID);
+              output.prompt = handoff;
+            },
+          });
+        '';
 
-      systemd.tmpfiles.rules = singleton "d ${seat.hippo} 0750 ${seat.user} ${seat.user} -";
+        # Seat sessions compact at 200k tokens; the view carries the history.
+        # The variable, unlike the setting, leaves other users' sessions alone.
+        systemd.services.paseo.environment.CLAUDE_CODE_AUTO_COMPACT_WINDOW = toString compactWindow;
 
-      # A store is bootstrapped by `hippo import` (every past chat) before anything live enters it; the service starts once the
-      # import has written its record.
-      systemd.paths.hippo = {
-        wantedBy = singleton "paths.target";
-        pathConfig.PathExists = "${seat.hippo}/import.json";
-      };
+        systemd.tmpfiles.rules = singleton "d ${seat.hippo} 0750 ${seat.user} ${seat.user} -";
 
-      systemd.services.hippo = {
-        description = "hippo, the AI seat's episodic memory";
-        wantedBy = singleton "multi-user.target";
-        unitConfig.ConditionPathExists = "${seat.hippo}/import.json";
-        # A switch restarts it after the reload: stopped first, hippo.path
-        # would start it again on the old unit before the new one loads.
-        stopIfChanged = false;
-        after = singleton "network-online.target";
-        wants = singleton "network-online.target";
-        unitConfig.RequiresMountsFor = [
-          "/srv/storage"
-          seat.home
-        ];
-        environment = compactor // {
-          HOME = seat.home;
+        # A store is bootstrapped by `hippo import` (every past chat) before anything live enters it; the service starts once the
+        # import has written its record.
+        systemd.paths.hippo = {
+          wantedBy = singleton "paths.target";
+          pathConfig.PathExists = "${seat.hippo}/import.json";
         };
-        serviceConfig = lib.ship.hardened.tenant // {
-          User = seat.user;
-          Group = seat.user;
-          ExecStart = "${lib.meta.getExe (package lib pkgs)} serve";
-          WorkingDirectory = seat.hippo;
-          Restart = "always";
-          RestartSec = 5;
-          # Reads the seat's transcripts; writes its own store, and the claude
-          # CLI's state and refreshed credentials.
-          ProtectHome = "read-only";
-          # SQLite needs OpenCode's WAL index writable even to read.
-          ReadWritePaths = [
-            seat.hippo
-            "-${seat.home}/.local/share/opencode"
-            "${seat.home}/.claude"
-            "${seat.home}/.claude.json"
+
+        systemd.services.hippo = {
+          description = "hippo, the AI seat's episodic memory";
+          wantedBy = singleton "multi-user.target";
+          unitConfig.ConditionPathExists = "${seat.hippo}/import.json";
+          # A switch restarts it after the reload: stopped first, hippo.path
+          # would start it again on the old unit before the new one loads.
+          stopIfChanged = false;
+          after = singleton "network-online.target";
+          wants = singleton "network-online.target";
+          unitConfig.RequiresMountsFor = [
+            "/srv/storage"
+            seat.home
           ];
-          BindReadOnlyPaths = singleton "${claudeEtc}:/etc/claude-code";
-          RestrictAddressFamilies = [
-            "AF_UNIX"
-            "AF_INET"
-            "AF_INET6"
+          environment = compactor // {
+            HOME = seat.home;
+          };
+          serviceConfig = lib.ship.hardened.tenant // {
+            User = seat.user;
+            Group = seat.user;
+            ExecStart = "${lib.meta.getExe (package lib pkgs)} serve";
+            WorkingDirectory = seat.hippo;
+            Restart = "always";
+            RestartSec = 5;
+            # Reads the seat's transcripts; writes its own store, and the claude
+            # CLI's state and refreshed credentials.
+            ProtectHome = "read-only";
+            # SQLite needs OpenCode's WAL index writable even to read.
+            ReadWritePaths = [
+              seat.hippo
+              "-${seat.home}/.local/share/opencode"
+              "${seat.home}/.claude"
+              "${seat.home}/.claude.json"
+            ];
+            BindReadOnlyPaths = singleton "${claudeEtc}:/etc/claude-code";
+            RestrictAddressFamilies = [
+              "AF_UNIX"
+              "AF_INET"
+              "AF_INET6"
+            ];
+            # The seat's own fence: the internet, the resolver and local inference.
+            IPAddressAllow = [
+              "127.0.0.53/32"
+              "${topology.seatInferenceAddr}/32"
+            ];
+            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
+            # The primary user reads the store through the seat's group.
+            UMask = "0027";
+          };
+        };
+
+        # The door: the memory, read-only, as a remote MCP server for apps
+        # outside the ship (Claude, Grok). A client of hippo.sock like the CLI;
+        # apps sign in by OAuth, the gate being the passphrase.
+        systemd.services.hippo-door = mkIf (door.passphraseFile != null) {
+          description = "hippo's door, the memory as a remote MCP server";
+          wantedBy = singleton "multi-user.target";
+          after = singleton "hippo.service";
+          unitConfig.RequiresMountsFor = singleton "/srv/storage";
+          serviceConfig = lib.ship.hardened.tenant // {
+            User = seat.user;
+            Group = seat.user;
+            ExecStart = "${lib.meta.getExe (package lib pkgs)} door 127.0.0.1:${toString doorPort} https://${door.host}";
+            LoadCredential = singleton "passphrase:${door.passphraseFile}";
+            # Registered apps and token hashes.
+            StateDirectory = "hippo-door";
+            Restart = "always";
+            RestartSec = 5;
+            # A socket on a read-only path still connects; the store stays
+            # read-only to the door.
+            ReadOnlyPaths = singleton seat.hippo;
+            RestrictAddressFamilies = [
+              "AF_UNIX"
+              "AF_INET"
+            ];
+            SocketBindAllow = singleton "tcp:${toString doorPort}";
+            IPAddressAllow = fences.loopback;
+            IPAddressDeny = "any";
+          };
+        };
+
+        systemd.services.hippo-tunnel = mkIf (door.tunnelTokenFile != null) {
+          description = "Cloudflare Tunnel for hippo's door";
+          wantedBy = singleton "multi-user.target";
+          wants = [
+            "network-online.target"
+            "hippo-door.service"
           ];
-          # The seat's own fence: the internet, the resolver and local inference.
-          IPAddressAllow = [
-            "127.0.0.53/32"
-            "${topology.seatInferenceAddr}/32"
+          after = [
+            "network-online.target"
+            "hippo-door.service"
           ];
-          IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
-          # The primary user reads the store through the seat's group.
-          UMask = "0027";
+          serviceConfig = {
+            DynamicUser = true;
+            LoadCredential = singleton "token:${door.tunnelTokenFile}";
+            ExecStart = "${lib.meta.getExe pkgs.cloudflared} tunnel --no-autoupdate run --token-file %d/token";
+            Restart = "always";
+            RestartSec = 5;
+            # Cloudflare's edge and loopback only; 127.0.0.0/8 is denied
+            # because the allow is a /24.
+            IPAddressAllow = fences.loopback;
+            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
+          };
+          environment.TUNNEL_TRANSPORT_PROTOCOL = "http2";
         };
       };
     };

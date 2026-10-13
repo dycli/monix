@@ -57,6 +57,14 @@ its two halves, down to the whole message; `search <regex>` reads every
 message word for word; `date <id>` says when. The service answers over a
 unix socket in a few milliseconds.
 
+**The door.** `hippo door` serves the same four reads, and nothing that
+writes, as a remote MCP server, so an app outside the machine (the Claude or
+Grok apps, on a phone) can use the memory as a connector. It is one more
+client of the socket. Apps sign in the way the MCP spec asks: OAuth 2.1 with
+dynamic client registration and PKCE, behind a page that asks for a
+passphrase. It speaks plain HTTP on loopback; a tunnel or proxy carries it
+out over TLS.
+
 ## Running it
 
 ```
@@ -68,6 +76,8 @@ hippo search <regex>          search every message, word for word
 hippo status                  what the service is doing
 hippo fold                    merge the view down to half its budget now
 hippo pause / resume          stop or restart the compactor's model calls
+hippo door <addr> <url>       serve the reads as a remote MCP server on
+                              <addr>, for apps that reach it at <url>
 hippo audit [YYYY-MM-DD]      check a day of the log against the transcripts
 hippo import [--since DATE]   bootstrap an empty store from past transcripts
 hippo replay <store> <from> <to>
@@ -85,6 +95,10 @@ The service reads its configuration from the environment:
 | `HIPPO_LEVELS` | per-level overrides, `level=backend/model/effort` separated by spaces, say `0=claude/haiku/xhigh` |
 | `HIPPO_VIEW` | the view budget in bytes, default 128000 |
 | `HIPPO_AGENT` | the agent's name in the compactor's prompt |
+
+The door reads its passphrase from `$CREDENTIALS_DIRECTORY/passphrase` (a
+systemd credential) and keeps registered apps and token hashes in
+`$STATE_DIRECTORY`.
 
 With `--no-follow` the service only serves and compacts its store; a program
 that writes the log itself (a chat bot, say) uses hippo this way.

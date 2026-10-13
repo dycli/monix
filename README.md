@@ -212,7 +212,7 @@ since a refold would differ from the live view. The service rewrites `view.md`
 atomically whenever the tree grows. On the seat, `~/.claude/rules/hippo-view.md`
 links to it, so Claude Code loads the whole view at session start and after
 every compaction with no tool call. Codex gets the same from a SessionStart
-hook in its system config, which prints the view and inbox at startup and
+hook in its system config, which prints the view at startup and
 after each compaction. In OpenCode a plugin appends one snapshot per session
 to the system prompt and takes a fresh one after compaction. Muse Code
 kills a hook that prints over 16 KB, so twelve start hooks each print one
@@ -422,8 +422,7 @@ the seat leaves a note in a box of Sokka's that its tick drains like its
 mailbox, marked as the engineer's, not the person's; Sokka does what it
 would do for its person, answers with its own `tell` to Bridge, and tells
 its person in a line what happened. Notes to Bridge append to one inbox
-file that the seat's sessions load as a rule, like the hippo view, and
-`inbox` prints on demand.
+file, which `inbox` prints on demand.
 
 Sokka answers only the users it is configured for, joins
 only their rooms, and runs as its own fenced user with loopback and the

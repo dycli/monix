@@ -4,6 +4,7 @@
 
 mod compact;
 mod compactor;
+mod door;
 mod live;
 mod mask;
 mod server;
@@ -33,6 +34,8 @@ Usage:
                            seat's PreCompact hook, before its context goes)
   hippo pause / resume     stop or restart the compactor's model calls;
                            logging goes on
+  hippo door <addr> <url>  serve the memory read-only as a remote MCP server
+                           with OAuth, on <addr>, for apps reaching it at <url>
 Service and maintenance:
   hippo serve [--no-follow]
                            run the service (the only writer); without
@@ -183,6 +186,10 @@ fn main() -> ExitCode {
         "audit" => audit(rest.first()),
         "replay" => replay(rest),
         "import" => import(rest),
+        "door" => match rest {
+            [addr, url] => door::run(addr, url, ask).map(|()| String::new()),
+            _ => Err(USAGE.into()),
+        },
         "view" | "zoom" | "date" | "search" | "status" | "fold" | "pause" | "resume" => {
             ask(cmd, rest)
         }
