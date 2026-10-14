@@ -446,6 +446,7 @@
                 YEOMAN_CLAUDE = getExe claude;
                 YEOMAN_MODEL = cfg.model;
                 YEOMAN_MCP = toString mcp;
+                YEOMAN_MATRIX = "${creds}/matrix";
               }
               // optionalAttrs (i.style != null) { YEOMAN_STYLE = i.style; }
               // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
@@ -459,8 +460,8 @@
               // claudeUnit
               // {
                 ExecStart = start;
-                EnvironmentFile = i.credentialsEnvFile;
                 LoadCredential = [
+                  "matrix:${i.credentialsEnvFile}"
                   "claude-token:${cfg.claudeTokenFile}"
                   "caldav:${cfg.calendarCredentialsFile}"
                 ]

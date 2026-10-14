@@ -182,6 +182,22 @@ fn var(k: &str) -> Result<String, String> {
         .ok_or_else(|| format!("{k} is not set"))
 }
 
+/// The Matrix user and password from the agenix env file at `path`. Read
+/// from a systemd credential rather than the environment, so the password
+/// is not handed to every program the assistant starts.
+fn account(path: &str) -> Result<(String, String), String> {
+    let text = fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+    let field = |k: &str| {
+        text.lines()
+            .filter_map(|l| l.split_once('='))
+            .find(|(n, _)| n.trim() == k)
+            .map(|(_, v)| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| format!("{path}: no {k}"))
+    };
+    Ok((field("MATRIX_USER")?, field("MATRIX_PASSWORD")?))
+}
+
 /// Names a file by its first bytes; the sender's stated type is a fallback
 /// for text only.
 fn read(data: Vec<u8>, mime: Option<&str>) -> Option<Read> {
@@ -941,10 +957,11 @@ async fn run() -> Result<(), String> {
         sock: PathBuf::from(var("HIPPO_DIR")?).join("hippo.sock"),
     });
     let model: Arc<dyn Model> = model::from_env()?.into();
+    let login = account(&var("YEOMAN_MATRIX")?)?;
     let (client, fresh) = matrix::connect(
         &var("YEOMAN_HOMESERVER")?,
-        &var("MATRIX_USER")?,
-        &var("MATRIX_PASSWORD")?,
+        &login.0,
+        &login.1,
         &state.join("matrix"),
     )
     .await?;
