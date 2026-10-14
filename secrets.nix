@@ -53,6 +53,7 @@ in
   # Sokka's IMAP accounts: [{"name","username","password"}, ...].
   "hosts/water/secrets/sokka-mail.json.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/suki-mail.json.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/suki-claude-key.age".publicKeys = singleton water ++ admin;
   # A Home Assistant long-lived access token, raw, for the assistants' home tools.
   "hosts/water/secrets/yeoman-home-token.age".publicKeys = singleton water ++ admin;
   # Seerr's API key, raw (Settings > General), for the assistants' media requests.

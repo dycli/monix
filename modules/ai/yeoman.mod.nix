@@ -9,7 +9,7 @@
 # Each instance is three units under its own static user: the bot, the
 # hippo service that is the store's only writer, and the account
 # bootstrap. Model calls run the claude CLI on the ship's Claude subscription
-# token, without built-in tools or settings; their only tools come over
+# token (or an instance's own API key, `claudeKeyFile`), without built-in tools or settings; their only tools come over
 # MCP: the instance's own server (`yeoman tools`: web search and fetch in
 # front of Parallel's keyless server, reminders, lists, memory tools that
 # zoom, search and date in its hippo as the seat's hippo CLI does, the
@@ -160,13 +160,19 @@
         '';
       };
 
-      # The token rides a systemd credential into the environment, never
-      # the command line.
+      # The token or key rides a systemd credential into the environment,
+      # never the command line. An instance with its own API key bills to
+      # it; the rest share the subscription token.
       claude = pkgs.writeShellApplication {
         name = "yeoman-claude";
         text = ''
-          CLAUDE_CODE_OAUTH_TOKEN=$(< "$CREDENTIALS_DIRECTORY/claude-token")
-          export CLAUDE_CODE_OAUTH_TOKEN
+          if [ -e "$CREDENTIALS_DIRECTORY/claude-key" ]; then
+            ANTHROPIC_API_KEY=$(< "$CREDENTIALS_DIRECTORY/claude-key")
+            export ANTHROPIC_API_KEY
+          else
+            CLAUDE_CODE_OAUTH_TOKEN=$(< "$CREDENTIALS_DIRECTORY/claude-token")
+            export CLAUDE_CODE_OAUTH_TOKEN
+          fi
           exec ${getExe pkgs.claude-code} "$@"
         '';
       };
@@ -355,8 +361,13 @@
           };
 
           # Each claude call writes its state under HOME.
+          claudeCredential =
+            if i.claudeKeyFile != null then
+              "claude-key:${i.claudeKeyFile}"
+            else
+              "claude-token:${cfg.claudeTokenFile}";
           claudeUnit = {
-            LoadCredential = "claude-token:${cfg.claudeTokenFile}";
+            LoadCredential = claudeCredential;
             BindReadOnlyPaths = singleton "${claudeEtc}:/etc/claude-code";
           };
         in
@@ -462,7 +473,7 @@
                 ExecStart = start;
                 LoadCredential = [
                   "matrix:${i.credentialsEnvFile}"
-                  "claude-token:${cfg.claudeTokenFile}"
+                  claudeCredential
                   "caldav:${cfg.calendarCredentialsFile}"
                 ]
                 ++ optional (i.mailCredentialsFile != null) "mail:${i.mailCredentialsFile}"
@@ -552,6 +563,17 @@
                     type = types.bool;
                     default = false;
                     description = "Whether it posts the host's alerts.";
+                  };
+
+                  claudeKeyFile = mkOption {
+                    type = types.nullOr types.str;
+                    default = null;
+                    description = ''
+                      Claude API key for this instance's model calls and
+                      memory, billed to the key's Console organization.
+                      null = the shared subscription token
+                      (claudeTokenFile).
+                    '';
                   };
 
                   doorPassphraseFile = mkOption {
