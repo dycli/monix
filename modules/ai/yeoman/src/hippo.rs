@@ -61,4 +61,21 @@ impl Hippo {
     pub fn date(&self, id: u64) -> Result<String, String> {
         self.ask("date", &[&id.to_string()])
     }
+
+    /// The last `n` messages whole, oldest first.
+    pub fn tail(&self, n: u64) -> Result<Vec<Said>, String> {
+        let out = self.ask("tail", &[&n.to_string()])?;
+        out.lines()
+            .map(|l| serde_json::from_str(l).map_err(|e| format!("hippo tail: {e}")))
+            .collect()
+    }
+}
+
+/// One message as hippo keeps it, for showing a conversation.
+#[derive(Clone, Debug, Deserialize, serde::Serialize)]
+pub struct Said {
+    pub i: u64,
+    pub kind: String,
+    pub text: String,
+    pub date: String,
 }

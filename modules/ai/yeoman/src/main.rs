@@ -15,6 +15,7 @@ mod matrix;
 mod media;
 mod model;
 mod pending;
+mod site;
 mod task;
 mod tools;
 mod web;
@@ -745,8 +746,40 @@ async fn run() -> Result<(), String> {
             tokio::spawn(decide(door, id, yes, s.clone(), h.clone()));
         }
     });
+    // One turn at a time, whichever door it comes from: each answer sees
+    // the one before it in its memory.
+    let turn = Arc::new(tokio::sync::Mutex::new(()));
+    if let Ok(addr) = var("YEOMAN_SITE") {
+        let (pages, mut from_web) = mpsc::unbounded_channel();
+        let (c, s) = (client.clone(), state.clone());
+        let notify: site::Notify = Box::new(move |text| {
+            let door = matrix::last(&c, &s);
+            Box::pin(async move {
+                let door = door.ok_or("no Matrix room yet")?;
+                door.say(&text).await.map(|_| ())
+            })
+        });
+        let (root, url) = (
+            PathBuf::from(var("YEOMAN_SITE_ROOT")?),
+            var("YEOMAN_SITE_URL")?,
+        );
+        let (s, h) = (state.clone(), hippo.clone());
+        tokio::spawn(async move {
+            if let Err(e) = site::serve(&addr, root, url, &s, h, pages, notify).await {
+                eprintln!("yeoman: {e}");
+            }
+        });
+        let (s, h, m, t) = (state.clone(), hippo.clone(), model.clone(), turn.clone());
+        tokio::spawn(async move {
+            while let Some((door, msg)) = from_web.recv().await {
+                let _turn = t.lock().await;
+                reply(door, h.clone(), m.clone(), msg, &s.join("outbox")).await;
+            }
+        });
+    }
     tokio::spawn(async move {
         while let Some((door, msg)) = inbox.recv().await {
+            let _turn = turn.lock().await;
             let outbox = state.join("outbox");
             reply(door, hippo.clone(), model.clone(), msg, &outbox).await;
         }

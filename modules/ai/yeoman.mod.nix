@@ -77,6 +77,7 @@
         filterAttrs
         mapAttrs
         mapAttrsToList
+        nameValuePair
         ;
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib) types;
@@ -119,6 +120,21 @@
 
       yeoman = lib.ship.rustTool pkgs { src = ./yeoman; };
       hippo = lib.ship.rustTool pkgs { src = ./seat/hippo; };
+
+      # Each web chat's port, after the doors, by sorted name.
+      chatPort = n: 8950 + lib.lists.findFirstIndex (m: m == n) 0 (attrNames cfg.instances) + 1;
+
+      # The web chat's page, built once and served by each assistant.
+      web = pkgs.buildNpmPackage {
+        pname = "yeoman-site";
+        version = "0";
+        src = ./yeoman/site;
+        npmDepsHash = "sha256-qFJ3CR/Duqw+eI8ZlEU5ok5LdKIFi+pjP3viqypBhxQ=";
+        # rolldown and tsgo ship prebuilt Linux binaries.
+        nativeBuildInputs = singleton pkgs.autoPatchelfHook;
+        buildInputs = singleton pkgs.stdenv.cc.cc.lib;
+        installPhase = "cp -r dist $out";
+      };
 
       image = pkgs.writers.writePython3Bin "yeoman-image-mcp" {
         libraries = singleton pkgs.python3Packages.mcp;
@@ -250,6 +266,11 @@
           pc = optionalAttrs i.computer {
             addr = computers.addr (computers.indexes cfg.instances).${n};
             desk = "${computers.desks}/${n}";
+          };
+          # Its web chat, when it has one.
+          chat = {
+            port = chatPort n;
+            url = "https://chat-${n}.${config.shipProxy.domain}";
           };
           # The assistant's site: pages it writes, served by the proxy.
           site = {
@@ -460,6 +481,11 @@
                 YEOMAN_MATRIX = "${creds}/matrix";
               }
               // optionalAttrs (i.style != null) { YEOMAN_STYLE = i.style; }
+              // optionalAttrs i.web {
+                YEOMAN_SITE = "127.0.0.1:${toString chat.port}";
+                YEOMAN_SITE_ROOT = web;
+                YEOMAN_SITE_URL = chat.url;
+              }
               // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
               // optionalAttrs (i.mailCredentialsFile != null) {
                 YEOMAN_MAIL = "${creds}/mail";
@@ -490,6 +516,7 @@
                 ++ optional i.alerts config.alerts.spool
                 ++ optional i.computer pc.desk;
               }
+              // optionalAttrs i.web { SocketBindAllow = singleton "tcp:${toString chat.port}"; }
               // optionalAttrs i.computer {
                 # Through the fence to its own computer, and into its desk.
                 IPAddressAllow = fence.IPAddressAllow ++ singleton pc.addr;
@@ -557,6 +584,15 @@
                     default = null;
                     example = "Be a little warm.";
                     description = "A line on tone, added to the prompt.";
+                  };
+
+                  web = mkOption {
+                    type = types.bool;
+                    default = false;
+                    description = ''
+                      Whether it serves a web chat at chat-<name>.<domain>,
+                      on the tailnet; sign-in links go to its Matrix room.
+                    '';
                   };
 
                   alerts = mkOption {
@@ -705,7 +741,16 @@
 
         # Each assistant's pages at https://<n>.<domain>/<page>/, for the
         # tailnet like every other route.
-        shipProxy.routes = mapAttrs (n: _: { root = "${pages}/${n}"; }) cfg.instances;
+        shipProxy.routes =
+          mapAttrs (n: _: { root = "${pages}/${n}"; }) cfg.instances
+          // lib.attrsets.mapAttrs' (
+            n: _:
+            nameValuePair "chat-${n}" {
+              port = chatPort n;
+              # Server-sent events stream as they come.
+              proxyExtra = "proxy_buffering off;";
+            }
+          ) (filterAttrs (_: i: i.web) cfg.instances);
         systemd.tmpfiles.settings.yeoman-pages = {
           ${pages}.d = {
             user = "root";

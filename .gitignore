@@ -25,6 +25,12 @@
 !*.nu.in
 !*.qml
 
+# The assistants' web page (modules/ai/yeoman/site).
+!*.ts
+!*.tsx
+!*.css
+!*.html
+
 # Assets: docs diagrams and the desktop wallpaper.
 !*.svg
 !*.jpg
@@ -46,6 +52,8 @@ target/
 result
 result-*
 .direnv/
+node_modules/
+dist/
 __pycache__/
 *.qcow2
 *.swp

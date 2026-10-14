@@ -21,6 +21,7 @@ in
   yeoman = {
     instances.sokka = {
       credentialsEnvFile = config.secrets.matrix-sokka-env.path;
+      web = true;
       mailCredentialsFile = config.secrets.sokka-mail-json.path;
     };
     instances.suki = {
