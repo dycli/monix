@@ -17,6 +17,7 @@ mod pending;
 mod task;
 mod tools;
 mod web;
+mod x;
 mod youtube;
 
 use book::Book;
@@ -127,6 +128,12 @@ it) at a name you choose, and gives you its link to send; the same name \
 again replaces the page, the older versions stay at their own links. Use \
 it when a chat message would be too long or too flat; it is one file, \
 nothing runs on it, and it loads only for the household.";
+
+/// Added when the assistant can read X (Grok's X search).
+const X: &str = "\n\nx_search reads X: what people are saying about \
+something, an account's latest posts, a post someone mentioned. Grok runs \
+the search and reports the posts it found with their links; it takes up \
+to a minute, so use the web for anything X does not add to.";
 
 /// A routine's whole answer when it has nothing to say; not sent.
 const QUIET: &str = "(nothing new)";
@@ -382,7 +389,12 @@ fn answer(
     } else {
         ""
     };
-    let system = format!("{PROMPT}{style}{tools}{computer}{home}{requests}{pages}{FILES}")
+    let x = if model.tools() && std::env::var_os("YEOMAN_X").is_some() {
+        X
+    } else {
+        ""
+    };
+    let system = format!("{PROMPT}{style}{tools}{computer}{home}{requests}{pages}{x}{FILES}")
         .replace("{name}", &name)
         .replace("{person}", &person)
         .replace("{QUIET}", QUIET);
@@ -993,7 +1005,9 @@ async fn main() -> ExitCode {
         [cmd, to, text @ ..] if cmd == "tell" && !text.is_empty() => {
             house::tell(to, &text.join(" "))
         }
-        _ => Err("usage: yeoman [tools DIR | tell NAME TEXT...]".into()),
+        [cmd] if cmd == "x" => x::serve(),
+        [cmd, sub] if cmd == "x" && sub == "login" => x::login(),
+        _ => Err("usage: yeoman [tools DIR | tell NAME TEXT... | x [login]]".into()),
     };
     match r {
         Ok(()) => ExitCode::SUCCESS,

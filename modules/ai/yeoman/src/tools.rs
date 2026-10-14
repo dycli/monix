@@ -14,6 +14,7 @@ use crate::media::Seerr;
 use crate::pending::{self, Act};
 use crate::task;
 use crate::web::Web;
+use crate::x;
 use crate::youtube::Youtube;
 use chrono::{NaiveDate, NaiveDateTime};
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -52,6 +53,8 @@ struct Tools {
     web: Arc<Web>,
     /// YouTube through yt-dlp, when there is a yt-dlp.
     youtube: Option<Arc<Youtube>>,
+    /// The X search service's socket, when there is one.
+    x: Option<PathBuf>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -584,6 +587,14 @@ impl Tools {
         self.web.fetch(&f.urls, f.objective.as_deref())
     }
 
+    /// Search X: the posts found, with author, date and link. Takes up to
+    /// a minute.
+    #[tool]
+    fn x_search(&self, Parameters(ask): Parameters<x::Ask>) -> Result<String, String> {
+        let sock = self.x.as_deref().ok_or("There is no X here.")?;
+        x::ask(sock, &ask)
+    }
+
     #[tool(
         description = "Search films and shows: kind, tmdb id, title, year, overview and whether the library has it."
     )]
@@ -996,6 +1007,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
         seerr: seerr()?,
         calendar: calendar()?.map(Arc::new),
         youtube: std::env::var_os("YEOMAN_YTDLP").map(|b| Arc::new(Youtube::new(PathBuf::from(b)))),
+        x: std::env::var_os("YEOMAN_X").map(PathBuf::from),
         tool_router: Tools::tool_router(),
     };
     let running = tools

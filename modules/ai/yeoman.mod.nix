@@ -18,7 +18,9 @@
 # YouTube only, and film and show requests, going over Seerr on loopback
 # only with `requestsKeyFile` set), which reaches only its book, its hippo
 # and those services, and pictures (yeoman-image.py), drawn by the image
-# service that alone holds the household's Codex login; `yeoman tools`
+# service that alone holds the household's Codex login, and X, read by
+# Grok's x_search through the X service (`yeoman x`, yeoman/src/x.rs) that
+# alone holds the subscription's xAI sign-in; `yeoman tools`
 # also reads the subscription
 # limits from the usage service (usage.mod.nix). Mail and pages let
 # anyone put text in front of the model, so fetch opens only links a
@@ -253,6 +255,7 @@
             // {
               YEOMAN_UNIT = n;
               YEOMAN_USAGE = "/run/usage.sock";
+              YEOMAN_X = "/run/yeoman-x.sock";
               YEOMAN_PAGES = site.dir;
               YEOMAN_PAGES_URL = site.url;
             }
@@ -338,6 +341,7 @@
             Group = n;
             SupplementaryGroups = [
               "yeoman-image"
+              "yeoman-x"
               "yeoman-household"
               "usage"
             ];
@@ -645,18 +649,30 @@
         # with the codex from the unit's script (not on PATH), after
         # `sudo install -d -o yeoman-image -g yeoman-image -m 700 /var/lib/yeoman-image`:
         # sudo -u yeoman-image env HOME=/var/lib/yeoman-image CODEX_HOME=/var/lib/yeoman-image <codex> login --device-auth
+        # yeoman-x holds the xAI sign-in the same way; once, after
+        # `sudo install -d -o yeoman-x -g yeoman-x -m 700 /var/lib/yeoman-x`:
+        # sudo -u yeoman-x env HOME=/var/lib/yeoman-x <yeoman> x login
         users.users =
-          mapAttrs (n: _: {
-            isSystemUser = true;
-            group = n;
-            home = "/var/lib/${n}";
-          }) (cfg.instances // { yeoman-image = { }; })
+          mapAttrs
+            (n: _: {
+              isSystemUser = true;
+              group = n;
+              home = "/var/lib/${n}";
+            })
+            (
+              cfg.instances
+              // {
+                yeoman-image = { };
+                yeoman-x = { };
+              }
+            )
           // {
             # The seat reads and writes the household's seat/ files as the group.
             ${topology.seat.user}.extraGroups = singleton "yeoman-household";
           };
         users.groups = mapAttrs (_: _: { }) cfg.instances // {
           yeoman-image = { };
+          yeoman-x = { };
           yeoman-household = { };
         };
         environment.systemPackages = [
@@ -735,6 +751,18 @@
           };
         };
 
+        systemd.sockets.yeoman-x = {
+          description = "X search for the household assistants";
+          wantedBy = singleton "sockets.target";
+          socketConfig = {
+            ListenStream = "/run/yeoman-x.sock";
+            Accept = true;
+            MaxConnections = 4;
+            SocketMode = "0660";
+            SocketGroup = "yeoman-x";
+          };
+        };
+
         systemd.services = mkMerge (
           mapAttrsToList services cfg.instances
           ++ singleton {
@@ -758,6 +786,23 @@
                   StandardError = "journal";
                   # Hides the seat's Codex config and its MCP servers.
                   BindReadOnlyPaths = singleton "${pkgs.emptyDirectory}:/etc/codex";
+                };
+            };
+            "yeoman-x@" = {
+              description = "One X search for a household assistant";
+              environment.HOME = "/var/lib/yeoman-x";
+              serviceConfig =
+                lib.ship.hardened.tenant
+                // fence
+                // {
+                  User = "yeoman-x";
+                  Group = "yeoman-x";
+                  StateDirectory = "yeoman-x";
+                  StateDirectoryMode = "0700";
+                  ExecStart = "${getExe yeoman} x";
+                  StandardInput = "socket";
+                  StandardOutput = "socket";
+                  StandardError = "journal";
                 };
             };
           }
