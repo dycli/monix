@@ -230,12 +230,13 @@ impl Site {
     }
 }
 
-/// Serves the page from `root` and the API on `addr`, handing what the
-/// person sends to `messages` with the door to answer through.
+/// Serves the chat page from `root` at `/`, the API, and every other path
+/// from `pages` (what show_page wrote) on `addr`, handing what the person
+/// sends to `messages` with the door to answer through.
 pub async fn serve(
     addr: &str,
     root: PathBuf,
-    url: String,
+    (pages, url): (PathBuf, String),
     state: &Path,
     hippo: Arc<Hippo>,
     messages: mpsc::UnboundedSender<(Web, Message<Web>)>,
@@ -256,14 +257,15 @@ pub async fn serve(
         links: Mutex::new(HashMap::new()),
         last_link: Mutex::new(None),
     });
-    let page = ServeDir::new(&root).fallback(ServeFile::new(root.join("index.html")));
     let app = Router::new()
+        .route_service("/", ServeFile::new(root.join("index.html")))
+        .nest_service("/_site", ServeDir::new(root.join("_site")))
         .route("/api/history", get(history))
         .route("/api/events", get(events))
         .route("/api/send", post(send))
         .route("/api/link", post(link))
         .route("/login", get(login))
-        .fallback_service(page)
+        .fallback_service(ServeDir::new(pages))
         .with_state(site);
     let listener = tokio::net::TcpListener::bind(addr)
         .await

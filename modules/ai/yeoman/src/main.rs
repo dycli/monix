@@ -759,13 +759,14 @@ async fn run() -> Result<(), String> {
                 door.say(&text).await.map(|_| ())
             })
         });
-        let (root, url) = (
-            PathBuf::from(var("YEOMAN_SITE_ROOT")?),
-            var("YEOMAN_SITE_URL")?,
+        let root = PathBuf::from(var("YEOMAN_SITE_ROOT")?);
+        let site = (
+            PathBuf::from(var("YEOMAN_PAGES")?),
+            var("YEOMAN_PAGES_URL")?,
         );
         let (s, h) = (state.clone(), hippo.clone());
         tokio::spawn(async move {
-            if let Err(e) = site::serve(&addr, root, url, &s, h, pages, notify).await {
+            if let Err(e) = site::serve(&addr, root, site, &s, h, pages, notify).await {
                 eprintln!("yeoman: {e}");
             }
         });

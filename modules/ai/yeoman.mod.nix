@@ -35,6 +35,7 @@
 # a turn of its own with no clock on it, run on the tick, for work that
 # outlives the message. Each has a site, `<n>.<domain>` on the tailnet
 # proxy: `show_page` writes a page of HTML there and hands back its link.
+# With `web` set the yeoman serves that host itself, its chat at the root.
 # With `homeTokenFile` set, both reach Home Assistant's own MCP server as
 # well, its tools withheld on quoted turns like the rest that act.
 #
@@ -267,11 +268,6 @@
             addr = computers.addr (computers.indexes cfg.instances).${n};
             desk = "${computers.desks}/${n}";
           };
-          # Its web chat, when it has one.
-          chat = {
-            port = chatPort n;
-            url = "https://chat-${n}.${config.shipProxy.domain}";
-          };
           # The assistant's site: pages it writes, served by the proxy.
           site = {
             dir = "${pages}/${n}";
@@ -482,9 +478,8 @@
               }
               // optionalAttrs (i.style != null) { YEOMAN_STYLE = i.style; }
               // optionalAttrs i.web {
-                YEOMAN_SITE = "127.0.0.1:${toString chat.port}";
+                YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
                 YEOMAN_SITE_ROOT = web;
-                YEOMAN_SITE_URL = chat.url;
               }
               // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
               // optionalAttrs (i.mailCredentialsFile != null) {
@@ -516,7 +511,7 @@
                 ++ optional i.alerts config.alerts.spool
                 ++ optional i.computer pc.desk;
               }
-              // optionalAttrs i.web { SocketBindAllow = singleton "tcp:${toString chat.port}"; }
+              // optionalAttrs i.web { SocketBindAllow = singleton "tcp:${toString (chatPort n)}"; }
               // optionalAttrs i.computer {
                 # Through the fence to its own computer, and into its desk.
                 IPAddressAllow = fence.IPAddressAllow ++ singleton pc.addr;
@@ -590,8 +585,9 @@
                     type = types.bool;
                     default = false;
                     description = ''
-                      Whether it serves a web chat at chat-<name>.<domain>,
-                      on the tailnet; sign-in links go to its Matrix room.
+                      Whether it serves a web chat at the root of its site,
+                      <name>.<domain> on the tailnet, beside its pages;
+                      sign-in links go to its Matrix room.
                     '';
                   };
 
@@ -740,17 +736,19 @@
         ];
 
         # Each assistant's pages at https://<n>.<domain>/<page>/, for the
-        # tailnet like every other route.
-        shipProxy.routes =
-          mapAttrs (n: _: { root = "${pages}/${n}"; }) cfg.instances
-          // lib.attrsets.mapAttrs' (
-            n: _:
-            nameValuePair "chat-${n}" {
+        # tailnet like every other route. With a web chat the yeoman serves
+        # the host itself: the chat at the root, the pages beside it.
+        shipProxy.routes = mapAttrs (
+          n: i:
+          if i.web then
+            {
               port = chatPort n;
               # Server-sent events stream as they come.
               proxyExtra = "proxy_buffering off;";
             }
-          ) (filterAttrs (_: i: i.web) cfg.instances);
+          else
+            { root = "${pages}/${n}"; }
+        ) cfg.instances;
         systemd.tmpfiles.settings.yeoman-pages = {
           ${pages}.d = {
             user = "root";
