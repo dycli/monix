@@ -936,8 +936,8 @@ fn publish(dir: &Path, url: &str, name: &str, html: &str) -> Result<String, Stri
     if !plain {
         return Err("The name is lowercase letters, digits and dashes, 40 at most.".into());
     }
-    // The web chat shares the host and owns these paths.
-    if matches!(name, "api" | "login") {
+    // The web chat shares the host and owns this path.
+    if name == "api" {
         return Err(format!("{name} is taken; choose another name."));
     }
     // The site directory is the assistant's and the proxy's alone, so

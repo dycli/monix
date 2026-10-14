@@ -103,9 +103,23 @@ export function useChat(): Chat {
   return { state: "ready", messages, typing, send };
 }
 
-export async function askForLink(): Promise<string> {
-  const r = await fetch("/api/link", { method: "POST" });
-  if (r.ok) return "Sent. Open the link in your Matrix chat.";
-  if (r.status === 429) return "A link went out less than a minute ago. Check Matrix.";
-  return `That failed (${r.status}).`;
+/** Asks to be let in; the yeoman posts the code to Matrix for a 👍. */
+export async function askToSignIn(): Promise<{ code: string; secret: string } | { error: string }> {
+  const r = await fetch("/api/ask", { method: "POST" });
+  if (r.ok) return r.json();
+  if (r.status === 429) return { error: "A request went out less than a minute ago. Check Matrix, or try again shortly." };
+  return { error: `That failed (${r.status}).` };
+}
+
+/** Waits for the answer: true once signed in, false when refused or too old. */
+export async function waitToSignIn(secret: string): Promise<boolean> {
+  for (;;) {
+    const r = await fetch("/api/wait", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ secret }),
+    });
+    if (r.status !== 202) return r.ok;
+    await new Promise((done) => setTimeout(done, 2000));
+  }
 }

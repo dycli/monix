@@ -13,7 +13,7 @@ import {
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
-import { askForLink, useChat, type Msg } from "./chat";
+import { askToSignIn, useChat, waitToSignIn, type Msg } from "./chat";
 
 const convert = (m: Msg): ThreadMessageLike => ({
   id: m.id,
@@ -39,16 +39,38 @@ function Centered({ children }: { children: React.ReactNode }) {
 }
 
 function SignIn() {
-  const [said, setSaid] = useState<string>();
+  const [said, setSaid] = useState<React.ReactNode>();
+  const [busy, setBusy] = useState(false);
+  const start = async () => {
+    setBusy(true);
+    const asked = await askToSignIn();
+    if ("error" in asked) {
+      setSaid(asked.error);
+      return setBusy(false);
+    }
+    setSaid(
+      <>
+        React 👍 in Matrix to the message showing
+        <span className="mt-2 block font-mono text-3xl tracking-widest text-neutral-900 dark:text-neutral-100">
+          {asked.code}
+        </span>
+      </>,
+    );
+    if (await waitToSignIn(asked.secret)) return location.reload();
+    setSaid("Not let in. Ask again if that was a mistake.");
+    setBusy(false);
+  };
   return (
     <Centered>
       <div className="flex flex-col items-center gap-4">
-        <button
-          className="rounded-full bg-neutral-900 px-5 py-2 text-white dark:bg-neutral-100 dark:text-neutral-900"
-          onClick={async () => setSaid(await askForLink())}
-        >
-          Send me a sign-in link
-        </button>
+        {!busy && (
+          <button
+            className="rounded-full bg-neutral-900 px-5 py-2 text-white dark:bg-neutral-100 dark:text-neutral-900"
+            onClick={start}
+          >
+            Sign in
+          </button>
+        )}
         {said && <p>{said}</p>}
       </div>
     </Centered>

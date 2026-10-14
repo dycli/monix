@@ -5,17 +5,19 @@
 //! history comes from hippo, so a reload shows Matrix and web as one
 //! conversation.
 //!
-//! Signing in: a page with no session asks for a link, which goes to the
-//! person over Matrix, where only they read it. The link is good once,
-//! for ten minutes, and leaves a session cookie good for 30 days.
+//! Signing in works like a TV pairing with a phone: a page with no
+//! session asks to be let in and shows a short code; the yeoman posts the
+//! same code to the person over Matrix, and their 👍 there signs in the
+//! browser that asked, with a cookie good for 30 days. Nothing travels
+//! between devices, and a session only ever goes to the page that asked.
 
 use crate::Read;
 use crate::door::{Door, Message};
 use crate::hippo::{Hippo, Said};
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine;
@@ -35,9 +37,12 @@ use tower_http::services::{ServeDir, ServeFile};
 
 const COOKIE: &str = "session";
 const SESSION: Duration = Duration::from_secs(30 * 24 * 3600);
-const LINK: Duration = Duration::from_secs(10 * 60);
-/// One link a minute at most: anyone who finds the page can ask for one.
-const LINK_GAP: Duration = Duration::from_secs(60);
+/// How long a request to sign in waits for its answer.
+const ASK: Duration = Duration::from_secs(5 * 60);
+/// One request a minute at most: anyone who finds the page can ask.
+const ASK_GAP: Duration = Duration::from_secs(60);
+/// Letters for the code, without look-alikes (0 O 1 I L).
+const CODE: &[u8] = b"23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const HISTORY: u64 = 200;
 const SEND_MAX: usize = 32 * 1024;
 
@@ -130,21 +135,49 @@ impl Door for Web {
     }
 }
 
-/// Sends a sign-in link to the person by another door.
-pub type Notify =
-    Box<dyn Fn(String) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>> + Send + Sync>;
+/// Asks the person by another door, answering the id of the message a
+/// reaction will answer.
+pub type Notify = Box<
+    dyn Fn(String) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send>> + Send + Sync,
+>;
+
+/// Pages waiting to be let in, by the secret each holds.
+#[derive(Default)]
+pub struct Gate {
+    asks: Mutex<HashMap<String, Ask>>,
+    last: Mutex<Option<Instant>>,
+}
+
+struct Ask {
+    made: Instant,
+    /// The message that asked the person, once posted.
+    event: Option<String>,
+    answer: Option<bool>,
+}
+
+impl Gate {
+    /// Takes the person's 👍 or 👎 on `event`; false if it asked nothing.
+    pub fn answer(&self, event: &str, yes: bool) -> bool {
+        let mut asks = self.asks.lock().unwrap();
+        let Some(ask) = asks
+            .values_mut()
+            .find(|a| a.event.as_deref() == Some(event) && a.made.elapsed() < ASK)
+        else {
+            return false;
+        };
+        // The first answer stands.
+        ask.answer.get_or_insert(yes);
+        true
+    }
+}
 
 struct Site {
     web: Web,
     hippo: Arc<Hippo>,
     messages: mpsc::UnboundedSender<(Web, Message<Web>)>,
     notify: Notify,
-    /// Where the page is reached, for links: `https://sokka.su.is`.
-    url: String,
+    gate: Arc<Gate>,
     sessions: Mutex<Sessions>,
-    /// Unused links and when each was made.
-    links: Mutex<HashMap<String, Instant>>,
-    last_link: Mutex<Option<Instant>>,
 }
 
 /// Sessions by token, with when each ends in Unix seconds; kept in a file
@@ -200,6 +233,16 @@ fn token() -> Result<String, String> {
     Ok(URL_SAFE_NO_PAD.encode(b))
 }
 
+/// Four letters to match by eye, not a secret: it tells the person which
+/// page they let in.
+fn code() -> Result<String, String> {
+    let mut b = [0u8; 4];
+    getrandom::fill(&mut b).map_err(|e| e.to_string())?;
+    Ok(b.iter()
+        .map(|x| CODE[*x as usize % CODE.len()] as char)
+        .collect())
+}
+
 /// Writes a file only its owner reads, whole or not at all.
 fn write_private(path: &Path, text: &str) -> Result<(), String> {
     use std::os::unix::fs::OpenOptionsExt;
@@ -232,15 +275,16 @@ impl Site {
 
 /// Serves the chat page from `root` at `/`, the API, and every other path
 /// from `pages` (what show_page wrote) on `addr`, handing what the person
-/// sends to `messages` with the door to answer through.
+/// sends to `messages` with the door to answer through. Requests to sign
+/// in go out through `notify`; their answers come back through `gate`.
 pub async fn serve(
     addr: &str,
     root: PathBuf,
-    (pages, url): (PathBuf, String),
+    pages: PathBuf,
     state: &Path,
     hippo: Arc<Hippo>,
     messages: mpsc::UnboundedSender<(Web, Message<Web>)>,
-    notify: Notify,
+    (notify, gate): (Notify, Arc<Gate>),
 ) -> Result<(), String> {
     let dir = state.join("site");
     fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -252,10 +296,8 @@ pub async fn serve(
         hippo,
         messages,
         notify,
-        url,
+        gate,
         sessions: Mutex::new(Sessions::load(dir.join("sessions"))),
-        links: Mutex::new(HashMap::new()),
-        last_link: Mutex::new(None),
     });
     let app = Router::new()
         .route_service("/", ServeFile::new(root.join("index.html")))
@@ -263,8 +305,8 @@ pub async fn serve(
         .route("/api/history", get(history))
         .route("/api/events", get(events))
         .route("/api/send", post(send))
-        .route("/api/link", post(link))
-        .route("/login", get(login))
+        .route("/api/ask", post(ask))
+        .route("/api/wait", post(wait))
         .fallback_service(ServeDir::new(pages))
         .with_state(site);
     let listener = tokio::net::TcpListener::bind(addr)
@@ -353,49 +395,72 @@ async fn send(
     Json(serde_json::json!({ "id": id })).into_response()
 }
 
-/// Sends a sign-in link over Matrix.
-async fn link(State(site): State<Arc<Site>>) -> Response {
+/// A page asks to be let in: the person gets its code over Matrix, the
+/// page gets the code to show and a secret to wait with.
+async fn ask(State(site): State<Arc<Site>>) -> Response {
     {
-        let mut last = site.last_link.lock().unwrap();
-        if last.is_some_and(|t| t.elapsed() < LINK_GAP) {
+        let mut last = site.gate.last.lock().unwrap();
+        if last.is_some_and(|t| t.elapsed() < ASK_GAP) {
             return StatusCode::TOO_MANY_REQUESTS.into_response();
         }
         *last = Some(Instant::now());
     }
-    let Ok(t) = token() else {
+    let (Ok(secret), Ok(code)) = (token(), code()) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     {
-        let mut links = site.links.lock().unwrap();
-        links.retain(|_, made| made.elapsed() < LINK);
-        links.insert(t.clone(), Instant::now());
+        let mut asks = site.gate.asks.lock().unwrap();
+        asks.retain(|_, a| a.made.elapsed() < ASK);
+        asks.insert(
+            secret.clone(),
+            Ask {
+                made: Instant::now(),
+                event: None,
+                answer: None,
+            },
+        );
     }
     let text = format!(
-        "Someone asked to sign in to the web chat. If it was you, open this link within ten minutes; if not, ignore it.\n\n{}/login?t={t}",
-        site.url
+        "A browser asks to sign in to the web chat, showing **{code}**. React 👍 to let it in if that is you; 👎 or nothing keeps it out."
     );
     match (site.notify)(text).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(event) => {
+            if let Some(a) = site.gate.asks.lock().unwrap().get_mut(&secret) {
+                a.event = Some(event);
+            }
+            Json(serde_json::json!({ "secret": secret, "code": code })).into_response()
+        }
         Err(e) => {
-            eprintln!("yeoman: site link: {e}");
+            eprintln!("yeoman: site ask: {e}");
+            site.gate.asks.lock().unwrap().remove(&secret);
             StatusCode::BAD_GATEWAY.into_response()
         }
     }
 }
 
 #[derive(Deserialize)]
-struct Login {
-    t: String,
+struct Waiting {
+    secret: String,
 }
 
-async fn login(State(site): State<Arc<Site>>, Query(q): Query<Login>) -> Response {
-    let made = site.links.lock().unwrap().remove(&q.t);
-    if !made.is_some_and(|m| m.elapsed() < LINK) {
-        return (
-            StatusCode::FORBIDDEN,
-            "This link is used or too old. Ask for a new one.",
-        )
-            .into_response();
+/// The page that asked checks for its answer: 202 while none, the session
+/// cookie once let in, 403 when refused or too old.
+async fn wait(State(site): State<Arc<Site>>, Json(w): Json<Waiting>) -> Response {
+    let answer = {
+        let mut asks = site.gate.asks.lock().unwrap();
+        match asks.get(&w.secret) {
+            Some(a) if a.made.elapsed() < ASK && a.answer.is_none() => {
+                return StatusCode::ACCEPTED.into_response();
+            }
+            Some(a) if a.made.elapsed() < ASK => a.answer,
+            _ => None,
+        }
+        .inspect(|_| {
+            asks.remove(&w.secret);
+        })
+    };
+    if answer != Some(true) {
+        return StatusCode::FORBIDDEN.into_response();
     }
     let token = match site.sessions.lock().unwrap().start() {
         Ok(t) => t,
@@ -408,5 +473,41 @@ async fn login(State(site): State<Arc<Site>>, Query(q): Query<Login>) -> Respons
         "{COOKIE}={token}; Path=/; Max-Age={}; HttpOnly; Secure; SameSite=Lax",
         SESSION.as_secs()
     );
-    ([(header::SET_COOKIE, cookie)], Redirect::to("/")).into_response()
+    ([(header::SET_COOKIE, cookie)], StatusCode::NO_CONTENT).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn asked(gate: &Gate, secret: &str, event: &str) {
+        gate.asks.lock().unwrap().insert(
+            secret.into(),
+            Ask {
+                made: Instant::now(),
+                event: Some(event.into()),
+                answer: None,
+            },
+        );
+    }
+
+    #[test]
+    fn a_reaction_answers_only_its_own_request_and_the_first_stands() {
+        let gate = Gate::default();
+        asked(&gate, "a", "$1");
+        asked(&gate, "b", "$2");
+        assert!(!gate.answer("$9", true));
+        assert!(gate.answer("$1", true));
+        assert!(gate.answer("$1", false));
+        let asks = gate.asks.lock().unwrap();
+        assert_eq!(asks["a"].answer, Some(true));
+        assert_eq!(asks["b"].answer, None);
+    }
+
+    #[test]
+    fn codes_are_four_plain_letters() {
+        let c = code().unwrap();
+        assert_eq!(c.len(), 4);
+        assert!(c.bytes().all(|b| CODE.contains(&b)));
+    }
 }

@@ -740,9 +740,14 @@ async fn run() -> Result<(), String> {
         env::var_os("YEOMAN_ALERTS").map(PathBuf::from),
         house::House::from_env(),
     ));
-    let (s, h) = (state.clone(), hippo.clone());
+    let gate = Arc::new(site::Gate::default());
+    let (s, h, g) = (state.clone(), hippo.clone(), gate.clone());
     tokio::spawn(async move {
         while let Some((door, id, yes)) = thumbs.recv().await {
+            // A thumb on a request to sign in is not a verdict on an act.
+            if g.answer(&id, yes) {
+                continue;
+            }
             tokio::spawn(decide(door, id, yes, s.clone(), h.clone()));
         }
     });
@@ -756,17 +761,15 @@ async fn run() -> Result<(), String> {
             let door = matrix::last(&c, &s);
             Box::pin(async move {
                 let door = door.ok_or("no Matrix room yet")?;
-                door.say(&text).await.map(|_| ())
+                door.say(&text).await
             })
         });
         let root = PathBuf::from(var("YEOMAN_SITE_ROOT")?);
-        let site = (
-            PathBuf::from(var("YEOMAN_PAGES")?),
-            var("YEOMAN_PAGES_URL")?,
-        );
+        let served = PathBuf::from(var("YEOMAN_PAGES")?);
         let (s, h) = (state.clone(), hippo.clone());
         tokio::spawn(async move {
-            if let Err(e) = site::serve(&addr, root, site, &s, h, pages, notify).await {
+            let gate = (notify, gate);
+            if let Err(e) = site::serve(&addr, root, served, &s, h, pages, gate).await {
                 eprintln!("yeoman: {e}");
             }
         });
