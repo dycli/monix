@@ -97,6 +97,7 @@ pub struct Shared {
 }
 
 const SEARCH_MAX: usize = 100;
+const TAIL_MAX: u64 = 500;
 /// How long `hippo view` waits for the compactor before printing
 /// placeholders.
 const SETTLE: Duration = Duration::from_secs(30);
@@ -232,6 +233,18 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
                 .date(id)
                 .map(|d| d.format("%Y-%m-%d %H:%M:%S %a").to_string())
                 .ok_or_else(|| format!("No message {id}."))
+        }
+        // The last messages whole, one JSON object a line, for programs
+        // that show a conversation (yeoman's web chat loads its history so).
+        "tail" => {
+            let n = num(a, 0, "n")?.min(TAIL_MAX);
+            let c = core.lock().unwrap();
+            let t = c.store.len();
+            let mut out = Vec::new();
+            for i in t.saturating_sub(n)..t {
+                out.push(serde_json::to_string(&c.store.get(i)?).map_err(|e| e.to_string())?);
+            }
+            Ok(out.join("\n"))
         }
         "search" => {
             let pattern = a.first().ok_or("Missing regex.")?;

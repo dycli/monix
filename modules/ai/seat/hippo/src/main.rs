@@ -29,6 +29,7 @@ Usage:
   hippo zoom <id> <n>      open line id+n; n = 1 prints message id whole
   hippo date <id>          date and time of message id
   hippo search <regex>     search every message, word for word
+  hippo tail <n>           the last n messages whole, as JSON lines
   hippo status             what the service is doing
   hippo fold               merge the view down to half its budget now (the
                            seat's PreCompact hook, before its context goes)
@@ -190,7 +191,7 @@ fn main() -> ExitCode {
             [addr, url] => door::run(addr, url, ask).map(|()| String::new()),
             _ => Err(USAGE.into()),
         },
-        "view" | "zoom" | "date" | "search" | "status" | "fold" | "pause" | "resume" => {
+        "view" | "zoom" | "date" | "search" | "tail" | "status" | "fold" | "pause" | "resume" => {
             ask(cmd, rest)
         }
         "help" | "-h" | "--help" => Ok(USAGE.into()),
