@@ -26,6 +26,7 @@ in
     instances.suki = {
       credentialsEnvFile = config.secrets.matrix-suki-env.path;
       mailCredentialsFile = config.secrets.suki-mail-json.path;
+      claudeKeyFile = config.secrets.suki-claude-key.path;
     };
     registrationEnvFile = config.secrets.matrix-registration-env.path;
     claudeTokenFile = config.secrets.agent-claude-token.path;
@@ -44,6 +45,7 @@ in
     yeoman-caldav-json.file = ./secrets/yeoman-caldav.json.age;
     sokka-mail-json.file = ./secrets/sokka-mail.json.age;
     suki-mail-json.file = ./secrets/suki-mail.json.age;
+    suki-claude-key.file = ./secrets/suki-claude-key.age;
     yeoman-home-token.file = ./secrets/yeoman-home-token.age;
     yeoman-requests-key.file = ./secrets/yeoman-requests-key.age;
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
