@@ -6,6 +6,7 @@
 
 mod book;
 mod calendar;
+mod door;
 mod hippo;
 mod house;
 mod keep;
@@ -22,20 +23,8 @@ mod youtube;
 
 use book::Book;
 use chrono::Local;
+use door::{Door, Message, Typing, send_images};
 use hippo::Hippo;
-use matrix_sdk::attachment::AttachmentConfig;
-use matrix_sdk::config::SyncSettings;
-use matrix_sdk::media::{MediaFormat, MediaRequestParameters};
-use matrix_sdk::ruma::events::reaction::{OriginalSyncReactionEvent, ReactionEventContent};
-use matrix_sdk::ruma::events::relation::Annotation;
-use matrix_sdk::ruma::events::room::MediaSource;
-use matrix_sdk::ruma::events::room::encrypted::OriginalSyncRoomEncryptedEvent;
-use matrix_sdk::ruma::events::room::member::StrippedRoomMemberEvent;
-use matrix_sdk::ruma::events::room::message::{
-    MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent,
-};
-use matrix_sdk::ruma::{OwnedEventId, OwnedRoomId};
-use matrix_sdk::{Client, Room, RoomState};
 use model::{Attachment, Model, Run};
 use std::env;
 use std::fs;
@@ -152,25 +141,8 @@ const TEXT_MAX: usize = 100_000;
 /// Longest alert sent; the rest is cut.
 const ALERT_MAX: usize = 4_000;
 
-/// What the person sent: words, and maybe a file.
-struct Message {
-    /// The event, for a reaction to it.
-    event: OwnedEventId,
-    text: String,
-    file: Option<File>,
-}
-
-struct File {
-    name: String,
-    photo: bool,
-    mime: Option<String>,
-    source: MediaSource,
-    /// A smaller copy, for a photo too big for the model.
-    thumbnail: Option<MediaSource>,
-}
-
 /// A downloaded file, as the model will see it.
-enum Read {
+pub enum Read {
     Model(Attachment),
     Text(String),
 }
@@ -231,43 +203,6 @@ fn read(data: Vec<u8>, mime: Option<&str>) -> Option<Read> {
     } else {
         None
     }
-}
-
-/// Downloads and decrypts a file, falling back to a photo's thumbnail when
-/// the original is too big. Errors are what to tell the person.
-async fn fetch(client: &Client, file: &File) -> Result<Read, String> {
-    let get = |source: &MediaSource| {
-        let request = MediaRequestParameters {
-            source: source.clone(),
-            format: MediaFormat::File,
-        };
-        async move { client.media().get_media_content(&request, false).await }
-    };
-    let data = get(&file.source)
-        .await
-        .map_err(|e| format!("I couldn't download {}: {e}", file.name))?;
-    let too_big = |r: &Read| match r {
-        Read::Model(Attachment::Image { data, .. }) => data.len() > IMAGE_MAX,
-        Read::Model(Attachment::Pdf(data)) => data.len() > PDF_MAX,
-        Read::Text(_) => false,
-    };
-    let unreadable = || {
-        format!(
-            "I can't read {}: only photos, PDFs and text files.",
-            file.name
-        )
-    };
-    let r = read(data, file.mime.as_deref()).ok_or_else(unreadable)?;
-    if !too_big(&r) {
-        return Ok(r);
-    }
-    if let Some(thumb) = &file.thumbnail
-        && let Ok(data) = get(thumb).await
-        && let Some(r) = read(data, None).filter(|r| !too_big(r))
-    {
-        return Ok(r);
-    }
-    Err(format!("{} is too big for me to read.", file.name))
 }
 
 /// Who a request comes from: the person now, a routine they set earlier,
@@ -422,138 +357,26 @@ fn answer(
     Ok(reply)
 }
 
-/// Joins rooms the allowed users invite the yeoman to and leaves the rest. Off
-/// the sync loop: joining waits for a sync to see the room.
-fn on_invites(client: &Client, users: Arc<Vec<String>>) {
-    client.add_event_handler(
-        move |ev: StrippedRoomMemberEvent, room: Room, client: Client| {
-            let users = users.clone();
-            async move {
-                if client.user_id().is_none_or(|me| ev.state_key != me) {
-                    return;
-                }
-                let id = room.room_id().to_owned();
-                let welcome = users.iter().any(|u| *u == ev.sender);
-                tokio::spawn(async move {
-                    let r = if welcome {
-                        room.join().await
-                    } else {
-                        room.leave().await
-                    };
-                    if let Err(e) = r {
-                        eprintln!("yeoman: invite to {id}: {e}");
-                    }
-                });
-            }
-        },
-    );
-}
-
-/// Queues text, photos and files from allowed users in joined rooms, for
-/// one worker to answer in order.
-fn on_messages(
-    client: &Client,
-    users: Arc<Vec<String>>,
-    queue: mpsc::UnboundedSender<(Room, Message)>,
-) {
-    client.add_event_handler(move |ev: OriginalSyncRoomMessageEvent, room: Room| {
-        let (users, queue) = (users.clone(), queue.clone());
-        async move {
-            if room.state() != RoomState::Joined || !users.iter().any(|u| *u == ev.sender) {
-                return;
-            }
-            let msg = match ev.content.msgtype {
-                MessageType::Text(t) => Message {
-                    event: ev.event_id.clone(),
-                    text: t.body,
-                    file: None,
-                },
-                MessageType::Image(i) => Message {
-                    event: ev.event_id.clone(),
-                    text: i.caption().unwrap_or_default().to_owned(),
-                    file: Some(File {
-                        name: i.filename().to_owned(),
-                        photo: true,
-                        mime: i.info.as_ref().and_then(|x| x.mimetype.clone()),
-                        thumbnail: i.info.as_ref().and_then(|x| x.thumbnail_source.clone()),
-                        source: i.source,
-                    }),
-                },
-                MessageType::File(f) => Message {
-                    event: ev.event_id.clone(),
-                    text: f.caption().unwrap_or_default().to_owned(),
-                    file: Some(File {
-                        name: f.filename().to_owned(),
-                        photo: false,
-                        mime: f.info.as_ref().and_then(|x| x.mimetype.clone()),
-                        thumbnail: None,
-                        source: f.source,
-                    }),
-                },
-                _ => return,
-            };
-            let _ = queue.send((room, msg));
-        }
-    });
-    client.add_event_handler(
-        |ev: OriginalSyncRoomEncryptedEvent, room: Room| async move {
-            eprintln!(
-                "yeoman: could not decrypt {} from {} in {}",
-                ev.event_id,
-                ev.sender,
-                room.room_id()
-            );
-        },
-    );
-}
-
-/// Shows "typing" until dropped. A typing notice lapses after 4 s and
-/// matrix-sdk resends one only after 3 s, so asking twice a second keeps it
-/// up without extra requests.
-struct Typing(tokio::task::JoinHandle<()>);
-
-impl Typing {
-    fn start(room: &Room) -> Self {
-        let room = room.clone();
-        Self(tokio::spawn(async move {
-            let mut tick = tokio::time::interval(Duration::from_millis(500));
-            loop {
-                tick.tick().await;
-                let _ = room.typing_notice(true).await;
-            }
-        }))
-    }
-}
-
-impl Drop for Typing {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
-}
-
-async fn reply(
-    client: &Client,
+async fn reply<D: Door>(
+    door: D,
     hippo: Arc<Hippo>,
     model: Arc<dyn Model>,
-    room: Room,
-    msg: Message,
+    msg: Message<D>,
     outbox: &Path,
 ) {
-    let typing = Typing::start(&room);
-    let msg_event = msg.event.clone();
+    let typing = Typing::start(&door);
     let file = match &msg.file {
         None => Ok(None),
-        Some(f) => fetch(client, f)
-            .await
-            .map(|r| Some((f.name.clone(), f.photo, r))),
+        Some(f) => door.fetch(f).await.map(Some),
     };
+    let text = msg.text;
     let reply = match file {
         Err(e) => {
             eprintln!("yeoman: {e}");
             e
         }
         Ok(file) => tokio::task::spawn_blocking(move || {
-            answer(&hippo, model.as_ref(), From::Person, &msg.text, file, None)
+            answer(&hippo, model.as_ref(), From::Person, &text, file, None)
         })
         .await
         .unwrap_or_else(|e| Err(e.to_string()))
@@ -562,52 +385,15 @@ async fn reply(
             format!("(I couldn't answer that: {e})")
         }),
     };
-    send_images(&room, outbox).await;
-    drop(typing);
-    let _ = room.typing_notice(false).await;
+    send_images(&door, outbox).await;
+    typing.stop().await;
     let sent = if is_reaction(&reply) {
-        room.send(ReactionEventContent::new(Annotation::new(msg_event, reply)))
-            .await
+        door.react(&msg.id, &reply).await
     } else {
-        room.send(RoomMessageEventContent::text_markdown(reply))
-            .await
+        door.say(&reply).await.map(|_| ())
     };
     if let Err(e) = sent {
-        eprintln!("yeoman: send to {}: {e}", room.room_id());
-    }
-}
-
-/// Sends the pictures `make_image` left in the outbox, oldest first,
-/// deleting each once sent; one that fails stays for the next answer.
-async fn send_images(room: &Room, outbox: &Path) {
-    let Ok(dir) = fs::read_dir(outbox) else {
-        return;
-    };
-    let mut files: Vec<PathBuf> = dir
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|x| x == "png"))
-        .collect();
-    files.sort();
-    for path in files {
-        let sent = match fs::read(&path) {
-            Ok(data) => room
-                .send_attachment(
-                    "picture.png",
-                    &mime::IMAGE_PNG,
-                    data,
-                    AttachmentConfig::new(),
-                )
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            Err(e) => Err(e.to_string()),
-        };
-        match sent {
-            Ok(()) => {
-                let _ = fs::remove_file(&path);
-            }
-            Err(e) => eprintln!("yeoman: picture {}: {e}", path.display()),
-        }
+        eprintln!("yeoman: {e}");
     }
 }
 
@@ -626,7 +412,13 @@ fn is_reaction(reply: &str) -> bool {
 /// household) to the model as one request and sends its answer, deleting
 /// the files only once that is sent; if the model fails, they go out word
 /// for word. Names starting with a dot are writes still in progress.
-async fn drain(room: &Room, hippo: &Arc<Hippo>, model: &Arc<dyn Model>, dir: &Path, from: From) {
+async fn drain(
+    door: &impl Door,
+    hippo: &Arc<Hippo>,
+    model: &Arc<dyn Model>,
+    dir: &Path,
+    from: From,
+) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
@@ -656,7 +448,7 @@ async fn drain(room: &Room, hippo: &Arc<Hippo>, model: &Arc<dyn Model>, dir: &Pa
         .collect();
     if !texts.is_empty() {
         let said = texts.join("\n\n");
-        let typing = Typing::start(room);
+        let typing = Typing::start(door);
         let (h, m, ask) = (hippo.clone(), model.clone(), said.clone());
         let text =
             tokio::task::spawn_blocking(move || answer(&h, m.as_ref(), from, &ask, None, None))
@@ -666,12 +458,8 @@ async fn drain(room: &Room, hippo: &Arc<Hippo>, model: &Arc<dyn Model>, dir: &Pa
                     eprintln!("yeoman: {}: {e}", dir.display());
                     said
                 });
-        drop(typing);
-        let _ = room.typing_notice(false).await;
-        if let Err(e) = room
-            .send(RoomMessageEventContent::text_markdown(text))
-            .await
-        {
+        typing.stop().await;
+        if let Err(e) = door.say(&text).await {
             eprintln!("yeoman: {}: {e}", dir.display());
             return;
         }
@@ -684,12 +472,13 @@ async fn drain(room: &Room, hippo: &Arc<Hippo>, model: &Arc<dyn Model>, dir: &Pa
 }
 
 /// Every 30 s, sends the reminders that are due, the host's alerts and the
-/// household's messages to the room the person last wrote from; with no such room yet, they wait. A
+/// household's messages through the door the person last wrote from; with
+/// none yet, they wait. A
 /// routine is answered first, like a message from them, and the answer
 /// sent. A reminder leaves the book (or moves to its next time) only once
-/// Matrix has it, so one that fails to send goes again on the next tick.
-async fn remind(
-    client: Client,
+/// the door has it, so one that fails to send goes again on the next tick.
+async fn remind<D: Door>(
+    last: impl Fn() -> Option<D>,
     hippo: Arc<Hippo>,
     model: Arc<dyn Model>,
     state: PathBuf,
@@ -702,24 +491,20 @@ async fn remind(
     let mut tick = tokio::time::interval(Duration::from_secs(30));
     loop {
         tick.tick().await;
-        let Some(room) = fs::read_to_string(state.join("room"))
-            .ok()
-            .and_then(|id| OwnedRoomId::try_from(id.trim()).ok())
-            .and_then(|id| client.get_room(&id))
-        else {
+        let Some(door) = last() else {
             continue;
         };
         if let Some(dir) = &alerted {
-            drain(&room, &hippo, &model, dir, From::Alert).await;
+            drain(&door, &hippo, &model, dir, From::Alert).await;
         }
         if let Some(dir) = &mailbox {
-            drain(&room, &hippo, &model, dir, From::Message).await;
+            drain(&door, &hippo, &model, dir, From::Message).await;
         }
         if let Some(dir) = &seatbox {
-            drain(&room, &hippo, &model, dir, From::Seat).await;
+            drain(&door, &hippo, &model, dir, From::Seat).await;
         }
-        show_pending(&room, &hippo, &state).await;
-        tasks(&room, &hippo, &model, &state, &mut task).await;
+        show_pending(&door, &hippo, &state).await;
+        tasks(&door, &hippo, &model, &state, &mut task).await;
         let now = Local::now().naive_local();
         let due = match Book::open(&state, None).and_then(|b| b.read(|db| book::due(db, now))) {
             Ok(due) => due,
@@ -733,16 +518,15 @@ async fn remind(
                 (Some(kept), _) => (kept.clone(), r.share),
                 (None, false) => (format!("Reminder: {}", r.text), false),
                 (None, true) => {
-                    let typing = Typing::start(&room);
+                    let typing = Typing::start(&door);
                     let (hippo, model, ask) = (hippo.clone(), model.clone(), r.text.clone());
                     let answered = tokio::task::spawn_blocking(move || {
                         answer(&hippo, model.as_ref(), From::Routine, &ask, None, None)
                     })
                     .await
                     .unwrap_or_else(|e| Err(e.to_string()));
-                    send_images(&room, &state.join("outbox")).await;
-                    drop(typing);
-                    let _ = room.typing_notice(false).await;
+                    send_images(&door, &state.join("outbox")).await;
+                    typing.stop().await;
                     match answered {
                         Ok(text) => {
                             if let Err(e) = on_book(&state, |db| book::keep_answer(db, &r, &text)) {
@@ -758,10 +542,7 @@ async fn remind(
                 }
             };
             if text != QUIET {
-                if let Err(e) = room
-                    .send(RoomMessageEventContent::text_markdown(&text))
-                    .await
-                {
+                if let Err(e) = door.say(&text).await {
                     eprintln!("yeoman: reminder {}: {e}", r.id);
                     continue;
                 }
@@ -800,17 +581,14 @@ type Running = (
 /// Starts the task that waits, passes on what the running one says,
 /// stops it when asked, and sends its answer when it ends.
 async fn tasks(
-    room: &Room,
+    door: &impl Door,
     hippo: &Arc<Hippo>,
     model: &Arc<dyn Model>,
     state: &Path,
     running: &mut Option<Running>,
 ) {
     for (file, text) in task::said(state) {
-        if let Err(e) = room
-            .send(RoomMessageEventContent::text_markdown(&text))
-            .await
-        {
+        if let Err(e) = door.say(&text).await {
             eprintln!("yeoman: task: {e}");
             return;
         }
@@ -836,11 +614,8 @@ async fn tasks(
                 format!("(The task failed: {e})")
             }
         };
-        send_images(room, &state.join("outbox")).await;
-        if let Err(e) = room
-            .send(RoomMessageEventContent::text_markdown(&text))
-            .await
-        {
+        send_images(door, &state.join("outbox")).await;
+        if let Err(e) = door.say(&text).await {
             eprintln!("yeoman: task: {e}");
         }
         task::finish(state);
@@ -858,7 +633,7 @@ async fn tasks(
 
 /// Posts each act not yet shown, verbatim, and remembers which event
 /// shows it, so a reaction to that event can answer it.
-async fn show_pending(room: &Room, hippo: &Arc<Hippo>, state: &Path) {
+async fn show_pending(door: &impl Door, hippo: &Arc<Hippo>, state: &Path) {
     let waiting = match pending::all(state) {
         Ok(v) => v,
         Err(e) => {
@@ -868,14 +643,14 @@ async fn show_pending(room: &Room, hippo: &Arc<Hippo>, state: &Path) {
     };
     for mut p in waiting.into_iter().filter(|p| p.event.is_none()) {
         let text = p.act.show();
-        let sent = match room.send(RoomMessageEventContent::text_plain(&text)).await {
-            Ok(r) => r,
+        let sent = match door.quote(&text).await {
+            Ok(id) => id,
             Err(e) => {
                 eprintln!("yeoman: pending {}: {e}", p.id);
                 continue;
             }
         };
-        p.event = Some(sent.response.event_id.to_string());
+        p.event = Some(sent);
         if let Err(e) = pending::save(state, &p) {
             eprintln!("yeoman: pending {}: {e}", p.id);
         }
@@ -886,55 +661,40 @@ async fn show_pending(room: &Room, hippo: &Arc<Hippo>, state: &Path) {
     }
 }
 
-/// A 👍 or 👎 from an allowed user on a shown act carries it out or drops
-/// it. The sender check is the same one messages pass; the model is
-/// never in this path.
-fn on_reactions(client: &Client, users: Arc<Vec<String>>, state: PathBuf, hippo: Arc<Hippo>) {
-    client.add_event_handler(move |ev: OriginalSyncReactionEvent, room: Room| {
-        let (users, state, hippo) = (users.clone(), state.clone(), hippo.clone());
-        async move {
-            if room.state() != RoomState::Joined || !users.iter().any(|u| *u == ev.sender) {
-                return;
+/// A 👍 or 👎 on the message `id` carries out the act it shows or drops
+/// it. Only the door's own check of the sender stands before this; the
+/// model is never in this path.
+async fn decide(door: impl Door, id: String, yes: bool, state: PathBuf, hippo: Arc<Hippo>) {
+    let Some(p) = pending::by_event(&state, &id) else {
+        return;
+    };
+    // Claimed before it is carried out: a second thumb finds nothing.
+    if pending::remove(&state, p.id).is_err() {
+        return;
+    }
+    let outcome = if yes {
+        let act = p.act.clone();
+        tokio::task::spawn_blocking(move || act.carry_out())
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+    } else {
+        Ok("Dropped it.".to_owned())
+    };
+    let text = match outcome {
+        Ok(done) => done,
+        Err(e) => {
+            if let Err(e) = pending::save(&state, &p) {
+                eprintln!("yeoman: pending {}: {e}", p.id);
             }
-            let Some(yes) = pending::verdict(&ev.content.relates_to.key) else {
-                return;
-            };
-            let Some(p) = pending::by_event(&state, ev.content.relates_to.event_id.as_str()) else {
-                return;
-            };
-            // Claimed before it is carried out: a second thumb finds nothing.
-            if pending::remove(&state, p.id).is_err() {
-                return;
-            }
-            tokio::spawn(async move {
-                let outcome = if yes {
-                    let act = p.act.clone();
-                    tokio::task::spawn_blocking(move || act.carry_out())
-                        .await
-                        .unwrap_or_else(|e| Err(e.to_string()))
-                } else {
-                    Ok("Dropped it.".to_owned())
-                };
-                let text = match outcome {
-                    Ok(done) => done,
-                    Err(e) => {
-                        if let Err(e) = pending::save(&state, &p) {
-                            eprintln!("yeoman: pending {}: {e}", p.id);
-                        }
-                        format!("(I couldn't: {e}. The draft still stands.)")
-                    }
-                };
-                if let Err(e) = room.send(RoomMessageEventContent::text_plain(&text)).await {
-                    eprintln!("yeoman: pending {}: {e}", p.id);
-                }
-                if let Ok(Err(e)) =
-                    tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await
-                {
-                    eprintln!("yeoman: {e}");
-                }
-            });
+            format!("(I couldn't: {e}. The draft still stands.)")
         }
-    });
+    };
+    if let Err(e) = door.quote(&text).await {
+        eprintln!("yeoman: pending {}: {e}", p.id);
+    }
+    if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await {
+        eprintln!("yeoman: {e}");
+    }
 }
 
 /// One change to the book in `state`.
@@ -957,57 +717,41 @@ async fn run() -> Result<(), String> {
         sock: PathBuf::from(var("HIPPO_DIR")?).join("hippo.sock"),
     });
     let model: Arc<dyn Model> = model::from_env()?.into();
-    let login = account(&var("YEOMAN_MATRIX")?)?;
-    let (client, fresh) = matrix::connect(
-        &var("YEOMAN_HOMESERVER")?,
-        &login.0,
-        &login.1,
-        &state.join("matrix"),
-    )
-    .await?;
-
-    on_invites(&client, users.clone());
-    if fresh {
-        client
-            .sync_once(SyncSettings::default())
-            .await
-            .map_err(|e| format!("sync: {e}"))?;
-    }
     // A run in flight at the last stop is lost; a task still waiting runs.
     task::finish(&state);
-    let (queue, mut inbox) = mpsc::unbounded_channel();
-    on_messages(&client, users.clone(), queue);
-    on_reactions(&client, users, state.clone(), hippo.clone());
+    let (messages, mut inbox) = mpsc::unbounded_channel();
+    let (verdicts, mut thumbs) = mpsc::unbounded_channel();
+    let client = matrix::open(
+        &var("YEOMAN_HOMESERVER")?,
+        account(&var("YEOMAN_MATRIX")?)?,
+        &state,
+        users,
+        messages,
+        verdicts,
+    )
+    .await?;
+    let (c, s) = (client.clone(), state.clone());
     tokio::spawn(remind(
-        client.clone(),
+        move || matrix::last(&c, &s),
         hippo.clone(),
         model.clone(),
         state.clone(),
         env::var_os("YEOMAN_ALERTS").map(PathBuf::from),
         house::House::from_env(),
     ));
-    let worker = client.clone();
+    let (s, h) = (state.clone(), hippo.clone());
     tokio::spawn(async move {
-        while let Some((room, msg)) = inbox.recv().await {
-            if let Err(e) = fs::write(state.join("room"), room.room_id().as_str()) {
-                eprintln!("yeoman: room: {e}");
-            }
-            reply(
-                &worker,
-                hippo.clone(),
-                model.clone(),
-                room,
-                msg,
-                &state.join("outbox"),
-            )
-            .await;
+        while let Some((door, id, yes)) = thumbs.recv().await {
+            tokio::spawn(decide(door, id, yes, s.clone(), h.clone()));
         }
     });
-    eprintln!("yeoman: listening");
-    client
-        .sync(SyncSettings::default())
-        .await
-        .map_err(|e| format!("sync: {e}"))
+    tokio::spawn(async move {
+        while let Some((door, msg)) = inbox.recv().await {
+            let outbox = state.join("outbox");
+            reply(door, hippo.clone(), model.clone(), msg, &outbox).await;
+        }
+    });
+    matrix::sync(&client).await
 }
 
 #[tokio::main]
