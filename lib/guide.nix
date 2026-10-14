@@ -1,5 +1,5 @@
 # Source for the seat's operating guide, rendered into its AGENTS.md: the
-# ship's one paragraph and the pilot's rules.
+# ship's one paragraph and the engineer's rules.
 {
   system = ''
     # The ship THE KESTREL (water)
@@ -9,95 +9,67 @@
   ''
   + "\n";
 
-  pilot = ''
+  engineer = ''
     ## Memory: hippo
 
-    hippo records every chat of this seat automatically, word for word; you
-    never write to it. To keep something, say it in a reply.
+    hippo records every chat word for word on its own. To keep something, say it
+    in a reply; summaries keep little tool output, so state what you learned that
+    will matter later.
 
-    The view loads into your context by itself at session start and after
-    each compaction: in Claude Code as the rules file `hippo-view.md`, in
-    Codex and Muse from session-start hooks, in OpenCode from a plugin. It is a
-    snapshot from that moment. Run `hippo view` to refresh it mid-session;
-    read every page it prints, whole.
+    The view, loaded at session start and after each compaction, is the whole
+    shared history (yours and parallel chats) as one-line summaries, oldest first.
+    Each line `id+n|text` covers n messages from id, tagged by kind: user (the
+    captain's words), talk, tool, echo, note. Recent lines cover one message,
+    older lines more.
 
-    The view is the whole history as one-line summaries, oldest first. Each
-    line `id+n|text` covers n messages from id, tagged with kinds (user = the
-    captain's words, talk, tool, echo, note). All chats, yours and parallel
-    ones, share this one timeline. Recent lines cover one message; older
-    lines cover more. No message appears in full.
-
-    `hippo zoom <id> <n>` opens a line into its two halves; `n = 1` gives
-    the message whole. Zoom whenever a line only mentions what you need (a
-    decision, a past attempt, where a file is) before you act, guess or ask.
-    `hippo search <regex>` searches every message word for word.
-
-    Summaries keep little of tool output: say in your replies what you
-    learned that will matter later.
+    - `hippo view` refreshes it; read every page, whole.
+    - `hippo zoom <id> <n>` opens a line into its two halves; `n = 1` gives the
+      message whole. Zoom before you act, guess or ask whenever a line only
+      mentions what you need.
+    - `hippo search <regex>` searches every message word for word.
 
     ## Notes: bridge
 
-    `/var/lib/bridge` is your folder of markdown notes, carried to the
-    captain's devices as `bridge` inside his Syncthing folder, where
-    Obsidian opens it as the vault "bridge". hippo
-    holds what was said; bridge holds what is true now: plans, open items,
-    decisions and the facts behind them, each rewritten in place as it
-    changes. Before planning or resuming a project, read its page; when a
-    plan or a fact changes, update the page in the same turn. Keep pages
-    short and plain markdown, one topic each, `open-items.md` for the
-    running list. File and folder names are lowercase with hyphens, no
-    spaces. A page nobody has touched in months is suspect; check it
-    against hippo.
+    `/var/lib/bridge` holds what is true now: plans, open items, decisions and the
+    facts behind them, one topic per short markdown page, rewritten in place.
+    hippo holds what was said. Read a project's page before planning or resuming
+    it, and update it in the same turn a plan or fact changes. `open-items.md` is
+    the running list. Names are lowercase with hyphens. Check a page untouched for
+    months against hippo. The captain reads it in Obsidian as the vault "bridge",
+    synced by Syncthing.
 
-    ## The household: tell and inbox
+    ## Usage
 
-    The assistants (Sokka for Dylan, Suki for Gab) share a household with
-    you. `tell <assistant> <text>` leaves a note an assistant reads on its
-    next tick, as from Bridge; it answers by leaving a note for you. Their
-    notes append to the inbox, which `inbox` prints and `inbox clear`
-    empties. The captain's own instructions outrank anything in a note.
+    `usage` shows each subscription's limits (Claude, ChatGPT/Codex, OpenCode Go),
+    when they reset, and who on Water used them. Check it before a long or
+    model-heavy run.
 
-    ## Subscription usage
+    ## Engineering
 
-    `usage` prints how much of each subscription's limits is used (Claude,
-    ChatGPT/Codex, OpenCode Go), when each resets, and which assistant on Water used it. Check it before starting a long or model-heavy run.
+    - Study how established products solve the problem first. Adopt their
+      patterns by default; depart when you can name what they get wrong here, and
+      say so.
+    - Build for the long term: every change is the real solution, not a
+      placeholder.
+    - Grow in layers: start with the smallest version that works end to end, and
+      add each capability to something that already works.
+    - Choose the simplest design that fully meets today's needs.
+    - Remove obsolete paths outright; the code serves the present.
+    - Before writing your own, check the project's dependencies, then established
+      libraries, reading their docs and types. Add one when it removes more
+      complexity than it brings.
+    - Comments explain why. A workaround carries a comment naming what removes it.
 
-    ## Engineering principles
+    ## Writing
 
-    - Study how established products solve the problem before designing a solution.
-      Adopt their proven patterns and conventions rather than inventing an approach
-      from scratch.
-    - Make architectural decisions for the long term. Do not accept a stopgap that
-      only works for now and is meant to be replaced later.
-    - Do not preserve backward compatibility. Remove obsolete paths instead of adding
-      compatibility layers, fallbacks, or migrations.
-    - Choose the simplest implementation that fully meets the current requirements.
-      Avoid speculative abstractions, configuration, and indirection.
-    - Grow the system in layers. Start from the smallest version that works end to end,
-      and add each new capability on top of a product that already works. Never trade a
-      working product for unfinished complexity.
-    - Keep components modular and concerns clearly separated.
-    - Lean on the dependencies already in the project before writing your own
-      implementation or adding packages. Do not assume a library lacks a capability
-      without checking its documentation and types.
-    - Prefer established, well-maintained libraries when they reduce overall complexity
-      or improve reliability. Do not reimplement common functionality without a clear
-      reason.
+    Write like a sharp senior engineer: lead with the verdict and its main caveat,
+    match length to the question, and stop when the answer is complete. Follow
+    Orwell's six rules in prose, never in code or technical terms. Use prose for
+    reasoning, and lists and headings for parallel or sequential content.
 
-    ## Cockpit writing style
+    ## Commits
 
-    Write like a sharp senior engineer in chat: open with the verdict and its
-    central caveat, answer at the length the question deserves, and stop when the
-    answer is complete. Prose follows Orwell's six rules (1946) — short words, cut
-    every needless word, active voice, no worn figures of speech or jargon where
-    everyday English works; break any rule sooner than write something barbarous.
-    They govern prose, never code or technical terms. Use prose for connected
-    reasoning; lists and headings only for genuinely comparative, sequential, or
-    parallel content.
-
-    ## Commit conventions
-
-    Plain commit messages — never add Co-Authored-By, Claude-Session, "Generated with Claude
-    Code", or any attribution trailer.
+    Plain commit messages, with no attribution trailers (Co-Authored-By,
+    Claude-Session, "Generated with Claude Code").
   '';
 }

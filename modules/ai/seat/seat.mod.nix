@@ -174,7 +174,7 @@ in
     {
       home.sessionVariables = opencode.environment;
 
-      home.file.".config/agents/AGENTS.md".text = mkForce (guide.system + guide.pilot);
+      home.file.".config/agents/AGENTS.md".text = mkForce (guide.system + guide.engineer);
 
       # The baseURL uses the seat-plane address because the slice fence
       # admits that /32, not 127.0.0.1.
