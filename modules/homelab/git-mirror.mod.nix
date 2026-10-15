@@ -5,7 +5,7 @@
 # the mirror, but last night's snapshot still has it. Repositories deleted
 # on GitHub stay here. The token is read-only (fine-grained: Contents and
 # Metadata), so this copy cannot write back. The seat reads it through the
-# group. Water leaves `gitMirror.tokenFile` unset until the token exists.
+# group. Hosts without `gitMirror.tokenFile` leave the mirror off.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.git-mirror;
