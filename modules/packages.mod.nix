@@ -100,8 +100,6 @@
         pkgs.obsidian
         pkgs.element-desktop
         pkgs.signal-desktop
-        # Client for the Paseo daemons on Water and Fire.
-        inputs.paseo.packages.${pkgs.stdenv.hostPlatform.system}.desktop
         (pkgs.spotify.override { deviceScaleFactor = 2; })
       ];
     };
