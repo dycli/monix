@@ -3,9 +3,9 @@
 //! the log by turn. Time comes from the caller: the wall clock when live,
 //! the transcripts' own stamps when replaying archived days.
 
-use crate::mask::mask;
-use crate::source::{Event, Item, cap};
-use crate::store::{ChatRec, Draft, Kind, Store, chat_key, fmt_date};
+use crate::code::source::{Event, Item, cap};
+use crate::memory::mask::mask;
+use crate::memory::store::{ChatRec, Draft, Kind, Store, chat_key, fmt_date};
 use chrono::{DateTime, Duration, Local};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};

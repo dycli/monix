@@ -11,8 +11,22 @@ agent reads the view at session start, and drills into any line with `zoom`.
 Nothing is ever forgotten; it only gets further away.
 
 The design is Victor Taelin's [OptChat](https://gist.github.com/VictorTaelin/91837951a5ce5b38f341ec1ba1df6449).
-OptChat is a chat client of its own; hippo is the same memory bolted onto the
-harnesses you already use. It never replaces Claude Code, Codex or OpenCode:
+hippo is one memory with two modes:
+
+- **Chat mode** (`hippo serve chat`) is OptChat's own shape. A chat agent
+  logs each message over the socket, and the view is its whole context:
+  every turn is the view plus the new message. This suits an assistant,
+  whose turns are far apart and which needs the gist more than the exact
+  words. hippo's household agents run this way.
+- **Code mode** (`hippo serve code`) puts the same memory beside the coding
+  harnesses you already use. The harness keeps its own raw context and its
+  own compaction; hippo covers everything before it, across every session.
+
+The memory (`src/memory`: log, tree, compactor, view, socket) is the same in
+both. Code mode adds `src/code`, which reads the transcripts and turns them
+into messages; `src/door.rs` serves either mode's memory to apps outside.
+
+Code mode never replaces Claude Code, Codex or OpenCode:
 it reads the transcripts they write, builds the tree beside them, and hands
 the view back as a file they load as a rule, so a session opens with the
 whole history already in context and no tool call. The compactor runs
@@ -21,14 +35,15 @@ any chat-completions endpoint works as well. One harness's compaction
 becomes a handoff, not a loss: Claude Code's PreCompact hook folds the view
 first, and the fresh context picks up where the old one stopped.
 
-It is about 5,000 lines of Rust with seven dependencies and has been the
+It is about 7,000 lines of Rust with seven dependencies and has been the
 memory of a household of agents since 2026. It is developed inside
 [monix](https://github.com/dycli/monix), the NixOS flake those agents live
 in, and mirrored here with `git subtree`.
 
 ## How it works
 
-**Recording.** A watcher follows Claude Code, Codex, Muse Code and OpenCode transcripts
+**Recording.** In chat mode the agent logs each message with the socket's
+`log` command (kinds `user`, `talk`, `note`). In code mode a watcher follows Claude Code, Codex, Muse Code and OpenCode transcripts
 (OpenCode through its SQLite database) and appends each message to an
 append-only day-file log. Secrets of known shapes (API keys, tokens, private
 keys, named passwords) are masked before they are written. Nothing else is
@@ -80,7 +95,7 @@ out over TLS.
 ## Running it
 
 ```
-hippo serve [--no-follow]     the service, and the only writer
+hippo serve chat|code         the service, and the only writer
 hippo view                    the whole history as one-line summaries
 hippo zoom <id> <n>           open line id+n; n = 1 prints message id whole
 hippo date <id>               date and time of message id
@@ -90,6 +105,7 @@ hippo fold                    merge the view down to half its budget now
 hippo pause / resume          stop or restart the compactor's model calls
 hippo door <addr> <url>       serve the reads as a remote MCP server on
                               <addr>, for apps that reach it at <url>
+code mode only:
 hippo audit [YYYY-MM-DD]      check a day of the log against the transcripts
 hippo import [--since DATE]   bootstrap an empty store from past transcripts
 hippo replay <store> <from> <to>
@@ -113,8 +129,11 @@ The door reads its passphrase from `$CREDENTIALS_DIRECTORY/passphrase` (a
 systemd credential) and keeps registered apps and token hashes in
 `$STATE_DIRECTORY`.
 
-With `--no-follow` the service only serves and compacts its store; a program
-that writes the log itself (a chat bot, say) uses hippo this way.
+In chat mode the service follows nothing; the agent writes the log through
+`log`, and a store nothing writes to (a replayed scratch store, say) is
+served and compacted as it stands. In code mode `log` is refused: the
+transcripts are the record, and a logged `user` line would put words in the
+user's mouth.
 
 `nix build` builds it; `nix flake check` runs the tests, clippy with warnings
 denied, and rustfmt. `cargo build` works too.

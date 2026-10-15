@@ -1,22 +1,20 @@
-//! hippo: the bridge seat's episodic memory. It records every chat of the
-//! seat word for word and serves it back. `hippo serve` is the service and
-//! the only writer; every other command asks it over its socket.
+//! hippo: an agent's episodic memory. It records every chat word for word
+//! and serves it back. `hippo serve chat|code` is the service and the only
+//! writer; every other command asks it over its socket.
+//!
+//! One memory, two modes. In chat mode the agent logs each message itself
+//! and the view is its whole context. In code mode hippo follows a coding
+//! agent's transcripts and the view sits beside the agent's own raw context.
 
-mod compact;
-mod compactor;
+mod code;
 mod door;
-mod live;
-mod mask;
-mod server;
-mod source;
-mod store;
-mod tree;
-mod view;
-mod watcher;
+mod memory;
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
-use live::Sources;
-use server::{Reply, Request};
+use code::live::{self, Sources};
+use code::watcher;
+use memory::server::{self, Reply, Request};
+use memory::{compact, store};
 use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -38,9 +36,10 @@ Usage:
   hippo door <addr> <url>  serve the memory read-only as a remote MCP server
                            with OAuth, on <addr>, for apps reaching it at <url>
 Service and maintenance:
-  hippo serve [--no-follow]
-                           run the service (the only writer); without
-                           following, it only serves and compacts its store
+  hippo serve chat|code    run the service (the only writer): chat mode
+                           takes messages over the socket, code mode follows
+                           coding agents' transcripts
+Code mode only:
   hippo audit [YYYY-MM-DD] check a day of the log against the transcripts
   hippo import [--since YYYY-MM-DD]
                            bootstrap an empty store with every past chat,
@@ -144,8 +143,8 @@ fn replay(args: &[String]) -> Result<String, String> {
 
 fn serve(args: &[String]) -> Result<String, String> {
     let follow = match args {
-        [] => true,
-        [flag] if flag == "--no-follow" => false,
+        [mode] if mode == "code" => true,
+        [mode] if mode == "chat" => false,
         _ => return Err(USAGE.into()),
     };
     let backend = match env::var("HIPPO_BACKEND").as_deref() {

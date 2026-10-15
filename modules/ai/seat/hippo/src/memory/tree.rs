@@ -3,7 +3,7 @@
 //! merges its two children. Nodes are appended to `tree/YYYY-MM-DD.jsonl`
 //! as they are built and never rebuilt; only an index stays in memory.
 
-use crate::store::{append_line, day_files, read_jsonl};
+use crate::memory::store::{append_line, day_files, read_jsonl};
 use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};

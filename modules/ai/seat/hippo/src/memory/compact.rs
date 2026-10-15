@@ -2,7 +2,7 @@
 //! to do, size enforcement, and the backends that run a call. Which model
 //! and backend is configuration (the Nix module), never code.
 
-use crate::tree::{NODE, addr, flat};
+use crate::memory::tree::{NODE, addr, flat};
 use chrono::{DateTime, Local};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};

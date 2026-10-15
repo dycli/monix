@@ -1,14 +1,15 @@
-//! The service: the only writer. One thread follows the transcripts; the
-//! CLI talks to it over `hippo.sock`, one JSON request and reply per
+//! The service: the only writer. In code mode its main loop follows the
+//! transcripts; in chat mode the agent logs each message over the socket.
+//! The CLI talks to it over `hippo.sock`, one JSON request and reply per
 //! connection.
 
-use crate::compact::Backend;
-use crate::compactor::{Pump, Spent, pump};
-use crate::live::{Live, Sources};
-use crate::store::{Draft, Kind, Store, fmt_date};
-use crate::tree::{Tree, addr, flat};
-use crate::view::{CONTEXT, PLACEHOLDER, UNBUILT, VIEW, View, head};
-use crate::watcher::Watcher;
+use crate::code::Follow;
+use crate::code::live::Sources;
+use crate::memory::compact::Backend;
+use crate::memory::compactor::{Pump, Spent, pump};
+use crate::memory::store::{Draft, Kind, Store, fmt_date};
+use crate::memory::tree::{Tree, addr, flat};
+use crate::memory::view::{CONTEXT, PLACEHOLDER, UNBUILT, VIEW, View, head};
 use chrono::{DateTime, Local};
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
@@ -43,8 +44,8 @@ pub struct Core {
     /// Where `bound` last cut the compactions' view, so calls share a head.
     pub context_cut: u64,
     pub pump: Pump,
-    pub watcher: Watcher,
-    pub live: Option<Live>,
+    /// Code mode's transcript follower; chat mode has none.
+    pub follow: Option<Follow>,
     pub started: DateTime<Local>,
     /// Rendered views being read page by page, by token.
     pages: Vec<(String, Vec<String>)>,
@@ -63,8 +64,7 @@ impl Core {
             context: View::default(),
             context_cut: 0,
             pump: Pump::default(),
-            watcher: Watcher::default(),
-            live: None,
+            follow: None,
             started: Local::now(),
             pages: Vec::new(),
             stale: true,
@@ -107,8 +107,9 @@ const SETTLE: Duration = Duration::from_secs(30);
 /// Bytes per page of `hippo view`, under the harnesses' output limits.
 const PAGE: usize = 24_000;
 
-/// Runs the service. Without `sources` it follows nothing and only serves
-/// and compacts an existing store (a replayed scratch store, say).
+/// Runs the service: in code mode with `sources`, in chat mode without.
+/// Chat mode also serves and compacts a store nothing writes to (a replayed
+/// scratch store, say).
 pub fn serve(
     dir: &Path,
     sources: Option<Sources>,
@@ -119,14 +120,9 @@ pub fn serve(
     for at in store.torn.iter().chain(&tree.torn) {
         eprintln!("hippo: torn line at {at} skipped");
     }
-    let live = match &sources {
-        Some(s) => Some(Live::new(&store, s.clone())?),
+    let follow = match sources {
+        Some(s) => Some(Follow::new(dir, &store, s)?),
         None => None,
-    };
-    let watcher = Watcher {
-        paseo: sources.as_ref().map(|s| s.paseo.clone()),
-        after: crate::live::imported(dir)?.and_then(|i| crate::store::parse_date(&i.cutoff)),
-        ..Watcher::default()
     };
     let budget = match std::env::var("HIPPO_VIEW") {
         Ok(v) => v
@@ -148,8 +144,7 @@ pub fn serve(
                 spent: Spent::load(dir)?,
                 ..Pump::default()
             },
-            watcher,
-            live,
+            follow,
             started: Local::now(),
             pages: Vec::new(),
             stale: true,
@@ -178,10 +173,8 @@ pub fn serve(
         {
             let mut guard = shared.core.lock().unwrap();
             let c = &mut *guard;
-            if let Some(live) = c.live.as_mut() {
-                live.scan(&mut c.watcher, &mut c.store)?;
-                c.watcher.tick(&mut c.store, Local::now())?;
-                live.save(&c.watcher)?;
+            if let Some(f) = c.follow.as_mut() {
+                f.step(&mut c.store)?;
             }
             c.sync();
             pump(&shared, c);
@@ -263,7 +256,7 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
         // socket: one that follows transcripts learns everything there, and
         // a logged `user` line would put words in the user's mouth.
         "log" => {
-            if core.lock().unwrap().live.is_some() {
+            if core.lock().unwrap().follow.is_some() {
                 return Err("This memory follows transcripts; it takes no logged messages.".into());
             }
             let (kind, text) = a.split_first().ok_or("Missing kind.")?;
@@ -281,7 +274,7 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
             let ids = c.store.append(vec![Draft {
                 kind,
                 chat: None,
-                text: crate::mask::mask(text.trim()),
+                text: crate::memory::mask::mask(text.trim()),
                 date: Local::now(),
                 src: None,
             }])?;
@@ -307,7 +300,8 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
         "status" => Ok(status(&core.lock().unwrap(), shared.backend.is_some())),
         "pause" => {
             let c = core.lock().unwrap();
-            fs::write(crate::compactor::pause_file(&c.store.dir), "").map_err(|e| e.to_string())?;
+            fs::write(crate::memory::compactor::pause_file(&c.store.dir), "")
+                .map_err(|e| e.to_string())?;
             Ok(format!(
                 "Paused: no new model calls; {} running finish. Logging goes on.",
                 c.pump.busy.len()
@@ -315,7 +309,7 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
         }
         "resume" => {
             let mut c = core.lock().unwrap();
-            match fs::remove_file(crate::compactor::pause_file(&c.store.dir)) {
+            match fs::remove_file(crate::memory::compactor::pause_file(&c.store.dir)) {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => return Err(e.to_string()),
@@ -355,7 +349,7 @@ fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
     let deadline = std::time::Instant::now() + SETTLE;
     let stalled = |c: &Core| {
         c.pump.limit.is_some_and(|t| Local::now() < t)
-            || crate::compactor::paused(&c.store.dir)
+            || crate::memory::compactor::paused(&c.store.dir)
             || (c.pump.busy.is_empty() && !c.pump.parked.is_empty())
     };
     while c.view.unbuilt(&c.tree) > 0 && !stalled(&c) {
@@ -582,12 +576,12 @@ fn excerpt(text: &str, start: usize, end: usize) -> String {
 
 fn status(c: &Core, compacting: bool) -> String {
     let s = &c.store;
-    let following = match &c.live {
-        Some(live) => format!(
-            "following since {}",
-            live.since().map(|d| fmt_date(&d)).unwrap_or_default()
+    let following = match &c.follow {
+        Some(f) => format!(
+            "code mode, following transcripts since {}",
+            f.live.since().map(|d| fmt_date(&d)).unwrap_or_default()
         ),
-        None => "following nothing".to_owned(),
+        None => "chat mode, taking messages over the socket".to_owned(),
     };
     let mut out = format!(
         "{} messages in {} chats, at {}; {following}.\n",
@@ -612,7 +606,7 @@ fn status(c: &Core, compacting: bool) -> String {
     }
     if !compacting {
         out.push_str("compactor: off\n");
-    } else if crate::compactor::paused(&s.dir) {
+    } else if crate::memory::compactor::paused(&s.dir) {
         out.push_str(&format!(
             "compactor: paused (hippo resume); {} running\n",
             c.pump.busy.len()
@@ -621,7 +615,7 @@ fn status(c: &Core, compacting: bool) -> String {
         out.push_str(&format!("compactor: {} running\n", c.pump.busy.len()));
     }
     let today = Local::now().date_naive();
-    let tokens = |u: &crate::compact::Usage| {
+    let tokens = |u: &crate::memory::compact::Usage| {
         format!(
             "{} input, {} cache read, {} cache write, {} output",
             u.input, u.cache_read, u.cache_write, u.output
@@ -632,7 +626,7 @@ fn status(c: &Core, compacting: bool) -> String {
         "compactor today: {calls} calls; tokens {}\n",
         tokens(&used)
     ));
-    let (mut week_calls, mut week) = (0, crate::compact::Usage::default());
+    let (mut week_calls, mut week) = (0, crate::memory::compact::Usage::default());
     for (_, (n, u)) in c
         .pump
         .spent
@@ -657,31 +651,8 @@ fn status(c: &Core, compacting: bool) -> String {
             out.push_str(&format!("  {s}+{n}: {e}\n"));
         }
     }
-    for h in ["claude", "codex", "muse", "opencode"] {
-        match s.last.get(h) {
-            Some((i, date)) => {
-                let d = DateTime::from_timestamp(*date, 0)
-                    .map(|d| fmt_date(&d.with_timezone(&Local)))
-                    .unwrap_or_default();
-                out.push_str(&format!("last {h} message: {i} at {d}\n"));
-            }
-            None => out.push_str(&format!("last {h} message: none\n")),
-        }
-    }
-    let holding = c.watcher.holding();
-    if holding.is_empty() {
-        out.push_str("holding: nothing\n");
-    } else {
-        let list: Vec<String> = holding.iter().map(|(c, n)| format!("{c} {n}")).collect();
-        out.push_str(&format!("holding: {}\n", list.join(", ")));
-    }
-    out.push_str(&format!(
-        "unparsed entries since {}: {}\n",
-        fmt_date(&c.started),
-        c.watcher.unparsed_total
-    ));
-    for u in &c.watcher.unparsed {
-        out.push_str(&format!("  {} {}: {}\n", u.harness, u.at, u.what));
+    if let Some(f) = &c.follow {
+        out.push_str(&f.status(s, &c.started));
     }
     let torn: Vec<&String> = s.torn.iter().chain(&c.tree.torn).collect();
     if !torn.is_empty() {
@@ -697,7 +668,7 @@ fn status(c: &Core, compacting: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tree::Node;
+    use crate::memory::tree::Node;
 
     /// A store of `n` messages, each its own built line, and no merges:
     /// the state of a paused or backlogged compactor.

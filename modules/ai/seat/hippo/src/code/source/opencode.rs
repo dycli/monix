@@ -2,7 +2,7 @@
 //! rewritten while they stream, so a message is read only once it is done.
 
 use super::{Event, Item, call_text, runs_memory, str_at, text_of};
-use crate::store::{Kind, Src};
+use crate::memory::store::{Kind, Src};
 use chrono::{DateTime, Local};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;

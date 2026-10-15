@@ -3,7 +3,7 @@
 //! own files one directory deeper; those are never read.
 
 use super::{Event, Item, call_text, iso, runs_memory, str_at, text_of};
-use crate::store::{Kind, Src};
+use crate::memory::store::{Kind, Src};
 use serde_json::Value;
 
 /// Top-level entry types that carry nothing for the log.

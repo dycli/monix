@@ -11,7 +11,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::tree::{Tree, addr, flat};
+use crate::memory::tree::{Tree, addr, flat};
 
 /// Budget of the view, in bytes of its lines as rendered, `id+n|` and
 /// newline included.
@@ -267,7 +267,7 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tree::Node;
+    use crate::memory::tree::Node;
 
     fn node(t: &mut Tree, l: u8, i: u64, size: usize) {
         t.save(Node {

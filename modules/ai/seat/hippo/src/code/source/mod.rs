@@ -6,7 +6,7 @@ pub mod codex;
 pub mod muse;
 pub mod opencode;
 
-use crate::store::{Kind, Src};
+use crate::memory::store::{Kind, Src};
 use chrono::{DateTime, Local};
 use serde_json::Value;
 

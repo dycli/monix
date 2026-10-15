@@ -3,11 +3,11 @@
 //! before its end is a summary; so messages are compressed one at a time,
 //! in order, while merges of finished parts run beside them.
 
-use crate::compact::{self, Fail, PROMPT_VERSION, Step, Usage, cut};
-use crate::server::{Core, Shared};
-use crate::store::Msg;
-use crate::tree::{NODE, Node, addr, flat};
-use crate::view::head;
+use crate::memory::compact::{self, Fail, PROMPT_VERSION, Step, Usage, cut};
+use crate::memory::server::{Core, Shared};
+use crate::memory::store::Msg;
+use crate::memory::tree::{NODE, Node, addr, flat};
+use crate::memory::view::head;
 use chrono::{DateTime, Local};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -43,8 +43,8 @@ impl Spent {
             path: Some(path.clone()),
         };
         let mut torn = Vec::new();
-        crate::store::read_jsonl::<Spend>(&path, &mut torn, |s, _, _| {
-            if let Some(d) = crate::store::parse_date(&s.date) {
+        crate::memory::store::read_jsonl::<Spend>(&path, &mut torn, |s, _, _| {
+            if let Some(d) = crate::memory::store::parse_date(&s.date) {
                 let day = spent.days.entry(d.date_naive()).or_default();
                 day.0 += 1;
                 day.1.add(s.usage);
@@ -66,7 +66,7 @@ impl Spent {
         day.1.add(usage);
         let Some(path) = &self.path else { return };
         let line = Spend {
-            date: crate::store::fmt_date(&now),
+            date: crate::memory::store::fmt_date(&now),
             l,
             i,
             model: model.to_owned(),
@@ -80,7 +80,7 @@ impl Spent {
                     .append(true)
                     .open(path)
                     .map_err(|e| e.to_string())?;
-                crate::store::append_line(&mut f, &line)
+                crate::memory::store::append_line(&mut f, &line)
             });
         if let Err(e) = written {
             eprintln!("hippo: recording usage: {e}");
@@ -388,10 +388,10 @@ fn fallback(a: &str, b: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compact::{Backend, Chat};
-    use crate::server::Core;
-    use crate::tree::Tree;
-    use crate::view::{PLACEHOLDER, View};
+    use crate::memory::compact::{Backend, Chat};
+    use crate::memory::server::Core;
+    use crate::memory::tree::Tree;
+    use crate::memory::view::{PLACEHOLDER, View};
     use std::sync::{Condvar, Mutex};
     use std::time::Duration;
 
@@ -419,11 +419,11 @@ mod tests {
     fn a_stalled_context_stays_within_its_budget() {
         let dir = std::env::temp_dir().join(format!("hippo-ctx-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let mut store = crate::store::Store::open(&dir, true).unwrap();
+        let mut store = crate::memory::store::Store::open(&dir, true).unwrap();
         let n = 1_000u64;
         let drafts = (0..n)
-            .map(|k| crate::store::Draft {
-                kind: crate::store::Kind::Talk,
+            .map(|k| crate::memory::store::Draft {
+                kind: crate::memory::store::Kind::Talk,
                 chat: Some("c".into()),
                 text: format!("message {k} ") + &"x".repeat(200),
                 date: chrono::Local::now(),
@@ -446,8 +446,8 @@ mod tests {
         }
         // A backlog behind them: logged, not summarized.
         let backlog = (0..500)
-            .map(|k| crate::store::Draft {
-                kind: crate::store::Kind::Talk,
+            .map(|k| crate::memory::store::Draft {
+                kind: crate::memory::store::Kind::Talk,
                 chat: Some("c".into()),
                 text: format!("later {k} ") + &"x".repeat(200),
                 date: chrono::Local::now(),
@@ -456,7 +456,7 @@ mod tests {
             .collect();
         store.append(backlog).unwrap();
         // No level-1 node is built, so the context view cannot fold.
-        let mut c = Core::for_test(store, tree, View::default(), crate::view::VIEW);
+        let mut c = Core::for_test(store, tree, View::default(), crate::memory::view::VIEW);
         c.sync();
         assert!(c.context.size() > 5 * c.context_budget());
         let budget = c.context_budget();
@@ -484,11 +484,11 @@ mod tests {
     fn builds_in_order_and_folds_the_view() {
         let dir = std::env::temp_dir().join(format!("hippo-pump-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let mut store = crate::store::Store::open(&dir, true).unwrap();
+        let mut store = crate::memory::store::Store::open(&dir, true).unwrap();
         // A store of long messages, so most nodes need a call.
         let drafts = (0..40)
-            .map(|k| crate::store::Draft {
-                kind: crate::store::Kind::Talk,
+            .map(|k| crate::memory::store::Draft {
+                kind: crate::memory::store::Kind::Talk,
                 chat: Some("c".into()),
                 text: format!("message {k} ") + &"x".repeat(if k % 3 == 0 { 10 } else { 600 }),
                 date: chrono::Local::now(),
@@ -552,7 +552,7 @@ mod tests {
         }
         // The published view is the whole view in one block, unpaged.
         assert!(c.stale);
-        crate::server::publish(&mut c).unwrap();
+        crate::memory::server::publish(&mut c).unwrap();
         assert!(!c.stale);
         let file = std::fs::read_to_string(dir.join("view.md")).unwrap();
         assert!(file.starts_with("<chat>\n") && file.ends_with("\n</chat>\n"));
@@ -586,9 +586,9 @@ mod tests {
     fn a_failed_call_waits_for_the_next_message() {
         let dir = std::env::temp_dir().join(format!("hippo-park-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let mut store = crate::store::Store::open(&dir, true).unwrap();
-        let draft = |k: u32| crate::store::Draft {
-            kind: crate::store::Kind::Talk,
+        let mut store = crate::memory::store::Store::open(&dir, true).unwrap();
+        let draft = |k: u32| crate::memory::store::Draft {
+            kind: crate::memory::store::Kind::Talk,
             chat: Some("c".into()),
             text: format!("message {k} ") + &"x".repeat(600),
             date: chrono::Local::now(),
@@ -638,7 +638,7 @@ mod tests {
     fn merges_know_when_their_halves_share_no_chat() {
         let dir = std::env::temp_dir().join(format!("hippo-apart-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let mut store = crate::store::Store::open(&dir, true).unwrap();
+        let mut store = crate::memory::store::Store::open(&dir, true).unwrap();
         // Every chat has the same label: only the session tells them apart.
         let sessions = [
             Some("a"),
@@ -653,12 +653,12 @@ mod tests {
         let drafts = sessions
             .into_iter()
             .enumerate()
-            .map(|(k, session)| crate::store::Draft {
-                kind: crate::store::Kind::Talk,
+            .map(|(k, session)| crate::memory::store::Draft {
+                kind: crate::memory::store::Kind::Talk,
                 chat: Some("bridge".into()),
                 text: "hi".into(),
                 date: chrono::Local::now(),
-                src: session.map(|s| crate::store::Src {
+                src: session.map(|s| crate::memory::store::Src {
                     h: "claude".into(),
                     s: s.into(),
                     e: k.to_string(),

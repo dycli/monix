@@ -452,7 +452,7 @@
                   n
                   "${n}/hippo"
                 ];
-                ExecStart = "${getExe hippo} serve --no-follow";
+                ExecStart = "${getExe hippo} serve chat";
                 Restart = "always";
                 RestartSec = 5;
               };

@@ -184,6 +184,11 @@ git subtree push --prefix=modules/ai/seat/hippo git@github.com:dycli/hippo.git m
 
 after a push that touches it.
 
+It runs in two modes from one memory. The seat's hippo runs in code mode,
+following the coding harnesses' transcripts beside their own context; Sokka's
+and Suki's run in chat mode, where the agent logs each message and the view
+is its whole context.
+
 **Recording.** A watcher follows Claude Code, Codex, Muse Code and OpenCode transcripts
 as they are written (OpenCode through its SQLite database) and appends each
 message to a day-file log. The log is append-only. Secrets of known shapes (API

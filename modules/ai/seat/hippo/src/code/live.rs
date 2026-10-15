@@ -1,9 +1,9 @@
 //! Following the harnesses' transcripts: where they are, how far each is
 //! read, and the same readers run over whole days for replay and audit.
 
-use crate::source::{self, Event, claude, codex, muse, opencode};
-use crate::store::{Kind, Store, fmt_date, parse_date};
-use crate::watcher::Watcher;
+use crate::code::source::{self, Event, claude, codex, muse, opencode};
+use crate::code::watcher::Watcher;
+use crate::memory::store::{Kind, Store, fmt_date, parse_date};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -527,7 +527,7 @@ pub fn audit(
         }
         true
     })?;
-    let recent = Local::now() - crate::watcher::TURN_AGE;
+    let recent = Local::now() - crate::code::watcher::TURN_AGE;
     let (mut ok, mut missing, mut held, mut twice) = (0, Vec::new(), 0, Vec::new());
     for (key, (date, kind, excerpt)) in &expected {
         match count.get(key).copied().unwrap_or(0) {
@@ -565,8 +565,8 @@ pub fn audit(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::Store;
-    use crate::watcher::OMITTED;
+    use crate::code::watcher::OMITTED;
+    use crate::memory::store::Store;
 
     fn fixtures() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")

@@ -5,7 +5,7 @@
 //! chat, and every other kind is the runtime's bookkeeping.
 
 use super::{Event, Item, call_text, runs_memory, str_at, text_of};
-use crate::store::{Kind, Src};
+use crate::memory::store::{Kind, Src};
 use chrono::{DateTime, Local};
 use serde_json::Value;
 

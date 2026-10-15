@@ -265,7 +265,7 @@ in
           serviceConfig = lib.ship.hardened.tenant // {
             User = seat.user;
             Group = seat.user;
-            ExecStart = "${lib.meta.getExe (package lib pkgs)} serve";
+            ExecStart = "${lib.meta.getExe (package lib pkgs)} serve code";
             WorkingDirectory = seat.hippo;
             Restart = "always";
             RestartSec = 5;
