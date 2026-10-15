@@ -7,7 +7,12 @@ const PAPER: Record<Theme, string> = { light: "#ece3d4", dark: "#1b1815" };
 
 function apply(t: Theme) {
   document.documentElement.dataset.theme = t;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", PAPER[t]);
+  // Both metas, media dropped: the bars follow the chosen theme, not the
+  // system's, or a dark page sits over a light Android nav bar.
+  for (const m of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+    m.removeAttribute("media");
+    m.content = PAPER[t];
+  }
 }
 
 /** Light or dark: the system's until the person picks, then theirs for good

@@ -69,8 +69,10 @@
   ::after {
     border-color: var(--hair);
   }
+  /* The canvas shows under the gesture bar and on overscroll; paint it too. */
   html {
     color-scheme: light;
+    background: var(--paper);
   }
   html[data-theme="dark"] {
     color-scheme: dark;
