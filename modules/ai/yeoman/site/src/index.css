@@ -94,6 +94,11 @@
     -webkit-font-smoothing: antialiased;
     text-wrap: balance;
   }
+  /* Balancing reflows the line being typed as it grows; the input wraps
+     plainly. */
+  textarea {
+    text-wrap: wrap;
+  }
   /* The grain: fractal noise laid over everything, cards included, so the
      page reads as one sheet. */
   body::after {
