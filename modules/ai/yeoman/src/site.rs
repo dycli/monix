@@ -461,9 +461,15 @@ async fn manifest(headers: HeaderMap) -> Response {
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
-        // The splash behind the icon, so it matches the icon's dark ground.
-        "background_color": "#1b1815",
+        // Chrome paints the installed app's splash and system bars from
+        // these, so give each scheme its own paper rather than one dark
+        // ground that shows as a bar in light mode.
+        "background_color": "#ece3d4",
         "theme_color": "#ece3d4",
+        "color_scheme_dark": {
+            "background_color": "#1b1815",
+            "theme_color": "#1b1815",
+        },
         "icons": [
             icon(192),
             icon(512),
