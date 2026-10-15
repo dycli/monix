@@ -329,7 +329,7 @@ function AssistantMessage() {
           <MessagePrimitive.Parts
             components={{
               Text,
-              tools: { Fallback: ToolLine },
+              tools: { Fallback: Tool },
               Image: () => <MessagePartPrimitive.Image className="max-h-80 max-w-full rounded-lg border border-hair" />,
             }}
           />
@@ -383,6 +383,70 @@ function ToolLine({ toolName: name, args, result, isError }: ToolCallMessagePart
         )}
       </div>
     </details>
+  );
+}
+
+// Tools with a card of their own; the rest draw as a ToolLine. Keyed by the
+// tool's own name, whichever server carries it.
+function Tool(props: ToolCallMessagePartProps) {
+  if (props.toolName.endsWith("__events")) return <CalendarCard {...props} />;
+  return <ToolLine {...props} />;
+}
+
+// One event as the calendar tool reports it; times are "YYYY-MM-DD HH:MM",
+// or just the date when it lasts all day.
+type Event = { uid: string; calendar: string; start: string; end: string; summary: string; location: string | null; repeats: boolean };
+
+function events(result: unknown): Event[] | undefined {
+  try {
+    const parsed = typeof result === "string" ? JSON.parse(result) : result;
+    return Array.isArray(parsed) && parsed.every((e) => typeof e?.start === "string") ? parsed : undefined;
+  } catch {
+    // A long answer is cut short on the way here and no longer parses.
+    return undefined;
+  }
+}
+
+function dayLabel(day: string) {
+  const [y, m, d] = day.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const ahead = Math.round((date.getTime() - today.getTime()) / 86_400_000);
+  const name = date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  return ahead === 0 ? `Today · ${name}` : ahead === 1 ? `Tomorrow · ${name}` : name;
+}
+
+// The calendar as a card, by day; a running, failed or unreadable call stays
+// a ToolLine.
+function CalendarCard(props: ToolCallMessagePartProps) {
+  const list = props.isError ? undefined : events(props.result);
+  if (!list) return <ToolLine {...props} />;
+  const days = new Map<string, Event[]>();
+  for (const e of list) days.set(e.start.slice(0, 10), [...(days.get(e.start.slice(0, 10)) ?? []), e]);
+  return (
+    <div className="not-prose my-2 overflow-hidden rounded-[14px] border-[1.25px] border-edge text-[14px] last-of-type:mb-3">
+      {days.size === 0 && <p className="px-4 py-3 text-mid">Nothing on the calendar.</p>}
+      {[...days].map(([day, es]) => (
+        <section key={day} className="border-hair not-first:border-t">
+          <h4 className="bg-lift px-4 py-1.5 text-xs font-semibold tracking-wide text-mid uppercase">{dayLabel(day)}</h4>
+          <ul className="flex flex-col py-1">
+            {es.map((e) => (
+              <li key={e.uid + e.start} className="flex gap-3 px-4 py-1.5">
+                <span className="w-[5.5rem] shrink-0 text-mid tabular-nums">
+                  {e.start.length > 10 ? `${e.start.slice(11)}–${e.end.startsWith(day) ? e.end.slice(11) : "…"}` : "All day"}
+                </span>
+                <span className="min-w-0">
+                  <span className="text-ink">{e.summary}</span>
+                  {e.repeats && <span className="ml-1.5 text-soft" title="Repeats">↻</span>}
+                  {e.location && <span className="block truncate text-[13px] text-soft">{e.location}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
   );
 }
 
