@@ -66,4 +66,5 @@ in
   "hosts/water/secrets/cloudflare-dns-token.env.age".publicKeys = singleton water ++ admin;
   # FRIGATE_RTSP_PASSWORD=...
   "hosts/water/secrets/frigate.env.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/git-mirror-token.age".publicKeys = singleton water ++ admin;
 }
