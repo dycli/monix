@@ -254,9 +254,30 @@ function AssistantMessage() {
 // What the yeoman notes beside the talk: quiet, in the serif. Alerts land
 // here with whole log lines, so it breaks anywhere too.
 function Note() {
+  const text = useAuiState((s) => s.message.content.map((p) => (p.type === "text" ? p.text : "")).join(""));
+  const fed = /^\((routine|task|alert|message|seat)\) /.exec(text);
+  const style = "font-serif text-[14.5px] leading-relaxed whitespace-pre-wrap text-mid italic [overflow-wrap:anywhere]";
+  if (!fed) {
+    return (
+      <MessagePrimitive.Root className={style}>
+        <MessagePrimitive.Parts />
+      </MessagePrimitive.Root>
+    );
+  }
+  // What the house fed the yeoman (routine prompts, alert logs, passed-on
+  // messages) is long and not meant for reading; its answer follows as
+  // talk, so this folds to one line that opens on a click.
+  const body = text.slice(fed[0].length);
+  const label = { routine: "Routine", task: "Task", alert: "Alert", message: "Message", seat: "From Bridge" }[fed[1]];
   return (
-    <MessagePrimitive.Root className="font-serif text-[14.5px] leading-relaxed whitespace-pre-wrap text-mid italic [overflow-wrap:anywhere]">
-      <MessagePrimitive.Parts />
+    <MessagePrimitive.Root className={style}>
+      <details className="group">
+        <summary className="cursor-pointer list-none truncate marker:hidden [&::-webkit-details-marker]:hidden">
+          <span className="not-italic">{label}</span>
+          <span className="group-open:hidden"> · {body.split("\n")[0]}</span>
+        </summary>
+        <div className="mt-1">{body}</div>
+      </details>
     </MessagePrimitive.Root>
   );
 }
