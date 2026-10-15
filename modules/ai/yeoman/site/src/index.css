@@ -4,7 +4,7 @@
 @source "../node_modules/@streamdown/code/dist/*.js";
 @source "../node_modules/@streamdown/math/dist/*.js";
 
-@custom-variant dark (@media (prefers-color-scheme: dark));
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* UniiChat's look (uniichat.com/style.css): black ink on white paper, or
    light ink on a soft black. What a person says is framed, what the
@@ -22,20 +22,18 @@
   --edge: #111111;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 6px 20px rgb(0 0 0 / 0.05);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ink: #e3e3e6;
-    --mid: #a6a6ad;
-    --soft: #8a8a92;
-    --hair: #36363c;
-    --paper: #171719;
-    --lift: #222226;
-    --block: #2c2c31;
-    --hover: #37373d;
-    --frame: #4c4c53;
-    --edge: #85858d;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 28px rgb(0 0 0 / 0.45);
-  }
+:root[data-theme="dark"] {
+  --ink: #e3e3e6;
+  --mid: #a6a6ad;
+  --soft: #8a8a92;
+  --hair: #36363c;
+  --paper: #171719;
+  --lift: #222226;
+  --block: #2c2c31;
+  --hover: #37373d;
+  --frame: #4c4c53;
+  --edge: #85858d;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 28px rgb(0 0 0 / 0.45);
 }
 
 @theme inline {
@@ -65,7 +63,10 @@
     border-color: var(--hair);
   }
   html {
-    color-scheme: light dark;
+    color-scheme: light;
+  }
+  html[data-theme="dark"] {
+    color-scheme: dark;
   }
   /* Thin bars in the palette's grey, not the platform's arrowed ones. */
   * {

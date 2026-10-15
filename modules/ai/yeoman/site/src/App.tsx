@@ -14,6 +14,7 @@ import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { askToSignIn, useChat, waitToSignIn, type Msg } from "./chat";
+import { useTheme } from "./theme";
 
 const convert = (m: Msg): ThreadMessageLike => ({
   id: m.id,
@@ -42,7 +43,37 @@ export function App() {
 
 /** A page with one thing on it, centred high, as UniiChat's sign-in. */
 function Solo({ children }: { children: React.ReactNode }) {
-  return <main className="mx-auto mt-[18vh] w-[min(420px,100%-48px)] text-center">{children}</main>;
+  return (
+    <>
+      <ThemeButton className="fixed top-2.5 right-3" />
+      <main className="mx-auto mt-[18vh] w-[min(420px,100%-48px)] text-center">{children}</main>
+    </>
+  );
+}
+
+/** Switches light and dark, showing where a press takes you. */
+function ThemeButton({ className = "" }: { className?: string }) {
+  const [theme, toggle] = useTheme();
+  const dark = theme === "dark";
+  return (
+    <button
+      onClick={toggle}
+      aria-label={dark ? "Light mode" : "Dark mode"}
+      title={dark ? "Light mode" : "Dark mode"}
+      className={`grid size-9 place-items-center rounded-full text-mid hover:bg-hover hover:text-ink ${className}`}
+    >
+      <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        {dark ? (
+          <>
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+          </>
+        ) : (
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        )}
+      </svg>
+    </button>
+  );
 }
 
 function Dots() {
@@ -119,8 +150,9 @@ function Thread({ messages, typing, send }: { messages: Msg[]; typing: boolean; 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="flex h-full flex-col">
-        <header className="flex h-[57px] shrink-0 items-center border-b border-hair bg-paper px-[max(20px,env(safe-area-inset-left))] max-sm:h-[51px] max-sm:px-3.5">
+        <header className="flex h-[57px] shrink-0 items-center justify-between border-b border-hair bg-paper px-[max(20px,env(safe-area-inset-left))] max-sm:h-[51px] max-sm:px-3.5">
           <span className="font-brand text-xl font-semibold tracking-[-0.01em]">{NAME}</span>
+          <ThemeButton className="-mr-2" />
         </header>
         <ThreadPrimitive.Viewport className="flex flex-1 flex-col overflow-y-auto">
           <main className="mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)]">
