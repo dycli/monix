@@ -72,6 +72,15 @@
     Plain commit messages, with no attribution trailers (Co-Authored-By,
     Claude-Session, "Generated with Claude Code").
 
+    ## Work
+
+    Before pushing to `main`, run the repository's checks (`nix flake check`
+    in monix, which builds every host) and push only when they pass. Push as
+    you go; don't hold commits back. One chat works in a repository's main
+    checkout; a second chat on the same repository at the same time takes a
+    worktree (`git worktree add ../.worktrees/<repo>-<task> -b <task>
+    origin/main`), rebases onto `main` when done, pushes, and removes it.
+
     ## Deploys
 
     `switcharoo` deploys pushed `main` and rolls back on its own if the host
