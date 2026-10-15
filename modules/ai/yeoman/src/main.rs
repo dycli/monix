@@ -82,10 +82,9 @@ its own and its answer is sent when done.";
 
 /// Added when the door draws the calendar's events and the lists as cards.
 const CARDS: &str = "\n\n{person} sees what the events, list and mail tools \
-return drawn as cards above your answer, and a page you show_page opens \
-beside the chat, so it needs no link. Don't repeat what a card or page \
-shows: say in a line or two what stands out (what's next, a clash, a free \
-stretch) or that it's done.";
+return drawn as cards above your answer. Don't repeat what a card shows: say in a \
+line or two what stands out (what's next, a clash, a free stretch) or that \
+it's done.";
 
 /// Added when the assistant reads the person's mail.
 const MAIL: &str = "\n\nWhen you tell {person} about their mail, a digest or \

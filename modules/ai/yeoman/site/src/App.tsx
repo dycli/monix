@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AssistantRuntimeProvider,
   AttachmentPrimitive,
@@ -16,7 +16,6 @@ import {
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
-import { defaultComponents, type Components } from "streamdown";
 import { askToSignIn, attachments, useChat, waitToSignIn, type Card, type Msg } from "./chat";
 import { useTheme } from "./theme";
 
@@ -223,23 +222,9 @@ function Thread({ messages, typing, send, cards, decide }: { messages: Msg[]; ty
       if (text.trim() || file) await send(text, file);
     },
   });
-  const [page, setPage] = useState<Page | null>(null);
-  // On a phone the page is a sheet over the chat, so Back closes it.
-  const open = useCallback((p: Page) => {
-    if (!wide() && !history.state?.page) history.pushState({ page: true }, "");
-    setPage(p);
-  }, []);
-  const close = useCallback(() => (history.state?.page ? history.back() : setPage(null)), []);
-  useEffect(() => {
-    const back = () => setPage(null);
-    addEventListener("popstate", back);
-    return () => removeEventListener("popstate", back);
-  }, []);
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <Pages.Provider value={open}>
-      <div className="flex h-full">
-      <ThreadPrimitive.Root className="flex h-full min-w-0 flex-1 flex-col">
+      <ThreadPrimitive.Root className="flex h-full flex-col">
         <header className="flex h-[57px] shrink-0 items-center justify-between border-b border-hair bg-paper px-[max(20px,env(safe-area-inset-left))] max-sm:h-[51px] max-sm:px-3.5">
           <span className="font-serif text-[22px] tracking-[-0.01em]">{NAME}</span>
           <ThemeButton className="-mr-2" />
@@ -287,9 +272,6 @@ function Thread({ messages, typing, send, cards, decide }: { messages: Msg[]; ty
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
       </ThreadPrimitive.Root>
-      {page && <PagePanel key={page.url} page={page} close={close} />}
-      </div>
-      </Pages.Provider>
     </AssistantRuntimeProvider>
   );
 }
@@ -342,24 +324,9 @@ function Text() {
       containerClassName={live ? "writing" : undefined}
       lineNumbers={false}
       controls={{ code: true, table: false }}
-      components={{ a: Link }}
     />
   );
 }
-
-// Links to the assistant's own pages open in the page panel: hippo keeps no
-// tool calls, so after a reload the link is all there is. Others go out as
-// streamdown sends them.
-const Link: NonNullable<Components["a"]> = (props) => {
-  const open = useContext(Pages);
-  const p = props.href ? ownPage(props.href) : undefined;
-  if (!p) return <defaultComponents.a {...props} />;
-  return (
-    <button type="button" onClick={() => open(p)} className="text-left font-medium underline underline-offset-3 [overflow-wrap:anywhere]">
-      {props.children}
-    </button>
-  );
-};
 
 function AssistantMessage() {
   const { plain } = useCustom();
@@ -441,80 +408,7 @@ function Tool(props: ToolCallMessagePartProps) {
   if (/__(lists|list_add|list_remove|share_list)$/.test(props.toolName)) return <ListCards {...props} />;
   if (props.toolName.endsWith("__mail_search")) return <InboxCard {...props} />;
   if (props.toolName.endsWith("__mail_read")) return <MailCard {...props} />;
-  if (props.toolName.endsWith("__show_page")) return <PageCard {...props} />;
   return <ToolLine {...props} />;
-}
-
-// A page the assistant wrote with show_page, opened beside the chat on a
-// wide screen and over it as a sheet on a phone, as Claude opens artifacts.
-type Page = { url: string; name: string };
-const Pages = createContext<(p: Page) => void>(() => {});
-const wide = () => matchMedia("(min-width: 64rem)").matches;
-const title = (name: string) => name.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
-
-// The pages share the chat's host: any path but the chat's own is one.
-function ownPage(href: string): Page | undefined {
-  const u = new URL(href, location.href);
-  const name = u.pathname.split("/")[1];
-  if (u.origin !== location.origin || !name || name === "api" || name === "_site") return undefined;
-  return { url: u.href, name };
-}
-
-// Opened once on its own when it arrives live on a wide screen; a phone
-// gets the card to tap, as a sheet over a half-read answer would be rude.
-const shown = new Set<string>();
-
-function PageCard(props: ToolCallMessagePartProps) {
-  const open = useContext(Pages);
-  const { live } = useCustom();
-  const url = props.isError || typeof props.result !== "string" ? undefined : /^Published: (\S+)/.exec(props.result)?.[1];
-  const name = typeof props.args?.name === "string" ? props.args.name : "page";
-  useEffect(() => {
-    if (!url || !live || shown.has(url)) return;
-    shown.add(url);
-    if (wide()) open({ url, name });
-  }, [url, live, name, open]);
-  if (!url) return <ToolLine {...props} />;
-  return (
-    <button
-      onClick={() => open({ url, name })}
-      className="not-prose my-2 flex w-full max-w-[420px] items-center gap-3.5 rounded-[14px] border-[1.25px] border-edge bg-lift px-4 py-3 text-left hover:border-soft last-of-type:mb-3"
-    >
-      <span className="grid h-11 w-9 shrink-0 place-items-center rounded-[4px] border border-frame bg-paper text-soft">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M4 5h8M4 8h8M4 11h5" /></svg>
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-serif text-[16px] text-ink">{title(name)}</span>
-        <span className="block truncate text-[12.5px] text-soft">Page · {url.replace(/^https?:\/\//, "")}</span>
-      </span>
-      <span className="shrink-0 rounded-full border border-frame px-3 py-1 text-[13px] text-mid">Open</span>
-    </button>
-  );
-}
-
-function PagePanel({ page, close }: { page: Page; close: () => void }) {
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && close();
-    addEventListener("keydown", esc);
-    return () => removeEventListener("keydown", esc);
-  }, [close]);
-  const icon = "grid size-9 shrink-0 place-items-center rounded-full text-mid hover:text-ink";
-  return (
-    <aside className="panel flex h-full w-[min(50%,900px)] shrink-0 flex-col border-l border-hair bg-paper max-lg:fixed max-lg:inset-0 max-lg:z-50 max-lg:w-full max-lg:border-0">
-      <header className="flex h-[57px] shrink-0 items-center gap-1 border-b border-hair pr-3 pl-5 max-lg:h-[calc(51px+env(safe-area-inset-top))] max-lg:pt-[env(safe-area-inset-top)] max-lg:pl-4">
-        <span className="min-w-0 flex-1 truncate font-serif text-[19px]">{title(page.name)}</span>
-        <a href={page.url} target="_blank" rel="noopener" aria-label="Open in a new tab" title="Open in a new tab" className={icon}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3h4v4M13 3 7.5 8.5M11 9.5V13H3V5h3.5" /></svg>
-        </a>
-        <button onClick={close} aria-label="Close" title="Close" className={icon}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="m4 4 8 8M12 4l-8 8" /></svg>
-        </button>
-      </header>
-      {/* The page shares the chat's origin and cookie, so it runs no
-          scripts and gets an origin of its own; links still open in tabs. */}
-      <iframe src={page.url} title={title(page.name)} sandbox="allow-popups allow-popups-to-escape-sandbox" className="w-full flex-1 bg-white" />
-    </aside>
-  );
 }
 
 // A tool's JSON result, if it parses and has the expected shape.
