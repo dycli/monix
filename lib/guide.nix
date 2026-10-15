@@ -74,8 +74,9 @@
 
     ## Deploys
 
+    The captain runs `switcharoo`; the engineer never switches a host.
     `switcharoo` deploys pushed `main` and rolls back on its own if the host
-    turns unhealthy, so deploy after pushing. A switch can restart services
-    and kill long runs: check for them, and say so before deploying.
+    turns unhealthy. After pushing, say what needs a switch and which long
+    runs a switch would kill.
   '';
 }
