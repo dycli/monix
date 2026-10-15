@@ -12,6 +12,9 @@
     <link rel="apple-touch-icon" href="/_site/icon-180.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- The meta, not only the CSS property: Chrome reads it to theme an
+         installed app's system bars (Kavita fixed the same bar this way, 4d0c675). -->
+    <meta name="color-scheme" content="light" />
     <!-- Before first paint, so a dark page never flashes white: the saved
          choice, else the system's. src/theme.ts keeps it current. -->
     <script>
@@ -21,6 +24,8 @@
         m.removeAttribute("media");
         m.content = t === "dark" ? "#1b1815" : "#e4d6bf";
       });
+      document.querySelector('meta[name="color-scheme"]').content = t;
+      document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]').content = t === "dark" ? "black" : "default";
     </script>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Ccircle cx=%278%27 cy=%278%27 r=%278%27 fill=%27%23c2410c%27/%3E%3C/svg%3E" />
   </head>

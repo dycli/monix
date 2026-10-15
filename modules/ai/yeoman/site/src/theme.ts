@@ -13,6 +13,8 @@ function apply(t: Theme) {
     m.removeAttribute("media");
     m.content = PAPER[t];
   }
+  document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]')!.content = t;
+  document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]')!.content = t === "dark" ? "black" : "default";
 }
 
 /** Light or dark: the phone's, unless the person picks the other one. Picking
