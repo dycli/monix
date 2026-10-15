@@ -428,6 +428,54 @@ fn write_private(path: &Path, text: &str) -> Result<(), String> {
     fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// What makes the page installable as an app. Its name is the
+/// assistant's, taken from the host as the page takes it: sokka.su.is is
+/// Sokka.
+async fn manifest(headers: HeaderMap) -> Response {
+    let host = headers
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or_default();
+    let name = name_of(host);
+    let icon = |size: u32| {
+        serde_json::json!({
+            "src": format!("/_site/icon-{size}.png"),
+            "sizes": format!("{size}x{size}"),
+            "type": "image/png",
+        })
+    };
+    let body = serde_json::json!({
+        "name": name,
+        "short_name": name,
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#ece3d4",
+        "theme_color": "#ece3d4",
+        "icons": [
+            icon(192),
+            icon(512),
+            {"src": "/_site/icon.svg", "sizes": "any", "type": "image/svg+xml"},
+        ],
+    });
+    (
+        [(header::CONTENT_TYPE, "application/manifest+json")],
+        body.to_string(),
+    )
+        .into_response()
+}
+
+fn name_of(host: &str) -> String {
+    let label = host.split('.').next().unwrap_or_default();
+    let mut chars = label.chars();
+    match chars.next() {
+        Some(first) if label.chars().all(|c| c.is_ascii_lowercase()) => {
+            first.to_ascii_uppercase().to_string() + chars.as_str()
+        }
+        _ => "Chat".into(),
+    }
+}
+
 fn session(headers: &HeaderMap) -> Option<&str> {
     headers
         .get_all(header::COOKIE)
@@ -480,6 +528,7 @@ pub async fn serve(
     let app = Router::new()
         .route_service("/", ServeFile::new(root.join("index.html")))
         .nest_service("/_site", ServeDir::new(root.join("_site")))
+        .route("/manifest.webmanifest", get(manifest))
         .route("/api/history", get(history))
         .route("/api/events", get(events))
         .route(
@@ -724,6 +773,14 @@ async fn wait(State(site): State<Arc<Site>>, Json(w): Json<Waiting>) -> Response
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn name_from_host() {
+        assert_eq!(name_of("sokka.su.is"), "Sokka");
+        assert_eq!(name_of("127.0.0.1:8951"), "Chat");
+        assert_eq!(name_of(""), "Chat");
+    }
+
     use super::*;
 
     fn asked(gate: &Gate, secret: &str, event: &str) {

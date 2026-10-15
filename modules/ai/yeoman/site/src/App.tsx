@@ -406,21 +406,28 @@ function ToolLine({ toolName: name, args, result, isError }: ToolCallMessagePart
 function Tool(props: ToolCallMessagePartProps) {
   if (props.toolName.endsWith("__events")) return <CalendarCard {...props} />;
   if (/__(lists|list_add|list_remove|share_list)$/.test(props.toolName)) return <ListCards {...props} />;
+  if (props.toolName.endsWith("__mail_search")) return <InboxCard {...props} />;
+  if (props.toolName.endsWith("__mail_read")) return <MailCard {...props} />;
   return <ToolLine {...props} />;
+}
+
+// A tool's JSON result, if it parses and has the expected shape.
+function parsed<T>(result: unknown, ok: (v: any) => boolean): T | undefined {
+  try {
+    const v = typeof result === "string" ? JSON.parse(result) : result;
+    return ok(v) ? v : undefined;
+  } catch {
+    // A long answer is cut short on the way here and no longer parses.
+    return undefined;
+  }
 }
 
 // One event as the calendar tool reports it; times are "YYYY-MM-DD HH:MM",
 // or just the date when it lasts all day.
 type Event = { uid: string; calendar: string; start: string; end: string; summary: string; location: string | null; repeats: boolean };
 
-function events(result: unknown): Event[] | undefined {
-  try {
-    const parsed = typeof result === "string" ? JSON.parse(result) : result;
-    return Array.isArray(parsed) && parsed.every((e) => typeof e?.start === "string") ? parsed : undefined;
-  } catch {
-    // A long answer is cut short on the way here and no longer parses.
-    return undefined;
-  }
+function events(result: unknown) {
+  return parsed<Event[]>(result, (v) => Array.isArray(v) && v.every((e) => typeof e?.start === "string"));
 }
 
 function dayLabel(day: string) {
@@ -469,14 +476,9 @@ function CalendarCard(props: ToolCallMessagePartProps) {
 // A list as the list tools report it: one object, or an array from `lists`.
 type List = { list: string; shared: boolean; items: string[]; missing?: string[] };
 
-function lists(result: unknown): List[] | undefined {
-  try {
-    const parsed = typeof result === "string" ? JSON.parse(result) : result;
-    const all = Array.isArray(parsed) ? parsed : [parsed];
-    return all.every((l) => typeof l?.list === "string" && Array.isArray(l.items)) ? all : undefined;
-  } catch {
-    return undefined;
-  }
+function lists(result: unknown) {
+  const v = parsed<List | List[]>(result, (v) => (Array.isArray(v) ? v : [v]).every((l) => typeof l?.list === "string" && Array.isArray(l.items)));
+  return v && (Array.isArray(v) ? v : [v]);
 }
 
 // Each list as an index card: a ruled line under every item, the title over
@@ -508,6 +510,90 @@ function ListCards(props: ToolCallMessagePartProps) {
         </section>
       ))}
     </div>
+  );
+}
+
+// Mail as the mail tools report it: headers from a search, and the text,
+// recipients and attachment names too when one message is read.
+type Mail = { uid: number; date: string; from: string; subject: string; unread: boolean; to?: string; text?: string; attachments?: string[] };
+
+
+const isMail = (m: any) => typeof m?.uid === "number" && typeof m.subject === "string";
+
+// "Gab Cleary <gab@x.com>" reads as Gab Cleary; a bare address stays whole.
+const sender = (from: string) => /^\s*"?([^"<]+?)"?\s*<[^>]+>/.exec(from)?.[1] ?? from;
+
+// The time today, the weekday this week, else the date.
+function when(date: string) {
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return "";
+  const days = (Date.now() - d.getTime()) / 86_400_000;
+  if (d.toDateString() === new Date().toDateString()) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (days < 6) return d.toLocaleDateString(undefined, { weekday: "short" });
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+// A search as an inbox: newest first, unread in ink with a red mark.
+function InboxCard(props: ToolCallMessagePartProps) {
+  const list = props.isError ? undefined : parsed<Mail[]>(props.result, (v) => Array.isArray(v) && v.every(isMail));
+  if (!list) return <ToolLine {...props} />;
+  return (
+    <div className="not-prose my-2 overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift text-[14px] last-of-type:mb-3">
+      {list.length === 0 && <p className="px-4 py-3 text-mid">No mail found.</p>}
+      <ul className="divide-y divide-hair">
+        {list.map((m) => (
+          <li key={m.uid} className="flex gap-3 px-4 py-2.5">
+            <span className={`mt-[0.55em] size-1.5 shrink-0 rounded-full ${m.unread ? "bg-accent" : ""}`} />
+            <span className="min-w-0 flex-1">
+              <span className="flex items-baseline gap-3">
+                <span className={`min-w-0 flex-1 truncate ${m.unread ? "font-semibold text-ink" : "text-mid"}`}>{sender(m.from)}</span>
+                <span className="shrink-0 text-[12.5px] text-soft tabular-nums">{when(m.date)}</span>
+              </span>
+              <span className={`block truncate font-serif text-[15px] ${m.unread ? "text-ink" : "text-mid"}`}>{m.subject || "(no subject)"}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// One message read whole, as a letter folded to a few lines.
+function MailCard(props: ToolCallMessagePartProps) {
+  const m = props.isError ? undefined : parsed<Mail>(props.result, isMail);
+  const [open, setOpen] = useState(false);
+  if (!m) return <ToolLine {...props} />;
+  const head = "w-16 shrink-0 text-[11px] font-semibold tracking-wider text-soft uppercase";
+  return (
+    <article className="not-prose my-2 rounded-[14px] border-[1.25px] border-edge bg-lift last-of-type:mb-3">
+      <dl className="flex flex-col gap-0.5 border-b border-dashed border-frame px-5 pt-3.5 pb-2.5 text-[14px]">
+        <div className="flex items-baseline">
+          <dt className={head}>From</dt>
+          <dd className="min-w-0 flex-1 truncate" title={m.from}>{sender(m.from)}</dd>
+          <dd className="shrink-0 pl-3 text-[12.5px] text-soft">{when(m.date)}</dd>
+        </div>
+        <div className="flex items-baseline">
+          <dt className={head}>Subject</dt>
+          <dd className="font-medium [overflow-wrap:anywhere]">{m.subject || "(no subject)"}</dd>
+        </div>
+      </dl>
+      {m.text && (
+        <div onClick={() => setOpen(!open)} title={open ? undefined : "Read it all"} className="cursor-pointer px-5 py-3">
+          <p className={`font-serif text-[15.5px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${open ? "max-h-96 overflow-y-auto" : "line-clamp-4"}`}>
+            {m.text.replace(/\n\[cut\]$/, "")}
+          </p>
+        </div>
+      )}
+      {!!m.attachments?.length && (
+        <ul className="flex flex-wrap gap-1.5 px-5 pb-3">
+          {m.attachments.map((a, i) => (
+            <li key={i} className="max-w-full truncate rounded-full border border-hair bg-block px-2.5 py-0.5 text-[12.5px] text-mid">
+              📎 {a}
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
   );
 }
 

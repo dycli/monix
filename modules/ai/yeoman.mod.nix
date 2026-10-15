@@ -132,9 +132,18 @@
         src = ./yeoman/site;
         npmDepsHash = "sha256-qFJ3CR/Duqw+eI8ZlEU5ok5LdKIFi+pjP3viqypBhxQ=";
         # rolldown and tsgo ship prebuilt Linux binaries.
-        nativeBuildInputs = singleton pkgs.autoPatchelfHook;
+        nativeBuildInputs = [
+          pkgs.autoPatchelfHook
+          pkgs.resvg
+        ];
         buildInputs = singleton pkgs.stdenv.cc.cc.lib;
-        installPhase = "cp -r dist $out";
+        # Home screens want the icon as PNG at these sizes.
+        installPhase = ''
+          cp -r dist $out
+          for s in 180 192 512; do
+            resvg -w $s -h $s public/_site/icon.svg $out/_site/icon-$s.png
+          done
+        '';
       };
 
       image = pkgs.writers.writePython3Bin "yeoman-image-mcp" {

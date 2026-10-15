@@ -81,10 +81,18 @@ nothing is sent. Work that takes a while is a task: start it, worded as \
 its own and its answer is sent when done.";
 
 /// Added when the door draws the calendar's events and the lists as cards.
-const CARDS: &str = "\n\n{person} sees what the events and list tools return \
-drawn as cards above your answer. Don't repeat what a card shows: say in a \
+const CARDS: &str = "\n\n{person} sees what the events, list and mail tools \
+return drawn as cards above your answer. Don't repeat what a card shows: say in a \
 line or two what stands out (what's next, a clash, a free stretch) or that \
 it's done.";
+
+/// Added when the assistant reads the person's mail.
+const MAIL: &str = "\n\nWhen you tell {person} about their mail, a digest or \
+the latest few, sort it rather than recite it: first what needs them (a \
+reply, a date, a payment), one short line each, the sender in bold and \
+then what it wants; then what's worth knowing; then the rest counted in a \
+line (\"3 newsletters, 2 receipts\"). Skip any part with nothing in it, \
+and say so in a line when nothing needs them.";
 
 /// Added when the assistant has a computer of its own.
 const COMPUTER: &str = "\n\nYou have a computer of your own: the computer tools drive its \
@@ -356,6 +364,11 @@ fn answer(
     } else {
         ""
     };
+    let mail = if model.tools() && std::env::var_os("YEOMAN_MAIL").is_some() {
+        MAIL
+    } else {
+        ""
+    };
     let requests = if model.tools() && std::env::var_os("YEOMAN_REQUESTS").is_some() {
         REQUESTS
     } else {
@@ -373,7 +386,7 @@ fn answer(
     };
     let cards = if model.tools() && cards { CARDS } else { "" };
     let system =
-        format!("{PROMPT}{style}{tools}{cards}{computer}{home}{requests}{pages}{x}{FILES}")
+        format!("{PROMPT}{style}{tools}{cards}{mail}{computer}{home}{requests}{pages}{x}{FILES}")
             .replace("{name}", &name)
             .replace("{person}", &person)
             .replace("{QUIET}", QUIET);

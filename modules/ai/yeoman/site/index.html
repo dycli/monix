@@ -4,7 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>Chat</title>
-    <meta name="theme-color" content="#f7f1e7" />
+    <meta name="theme-color" content="#ece3d4" />
+    <!-- Installable as an app: the manifest for Android and desktop, the
+         touch icon and status bar for iOS's Add to Home Screen. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/_site/icon-180.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <!-- Before first paint, so a dark page never flashes white: the saved
          choice, else the system's. src/theme.ts keeps it current. -->
     <script>

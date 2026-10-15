@@ -14,13 +14,13 @@
 :root {
   --ink: #2a221c;
   --mid: #6b5d51;
-  --soft: #a39484;
-  --hair: #e7ddcf;
-  --paper: #f7f1e7;
-  --lift: #fcf8f1;
-  --block: #eee5d7;
-  --hover: #e6dbca;
-  --frame: #d3c5b1;
+  --soft: #978877;
+  --hair: #dcd1bf;
+  --paper: #ece3d4;
+  --lift: #f4ede1;
+  --block: #e2d7c5;
+  --hover: #d9cdb9;
+  --frame: #c8b9a2;
   --edge: #3a2e25;
   --accent: #b0482a;
   --shadow: 0 1px 2px rgb(60 40 20 / 0.06), 0 6px 20px rgb(60 40 20 / 0.06);
@@ -114,28 +114,42 @@
 }
 
 /* The assistant's markdown. A long word or URL breaks rather than
-   widening the page; code never wraps, its block scrolls. */
-.md {
-  overflow-wrap: anywhere;
-  text-wrap: pretty;
-}
-.md :where(p, ul, ol, pre, blockquote, table) {
-  margin: 0 0 0.85em;
-}
-.md > :last-child,
-.md > div > :last-child {
-  margin-bottom: 0;
-}
-.md :where(ul, ol) {
-  padding-left: 1.3em;
-}
-.md :where(li) {
-  padding: 0;
-  margin: 0.2em 0;
-}
-.md :where(a) {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+   widening the page; code never wraps, its block scrolls. The element
+   rules sit in the base layer so utilities on cards inside a reply win. */
+@layer base {
+  .md {
+    overflow-wrap: anywhere;
+    text-wrap: pretty;
+  }
+  .md :where(p, ul, ol, pre, blockquote, table):not(.not-prose *) {
+    margin: 0 0 0.85em;
+  }
+  .md > :last-child,
+  .md > div > :last-child {
+    margin-bottom: 0;
+  }
+  .md :where(ul, ol):not(.not-prose *) {
+    padding-left: 1.3em;
+  }
+  .md :where(li):not(.not-prose *) {
+    padding: 0;
+    margin: 0.2em 0;
+  }
+  .md :where(a) {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .md :where(table) {
+    border-collapse: collapse;
+    font: 15px/1.45 var(--font-sans);
+  }
+  .md :where(td, th) {
+    text-align: left;
+    padding: 6px 14px 6px 0;
+    border: 0;
+    border-bottom: 1px solid var(--hair);
+    background: none;
+  }
 }
 .md [data-streamdown="blockquote"],
 .md blockquote {
@@ -196,17 +210,6 @@
   font: inherit;
   white-space: pre;
   overflow-wrap: normal;
-}
-.md :where(table) {
-  border-collapse: collapse;
-  font: 15px/1.45 var(--font-sans);
-}
-.md :where(td, th) {
-  text-align: left;
-  padding: 6px 14px 6px 0;
-  border: 0;
-  border-bottom: 1px solid var(--hair);
-  background: none;
 }
 /* Copy only: the primitive's controls can't drop download on their own. */
 .md [data-streamdown="code-block-download-button"] {
