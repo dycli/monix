@@ -219,10 +219,11 @@ function AssistantMessage() {
   );
 }
 
-// What the yeoman notes beside the talk: quiet, in the serif.
+// What the yeoman notes beside the talk: quiet, in the serif. Alerts land
+// here with whole log lines, so it breaks anywhere too.
 function Note() {
   return (
-    <MessagePrimitive.Root className="font-serif text-[14.5px] leading-relaxed text-mid italic">
+    <MessagePrimitive.Root className="font-serif text-[14.5px] leading-relaxed whitespace-pre-wrap text-mid italic [overflow-wrap:anywhere]">
       <MessagePrimitive.Parts />
     </MessagePrimitive.Root>
   );
