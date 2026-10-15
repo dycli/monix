@@ -442,6 +442,9 @@ async fn manifest(headers: HeaderMap) -> Response {
             "src": format!("/_site/icon-{size}.png"),
             "sizes": format!("{size}x{size}"),
             "type": "image/png",
+            // Full bleed with the mark in the safe circle: launchers may
+            // crop it to their shape rather than plating it.
+            "purpose": "any maskable",
         })
     };
     let body = serde_json::json!({
@@ -450,7 +453,8 @@ async fn manifest(headers: HeaderMap) -> Response {
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
-        "background_color": "#ece3d4",
+        // The splash behind the icon, so it matches the icon's dark ground.
+        "background_color": "#1b1815",
         "theme_color": "#ece3d4",
         "icons": [
             icon(192),

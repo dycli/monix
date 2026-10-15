@@ -1,5 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#ece3d4"/>
-  <path d="M136 152h240a28 28 0 0 1 28 28v128a28 28 0 0 1-28 28H244l-64 52v-52h-44a28 28 0 0 1-28-28V180a28 28 0 0 1 28-28z" fill="#f6efe3" stroke="#3a2e25" stroke-width="14" stroke-linejoin="round"/>
-  <circle cx="256" cy="244" r="26" fill="#b0482a"/>
+  <!-- Full bleed and dark, with the mark inside the maskable safe circle
+       (radius 205), so launchers crop it to their shape instead of
+       shrinking it onto a white plate. -->
+  <defs>
+    <radialGradient id="g" cx="0.35" cy="0.25" r="0.9">
+      <stop offset="0" stop-color="#3a2f26"/>
+      <stop offset="1" stop-color="#1b1815"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#g)"/>
+  <path d="M166 170h180a36 36 0 0 1 36 36v96a36 36 0 0 1-36 36H262l-58 46v-46h-38a36 36 0 0 1-36-36v-96a36 36 0 0 1 36-36z" fill="#ece3d4"/>
+  <circle cx="256" cy="254" r="24" fill="#b0482a"/>
 </svg>
