@@ -6,48 +6,182 @@
 
 @custom-variant dark (@media (prefers-color-scheme: dark));
 
-/* Warm greys and one accent, so the page reads as paper rather than a form. */
-@theme {
-  --font-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --color-paper: #faf9f7;
-  --color-ink: #1f1d1a;
-  --color-accent: #c2410c;
+/* UniiChat's look (uniichat.com/style.css): black ink on white paper, or
+   light ink on a soft black. What a person says is framed, what the
+   machine wrote (code) is filled. */
+:root {
+  --ink: #111111;
+  --mid: #5f5f5f;
+  --soft: #9a9a9a;
+  --hair: #e6e6e6;
+  --paper: #ffffff;
+  --lift: #ffffff;
+  --block: #f2f2f2;
+  --hover: #e8e8e8;
+  --frame: #cccccc;
+  --edge: #111111;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 6px 20px rgb(0 0 0 / 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e3e3e6;
+    --mid: #a6a6ad;
+    --soft: #8a8a92;
+    --hair: #36363c;
+    --paper: #171719;
+    --lift: #222226;
+    --block: #2c2c31;
+    --hover: #37373d;
+    --frame: #4c4c53;
+    --edge: #85858d;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 28px rgb(0 0 0 / 0.45);
+  }
 }
 
-html,
-body,
-#root {
-  height: 100%;
+@theme inline {
+  --color-ink: var(--ink);
+  --color-mid: var(--mid);
+  --color-soft: var(--soft);
+  --color-hair: var(--hair);
+  --color-paper: var(--paper);
+  --color-lift: var(--lift);
+  --color-block: var(--block);
+  --color-hover: var(--hover);
+  --color-frame: var(--frame);
+  --color-edge: var(--edge);
+  --shadow-lift: var(--shadow);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --font-brand: "Avenir Next", Avenir, Futura, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
-body {
-  @apply bg-paper text-ink antialiased dark:bg-stone-950 dark:text-stone-100;
-  font-feature-settings: "cv11", "ss01";
-}
-
-/* The assistant's markdown: room between blocks, quiet links and quotes. */
-.prose-chat {
-  @apply leading-7;
-}
-.prose-chat :where(p, ul, ol, pre, blockquote, table) + :where(*) {
-  @apply mt-3;
-}
-.prose-chat :where(a) {
-  @apply text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent;
-}
-.prose-chat :where(blockquote) {
-  @apply border-l-2 border-stone-300 pl-4 text-stone-600 dark:border-stone-700 dark:text-stone-400;
-}
-.prose-chat :where(:not(pre) > code) {
-  @apply rounded-md bg-stone-200/70 px-1.5 py-0.5 text-[0.9em] dark:bg-stone-800;
-}
-
-/* Tailwind 4 draws bare `border` in currentColor; streamdown's code blocks
-   and tables use it, so give borders the page's soft grey. */
 @layer base {
+  /* Tailwind 4 draws a bare `border` in currentColor; streamdown's tables
+     use one, so give borders the rule's grey. */
   *,
   ::before,
   ::after {
-    @apply border-stone-200 dark:border-stone-800;
+    border-color: var(--hair);
   }
+  html {
+    color-scheme: light dark;
+    scrollbar-gutter: stable;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.55 var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-wrap: balance;
+  }
+  ::selection {
+    background: var(--ink);
+    color: var(--paper);
+  }
+}
+
+/* The assistant's markdown. A long word or URL breaks rather than
+   widening the page; code never wraps, its block scrolls. */
+.md {
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.md :where(p, ul, ol, pre, blockquote, table) {
+  margin: 0 0 0.85em;
+}
+.md > :last-child,
+.md > div > :last-child {
+  margin-bottom: 0;
+}
+.md :where(ul, ol) {
+  padding-left: 1.3em;
+}
+.md :where(li) {
+  padding: 0;
+  margin: 0.2em 0;
+}
+.md :where(a) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.md [data-streamdown="blockquote"],
+.md blockquote {
+  border: 0;
+  padding-left: 1.2em;
+  font: italic 16.5px/1.6 var(--font-serif);
+  color: inherit;
+}
+.md [data-streamdown="inline-code"] {
+  font: 0.82em var(--font-mono);
+  background: var(--block);
+  border-radius: 5px;
+  padding: 0.1em 0.35em;
+}
+/* streamdown's code block: header, actions and body, flattened into one
+   filled block, the copy button in its corner on hover */
+.md [data-streamdown="code-block"] {
+  position: relative;
+  margin: 0 0 0.85em;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--block);
+  overflow: hidden;
+}
+.md [data-streamdown="code-block-header"] {
+  height: auto;
+  padding: 10px 16px 0;
+  font: 600 11px var(--font-sans);
+  color: var(--mid);
+  background: none;
+  border: 0;
+}
+.md [data-streamdown="code-block-actions"] {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: 0;
+  background: var(--block);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.md [data-streamdown="code-block"]:hover [data-streamdown="code-block-actions"] {
+  opacity: 1;
+}
+.md [data-streamdown="code-block-body"] {
+  margin: 0;
+  padding: 6px 16px 13px;
+  border: 0;
+  border-radius: 0;
+  background: none !important;
+  font: 13.5px/1.6 var(--font-mono);
+  overflow-x: auto;
+}
+.md [data-streamdown="code-block-body"] :is(pre, code) {
+  background: none !important;
+  font: inherit;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.md :where(table) {
+  border-collapse: collapse;
+  font: 15px/1.45 var(--font-sans);
+}
+.md :where(td, th) {
+  text-align: left;
+  padding: 6px 14px 6px 0;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  background: none;
+}
+/* Copy only: the primitive's controls can't drop download on their own. */
+.md [data-streamdown="code-block-download-button"] {
+  display: none;
 }

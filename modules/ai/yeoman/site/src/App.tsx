@@ -34,33 +34,28 @@ document.title = NAME;
 
 export function App() {
   const chat = useChat();
-  if (chat.state === "loading") return <Centered><Dots /></Centered>;
+  if (chat.state === "loading") return <Solo><Dots /></Solo>;
   if (chat.state === "signed-out") return <SignIn />;
-  if (chat.state === "error") return <Centered><p className="text-stone-500">{chat.error}</p></Centered>;
+  if (chat.state === "error") return <Solo><p className="text-mid">{chat.error}</p></Solo>;
   return <Thread messages={chat.messages} typing={chat.typing} send={chat.send} />;
 }
 
-function Centered({ children }: { children: React.ReactNode }) {
-  return <div className="flex h-full items-center justify-center p-6 text-center">{children}</div>;
-}
-
-function Avatar({ size = "size-8 text-sm" }: { size?: string }) {
-  return (
-    <div className={`${size} grid shrink-0 place-items-center rounded-full bg-accent font-semibold text-white select-none`}>
-      {NAME[0]}
-    </div>
-  );
+/** A page with one thing on it, centred high, as UniiChat's sign-in. */
+function Solo({ children }: { children: React.ReactNode }) {
+  return <main className="mx-auto mt-[18vh] w-[min(420px,100%-48px)] text-center">{children}</main>;
 }
 
 function Dots() {
   return (
-    <div className="flex gap-1 py-2" aria-label="Typing">
+    <div className="flex h-6 items-center gap-1" aria-label="Typing">
       {[0, 150, 300].map((d) => (
-        <span key={d} className="size-1.5 animate-bounce rounded-full bg-stone-400" style={{ animationDelay: `${d}ms` }} />
+        <span key={d} className="size-1.5 animate-bounce rounded-full bg-soft" style={{ animationDelay: `${d}ms` }} />
       ))}
     </div>
   );
 }
+
+const button = "h-10 rounded-full bg-ink px-6 text-[15px] font-medium text-paper hover:opacity-85 disabled:opacity-40";
 
 function SignIn() {
   const [code, setCode] = useState<string>();
@@ -81,48 +76,33 @@ function SignIn() {
     setBusy(false);
   };
   return (
-    <Centered>
-      <div className="flex w-full max-w-sm flex-col items-center gap-6 rounded-3xl border border-stone-200 bg-white px-8 py-10 shadow-sm dark:border-stone-800 dark:bg-stone-900">
-        <Avatar size="size-14 text-2xl" />
-        <div className="space-y-1.5">
-          <h1 className="text-xl font-semibold tracking-tight">{NAME}</h1>
-          <p className="text-sm text-stone-500 dark:text-stone-400">
-            {code ? "React 👍 in Matrix to the message showing this code." : "Sign in by approving a code in Matrix."}
-          </p>
-        </div>
+    <Solo>
+      <h1 className="font-serif text-[46px] leading-[1.05] tracking-[-0.015em]">{NAME}</h1>
+      <p className="mt-[18px] text-[14.5px] text-mid">
+        {code ? "React 👍 in Matrix to the message showing this code." : "Sign in by approving a code in Matrix."}
+      </p>
+      <div className="mt-8 flex flex-col items-center gap-4">
         {code ? (
-          <div className="flex flex-col items-center gap-4">
-            <span className="rounded-2xl bg-stone-100 px-5 py-3 font-mono text-3xl font-medium tracking-[0.2em] dark:bg-stone-800">
-              {code}
-            </span>
-            <span className="flex items-center gap-2 text-xs text-stone-400">
+          <>
+            <span className="rounded-xl bg-block px-5 py-3 font-mono text-3xl tracking-[0.2em]">{code}</span>
+            <span className="flex items-center gap-2 text-[13px] text-mid">
               <Dots /> Waiting for approval
             </span>
-          </div>
+          </>
         ) : (
-          <button
-            className="w-full rounded-full bg-ink py-2.5 text-sm font-medium text-white transition hover:bg-stone-700 disabled:opacity-40 dark:bg-stone-100 dark:text-ink dark:hover:bg-white"
-            disabled={busy}
-            onClick={start}
-          >
+          <button className={button} disabled={busy} onClick={start}>
             Sign in
           </button>
         )}
-        {said && <p className="text-sm text-red-600 dark:text-red-400">{said}</p>}
+        {said && <p className="text-[14.5px] text-mid">{said}</p>}
       </div>
-    </Centered>
+    </Solo>
   );
 }
 
-const ArrowUp = () => (
-  <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+const Arrow = ({ down = false }: { down?: boolean }) => (
+  <svg viewBox="0 0 24 24" className={`size-5 ${down ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 19V5M5 12l7-7 7 7" />
-  </svg>
-);
-
-const ArrowDown = () => (
-  <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 5v14M19 12l-7 7-7-7" />
   </svg>
 );
 
@@ -139,46 +119,34 @@ function Thread({ messages, typing, send }: { messages: Msg[]; typing: boolean; 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="flex h-full flex-col">
-        <header className="flex shrink-0 items-center gap-3 border-b border-stone-200/80 px-4 py-3 dark:border-stone-800">
-          <div className="mx-auto flex w-full max-w-3xl items-center gap-3">
-            <Avatar />
-            <div className="font-semibold">{NAME}</div>
-          </div>
+        <header className="flex h-[57px] shrink-0 items-center border-b border-hair bg-paper px-[max(20px,env(safe-area-inset-left))] max-sm:h-[51px] max-sm:px-3.5">
+          <span className="font-brand text-xl font-semibold tracking-[-0.01em]">{NAME}</span>
         </header>
-        <ThreadPrimitive.Viewport className="flex flex-1 flex-col overflow-y-auto px-4 pt-8">
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-            <ThreadPrimitive.Empty>
-              <div className="flex flex-col items-center gap-3 pt-[20vh] text-center">
-                <Avatar size="size-12 text-xl" />
-                <p className="text-lg text-stone-500">What can I do for you?</p>
-              </div>
-            </ThreadPrimitive.Empty>
+        <ThreadPrimitive.Viewport className="flex flex-1 flex-col overflow-y-auto">
+          <main className="mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)]">
             <ThreadPrimitive.Messages>
               {({ message }) =>
                 message.role === "user" ? <UserMessage /> : message.role === "assistant" ? <AssistantMessage /> : <Note />
               }
             </ThreadPrimitive.Messages>
-            {typing && (
-              <div className="flex gap-3">
-                <Avatar />
-                <Dots />
-              </div>
-            )}
-          </div>
-          <ThreadPrimitive.ViewportFooter className="sticky bottom-0 mx-auto mt-auto w-full max-w-3xl bg-gradient-to-t from-paper from-70% to-transparent pt-6 pb-[max(1rem,env(safe-area-inset-bottom))] dark:from-stone-950">
-            <ThreadPrimitive.ScrollToBottom className="absolute -top-6 left-1/2 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-stone-200 bg-white text-stone-600 shadow-sm disabled:invisible dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300">
-              <ArrowDown />
-            </ThreadPrimitive.ScrollToBottom>
-            <ComposerPrimitive.Root className="flex items-end gap-2 rounded-3xl border border-stone-200 bg-white p-2 pl-5 shadow-[0_2px_12px_rgb(0_0_0/0.06)] transition focus-within:border-stone-300 dark:border-stone-800 dark:bg-stone-900 dark:focus-within:border-stone-700">
-              <ComposerPrimitive.Input
-                autoFocus
-                placeholder={`Message ${NAME}`}
-                className="max-h-48 flex-1 resize-none bg-transparent py-2 outline-none placeholder:text-stone-400"
-              />
-              <ComposerPrimitive.Send className="grid size-9 shrink-0 place-items-center rounded-full bg-accent text-white transition hover:brightness-110 disabled:bg-stone-200 disabled:text-stone-400 dark:disabled:bg-stone-800 dark:disabled:text-stone-500">
-                <ArrowUp />
-              </ComposerPrimitive.Send>
-            </ComposerPrimitive.Root>
+            {typing && <Dots />}
+          </main>
+          <ThreadPrimitive.ViewportFooter className="sticky bottom-0 mt-auto bg-[linear-gradient(transparent,var(--paper)_14px)] px-5 pt-[18px] pb-[max(14px,env(safe-area-inset-bottom))] max-sm:px-3.5 max-sm:pt-3 max-sm:pb-[max(8px,env(safe-area-inset-bottom))]">
+            <div className="relative mx-auto w-[min(740px,100%)]">
+              <ThreadPrimitive.ScrollToBottom className="absolute -top-12 left-1/2 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-frame bg-lift text-mid shadow-lift hover:text-ink disabled:invisible">
+                <Arrow down />
+              </ThreadPrimitive.ScrollToBottom>
+              <ComposerPrimitive.Root className="flex items-end gap-2.5 rounded-3xl border border-frame bg-lift py-[7px] pr-[7px] pl-5 shadow-lift focus-within:border-soft max-sm:py-[5px] max-sm:pr-[5px] max-sm:pl-4">
+                <ComposerPrimitive.Input
+                  autoFocus
+                  placeholder={`Message ${NAME}`}
+                  className="max-h-[40vh] flex-1 resize-none bg-transparent py-[7px] text-base leading-normal outline-none placeholder:text-soft"
+                />
+                <ComposerPrimitive.Send className="grid size-[38px] shrink-0 place-items-center rounded-full bg-ink text-paper disabled:bg-hair disabled:text-soft">
+                  <Arrow />
+                </ComposerPrimitive.Send>
+              </ComposerPrimitive.Root>
+            </div>
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
       </ThreadPrimitive.Root>
@@ -193,9 +161,7 @@ function useCustom() {
 function Reaction() {
   const { reaction } = useCustom();
   return reaction ? (
-    <span className="absolute -bottom-3 right-3 rounded-full border border-stone-200 bg-white px-1.5 py-0.5 text-sm leading-none shadow-sm dark:border-stone-700 dark:bg-stone-900">
-      {reaction}
-    </span>
+    <span className="absolute -bottom-3 right-3 rounded-full border border-hair bg-lift px-1.5 py-0.5 text-sm leading-none">{reaction}</span>
   ) : null;
 }
 
@@ -205,53 +171,58 @@ function Time({ className = "" }: { className?: string }) {
   if (!at) return null;
   const today = at.toDateString() === new Date().toDateString();
   const when = at.toLocaleString(undefined, today ? { timeStyle: "short" } : { dateStyle: "medium", timeStyle: "short" });
-  return <div className={`text-xs text-stone-400 opacity-0 transition group-hover:opacity-100 ${className}`}>{when}</div>;
+  return <div className={`text-xs text-soft opacity-0 transition-opacity group-hover:opacity-100 ${className}`}>{when}</div>;
 }
 
+// A person's words: framed at the right, as wide as the text. A pasted log
+// breaks anywhere rather than running off the page.
 function UserMessage() {
   return (
-    <MessagePrimitive.Root className="group flex flex-col items-end gap-1">
-      <div className="relative max-w-[80%] rounded-3xl rounded-br-lg bg-stone-200/70 px-4 py-2.5 whitespace-pre-wrap dark:bg-stone-800">
+    <MessagePrimitive.Root className="group flex flex-col items-end">
+      <div className="relative w-fit max-w-[min(82%,560px)] rounded-[20px_20px_6px_20px] border-[1.25px] border-edge px-[17px] py-2.5 whitespace-pre-wrap [overflow-wrap:anywhere]">
         <MessagePrimitive.Parts />
         <Reaction />
       </div>
-      <Time className="mr-2" />
+      <Time className="mt-1 mr-1" />
     </MessagePrimitive.Root>
   );
 }
 
-const Text = () => <StreamdownTextPrimitive plugins={{ code, math }} mode="static" />;
+const Text = () => (
+  <StreamdownTextPrimitive plugins={{ code, math }} mode="static" lineNumbers={false} controls={{ code: true, table: false }} />
+);
 
 function AssistantMessage() {
   const { plain } = useCustom();
   return (
-    <MessagePrimitive.Root className="group flex gap-3">
-      <Avatar />
-      <div className="relative min-w-0 flex-1 pt-0.5">
-        {plain ? (
-          <pre className="rounded-2xl border border-amber-200 bg-amber-50 p-4 font-sans text-sm whitespace-pre-wrap dark:border-amber-900/60 dark:bg-amber-950/30">
-            <MessagePrimitive.Parts />
-          </pre>
-        ) : (
-          <div className="prose-chat">
-            <MessagePrimitive.Parts
-              components={{
-                Text,
-                Image: () => <MessagePartPrimitive.Image className="max-w-sm rounded-2xl border border-stone-200 dark:border-stone-800" />,
-              }}
-            />
-          </div>
-        )}
-        <Reaction />
-        <Time className="mt-1" />
-      </div>
+    <MessagePrimitive.Root className="group relative">
+      {plain ? (
+        // A draft waiting for approval: framed and named on its frame, as
+        // UniiChat frames a report.
+        <div className="relative mt-2 rounded-[14px] border-[1.25px] border-edge px-5 py-3.5 whitespace-pre-wrap [overflow-wrap:anywhere]">
+          <span className="absolute -top-[0.75em] left-3.5 bg-paper px-1.5 text-xs font-semibold text-mid">Draft</span>
+          <MessagePrimitive.Parts />
+        </div>
+      ) : (
+        <div className="md">
+          <MessagePrimitive.Parts
+            components={{
+              Text,
+              Image: () => <MessagePartPrimitive.Image className="max-h-80 max-w-full rounded-lg border border-hair" />,
+            }}
+          />
+        </div>
+      )}
+      <Reaction />
+      <Time className="mt-1" />
     </MessagePrimitive.Root>
   );
 }
 
+// What the yeoman notes beside the talk: quiet, in the serif.
 function Note() {
   return (
-    <MessagePrimitive.Root className="mx-auto rounded-full bg-stone-200/60 px-3 py-1 text-center text-xs text-stone-500 dark:bg-stone-800/60 dark:text-stone-400">
+    <MessagePrimitive.Root className="font-serif text-[14.5px] leading-relaxed text-mid italic">
       <MessagePrimitive.Parts />
     </MessagePrimitive.Root>
   );
