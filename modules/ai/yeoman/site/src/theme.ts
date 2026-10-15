@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 export type Theme = "light" | "dark";
 
 const system = matchMedia("(prefers-color-scheme: dark)");
-const PAPER: Record<Theme, string> = { light: "#ece3d4", dark: "#1b1815" };
+const PAPER: Record<Theme, string> = { light: "#e4d6bf", dark: "#1b1815" };
 
 function apply(t: Theme) {
   document.documentElement.dataset.theme = t;

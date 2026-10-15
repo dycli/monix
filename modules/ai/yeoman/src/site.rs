@@ -464,8 +464,8 @@ async fn manifest(headers: HeaderMap) -> Response {
         // Chrome paints the installed app's splash and system bars from
         // these, so give each scheme its own paper rather than one dark
         // ground that shows as a bar in light mode.
-        "background_color": "#ece3d4",
-        "theme_color": "#ece3d4",
+        "background_color": "#e4d6bf",
+        "theme_color": "#e4d6bf",
         "color_scheme_dark": {
             "background_color": "#1b1815",
             "theme_color": "#1b1815",

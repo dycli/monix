@@ -12,15 +12,15 @@
    is filled, and the one colour is a red pencil mark for what wants
    attention. Neither is pure white or black, which glare on a phone. */
 :root {
-  --ink: #2a221c;
-  --mid: #6b5d51;
-  --soft: #978877;
-  --hair: #dcd1bf;
-  --paper: #ece3d4;
-  --lift: #f4ede1;
-  --block: #e2d7c5;
-  --hover: #d9cdb9;
-  --frame: #c8b9a2;
+  --ink: #2a2019;
+  --mid: #6a5a4b;
+  --soft: #93806b;
+  --hair: #d2c2a8;
+  --paper: #e4d6bf;
+  --lift: #ede2cf;
+  --block: #dacab0;
+  --hover: #d0bfa3;
+  --frame: #bea98a;
   --edge: #3a2e25;
   --accent: #b0482a;
   --shadow: 0 1px 2px rgb(60 40 20 / 0.06), 0 6px 20px rgb(60 40 20 / 0.06);
