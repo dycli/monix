@@ -69,4 +69,6 @@ in
   # FRIGATE_RTSP_PASSWORD=...
   "hosts/water/secrets/frigate.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/git-mirror-token.age".publicKeys = singleton water ++ admin;
+  # Fine-grained, dycli/monix only, Administration: read and write (runner registration).
+  "hosts/water/secrets/ci-token.age".publicKeys = singleton water ++ admin;
 }

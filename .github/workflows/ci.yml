@@ -1,0 +1,17 @@
+# The whole check lives in the flake; this file only says when to run it.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: [self-hosted, water]
+    steps:
+      - uses: actions/checkout@v7
+      - run: nix flake check -L --keep-going

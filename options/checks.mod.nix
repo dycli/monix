@@ -40,6 +40,10 @@
             nativeCheckInputs = crate.tools or [ ];
           }
         ) crates
+        # Every host builds, so a green check means the deploy builds too.
+        // lib.attrsets.mapAttrs' (
+          name: host: lib.attrsets.nameValuePair "host-${name}" host.config.system.build.toplevel
+        ) self.nixosConfigurations
         // {
           rustfmt =
             pkgs.runCommand "rustfmt-check"

@@ -13,6 +13,9 @@
 !.gitignore
 !.git-blame-ignore-revs
 
+# CI triggers (the check itself lives in the flake).
+!.github/workflows/*.yml
+
 # Encrypted secrets (age ciphertext only).
 !*.age
 

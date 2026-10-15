@@ -72,10 +72,23 @@
     Plain commit messages, with no attribution trailers (Co-Authored-By,
     Claude-Session, "Generated with Claude Code").
 
+    ## Tasks
+
+    Each task gets its own branch and worktree off `main`, so parallel chats
+    never share a checkout: `git worktree add ../.worktrees/<repo>-<task>
+    -b <task> origin/main`. Verify the work, push the branch and open a pull
+    request with `gh pr create`. Write the body for the captain, who reads
+    intent and evidence rather than code: what changes for them, how you
+    checked it and what you saw, what you could not check, and the tier.
+    Merge with `gh pr merge --squash --auto`, which waits for CI where the
+    repository has it. Captain tier waits for the captain's "merge": secrets,
+    access, the deploy gate, money, deleting data, and large changes. After
+    the merge, remove the worktree and link the PR from the bridge page.
+
     ## Deploys
 
-    `switcharoo` deploys pushed `main` and rolls back on its own if the host
-    turns unhealthy. Deploy after pushing; first say what the switch restarts
+    `switcharoo` deploys merged `main` and rolls back on its own if the host
+    turns unhealthy. Deploy after merging; first say what the switch restarts
     and which long runs it would kill. A deploy touching fenced files refuses;
     the captain runs `switcharoo --approve` for it.
   '';
