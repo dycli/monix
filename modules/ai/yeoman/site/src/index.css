@@ -249,3 +249,17 @@
     animation: none;
   }
 }
+
+/* An index card's rules: a hairline under each item, at the line height. */
+.ruled {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ruled > li {
+  line-height: 1.9rem;
+  border-bottom: 1px solid var(--hair);
+}
+.ruled > li:last-child {
+  border-bottom: 0;
+}

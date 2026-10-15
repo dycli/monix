@@ -405,7 +405,7 @@ impl Tools {
             self.household()?;
         }
         let shelves = self.shelves();
-        let (out, fresh) = self.book()?.change(|db| {
+        let (items, shelf, fresh) = self.book()?.change(|db| {
             let found = find(db, &shelves, &list)?;
             let fresh = found.is_none() && shared;
             let (shelf, mut l) = match found {
@@ -419,12 +419,12 @@ impl Tools {
                 }
             }
             book::set_list(db, shelf, &list, &l)?;
-            Ok((format!("{list}: {}", l.join(", ")), fresh))
+            Ok((l, shelf, fresh))
         })?;
         if fresh {
-            self.announce(&list, &out)?;
+            self.announce(&list, &format!("{list}: {}", items.join(", ")))?;
         }
-        Ok(out)
+        Ok(card(&list, shelf, &items, &[]))
     }
 
     #[tool(
@@ -441,10 +441,10 @@ impl Tools {
             };
             book::set_list(db, Shelf::House, &list, &items)?;
             book::set_list(db, Shelf::Own, &list, &[])?;
-            Ok(Ok(format!("{list}: {}", items.join(", "))))
+            Ok(Ok(items))
         })??;
-        self.announce(&list, &out)?;
-        Ok(format!("Shared. {out}"))
+        self.announce(&list, &format!("{list}: {}", out.join(", ")))?;
+        Ok(card(&list, Shelf::House, &out, &[]))
     }
 
     #[tool(
@@ -459,22 +459,14 @@ impl Tools {
             let Some((shelf, mut l)) = find(db, &shelves, &list)? else {
                 return Ok(Err(format!("No list {list}.")));
             };
-            let missing: Vec<&String> = items
+            let missing: Vec<String> = items
                 .iter()
                 .filter(|i| !l.iter().any(|x| x.eq_ignore_ascii_case(i)))
+                .cloned()
                 .collect();
             l.retain(|x| !items.iter().any(|i| x.eq_ignore_ascii_case(i)));
             book::set_list(db, shelf, &list, &l)?;
-            let mut out = if l.is_empty() {
-                format!("{list} is now empty and gone.")
-            } else {
-                format!("{list}: {}", l.join(", "))
-            };
-            if !missing.is_empty() {
-                let missing: Vec<&str> = missing.iter().map(|s| s.as_str()).collect();
-                let _ = write!(out, " Not on it: {}.", missing.join(", "));
-            }
-            Ok(Ok(out))
+            Ok(Ok(card(&list, shelf, &l, &missing)))
         })?
     }
 
@@ -482,17 +474,16 @@ impl Tools {
     fn lists(&self, Parameters(List { list }): Parameters<List>) -> Result<String, String> {
         let book = self.book()?;
         let mut all = Vec::new();
-        for (shelf, mark) in self.shelves() {
+        for (shelf, _) in self.shelves() {
             for (n, l) in book.read(|db| book::lists(db, shelf))? {
                 if list.as_ref().is_none_or(|want| *want == n) {
-                    all.push(format!("{n}{mark}: {}", l.join(", ")));
+                    all.push(entry(&n, shelf, &l, &[]));
                 }
             }
         }
         match list {
             Some(name) if all.is_empty() => Err(format!("No list {name}.")),
-            None if all.is_empty() => Ok("No lists.".into()),
-            _ => Ok(all.join("\n")),
+            _ => Ok(serde_json::Value::Array(all).to_string()),
         }
     }
 
@@ -885,6 +876,25 @@ impl Tools {
         )?;
         Ok(())
     }
+}
+
+/// A list as the list tools report it, in JSON the web page draws as a
+/// card: an emptied list is gone, and `missing` holds what was asked
+/// off but wasn't on it.
+fn entry(list: &str, shelf: Shelf, items: &[String], missing: &[String]) -> serde_json::Value {
+    let mut v = serde_json::json!({
+        "list": list,
+        "shared": shelf == Shelf::House,
+        "items": items,
+    });
+    if !missing.is_empty() {
+        v["missing"] = missing.into();
+    }
+    v
+}
+
+fn card(list: &str, shelf: Shelf, items: &[String], missing: &[String]) -> String {
+    entry(list, shelf, items, missing).to_string()
 }
 
 /// The shelf that holds `list`, and its items, if one does.

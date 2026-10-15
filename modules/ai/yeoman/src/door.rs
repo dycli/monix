@@ -13,6 +13,9 @@ use std::time::Duration;
 pub trait Door: Clone + Send + Sync + 'static {
     /// A file the person sent, not yet downloaded.
     type File: Send;
+    /// Whether the door draws tool results as cards (the calendar's
+    /// events), so the answer need not repeat them.
+    const CARDS: bool = false;
 
     /// Sends markdown, returning the message's id.
     fn say(&self, text: &str) -> impl Future<Output = Result<String, String>> + Send;

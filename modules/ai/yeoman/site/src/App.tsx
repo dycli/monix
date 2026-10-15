@@ -405,6 +405,7 @@ function ToolLine({ toolName: name, args, result, isError }: ToolCallMessagePart
 // tool's own name, whichever server carries it.
 function Tool(props: ToolCallMessagePartProps) {
   if (props.toolName.endsWith("__events")) return <CalendarCard {...props} />;
+  if (/__(lists|list_add|list_remove|share_list)$/.test(props.toolName)) return <ListCards {...props} />;
   return <ToolLine {...props} />;
 }
 
@@ -459,6 +460,51 @@ function CalendarCard(props: ToolCallMessagePartProps) {
               </li>
             ))}
           </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+// A list as the list tools report it: one object, or an array from `lists`.
+type List = { list: string; shared: boolean; items: string[]; missing?: string[] };
+
+function lists(result: unknown): List[] | undefined {
+  try {
+    const parsed = typeof result === "string" ? JSON.parse(result) : result;
+    const all = Array.isArray(parsed) ? parsed : [parsed];
+    return all.every((l) => typeof l?.list === "string" && Array.isArray(l.items)) ? all : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Each list as an index card: a ruled line under every item, the title over
+// a red rule. A running, failed or unreadable call stays a ToolLine.
+function ListCards(props: ToolCallMessagePartProps) {
+  const all = props.isError ? undefined : lists(props.result);
+  if (!all) return <ToolLine {...props} />;
+  if (all.length === 0) return <p className="not-prose my-2 font-serif text-[14.5px] text-mid italic">No lists.</p>;
+  return (
+    <div className="not-prose my-2 grid gap-3 last-of-type:mb-3 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]">
+      {all.map((l) => (
+        <section key={l.list} className="rounded-[3px] bg-lift px-4 pt-3 pb-2 shadow-lift">
+          <h4 className="flex items-baseline justify-between gap-2 border-b-[1.5px] border-accent/60 pb-1 font-serif text-[16px] text-ink">
+            <span className="min-w-0 truncate">{l.list}</span>
+            {l.shared && <span className="shrink-0 font-sans text-[11px] tracking-wide text-soft uppercase">shared</span>}
+          </h4>
+          {l.items.length === 0 ? (
+            <p className="py-1.5 font-serif text-[14.5px] text-soft italic">Emptied and put away.</p>
+          ) : (
+            <ul className="ruled">
+              {l.items.map((item) => (
+                <li key={item} className="font-serif text-[15px] text-ink [overflow-wrap:anywhere]">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          )}
+          {l.missing && <p className="pt-1 text-[12.5px] text-soft">Wasn't on it: {l.missing.join(", ")}</p>}
         </section>
       ))}
     </div>

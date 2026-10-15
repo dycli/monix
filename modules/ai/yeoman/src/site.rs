@@ -138,6 +138,7 @@ impl Web {
 
 impl Door for Web {
     type File = Upload;
+    const CARDS: bool = true;
 
     async fn say(&self, text: &str) -> Result<String, String> {
         let id = self.id();

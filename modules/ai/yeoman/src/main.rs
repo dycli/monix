@@ -80,6 +80,12 @@ nothing is sent. Work that takes a while is a task: start it, worded as \
 {person}'s request in full, say it is under way and stop; it runs on \
 its own and its answer is sent when done.";
 
+/// Added when the door draws the calendar's events and the lists as cards.
+const CARDS: &str = "\n\n{person} sees what the events and list tools return \
+drawn as cards above your answer. Don't repeat what a card shows: say in a \
+line or two what stands out (what's next, a clash, a free stretch) or that \
+it's done.";
+
 /// Added when the assistant has a computer of its own.
 const COMPUTER: &str = "\n\nYou have a computer of your own: the computer tools drive its \
 browser, which keeps its own site logins. Use it for sites that need \
@@ -241,15 +247,24 @@ fn frame(from: From, said: String) -> (String, bool) {
 
 /// One message in, one answer out, both remembered. The file, if any, is
 /// read now and kept nowhere; hippo notes only that it came.
+/// How a turn is watched: whether it can be stopped, who sees its work as
+/// it happens, and whether the door draws tool results as cards.
+#[derive(Default)]
+struct Turn {
+    stop: Option<Arc<AtomicBool>>,
+    steps: Option<Steps>,
+    cards: bool,
+}
+
 fn answer(
     hippo: &Hippo,
     model: &dyn Model,
     from: From,
     text: &str,
     file: Option<(String, bool, Read)>,
-    stop: Option<Arc<AtomicBool>>,
-    steps: Option<Steps>,
+    turn: Turn,
 ) -> Result<String, String> {
+    let Turn { stop, steps, cards } = turn;
     let view = hippo.view()?;
     let (said, inline, files) = match file {
         None => (text.to_owned(), String::new(), Vec::new()),
@@ -356,10 +371,12 @@ fn answer(
     } else {
         ""
     };
-    let system = format!("{PROMPT}{style}{tools}{computer}{home}{requests}{pages}{x}{FILES}")
-        .replace("{name}", &name)
-        .replace("{person}", &person)
-        .replace("{QUIET}", QUIET);
+    let cards = if model.tools() && cards { CARDS } else { "" };
+    let system =
+        format!("{PROMPT}{style}{tools}{cards}{computer}{home}{requests}{pages}{x}{FILES}")
+            .replace("{name}", &name)
+            .replace("{person}", &person)
+            .replace("{QUIET}", QUIET);
     let reply = model.answer(&system, &view, &prompt, &files, Run { acts, stop, steps })?;
     if reply.is_empty() {
         return Err("the model answered nothing".into());
@@ -395,8 +412,11 @@ async fn reply<D: Door>(
                 From::Person,
                 &text,
                 file,
-                None,
-                Some(steps),
+                Turn {
+                    steps: Some(steps),
+                    cards: D::CARDS,
+                    ..Turn::default()
+                },
             )
         })
         .await
@@ -472,7 +492,7 @@ async fn drain(
         let typing = Typing::start(door);
         let (h, m, ask) = (hippo.clone(), model.clone(), said.clone());
         let text = tokio::task::spawn_blocking(move || {
-            answer(&h, m.as_ref(), from, &ask, None, None, None)
+            answer(&h, m.as_ref(), from, &ask, None, Turn::default())
         })
         .await
         .unwrap_or_else(|e| Err(e.to_string()))
@@ -549,8 +569,7 @@ async fn remind<D: Door>(
                             From::Routine,
                             &ask,
                             None,
-                            None,
-                            None,
+                            Turn::default(),
                         )
                     })
                     .await
@@ -661,8 +680,10 @@ async fn tasks(
                 From::Task,
                 &text,
                 None,
-                Some(flag),
-                None,
+                Turn {
+                    stop: Some(flag),
+                    ..Turn::default()
+                },
             )
         });
         *running = Some((handle, stop));
