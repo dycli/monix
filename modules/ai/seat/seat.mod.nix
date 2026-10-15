@@ -385,6 +385,9 @@ in
         # hippo is the only memory; Claude's own would be a second writable
         # truth. Managed settings reach every launcher, Paseo included.
         seat.claudeSettings.autoMemoryEnabled = false;
+        # Plain commits: Claude Code otherwise adds Co-Authored-By, PR text
+        # and session links. Codex adds none unless codex_git_commit is on.
+        seat.claudeSettings.attribution = false;
         environment.etc."claude-code/managed-mcp.json".text = toJSON {
           mcpServers =
             browserServers topology
