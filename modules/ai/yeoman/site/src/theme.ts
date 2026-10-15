@@ -15,21 +15,28 @@ function apply(t: Theme) {
   }
 }
 
-/** Light or dark: the system's until the person picks, then theirs for good
-    on this browser. index.html sets the first value before paint. */
+/** Light or dark: the phone's, unless the person picks the other one. Picking
+    the phone's own theme drops the override, so the app follows the phone
+    again; Android colours the installed app's nav bar by the phone's theme,
+    so only an override against it leaves a mismatched bar. index.html sets
+    the first value before paint. */
 export function useTheme(): [Theme, () => void] {
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme as Theme);
   useEffect(() => apply(theme), [theme]);
   useEffect(() => {
     const follow = (e: MediaQueryListEvent) => {
-      if (!localStorage.getItem("theme")) setTheme(e.matches ? "dark" : "light");
+      const mine = e.matches ? "dark" : "light";
+      // The phone switched to what the person had picked: follow it from now on.
+      if (localStorage.getItem("theme") === mine) localStorage.removeItem("theme");
+      if (!localStorage.getItem("theme")) setTheme(mine);
     };
     system.addEventListener("change", follow);
     return () => system.removeEventListener("change", follow);
   }, []);
   const toggle = () => {
     const next = theme === "dark" ? "light" : "dark";
-    localStorage.setItem("theme", next);
+    if (next === (system.matches ? "dark" : "light")) localStorage.removeItem("theme");
+    else localStorage.setItem("theme", next);
     setTheme(next);
   };
   return [theme, toggle];

@@ -461,14 +461,27 @@ async fn manifest(headers: HeaderMap) -> Response {
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
-        // Chrome paints the installed app's splash and system bars from
-        // these, so give each scheme its own paper rather than one dark
-        // ground that shows as a bar in light mode.
+        // The installed app's splash and Android navigation bar come from
+        // these, fixed at install; no page code can recolour the nav bar.
+        // Android picks the dark pair when the phone is in dark mode, and
+        // the page follows the phone unless the person overrides it
+        // (src/theme.ts), so the bar matches. Chromium has parsed both
+        // dark-mode spellings, the newer lists and the older
+        // user_preferences; keep both until one is the only one it reads.
         "background_color": "#e4d6bf",
         "theme_color": "#e4d6bf",
-        "color_scheme_dark": {
-            "background_color": "#1b1815",
-            "theme_color": "#1b1815",
+        "theme_colors": [
+            {"color": "#e4d6bf"},
+            {"color": "#1b1815", "media": "(prefers-color-scheme: dark)"},
+        ],
+        "background_colors": [
+            {"color": "#e4d6bf"},
+            {"color": "#1b1815", "media": "(prefers-color-scheme: dark)"},
+        ],
+        "user_preferences": {
+            "color_scheme": {
+                "dark": {"background_color": "#1b1815", "theme_color": "#1b1815"},
+            },
         },
         "icons": [
             icon(192),
