@@ -179,17 +179,22 @@
         ];
         text = ''
           unit=switcharoo.service
+          start=(systemctl start)
           case "''${1:-}" in
             "") ;;
-            --approve) unit=switcharoo-approved.service ;;
+            # sudo asks in the terminal; polkit would hand the password
+            # prompt to the desktop's agent instead.
+            --approve) unit=switcharoo-approved.service start=(sudo systemctl start) ;;
             *) echo "usage: switcharoo [--approve]" >&2; exit 2 ;;
           esac
+          # Ask before following the journal, so the prompt isn't buried in it.
+          [[ $unit == switcharoo.service ]] || sudo -v
           since=$(date '+%Y-%m-%d %H:%M:%S')
           journalctl --follow --output=cat --unit="$unit" --since="$since" &
           follow=$!
           trap 'kill $follow 2>/dev/null' EXIT
           status=0
-          systemctl start "$unit" || status=$?
+          "''${start[@]}" "$unit" || status=$?
           sleep 1
           exit "$status"
         '';
