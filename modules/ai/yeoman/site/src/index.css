@@ -245,7 +245,28 @@
     transform: scale(0.75);
   }
 }
+/* A page slides in beside the chat, or up over it on a phone. */
+@keyframes slide {
+  from {
+    opacity: 0.4;
+    transform: translateX(24px);
+  }
+}
+@keyframes sheet {
+  from {
+    transform: translateY(100%);
+  }
+}
+.panel {
+  animation: slide 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@media (width < 64rem) {
+  .panel {
+    animation-name: sheet;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .panel,
   .rise,
   .writing > :last-child::after,
   .writing > div > :last-child::after {
