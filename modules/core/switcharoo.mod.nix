@@ -122,9 +122,11 @@
           healthy=1
           "$system/bin/switch-to-configuration" test || healthy=0
 
-          # Let the jobs settle, then give restarting units time to fail.
+          # Let the jobs settle, then give restarting units time to fail. This
+          # unit's own start job stays queued until the script exits, so it
+          # doesn't count.
           for _ in $(seq 60); do
-            [[ -z $(systemctl list-jobs --no-legend) ]] && break
+            systemctl list-jobs --no-legend | grep -qv ' switcharoo' || break
             sleep 2
           done
           sleep 30
