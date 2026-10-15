@@ -587,7 +587,7 @@
                     description = ''
                       Whether it serves a web chat at the root of its site,
                       <name>.<domain> on the tailnet, beside its pages;
-                      sign-in links go to its Matrix room.
+                      sign-in codes are approved in its Matrix room.
                     '';
                   };
 

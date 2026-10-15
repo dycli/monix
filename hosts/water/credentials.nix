@@ -26,6 +26,7 @@ in
     };
     instances.suki = {
       credentialsEnvFile = config.secrets.matrix-suki-env.path;
+      web = true;
       mailCredentialsFile = config.secrets.suki-mail-json.path;
       claudeKeyFile = config.secrets.suki-claude-key.path;
     };
