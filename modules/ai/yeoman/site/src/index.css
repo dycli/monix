@@ -6,21 +6,22 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* UniiChat's look (uniichat.com/style.css): black ink on white paper, or
+/* UniiChat's look (uniichat.com/style.css): dark ink on warm paper, or
    light ink on a soft black. What a person says is framed, what the
-   machine wrote (code) is filled. */
+   machine wrote (code) is filled. Light is cream and brown rather than
+   pure white, which glares on a phone at night. */
 :root {
-  --ink: #111111;
-  --mid: #5f5f5f;
-  --soft: #9a9a9a;
-  --hair: #e6e6e6;
-  --paper: #ffffff;
-  --lift: #ffffff;
-  --block: #f2f2f2;
-  --hover: #e8e8e8;
-  --frame: #cccccc;
-  --edge: #111111;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 6px 20px rgb(0 0 0 / 0.05);
+  --ink: #2a221c;
+  --mid: #6b5d51;
+  --soft: #a39484;
+  --hair: #e7ddcf;
+  --paper: #f7f1e7;
+  --lift: #fcf8f1;
+  --block: #eee5d7;
+  --hover: #e6dbca;
+  --frame: #d3c5b1;
+  --edge: #3a2e25;
+  --shadow: 0 1px 2px rgb(60 40 20 / 0.06), 0 6px 20px rgb(60 40 20 / 0.06);
 }
 :root[data-theme="dark"] {
   --ink: #e3e3e6;
