@@ -27,7 +27,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"
 ureq = { version = "3", default-features = false, features = ["json", "rustls"] }
 mail-parser = "0.11.9"
 webpki-roots = "1.0.9"
-axum = "0.8"
+axum = { version = "0.8", features = ["multipart"] }
 futures-util = "0.3"
 getrandom = "0.4"
 tower-http = { version = "0.6", features = ["fs"] }

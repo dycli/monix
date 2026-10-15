@@ -2,6 +2,7 @@
 // what the server pushes over SSE. The server answers one message at a
 // time and says so with `typing`.
 import { useCallback, useEffect, useState } from "react";
+import type { AttachmentAdapter } from "@assistant-ui/react";
 
 export type Msg = {
   id: string;
@@ -13,6 +14,8 @@ export type Msg = {
   png?: string;
   reaction?: string;
   date?: Date;
+  /** A file sent with the message; `image` is a local URL to show it by. */
+  file?: { name: string; image?: string };
 };
 
 type Said = { i: number; kind: string; text: string; date: string };
@@ -29,7 +32,7 @@ export type Chat =
   | { state: "loading" }
   | { state: "signed-out" }
   | { state: "error"; error: string }
-  | { state: "ready"; messages: Msg[]; typing: boolean; send: (text: string) => Promise<void> };
+  | { state: "ready"; messages: Msg[]; typing: boolean; send: (text: string, file?: File) => Promise<void> };
 
 export function useChat(): Chat {
   const [status, setStatus] = useState<"loading" | "signed-out" | "ready" | string>("loading");
@@ -80,14 +83,14 @@ export function useChat(): Chat {
     };
   }, []);
 
-  const send = useCallback(async (text: string) => {
+  const send = useCallback(async (text: string, file?: File) => {
     const local = crypto.randomUUID();
-    setMessages((ms) => [...ms, { id: local, role: "user", text, date: new Date() }]);
-    const r = await fetch("/api/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
+    const shown = file && { name: file.name, image: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined };
+    setMessages((ms) => [...ms, { id: local, role: "user", text, file: shown, date: new Date() }]);
+    const body = new FormData();
+    body.set("text", text);
+    if (file) body.set("file", file);
+    const r = await fetch("/api/send", { method: "POST", body });
     if (r.status === 401) return setStatus("signed-out");
     if (!r.ok) {
       setMessages((ms) => ms.map((m) => (m.id === local ? { ...m, reaction: "⚠️" } : m)));
@@ -104,6 +107,44 @@ export function useChat(): Chat {
 }
 
 /** Asks to be let in; the yeoman posts the code to Matrix for a 👍. */
+// The model reads photos up to 3.75 MB (IMAGE_MAX in main.rs) in JPEG, PNG,
+// GIF or WebP. A phone photo is often bigger, or HEIC, so the page redraws
+// it as a JPEG no longer than 2048 px on its long side, which the model
+// downscales to anyway.
+const PHOTO_MAX = 3_500_000;
+const PHOTO_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+
+async function fit(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || (file.size <= PHOTO_MAX && PHOTO_TYPES.includes(file.type))) return file;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height));
+  const canvas = new OffscreenCanvas(Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.85 });
+  return new File([blob], file.name.replace(/\.[^.]*$/, "") + ".jpg", { type: "image/jpeg" });
+}
+
+/** Holds a chosen file in the composer until it goes out with the message. */
+export const attachments: AttachmentAdapter = {
+  accept: "image/*,application/pdf,text/*",
+  async add({ file }) {
+    const fitted = await fit(file);
+    return {
+      id: crypto.randomUUID(),
+      type: fitted.type.startsWith("image/") ? "image" : "document",
+      name: fitted.name,
+      contentType: fitted.type,
+      file: fitted,
+      status: { type: "requires-action", reason: "composer-send" },
+    };
+  },
+  async remove() {},
+  async send(a) {
+    return { ...a, status: { type: "complete" }, content: [] };
+  },
+};
+
 export async function askToSignIn(): Promise<{ code: string; secret: string } | { error: string }> {
   const r = await fetch("/api/ask", { method: "POST" });
   if (r.ok) return r.json();

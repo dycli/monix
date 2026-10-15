@@ -4,8 +4,7 @@
 //! sync picks up where it stopped.
 
 use crate::door::{Door, Message};
-use crate::model::Attachment;
-use crate::{IMAGE_MAX, PDF_MAX, Read, pending, read};
+use crate::{Read, fits, pending, read};
 use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::config::SyncSettings;
@@ -177,11 +176,6 @@ impl Door for Matrix {
         let data = get(&file.source)
             .await
             .map_err(|e| format!("I couldn't download {}: {e}", file.name))?;
-        let too_big = |r: &Read| match r {
-            Read::Model(Attachment::Image { data, .. }) => data.len() > IMAGE_MAX,
-            Read::Model(Attachment::Pdf(data)) => data.len() > PDF_MAX,
-            Read::Text(_) => false,
-        };
         let unreadable = || {
             format!(
                 "I can't read {}: only photos, PDFs and text files.",
@@ -190,12 +184,12 @@ impl Door for Matrix {
         };
         let found = |r| (file.name.clone(), file.photo, r);
         let r = read(data, file.mime.as_deref()).ok_or_else(unreadable)?;
-        if !too_big(&r) {
+        if fits(&r) {
             return Ok(found(r));
         }
         if let Some(thumb) = &file.thumbnail
             && let Ok(data) = get(thumb).await
-            && let Some(r) = read(data, None).filter(|r| !too_big(r))
+            && let Some(r) = read(data, None).filter(fits)
         {
             return Ok(found(r));
         }

@@ -171,6 +171,15 @@ fn account(path: &str) -> Result<(String, String), String> {
     Ok((field("MATRIX_USER")?, field("MATRIX_PASSWORD")?))
 }
 
+/// Whether the model takes a file this size.
+fn fits(r: &Read) -> bool {
+    match r {
+        Read::Model(Attachment::Image { data, .. }) => data.len() <= IMAGE_MAX,
+        Read::Model(Attachment::Pdf(data)) => data.len() <= PDF_MAX,
+        Read::Text(_) => true,
+    }
+}
+
 /// Names a file by its first bytes; the sender's stated type is a fallback
 /// for text only.
 fn read(data: Vec<u8>, mime: Option<&str>) -> Option<Read> {

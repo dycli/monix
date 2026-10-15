@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AssistantRuntimeProvider,
+  AttachmentPrimitive,
   ComposerPrimitive,
   MessagePartPrimitive,
   MessagePrimitive,
@@ -8,12 +9,13 @@ import {
   useAuiState,
   useExternalStoreRuntime,
   type AppendMessage,
+  type Attachment,
   type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
-import { askToSignIn, useChat, waitToSignIn, type Msg } from "./chat";
+import { askToSignIn, attachments, useChat, waitToSignIn, type Msg } from "./chat";
 import { useTheme } from "./theme";
 
 const convert = (m: Msg): ThreadMessageLike => ({
@@ -22,6 +24,15 @@ const convert = (m: Msg): ThreadMessageLike => ({
   content: [
     ...(m.text ? [{ type: "text" as const, text: m.text }] : []),
     ...(m.png ? [{ type: "image" as const, image: `data:image/png;base64,${m.png}` }] : []),
+  ],
+  attachments: m.file && [
+    {
+      id: `${m.id}-file`,
+      type: m.file.image ? "image" : "document",
+      name: m.file.name,
+      status: { type: "complete" },
+      content: m.file.image ? [{ type: "image", image: m.file.image }] : [],
+    },
   ],
   createdAt: m.date,
   metadata: { custom: { plain: m.plain ?? false, reaction: m.reaction ?? null } },
@@ -137,14 +148,64 @@ const Arrow = ({ down = false }: { down?: boolean }) => (
   </svg>
 );
 
-function Thread({ messages, typing, send }: { messages: Msg[]; typing: boolean; send: (t: string) => Promise<void> }) {
+const Clip = () => (
+  <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+  </svg>
+);
+
+/** A local URL for a photo's thumbnail, let go when the chip goes. */
+function usePicture(a: Attachment): string | undefined {
+  const [url, setUrl] = useState<string>();
+  useEffect(() => {
+    if (!a.file || !a.file.type.startsWith("image/")) return;
+    const u = URL.createObjectURL(a.file);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [a.file]);
+  const shown = a.content?.find((p) => p.type === "image");
+  return shown?.type === "image" ? shown.image : url;
+}
+
+// A file in the composer or on a sent message: the photo itself, or a
+// card with the file's name.
+function Chip({ attachment: a, removable = false }: { attachment: Attachment; removable?: boolean }) {
+  const picture = usePicture(a);
+  return (
+    <AttachmentPrimitive.Root className="relative w-fit">
+      {picture ? (
+        <img src={picture} alt={a.name} className={`rounded-xl border border-hair object-cover ${removable ? "size-16" : "max-h-72 max-w-full"}`} />
+      ) : (
+        <div className="flex max-w-60 items-center gap-2 rounded-xl border border-hair bg-paper px-3 py-2 text-sm">
+          <span className="rounded-md bg-hair px-1.5 py-0.5 text-xs font-semibold text-mid uppercase">{a.name.split(".").pop()?.slice(0, 4)}</span>
+          <span className="truncate">{a.name}</span>
+        </div>
+      )}
+      {removable && (
+        <AttachmentPrimitive.Remove
+          aria-label="Remove"
+          className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-ink text-xs leading-none text-paper"
+        >
+          ×
+        </AttachmentPrimitive.Remove>
+      )}
+    </AttachmentPrimitive.Root>
+  );
+}
+
+type Send = (text: string, file?: File) => Promise<void>;
+
+function Thread({ messages, typing, send }: { messages: Msg[]; typing: boolean; send: Send }) {
   const runtime = useExternalStoreRuntime({
     messages,
     convertMessage: convert,
     isRunning: false,
+    adapters: { attachments },
     onNew: async (m: AppendMessage) => {
       const text = m.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("\n");
-      if (text.trim()) await send(text);
+      // The yeoman takes one file a message; the composer allows only one.
+      const file = m.attachments?.[0]?.file;
+      if (text.trim() || file) await send(text, file);
     },
   });
   return (
@@ -168,15 +229,29 @@ function Thread({ messages, typing, send }: { messages: Msg[]; typing: boolean; 
               <ThreadPrimitive.ScrollToBottom className="absolute -top-12 left-1/2 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-frame bg-lift text-mid shadow-lift hover:text-ink disabled:invisible">
                 <Arrow down />
               </ThreadPrimitive.ScrollToBottom>
-              <ComposerPrimitive.Root className="flex items-end gap-2.5 rounded-3xl border border-frame bg-lift py-[7px] pr-[7px] pl-5 shadow-lift focus-within:border-soft max-sm:py-[5px] max-sm:pr-[5px] max-sm:pl-4">
+              <ComposerPrimitive.Root className="rounded-3xl border border-frame bg-lift py-[7px] pr-[7px] pl-2 shadow-lift focus-within:border-soft max-sm:py-[5px] max-sm:pr-[5px] max-sm:pl-1.5">
+                <ComposerPrimitive.AttachmentDropzone className="flex flex-col">
+                <div className="flex flex-wrap gap-2 px-3 empty:hidden [&:not(:empty)]:pt-2 [&:not(:empty)]:pb-1">
+                  <ComposerPrimitive.Attachments>{({ attachment }) => <Chip attachment={attachment} removable />}</ComposerPrimitive.Attachments>
+                </div>
+                <div className="flex items-end gap-1.5">
+                <ComposerPrimitive.AddAttachment
+                  multiple={false}
+                  aria-label="Attach a file"
+                  className="grid size-[38px] shrink-0 place-items-center rounded-full text-mid hover:text-ink disabled:invisible"
+                >
+                  <Clip />
+                </ComposerPrimitive.AddAttachment>
                 <ComposerPrimitive.Input
                   autoFocus
                   placeholder={`Message ${NAME}`}
                   className="max-h-[40vh] flex-1 resize-none bg-transparent py-[7px] text-base leading-normal outline-none placeholder:text-soft"
                 />
-                <ComposerPrimitive.Send className="grid size-[38px] shrink-0 place-items-center rounded-full bg-ink text-paper disabled:bg-hair disabled:text-soft">
+                <ComposerPrimitive.Send aria-label="Send" className="grid size-[38px] shrink-0 place-items-center rounded-full bg-ink text-paper disabled:bg-hair disabled:text-soft">
                   <Arrow />
                 </ComposerPrimitive.Send>
+                </div>
+                </ComposerPrimitive.AttachmentDropzone>
               </ComposerPrimitive.Root>
             </div>
           </ThreadPrimitive.ViewportFooter>
@@ -210,11 +285,14 @@ function Time({ className = "" }: { className?: string }) {
 // breaks anywhere rather than running off the page.
 function UserMessage() {
   return (
-    <MessagePrimitive.Root className="group flex flex-col items-end">
+    <MessagePrimitive.Root className="group flex flex-col items-end gap-1.5">
+      <MessagePrimitive.Attachments>{({ attachment }) => <Chip attachment={attachment} />}</MessagePrimitive.Attachments>
+      <MessagePrimitive.If hasContent>
       <div className="relative w-fit max-w-[min(82%,560px)] rounded-[20px_20px_6px_20px] border-[1.25px] border-edge px-[17px] py-2.5 whitespace-pre-wrap [overflow-wrap:anywhere]">
         <MessagePrimitive.Parts />
         <Reaction />
       </div>
+      </MessagePrimitive.If>
       <Time className="mt-1 mr-1" />
     </MessagePrimitive.Root>
   );

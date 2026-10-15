@@ -11,10 +11,11 @@
 //! browser that asked, with a cookie good for 30 days. Nothing travels
 //! between devices, and a session only ever goes to the page that asked.
 
-use crate::Read;
+use crate::model::Attachment;
+use crate::{Read, fits, read};
 use crate::door::{Door, Message};
 use crate::hippo::{Hippo, Said};
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, Multipart, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -45,6 +46,9 @@ const ASK_GAP: Duration = Duration::from_secs(60);
 const CODE: &[u8] = b"23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const HISTORY: u64 = 200;
 const SEND_MAX: usize = 32 * 1024;
+/// The largest request to /api/send: the biggest PDF the model takes, the
+/// words and the form's framing.
+const UPLOAD_MAX: usize = crate::PDF_MAX + SEND_MAX + 64 * 1024;
 
 /// What an open page is told, as one SSE event each.
 #[derive(Clone, Serialize)]
@@ -88,8 +92,7 @@ impl Web {
 }
 
 impl Door for Web {
-    /// The page sends words only, for now.
-    type File = Infallible;
+    type File = Upload;
 
     async fn say(&self, text: &str) -> Result<String, String> {
         let id = self.id();
@@ -130,9 +133,29 @@ impl Door for Web {
         self.show(Shown::Typing { on });
     }
 
-    async fn fetch(&self, file: &Infallible) -> Result<(String, bool, Read), String> {
-        match *file {}
+    /// Already here: the page sent the bytes with the message. Photos
+    /// arrive shrunk by the page, so one too big is refused rather than
+    /// cut down.
+    async fn fetch(&self, file: &Upload) -> Result<(String, bool, Read), String> {
+        let r = read(file.data.clone(), file.mime.as_deref()).ok_or_else(|| {
+            format!(
+                "I can't read {}: only photos, PDFs and text files.",
+                file.name
+            )
+        })?;
+        if !fits(&r) {
+            return Err(format!("{} is too big for me to read.", file.name));
+        }
+        let photo = matches!(r, Read::Model(Attachment::Image { .. }));
+        Ok((file.name.clone(), photo, r))
     }
+}
+
+/// A file sent from the page with a message.
+pub struct Upload {
+    name: String,
+    mime: Option<String>,
+    data: Vec<u8>,
 }
 
 /// Asks the person by another door, answering the id of the message a
@@ -304,7 +327,10 @@ pub async fn serve(
         .nest_service("/_site", ServeDir::new(root.join("_site")))
         .route("/api/history", get(history))
         .route("/api/events", get(events))
-        .route("/api/send", post(send))
+        .route(
+            "/api/send",
+            post(send).layer(DefaultBodyLimit::max(UPLOAD_MAX)),
+        )
         .route("/api/ask", post(ask))
         .route("/api/wait", post(wait))
         .fallback_service(ServeDir::new(pages))
@@ -364,30 +390,56 @@ async fn events(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
         .into_response()
 }
 
-#[derive(Deserialize)]
-struct Sent {
-    text: String,
-}
-
-/// The person's message: answered like one from Matrix, through the pages.
-/// Answers the id the yeoman will react to.
+/// The person's message, a form with `text` and maybe one `file`: answered
+/// like one from Matrix, through the pages. Answers the id the yeoman will
+/// react to.
 async fn send(
     State(site): State<Arc<Site>>,
     headers: HeaderMap,
-    Json(sent): Json<Sent>,
+    mut form: Multipart,
 ) -> Response {
     if !site.signed(&headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    let text = sent.text.trim();
-    if text.is_empty() || text.len() > SEND_MAX {
+    let mut text = String::new();
+    let mut file = None;
+    loop {
+        let field = match form.next_field().await {
+            Ok(Some(f)) => f,
+            Ok(None) => break,
+            Err(e) => return (e.status(), e.body_text()).into_response(),
+        };
+        match field.name() {
+            Some("text") => match field.text().await {
+                Ok(t) => text = t,
+                Err(e) => return (e.status(), e.body_text()).into_response(),
+            },
+            Some("file") => {
+                let name = field.file_name().unwrap_or("file").to_owned();
+                let mime = field.content_type().map(str::to_owned);
+                match field.bytes().await {
+                    Ok(b) => {
+                        file = Some(Upload {
+                            name,
+                            mime,
+                            data: b.to_vec(),
+                        })
+                    }
+                    Err(e) => return (e.status(), e.body_text()).into_response(),
+                }
+            }
+            _ => {}
+        }
+    }
+    let text = text.trim();
+    if (text.is_empty() && file.is_none()) || text.len() > SEND_MAX {
         return StatusCode::BAD_REQUEST.into_response();
     }
     let id = site.web.id();
     let msg = Message {
         id: id.clone(),
         text: text.to_owned(),
-        file: None,
+        file,
     };
     if site.messages.send((site.web.clone(), msg)).is_err() {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
