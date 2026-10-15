@@ -70,6 +70,79 @@ pub fn from_env() -> Result<Box<dyn Model>, String> {
 pub struct Run {
     pub acts: bool,
     pub stop: Option<Arc<AtomicBool>>,
+    /// Where each tool call and its result go as they happen, for a door
+    /// that shows the work as well as the answer.
+    pub steps: Option<Steps>,
+}
+
+pub type Steps = Arc<dyn Fn(Step) + Send + Sync>;
+
+/// The most of a tool's result a door is shown; the model reads it all.
+const STEP_MAX: usize = 16 * 1024;
+
+/// One step of the work behind an answer.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum Step {
+    /// The model calls `name` (`mcp__server__tool`) with `input`.
+    Call {
+        id: String,
+        name: String,
+        input: Value,
+    },
+    /// What the call `id` gave back: its text, cut to STEP_MAX.
+    Result {
+        id: String,
+        text: String,
+        error: bool,
+    },
+}
+
+/// The steps in one stream-json line: tool calls from the model, results
+/// from the tools. Claude Code reports results as a user turn.
+pub fn steps(line: &str) -> Vec<Step> {
+    let Ok(ev) = serde_json::from_str::<Value>(line) else {
+        return vec![];
+    };
+    let parts = ev["message"]["content"].as_array().into_iter().flatten();
+    let s = |v: &Value| v.as_str().unwrap_or_default().to_owned();
+    match ev["type"].as_str() {
+        Some("assistant") => parts
+            .filter(|c| c["type"] == "tool_use")
+            .map(|c| Step::Call {
+                id: s(&c["id"]),
+                name: s(&c["name"]),
+                input: c["input"].clone(),
+            })
+            .collect(),
+        Some("user") => parts
+            .filter(|c| c["type"] == "tool_result")
+            .map(|c| {
+                let mut text = match &c["content"] {
+                    Value::String(t) => t.clone(),
+                    Value::Array(a) => a
+                        .iter()
+                        .filter_map(|p| p["text"].as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    _ => String::new(),
+                };
+                if text.len() > STEP_MAX {
+                    let mut cut = STEP_MAX;
+                    while !text.is_char_boundary(cut) {
+                        cut -= 1;
+                    }
+                    text.truncate(cut);
+                }
+                Step::Result {
+                    id: s(&c["tool_use_id"]),
+                    text,
+                    error: c["is_error"] == true,
+                }
+            })
+            .collect(),
+        _ => vec![],
+    }
 }
 
 /// Each call stands alone.
@@ -155,6 +228,7 @@ impl Model for Claude {
         let writer = thread::spawn(move || stdin.write_all(line.as_bytes()));
         let stdout = child.stdout.take().unwrap();
         let keep = self.keep.clone();
+        let steps = run.steps.clone();
         let reader = thread::spawn(move || -> std::io::Result<(String, bool)> {
             let mut out = String::new();
             let mut used = false;
@@ -169,6 +243,9 @@ impl Model for Claude {
                     if let Err(e) = keep::hold(url, keep::LEASE) {
                         eprintln!("yeoman: {e}");
                     }
+                }
+                if let Some(show) = &steps {
+                    self::steps(&line).into_iter().for_each(|s| show(s));
                 }
                 out.push_str(&line);
                 out.push('\n');
@@ -397,5 +474,41 @@ mod tests {
     #[test]
     fn short_memory_has_no_mark() {
         assert!(marks(&cached("<chat>\n0+1|a\n</chat>\n")).is_empty());
+    }
+
+    #[test]
+    fn steps_from_stream() {
+        let call = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Looking"},{"type":"tool_use","id":"t1","name":"mcp__calendar__events","input":{"days":7}}]}}"#;
+        assert_eq!(
+            steps(call),
+            vec![Step::Call {
+                id: "t1".into(),
+                name: "mcp__calendar__events".into(),
+                input: serde_json::json!({"days": 7}),
+            }]
+        );
+        let result = r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"a"},{"type":"image"},{"type":"text","text":"b"}],"is_error":true}]}}"#;
+        assert_eq!(
+            steps(result),
+            vec![Step::Result {
+                id: "t1".into(),
+                text: "a\nb".into(),
+                error: true
+            }]
+        );
+        let long = format!(
+            r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"t2","content":"{}é"}}]}}}}"#,
+            "x".repeat(STEP_MAX - 1)
+        );
+        match &steps(&long)[..] {
+            [
+                Step::Result {
+                    text, error: false, ..
+                },
+            ] => assert_eq!(text.len(), STEP_MAX - 1),
+            other => panic!("{other:?}"),
+        }
+        assert!(steps(r#"{"type":"result","result":"hi"}"#).is_empty());
+        assert!(steps("not json").is_empty());
     }
 }

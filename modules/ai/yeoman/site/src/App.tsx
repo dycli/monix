@@ -11,6 +11,7 @@ import {
   type AppendMessage,
   type Attachment,
   type ThreadMessageLike,
+  type ToolCallMessagePartProps,
 } from "@assistant-ui/react";
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { code } from "@streamdown/code";
@@ -18,10 +19,20 @@ import { math } from "@streamdown/math";
 import { askToSignIn, attachments, useChat, waitToSignIn, type Msg } from "./chat";
 import { useTheme } from "./theme";
 
+type Args = ToolCallMessagePartProps["args"];
+
 const convert = (m: Msg): ThreadMessageLike => ({
   id: m.id,
   role: m.role,
   content: [
+    ...(m.tools ?? []).map((t) => ({
+      type: "tool-call" as const,
+      toolCallId: t.id,
+      toolName: t.name,
+      args: (t.input ?? {}) as Args,
+      result: t.result,
+      isError: t.error,
+    })),
     ...(m.text ? [{ type: "text" as const, text: m.text }] : []),
     ...(m.png ? [{ type: "image" as const, image: `data:image/png;base64,${m.png}` }] : []),
   ],
@@ -35,7 +46,7 @@ const convert = (m: Msg): ThreadMessageLike => ({
     },
   ],
   createdAt: m.date,
-  metadata: { custom: { plain: m.plain ?? false, reaction: m.reaction ?? null } },
+  metadata: { custom: { plain: m.plain ?? false, reaction: m.reaction ?? null, live: m.live ?? false } },
 });
 
 // The page has no name of its own: it takes the assistant's from the host,
@@ -262,7 +273,7 @@ function Thread({ messages, typing, send }: { messages: Msg[]; typing: boolean; 
 }
 
 function useCustom() {
-  return useAuiState((s) => s.message.metadata.custom) as { plain: boolean; reaction: string | null };
+  return useAuiState((s) => s.message.metadata.custom) as { plain: boolean; reaction: string | null; live: boolean };
 }
 
 function Reaction() {
@@ -318,6 +329,7 @@ function AssistantMessage() {
           <MessagePrimitive.Parts
             components={{
               Text,
+              tools: { Fallback: ToolLine },
               Image: () => <MessagePartPrimitive.Image className="max-h-80 max-w-full rounded-lg border border-hair" />,
             }}
           />
@@ -326,6 +338,51 @@ function AssistantMessage() {
       <Reaction />
       <Time className="mt-1" />
     </MessagePrimitive.Root>
+  );
+}
+
+// `mcp__calendar__events` reads as "calendar · events"; Claude's own tools
+// (Read, WebSearch) keep their names.
+function toolName(name: string) {
+  const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
+  return mcp ? `${mcp[1]} · ${mcp[2].replaceAll("_", " ")}` : name;
+}
+
+// The first short string among the arguments says what a call was about:
+// a query, a path, a URL.
+function gist(args: Args | undefined) {
+  const first = Object.values(args ?? {}).find((v) => typeof v === "string" && v.trim());
+  return typeof first === "string" ? first.split("\n")[0] : "";
+}
+
+// One quiet line per tool the model used on its way to an answer, with a
+// spinner until the result is back; a click opens what went in and came out.
+function ToolLine({ toolName: name, args, result, isError }: ToolCallMessagePartProps) {
+  const { live } = useCustom();
+  const done = result !== undefined;
+  const mark = !done ? (live ? "spin" : "·") : isError ? "✕" : "✓";
+  return (
+    <details className="group/tool not-prose my-0.5 text-[13.5px] text-mid last-of-type:mb-3">
+      <summary className="flex cursor-pointer list-none items-center gap-2 marker:hidden [&::-webkit-details-marker]:hidden">
+        {mark === "spin" ? (
+          <span className="size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-hair border-t-accent" />
+        ) : (
+          <span className={`w-3 shrink-0 text-center ${isError ? "text-accent" : "text-soft"}`}>{mark}</span>
+        )}
+        <span className="shrink-0 font-medium text-ink/80">{toolName(name)}</span>
+        <span className="truncate text-soft">{gist(args)}</span>
+      </summary>
+      <div className="mt-1.5 mb-2 ml-5 flex flex-col gap-1.5">
+        <pre className="max-h-48 overflow-auto rounded-lg border border-hair bg-lift px-3 py-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
+          {JSON.stringify(args, null, 2)}
+        </pre>
+        {done && (
+          <pre className="max-h-72 overflow-auto rounded-lg border border-hair bg-lift px-3 py-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
+            {String(result) || "(nothing)"}
+          </pre>
+        )}
+      </div>
+    </details>
   );
 }
 

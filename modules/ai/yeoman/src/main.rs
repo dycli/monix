@@ -26,7 +26,7 @@ use book::Book;
 use chrono::Local;
 use door::{Door, Message, Typing, send_images};
 use hippo::Hippo;
-use model::{Attachment, Model, Run};
+use model::{Attachment, Model, Run, Steps};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -248,6 +248,7 @@ fn answer(
     text: &str,
     file: Option<(String, bool, Read)>,
     stop: Option<Arc<AtomicBool>>,
+    steps: Option<Steps>,
 ) -> Result<String, String> {
     let view = hippo.view()?;
     let (said, inline, files) = match file {
@@ -359,7 +360,7 @@ fn answer(
         .replace("{name}", &name)
         .replace("{person}", &person)
         .replace("{QUIET}", QUIET);
-    let reply = model.answer(&system, &view, &prompt, &files, Run { acts, stop })?;
+    let reply = model.answer(&system, &view, &prompt, &files, Run { acts, stop, steps })?;
     if reply.is_empty() {
         return Err("the model answered nothing".into());
     }
@@ -380,13 +381,23 @@ async fn reply<D: Door>(
         Some(f) => door.fetch(f).await.map(Some),
     };
     let text = msg.text;
+    let shown = door.clone();
     let reply = match file {
         Err(e) => {
             eprintln!("yeoman: {e}");
             e
         }
         Ok(file) => tokio::task::spawn_blocking(move || {
-            answer(&hippo, model.as_ref(), From::Person, &text, file, None)
+            let steps: Steps = Arc::new(move |s| shown.step(s));
+            answer(
+                &hippo,
+                model.as_ref(),
+                From::Person,
+                &text,
+                file,
+                None,
+                Some(steps),
+            )
         })
         .await
         .unwrap_or_else(|e| Err(e.to_string()))
@@ -460,14 +471,15 @@ async fn drain(
         let said = texts.join("\n\n");
         let typing = Typing::start(door);
         let (h, m, ask) = (hippo.clone(), model.clone(), said.clone());
-        let text =
-            tokio::task::spawn_blocking(move || answer(&h, m.as_ref(), from, &ask, None, None))
-                .await
-                .unwrap_or_else(|e| Err(e.to_string()))
-                .unwrap_or_else(|e| {
-                    eprintln!("yeoman: {}: {e}", dir.display());
-                    said
-                });
+        let text = tokio::task::spawn_blocking(move || {
+            answer(&h, m.as_ref(), from, &ask, None, None, None)
+        })
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()))
+        .unwrap_or_else(|e| {
+            eprintln!("yeoman: {}: {e}", dir.display());
+            said
+        });
         typing.stop().await;
         if let Err(e) = door.say(&text).await {
             eprintln!("yeoman: {}: {e}", dir.display());
@@ -531,7 +543,15 @@ async fn remind<D: Door>(
                     let typing = Typing::start(&door);
                     let (hippo, model, ask) = (hippo.clone(), model.clone(), r.text.clone());
                     let answered = tokio::task::spawn_blocking(move || {
-                        answer(&hippo, model.as_ref(), From::Routine, &ask, None, None)
+                        answer(
+                            &hippo,
+                            model.as_ref(),
+                            From::Routine,
+                            &ask,
+                            None,
+                            None,
+                            None,
+                        )
                     })
                     .await
                     .unwrap_or_else(|e| Err(e.to_string()));
@@ -635,7 +655,15 @@ async fn tasks(
         let stop = Arc::new(AtomicBool::new(false));
         let (hippo, model, flag) = (hippo.clone(), model.clone(), stop.clone());
         let handle = tokio::task::spawn_blocking(move || {
-            answer(&hippo, model.as_ref(), From::Task, &text, None, Some(flag))
+            answer(
+                &hippo,
+                model.as_ref(),
+                From::Task,
+                &text,
+                None,
+                Some(flag),
+                None,
+            )
         });
         *running = Some((handle, stop));
     }

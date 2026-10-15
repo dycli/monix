@@ -11,10 +11,10 @@
 //! browser that asked, with a cookie good for 30 days. Nothing travels
 //! between devices, and a session only ever goes to the page that asked.
 
-use crate::model::Attachment;
-use crate::{Read, fits, read};
 use crate::door::{Door, Message};
 use crate::hippo::{Hippo, Said};
+use crate::model::{Attachment, Step};
+use crate::{Read, fits, read};
 use axum::extract::{DefaultBodyLimit, Multipart, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -70,6 +70,10 @@ enum Shown {
     },
     Typing {
         on: bool,
+    },
+    /// A tool call or its result, while the answer is worked out.
+    Step {
+        step: Step,
     },
 }
 
@@ -127,6 +131,10 @@ impl Door for Web {
             png: STANDARD.encode(png),
         });
         Ok(())
+    }
+
+    fn step(&self, step: Step) {
+        self.show(Shown::Step { step });
     }
 
     async fn typing(&self, on: bool) {
@@ -393,11 +401,7 @@ async fn events(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
 /// The person's message, a form with `text` and maybe one `file`: answered
 /// like one from Matrix, through the pages. Answers the id the yeoman will
 /// react to.
-async fn send(
-    State(site): State<Arc<Site>>,
-    headers: HeaderMap,
-    mut form: Multipart,
-) -> Response {
+async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multipart) -> Response {
     if !site.signed(&headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }

@@ -16,7 +16,17 @@ export type Msg = {
   date?: Date;
   /** A file sent with the message; `image` is a local URL to show it by. */
   file?: { name: string; image?: string };
+  /** The tools the model used on the way to this answer, in order. */
+  tools?: Tool[];
+  /** Still working: tool calls go here until the answer arrives. */
+  live?: boolean;
 };
+
+export type Tool = { id: string; name: string; input: unknown; result?: string; error?: boolean };
+
+type Step =
+  | { type: "call"; id: string; name: string; input: unknown }
+  | { type: "result"; id: string; text: string; error: boolean };
 
 type Said = { i: number; kind: string; text: string; date: string };
 
@@ -24,7 +34,8 @@ type Shown =
   | { type: "said"; id: string; text: string; plain: boolean }
   | { type: "react"; to: string; emoji: string }
   | { type: "picture"; png: string }
-  | { type: "typing"; on: boolean };
+  | { type: "typing"; on: boolean }
+  | { type: "step"; step: Step };
 
 const ROLE: Record<string, Msg["role"]> = { user: "user", talk: "assistant", note: "system" };
 
@@ -62,7 +73,15 @@ export function useChat(): Chat {
         const s: Shown = JSON.parse(e.data);
         switch (s.type) {
           case "said":
-            setMessages((ms) => [...ms, { id: s.id, role: "assistant", text: s.text, plain: s.plain, date: new Date() }]);
+            setMessages((ms) => {
+              // The answer joins the tools that led to it; a draft stands alone.
+              const last = ms.at(-1);
+              if (!s.plain && last?.live) return [...ms.slice(0, -1), { ...last, id: s.id, text: s.text, live: false }];
+              return [...ms, { id: s.id, role: "assistant", text: s.text, plain: s.plain, date: new Date() }];
+            });
+            break;
+          case "step":
+            setMessages((ms) => step(ms, s.step));
             break;
           case "react":
             setMessages((ms) => ms.map((m) => (m.id === s.to ? { ...m, reaction: s.emoji } : m)));
@@ -72,6 +91,8 @@ export function useChat(): Chat {
             break;
           case "typing":
             setTyping(s.on);
+            // A turn that ended without an answer leaves its tools standing.
+            if (!s.on) setMessages((ms) => ms.map((m) => (m.live ? { ...m, live: false } : m)));
             break;
         }
       };
@@ -106,7 +127,17 @@ export function useChat(): Chat {
   return { state: "ready", messages, typing, send };
 }
 
-/** Asks to be let in; the yeoman posts the code to Matrix for a 👍. */
+function step(ms: Msg[], s: Step): Msg[] {
+  if (s.type === "result") {
+    const done = (t: Tool) => (t.id === s.id ? { ...t, result: s.text, error: s.error } : t);
+    return ms.map((m) => (m.tools?.some((t) => t.id === s.id) ? { ...m, tools: m.tools.map(done) } : m));
+  }
+  const tool = { id: s.id, name: s.name, input: s.input };
+  const last = ms.at(-1);
+  if (last?.live) return [...ms.slice(0, -1), { ...last, tools: [...(last.tools ?? []), tool] }];
+  return [...ms, { id: `w-${s.id}`, role: "assistant", text: "", tools: [tool], live: true, date: new Date() }];
+}
+
 // The model reads photos up to 3.75 MB (IMAGE_MAX in main.rs) in JPEG, PNG,
 // GIF or WebP. A phone photo is often bigger, or HEIC, so the page redraws
 // it as a JPEG no longer than 2048 px on its long side, which the model
@@ -145,6 +176,7 @@ export const attachments: AttachmentAdapter = {
   },
 };
 
+/** Asks to be let in; the yeoman posts the code to Matrix for a 👍. */
 export async function askToSignIn(): Promise<{ code: string; secret: string } | { error: string }> {
   const r = await fetch("/api/ask", { method: "POST" });
   if (r.ok) return r.json();

@@ -3,6 +3,7 @@
 //! through it without knowing which kind it is.
 
 use crate::Read;
+use crate::model::Step;
 use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,9 @@ pub trait Door: Clone + Send + Sync + 'static {
     fn react(&self, to: &str, emoji: &str) -> impl Future<Output = Result<(), String>> + Send;
     fn picture(&self, png: Vec<u8>) -> impl Future<Output = Result<(), String>> + Send;
     fn typing(&self, on: bool) -> impl Future<Output = ()> + Send;
+    /// Shows a tool call or its result while the answer is being worked
+    /// out. Called from the model's reader thread, so it must not block.
+    fn step(&self, _step: Step) {}
     /// Downloads a file the person sent: its name, whether it is a photo,
     /// and what the model will see. Errors are what to tell the person.
     fn fetch(
