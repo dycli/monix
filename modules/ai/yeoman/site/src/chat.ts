@@ -1,5 +1,6 @@
-// The conversation as the yeoman keeps it: history from hippo once, then
-// what the server pushes over SSE. The server answers one message at a
+// The conversation as the yeoman keeps it: history from hippo, then what
+// the server pushes over SSE, with history again whenever the stream may
+// have missed something. The server answers one message at a
 // time and says so with `typing`.
 import { useCallback, useEffect, useState } from "react";
 import type { AttachmentAdapter } from "@assistant-ui/react";
@@ -74,15 +75,22 @@ export function useChat(): Chat {
 
   useEffect(() => {
     let events: EventSource | undefined;
+    let retry: number | undefined;
+    let ready = false;
     let gone = false;
-    const load = async () => {
+    // History from hippo, again on every reconnect and return to the page:
+    // what the stream carried while nothing listened is in hippo by then.
+    const sync = async (): Promise<boolean> => {
       const [r, w] = await Promise.all([fetch("/api/history"), fetch("/api/pending")]);
-      if (r.status === 401) return setStatus("signed-out");
-      if (!r.ok) return setStatus(`History failed: ${r.status}`);
+      if (r.status === 401) {
+        setStatus("signed-out");
+        return false;
+      }
+      if (!r.ok) throw new Error(`History failed: ${r.status}`);
       const said: Said[] = await r.json();
       // The tray is extra: a chat without it still works.
       const waiting: Pending[] = w.ok ? await w.json() : [];
-      if (gone) return;
+      if (gone) return false;
       setMessages(
         said.map((m) => ({
           id: `h-${m.i}`,
@@ -95,7 +103,30 @@ export function useChat(): Chat {
       );
       setCards(waiting);
       setStatus("ready");
+      ready = true;
+      return true;
+    };
+    // The browser retries a dropped stream by itself but gives up on an
+    // answer that isn't 200, such as nginx's 502 while the yeoman restarts;
+    // then the page tries again until the yeoman is back.
+    const again = () => {
+      retry = window.setTimeout(() => {
+        sync().then(
+          (ok) => ok && listen(),
+          () => again(),
+        );
+      }, 3000);
+    };
+    const listen = () => {
       events = new EventSource("/api/events");
+      let opened = false;
+      events.onopen = () => {
+        if (opened) sync().catch(() => {});
+        opened = true;
+      };
+      events.onerror = () => {
+        if (events?.readyState === EventSource.CLOSED && !gone) again();
+      };
       events.onmessage = (e) => {
         const s: Shown = JSON.parse(e.data);
         switch (s.type) {
@@ -137,10 +168,20 @@ export function useChat(): Chat {
         }
       };
     };
-    load().catch((e) => setStatus(String(e)));
+    // A phone suspends a page it hides, stream and all.
+    const shown = () => {
+      if (ready && document.visibilityState === "visible") sync().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", shown);
+    sync().then(
+      (ok) => ok && listen(),
+      (e) => setStatus(String(e)),
+    );
     return () => {
       gone = true;
+      window.clearTimeout(retry);
       events?.close();
+      document.removeEventListener("visibilitychange", shown);
     };
   }, []);
 
