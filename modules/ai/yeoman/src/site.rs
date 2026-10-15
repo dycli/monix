@@ -66,6 +66,8 @@ enum Shown {
     },
     /// What the person wrote by another door, as it comes in.
     Heard {
+        /// The other door's id, so a reaction to it lands here too.
+        id: String,
         text: String,
     },
     /// An act waiting for the person's word.
@@ -122,8 +124,11 @@ impl Web {
     }
 
     /// Shows what the person wrote by another door.
-    pub fn heard(&self, text: &str) {
-        self.show(Shown::Heard { text: text.into() });
+    pub fn heard(&self, id: &str, text: &str) {
+        self.show(Shown::Heard {
+            id: id.into(),
+            text: text.into(),
+        });
     }
 
     fn id(&self) -> String {
@@ -248,6 +253,9 @@ impl<D: Door> Door for Mirror<D> {
     }
 
     async fn react(&self, to: &str, emoji: &str) -> Result<(), String> {
+        if let Some(w) = &self.web {
+            w.react(to, emoji).await?;
+        }
         self.door.react(to, emoji).await
     }
 
@@ -560,12 +568,7 @@ async fn history(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response 
     }
     let h = site.hippo.clone();
     match tokio::task::spawn_blocking(move || h.tail(HISTORY)).await {
-        Ok(Ok(all)) => Json(
-            all.into_iter()
-                .filter(|m| matches!(m.kind.as_str(), "user" | "talk" | "note"))
-                .collect::<Vec<Said>>(),
-        )
-        .into_response(),
+        Ok(Ok(all)) => Json(lines(all)).into_response(),
         Ok(Err(e)) => {
             eprintln!("yeoman: site history: {e}");
             StatusCode::BAD_GATEWAY.into_response()
@@ -575,6 +578,41 @@ async fn history(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response 
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
+}
+
+/// A message of the history, with the emoji the yeoman answered it by.
+#[derive(Serialize)]
+struct Line {
+    #[serde(flatten)]
+    said: Said,
+    reaction: Option<String>,
+}
+
+/// The conversation for the page. hippo keeps a lone-emoji answer as a
+/// message, but it went out as a reaction, so it goes back on the person's
+/// message it answered.
+fn lines(all: Vec<Said>) -> Vec<Line> {
+    let mut out: Vec<Line> = Vec::new();
+    for said in all {
+        match said.kind.as_str() {
+            "talk" if crate::is_reaction(&said.text) => {
+                if let Some(last) = out
+                    .last_mut()
+                    .filter(|l| l.said.kind == "user" && l.reaction.is_none())
+                {
+                    last.reaction = Some(said.text);
+                    continue;
+                }
+            }
+            "user" | "talk" | "note" => {}
+            _ => continue,
+        }
+        out.push(Line {
+            said,
+            reaction: None,
+        });
+    }
+    out
 }
 
 async fn events(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
@@ -777,6 +815,32 @@ async fn wait(State(site): State<Arc<Site>>, Json(w): Json<Waiting>) -> Response
 
 #[cfg(test)]
 mod tests {
+
+    fn said(i: u64, kind: &str, text: &str) -> Said {
+        Said {
+            i,
+            kind: kind.into(),
+            text: text.into(),
+            date: String::new(),
+        }
+    }
+
+    #[test]
+    fn lone_emoji_answers_become_reactions() {
+        let out = lines(vec![
+            said(1, "user", "nevermind"),
+            said(2, "talk", "👍"),
+            said(3, "tool", "x"),
+            said(4, "talk", "👍"),
+            said(5, "talk", "Done 👍"),
+        ]);
+        let got: Vec<_> = out
+            .iter()
+            .map(|l| (l.said.i, l.reaction.as_deref()))
+            .collect();
+        // The second 👍 has no unanswered message of the person's, so it stays.
+        assert_eq!(got, [(1, Some("👍")), (4, None), (5, None)]);
+    }
 
     #[test]
     fn name_from_host() {

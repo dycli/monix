@@ -901,7 +901,7 @@ async fn run() -> Result<(), String> {
             // The pages watch a Matrix turn as it happens: the words in,
             // the work, the answer.
             if let Some(w) = &web {
-                w.heard(&msg.text);
+                w.heard(&msg.id, &msg.text);
             }
             let door = site::Mirror {
                 door,

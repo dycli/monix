@@ -35,11 +35,11 @@ export type Pending = { id: number; act: Act; event: string | null };
 /** A card in the tray: `busy` while a verdict is carried out, `error` when it failed. */
 export type Card = Pending & { busy?: boolean; error?: string };
 
-type Said = { i: number; kind: string; text: string; date: string };
+type Said = { i: number; kind: string; text: string; date: string; reaction: string | null };
 
 type Shown =
   | { type: "said"; id: string; text: string; plain: boolean; aside: boolean }
-  | { type: "heard"; text: string }
+  | { type: "heard"; id: string; text: string }
   | { type: "pending"; pending: Pending }
   | { type: "settled"; id: number; text: string; done: boolean }
   | { type: "react"; to: string; emoji: string }
@@ -89,6 +89,7 @@ export function useChat(): Chat {
           role: ROLE[m.kind],
           text: m.text,
           plain: m.kind === "talk" && DRAFT.test(m.text),
+          reaction: m.reaction ?? undefined,
           date: new Date(m.date),
         })),
       );
@@ -108,7 +109,7 @@ export function useChat(): Chat {
             });
             break;
           case "heard":
-            setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "user", text: s.text, date: new Date() }]);
+            setMessages((ms) => [...ms, { id: s.id, role: "user", text: s.text, date: new Date() }]);
             break;
           case "pending":
             setCards((cs) => (cs.some((c) => c.id === s.pending.id) ? cs : [...cs, s.pending]));
