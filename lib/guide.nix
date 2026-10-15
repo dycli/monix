@@ -74,9 +74,9 @@
 
     ## Deploys
 
-    The captain runs `switcharoo`; the engineer never switches a host.
     `switcharoo` deploys pushed `main` and rolls back on its own if the host
-    turns unhealthy. After pushing, say what needs a switch and which long
-    runs a switch would kill.
+    turns unhealthy. Deploy after pushing; first say what the switch restarts
+    and which long runs it would kill. A deploy touching fenced files refuses;
+    the captain runs `switcharoo --approve` for it.
   '';
 }

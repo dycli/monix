@@ -388,6 +388,10 @@ in
         # Plain commits: Claude Code otherwise adds Co-Authored-By, PR text
         # and session links. Codex adds none unless codex_git_commit is on.
         seat.claudeSettings.attribution = false;
+        # The engineer deploys routine changes; the auto-mode classifier would
+        # otherwise refuse. Fenced deploys stay the captain's: `--approve`
+        # asks for a wheel password.
+        seat.claudeSettings.permissions.allow = [ "Bash(switcharoo)" ];
         environment.etc."claude-code/managed-mcp.json".text = toJSON {
           mcpServers =
             browserServers topology
