@@ -153,6 +153,8 @@ pub fn cut(s: &str, max: usize) -> &str {
 pub enum Fail {
     /// A usage or rate limit: wait until then (or 5 minutes).
     Limit(Option<DateTime<Local>>),
+    /// The model declined the input: retrying the same input fails again.
+    Refused(String),
     Other(String),
 }
 
@@ -552,7 +554,9 @@ impl Chat for ClaudeChat {
             .unwrap_or("")
             .to_owned();
         if ev.get("is_error") == Some(&Value::Bool(true)) {
-            return Err(limit(&text).unwrap_or(Fail::Other(text)));
+            return Err(limit(&text)
+                .or_else(|| refused(&text))
+                .unwrap_or(Fail::Other(text)));
         }
         Ok(text)
     }
@@ -572,6 +576,14 @@ impl Drop for ClaudeChat {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// A refusal by the model's safeguards, which fires again on every retry
+/// of the same input.
+fn refused(text: &str) -> Option<Fail> {
+    let lower = text.to_lowercase();
+    (lower.contains("safeguards flagged") || lower.contains("can't respond to this message"))
+        .then(|| Fail::Refused(text.to_owned()))
 }
 
 /// A usage or rate limit message, with its reset time when it gives one
@@ -932,6 +944,14 @@ mod tests {
     fn cut_respects_characters() {
         assert_eq!(cut("aé", 2), "a");
         assert_eq!(cut("abc", 10), "abc");
+    }
+
+    #[test]
+    fn refusals_are_recognized() {
+        let msg = "API Error: Sonnet 5.5's safeguards flagged this message (https://www.anthropic.com/legal/aup). Claude Code can't respond to this message with Sonnet 5.5.";
+        assert!(matches!(refused(msg), Some(Fail::Refused(_))));
+        assert!(limit(msg).is_none());
+        assert!(refused("connection reset").is_none());
     }
 
     #[test]

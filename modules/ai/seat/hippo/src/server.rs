@@ -398,10 +398,29 @@ fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
 /// prompt cache.
 fn render(c: &Core) -> Result<(String, Vec<String>), String> {
     let mut lines = Vec::new();
+    // A run of unbuilt parts shows as one line: one placeholder per part
+    // once grew the view past what it was meant to hold whenever the
+    // compactor stalled.
+    let mut run: Option<(u64, u64)> = None;
     for &(l, i) in &c.view.parts {
         let (s, n) = addr(l, i);
-        let text = c.tree.text(l, i)?.unwrap_or_else(|| PLACEHOLDER.to_owned());
-        lines.push(format!("{s}+{n}|{}", flat(&text)));
+        match c.tree.text(l, i)? {
+            Some(text) => {
+                if let Some((s, n)) = run.take() {
+                    lines.push(unbuilt_line(s, n));
+                }
+                lines.push(format!("{s}+{n}|{}", flat(&text)));
+            }
+            None => {
+                run = Some(match run {
+                    Some((rs, rn)) => (rs, rn + n),
+                    None => (s, n),
+                });
+            }
+        }
+    }
+    if let Some((s, n)) = run {
+        lines.push(unbuilt_line(s, n));
     }
     let unbuilt = c.view.unbuilt(&c.tree);
     let mut note = String::new();
@@ -413,6 +432,15 @@ fn render(c: &Core) -> Result<(String, Vec<String>), String> {
         note = format!("{unbuilt} recent lines are not summarized yet{why}: zoom them.\n");
     }
     Ok((note, lines))
+}
+
+/// The line for `n` unbuilt messages from `s`.
+fn unbuilt_line(s: u64, n: u64) -> String {
+    if n == 1 {
+        format!("{s}+1|{PLACEHOLDER}")
+    } else {
+        format!("{s}+{n}|(not summarized yet: zoom each id with n = 1, or search)")
+    }
 }
 
 /// The whole view as one text, as `view.md` holds it.

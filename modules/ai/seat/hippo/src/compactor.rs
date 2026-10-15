@@ -3,7 +3,7 @@
 //! before its end is a summary; so messages are compressed one at a time,
 //! in order, while merges of finished parts run beside them.
 
-use crate::compact::{self, Fail, PROMPT_VERSION, Step, Usage};
+use crate::compact::{self, Fail, PROMPT_VERSION, Step, Usage, cut};
 use crate::server::{Core, Shared};
 use crate::store::Msg;
 use crate::tree::{NODE, Node, addr, flat};
@@ -324,6 +324,21 @@ fn spawn(
                     c.pump.limit = Some(until);
                     (until - Local::now()).to_std().unwrap_or_default()
                 }
+                Err(Fail::Refused(e)) => {
+                    // Retrying fails the same way, and every later node
+                    // waits on this one, so it gets a line built by hand.
+                    let (s, n) = addr(l, i);
+                    eprintln!("hippo: node {s}+{n} refused, saving a fallback: {e}");
+                    let line = fallback(&a, b.as_ref().map(|(b, _)| b.as_str()));
+                    if let Err(e) = save(&mut c, l, i, line, "fallback", PROMPT_VERSION) {
+                        eprintln!("hippo: saving node {l}/{i}: {e}");
+                    }
+                    c.pump.failed.remove(&(l, i));
+                    c.pump.parked.remove(&(l, i));
+                    c.pump.busy.remove(&(l, i));
+                    pump(&shared, &mut c);
+                    return;
+                }
                 Err(Fail::Other(e)) => {
                     let (s, n) = addr(l, i);
                     if !c.pump.failed.contains_key(&(l, i)) {
@@ -342,6 +357,18 @@ fn spawn(
         c.pump.busy.remove(&(l, i));
         pump(&shared, &mut c);
     });
+}
+
+/// A line for a step the model refused: a message's opening up to any
+/// THINK text (what a refusal most often trips on), or two lines joined.
+fn fallback(a: &str, b: Option<&str>) -> String {
+    match b {
+        Some(b) => cut(&flat(&format!("{a} {b}")), NODE).to_owned(),
+        None => {
+            let head = a.split(" THINK").next().unwrap_or(a);
+            format!("{} (summary refused: zoom it)", cut(&flat(head), 200).trim_end())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -372,6 +399,14 @@ mod tests {
         fn start(&self) -> Result<Box<dyn Chat>, Fail> {
             Ok(Box::new(FakeChat(self.0.clone())))
         }
+    }
+
+    #[test]
+    fn refused_steps_fall_back_to_their_opening() {
+        let line = fallback("echo [jump-back]: 12014 THINK private reasoning", None);
+        assert_eq!(line, "echo [jump-back]: 12014 (summary refused: zoom it)");
+        assert!(fallback(&"x".repeat(900), None).len() < NODE);
+        assert_eq!(fallback("talk: a", Some("talk: b")), "talk: a talk: b");
     }
 
     #[test]
