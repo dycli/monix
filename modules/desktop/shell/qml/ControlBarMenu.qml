@@ -9,23 +9,34 @@ Row {
     signal displayRequested
 
     property bool settingsOpen: false
+    // A key flashing one control ("volume", "microphone", "brightness")
+    // shows that control alone; empty shows them all.
+    property string only: ""
+
+    function shows(mode: string): bool {
+        return only === "" || only === mode;
+    }
 
     height: 24
     spacing: Style.barItemGap
 
     WifiStatusButton {
+        visible: root.only === "" && NetworkState.wifiDevice !== null
         onDetailRequested: root.settingsRequested("network")
     }
 
     EthernetStatusButton {
+        visible: root.only === "" && NetworkState.wiredDevice !== null
         onDetailRequested: root.settingsRequested("network")
     }
 
     BluetoothStatusButton {
+        visible: root.only === "" && BluetoothState.available
         onDetailRequested: root.settingsRequested("bluetooth")
     }
 
     BarSlider {
+        visible: root.shows("volume")
         available: AudioState.available
         icon: AudioState.icon
         iconLeftAligned: true
@@ -41,12 +52,14 @@ Row {
     }
 
     BarModeButton {
+        visible: root.shows("microphone")
         enabled: AudioState.sourceAvailable
         icon: AudioState.sourceIcon
         onActivated: AudioState.toggleSourceMute()
     }
 
     BarSlider {
+        visible: root.shows("brightness")
         available: BrightnessState.available
         icon: BrightnessState.internalAvailable ? "󰌢" : "󰍹"
         iconAvailable: true
@@ -57,7 +70,7 @@ Row {
     }
 
     BarSlider {
-        visible: BrightnessState.internalAvailable
+        visible: root.only === "" && BrightnessState.internalAvailable
             && BrightnessState.externalAvailable
         available: BrightnessState.externalAvailable
         icon: "󰍹"
@@ -69,6 +82,7 @@ Row {
     }
 
     BarModeButton {
+        visible: root.only === ""
         enabled: true
         icon: NightModeState.enabled ? "󰖔" : "󰖨"
         onActivated: {

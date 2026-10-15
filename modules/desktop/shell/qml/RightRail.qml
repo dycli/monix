@@ -21,6 +21,11 @@ Item {
     readonly property bool lowBatteryOpen: PowerService.hasBattery
         && PowerService.percentage <= 15 && !PowerService.charging
     readonly property bool detailVisible: ownsMode && BarModeService.activeMode === "session"
+    // A flash alone shows just the flashed control. transientMode outlives
+    // transientVisible by the close animation, so the popout keeps its one
+    // control while it slides away.
+    readonly property string flashOnly: transientMode !== "" && !hoverOpen
+        && !settingsOpen && !lowBatteryOpen ? transientMode : ""
     readonly property bool popoutVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientVisible || settingsOpen || lowBatteryOpen)
     readonly property real mediaLead: media.visible ? media.width + gap : 0
@@ -131,12 +136,16 @@ Item {
             spacing: root.gap
 
             MediaTitle {
+                visible: root.flashOnly === "" && MediaState.available && text.length > 0
+                    && width > 0
                 maximumWidth: Math.max(0, root.popoutRoom - popout.fixedWidth - root.gap)
             }
 
             ControlBarMenu {
                 id: controlMenu
 
+                visible: root.flashOnly !== "profile"
+                only: root.flashOnly
                 settingsOpen: root.settingsOpen
                 onSettingsRequested: section => {
                     root.closeOthers();
@@ -157,6 +166,7 @@ Item {
                 profileLabel: PowerService.profilesAvailable
                     ? PowerService.profileName(PowerProfiles.profile) : "Power"
                 visible: PowerService.hasBattery
+                    && (root.flashOnly === "" || root.flashOnly === "profile")
 
                 MouseArea {
                     anchors.fill: parent
