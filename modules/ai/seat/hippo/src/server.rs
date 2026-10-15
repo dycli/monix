@@ -7,7 +7,7 @@ use crate::compactor::{Pump, Spent, pump};
 use crate::live::{Live, Sources};
 use crate::store::{Draft, Kind, Store, fmt_date};
 use crate::tree::{Tree, addr, flat};
-use crate::view::{CONTEXT, PLACEHOLDER, VIEW, View, head};
+use crate::view::{CONTEXT, PLACEHOLDER, UNBUILT, VIEW, View, head};
 use crate::watcher::Watcher;
 use chrono::{DateTime, Local};
 use regex::RegexBuilder;
@@ -453,7 +453,7 @@ fn unbuilt_line(s: u64, n: u64) -> String {
     if n == 1 {
         format!("{s}+1|{PLACEHOLDER}")
     } else {
-        format!("{s}+{n}|(not summarized yet: zoom each id with n = 1, or search)")
+        format!("{s}+{n}|{UNBUILT}")
     }
 }
 

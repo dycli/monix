@@ -23,6 +23,9 @@ pub const CONTEXT: u64 = 32_000;
 
 pub const PLACEHOLDER: &str = "(not summarized yet: zoom it)";
 
+/// Text of the one line a run of unbuilt parts renders as.
+pub const UNBUILT: &str = "(not summarized yet: zoom each id with n = 1, or search)";
+
 /// Text of an unbuilt node standing for history `bound` cut from the front.
 pub const BEYOND: &str = "(older history, past the view's budget: zoom it or search)";
 
@@ -79,6 +82,11 @@ fn head_size(tree: &Tree, (l, i): (u8, u64)) -> u64 {
 /// Bytes of `id+n|` and the newline.
 fn label(l: u8, i: u64) -> u64 {
     let (s, n) = addr(l, i);
+    label_of(s, n)
+}
+
+/// Bytes of `s+n|` and the newline, or more for an `n` up to that.
+fn label_of(s: u64, n: u64) -> u64 {
     let digits = |x: u64| x.checked_ilog10().unwrap_or(0) as u64 + 1;
     digits(s) + digits(n) + 3
 }
@@ -175,14 +183,22 @@ impl View {
     /// of it, then holds at `last` while the view grows back, so successive
     /// renders share their head and read it from the cache.
     pub fn cut(&self, tree: &Tree, budget: u64, last: u64, end: u64) -> u64 {
-        let mut sizes: Vec<(u64, u64)> = Vec::new();
-        let mut covered = 0;
+        // (start, bytes, bytes if it opens the rendered lines): a run of
+        // unbuilt parts renders as one line, held by the run's first part.
+        let run = |s: u64| label_of(s, self.t) + UNBUILT.len() as u64;
+        let mut sizes: Vec<(u64, u64, u64)> = Vec::new();
+        let (mut covered, mut in_run) = (0, false);
         for &(l, i) in &self.parts {
             let (s, n) = addr(l, i);
             if s + n > end {
                 break;
             }
-            sizes.push((s, part_size(tree, (l, i))));
+            sizes.push(match (tree.built(l, i), in_run) {
+                (true, _) => (s, part_size(tree, (l, i)), part_size(tree, (l, i))),
+                (false, true) => (s, 0, run(s)),
+                (false, false) => (s, run(s), run(s)),
+            });
+            in_run = !tree.built(l, i);
             covered = s + n;
         }
         if sizes.iter().map(|p| p.1).sum::<u64>() <= budget {
@@ -190,14 +206,16 @@ impl View {
         }
         let heads = |at: u64| -> u64 { cover(at).iter().map(|&p| head_size(tree, p)).sum() };
         let at = |k: usize| sizes.get(k).map_or(covered, |p| p.0);
+        // The lines from part k on, with what precedes them cut.
+        let lines = |k: usize, rest: u64| sizes.get(k).map_or(0, |p| p.2 - p.1) + rest;
         // A part merged across the last cut goes whole into the head.
         let mut k = sizes
             .iter()
             .position(|p| p.0 >= last)
             .unwrap_or(sizes.len());
         let mut rest: u64 = sizes[k..].iter().map(|p| p.1).sum();
-        if rest + heads(at(k)) > budget {
-            while k < sizes.len() && rest + heads(at(k)) > budget / 2 {
+        if lines(k, rest) + heads(at(k)) > budget {
+            while k < sizes.len() && lines(k, rest) + heads(at(k)) > budget / 2 {
                 rest -= sizes[k].1;
                 k += 1;
             }
@@ -317,6 +335,19 @@ mod tests {
             .map(|l| l.len() + 1)
             .sum();
         assert!(size <= 10_000, "{size} bytes");
+    }
+
+    #[test]
+    fn an_unbuilt_tail_counts_as_its_one_line() {
+        // A paused compactor: 300 lines built, then 4,000 messages waiting.
+        let (t, mut v) = unmerged("tail", 300, 200);
+        for _ in 0..4_000 {
+            v.append(&t, u64::MAX);
+        }
+        let cut = v.cut(&t, 128_000, 0, v.t);
+        assert_eq!(cut, 0, "the built lines fit beside one placeholder line");
+        let cut = v.cut(&t, 32_000, 0, v.t);
+        assert!(cut > 0 && cut < 300, "cut at {cut}");
     }
 
     #[test]
