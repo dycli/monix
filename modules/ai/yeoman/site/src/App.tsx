@@ -18,6 +18,7 @@ import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { askToSignIn, attachments, useChat, waitToSignIn, type Card, type Msg } from "./chat";
 import { useTheme } from "./theme";
+import { usePush } from "./push";
 
 type Args = ToolCallMessagePartProps["args"];
 
@@ -93,6 +94,32 @@ function ThemeButton({ className = "" }: { className?: string }) {
         ) : (
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
         )}
+      </svg>
+    </button>
+  );
+}
+
+function BellButton() {
+  const [bell, toggle] = usePush();
+  if (bell === "unsupported") return null;
+  const label = {
+    on: "Notifications on",
+    off: "Turn on notifications",
+    denied: "Notifications blocked in the browser's settings",
+  }[bell];
+  return (
+    <button
+      onClick={toggle}
+      disabled={bell === "denied"}
+      aria-label={label}
+      title={label}
+      aria-pressed={bell === "on"}
+      className={`grid size-9 place-items-center rounded-full hover:bg-hover hover:text-ink disabled:opacity-40 ${bell === "on" ? "text-ink" : "text-mid"}`}
+    >
+      <svg viewBox="0 0 24 24" className="size-[18px]" fill={bell === "on" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+        <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+        {bell !== "on" && bell !== "off" && <path d="M3 3l18 18" />}
       </svg>
     </button>
   );
@@ -227,7 +254,10 @@ function Thread({ messages, typing, send, cards, decide }: { messages: Msg[]; ty
       <ThreadPrimitive.Root className="flex h-full flex-col">
         <header className="flex h-[57px] shrink-0 items-center justify-between border-b border-hair bg-paper px-[max(20px,env(safe-area-inset-left))] max-sm:h-[51px] max-sm:px-3.5">
           <span className="font-serif text-[22px] tracking-[-0.01em]">{NAME}</span>
-          <ThemeButton className="-mr-2" />
+          <div className="-mr-2 flex">
+            <BellButton />
+            <ThemeButton />
+          </div>
         </header>
         <ThreadPrimitive.Viewport className="flex flex-1 flex-col overflow-y-auto">
           <main className="mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)]">

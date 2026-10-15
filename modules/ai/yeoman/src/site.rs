@@ -37,6 +37,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{broadcast, mpsc};
 use tower_http::services::{ServeDir, ServeFile};
 
+use crate::push::{self, Push};
+
 const COOKIE: &str = "session";
 const SESSION: Duration = Duration::from_secs(30 * 24 * 3600);
 /// How long a request to sign in waits for its answer.
@@ -356,6 +358,8 @@ struct Site {
     notify: Notify,
     gate: Arc<Gate>,
     sessions: Mutex<Sessions>,
+    /// None when the site's address is unknown or the key would not load.
+    push: Option<Arc<Push>>,
 }
 
 /// Sessions by token, with when each ends in Unix seconds; kept in a file
@@ -422,7 +426,7 @@ fn code() -> Result<String, String> {
 }
 
 /// Writes a file only its owner reads, whole or not at all.
-fn write_private(path: &Path, text: &str) -> Result<(), String> {
+pub(crate) fn write_private(path: &Path, text: &str) -> Result<(), String> {
     use std::os::unix::fs::OpenOptionsExt;
     let tmp = path.with_extension("tmp");
     let mut f = fs::OpenOptions::new()
@@ -493,7 +497,7 @@ async fn manifest(RawQuery(query): RawQuery, headers: HeaderMap) -> Response {
         .into_response()
 }
 
-fn name_of(host: &str) -> String {
+pub(crate) fn name_of(host: &str) -> String {
     let label = host.split('.').next().unwrap_or_default();
     let mut chars = label.chars();
     match chars.next() {
@@ -552,9 +556,15 @@ pub async fn serve(
         notify,
         gate,
         sessions: Mutex::new(Sessions::load(dir.join("sessions"))),
+        push: push_from_env(&dir).map(Arc::new),
     });
+    if let Some(push) = &site.push {
+        tokio::spawn(ring(site.web.shown.subscribe(), push.clone()));
+    }
     let app = Router::new()
         .route_service("/", ServeFile::new(root.join("index.html")))
+        // At the root, so its scope is the whole site.
+        .route_service("/sw.js", ServeFile::new(root.join("sw.js")))
         .nest_service("/_site", ServeDir::new(root.join("_site")))
         .route("/manifest.webmanifest", get(manifest))
         .route("/api/history", get(history))
@@ -567,6 +577,8 @@ pub async fn serve(
         .route("/api/decide", post(decide))
         .route("/api/ask", post(ask))
         .route("/api/wait", post(wait))
+        .route("/api/push", get(push_key).post(push_add))
+        .route("/api/push/drop", post(push_drop))
         .fallback_service(ServeDir::new(pages))
         .with_state(site);
     let listener = tokio::net::TcpListener::bind(addr)
@@ -575,6 +587,94 @@ pub async fn serve(
     axum::serve(listener, app)
         .await
         .map_err(|e| format!("site: {e}"))
+}
+
+fn push_from_env(dir: &Path) -> Option<Push> {
+    let url = std::env::var("YEOMAN_SITE_URL").ok()?;
+    Push::load(dir, &url)
+        .inspect_err(|e| eprintln!("yeoman: push: {e}"))
+        .ok()
+}
+
+/// Rings every device for what the yeoman says and what waits on the
+/// person's word; the rest (steps, typing, reactions) only matters on an
+/// open page.
+async fn ring(mut rx: broadcast::Receiver<Shown>, push: Arc<Push>) {
+    loop {
+        let (body, tag) = match rx.recv().await {
+            Ok(Shown::Said { text, .. }) => (push::gist(&text), "said"),
+            Ok(Shown::Pending { pending }) => (push::gist(&pending.act.show()), "pending"),
+            Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(broadcast::error::RecvError::Closed) => return,
+        };
+        let push = push.clone();
+        tokio::task::spawn_blocking(move || {
+            push.send(&push::Note {
+                title: &push.title,
+                body,
+                tag,
+            })
+        });
+    }
+}
+
+/// The key a device subscribes with; 404 when push is off.
+async fn push_key(State(site): State<Arc<Site>>) -> Response {
+    match &site.push {
+        Some(p) => p.public().into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// A device's subscription, as the browser's `PushSubscription.toJSON()`.
+async fn push_add(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    Json(sub): Json<serde_json::Value>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Some(push) = site.push.clone() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match tokio::task::spawn_blocking(move || push.subscribe(sub)).await {
+        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, e).into_response(),
+        Err(e) => {
+            eprintln!("yeoman: push: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct Endpoint {
+    endpoint: String,
+}
+
+async fn push_drop(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    Json(e): Json<Endpoint>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Some(push) = site.push.clone() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match tokio::task::spawn_blocking(move || push.unsubscribe(&e.endpoint)).await {
+        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Err(e)) => {
+            eprintln!("yeoman: push: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+        Err(e) => {
+            eprintln!("yeoman: push: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
 }
 
 /// The last messages, oldest first: the person's, the yeoman's and notes.

@@ -15,6 +15,7 @@ mod matrix;
 mod media;
 mod model;
 mod pending;
+mod push;
 mod site;
 mod task;
 mod tools;

@@ -490,6 +490,9 @@
               // optionalAttrs i.web {
                 YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
                 YEOMAN_SITE_ROOT = web;
+                # Names this server to push services, and the site to its
+                # notifications.
+                YEOMAN_SITE_URL = "https://${n}.${config.shipProxy.domain}";
               }
               // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
               // optionalAttrs (i.mailCredentialsFile != null) {

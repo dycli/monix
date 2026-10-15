@@ -30,6 +30,7 @@
 !*.tsx
 !*.css
 !*.html
+!modules/ai/yeoman/site/public/sw.js
 
 # Assets: docs diagrams and the desktop wallpaper.
 !*.svg
