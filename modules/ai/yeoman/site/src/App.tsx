@@ -16,7 +16,7 @@ import {
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
-import { askToSignIn, attachments, useChat, waitToSignIn, type Msg } from "./chat";
+import { askToSignIn, attachments, useChat, waitToSignIn, type Card, type Msg } from "./chat";
 import { useTheme } from "./theme";
 
 type Args = ToolCallMessagePartProps["args"];
@@ -60,7 +60,7 @@ export function App() {
   if (chat.state === "loading") return <Solo><Dots /></Solo>;
   if (chat.state === "signed-out") return <SignIn />;
   if (chat.state === "error") return <Solo><p className="text-mid">{chat.error}</p></Solo>;
-  return <Thread messages={chat.messages} typing={chat.typing} send={chat.send} />;
+  return <Thread messages={chat.messages} typing={chat.typing} send={chat.send} cards={chat.cards} decide={chat.decide} />;
 }
 
 /** A page with one thing on it, centred high, as UniiChat's sign-in. */
@@ -205,8 +205,11 @@ function Chip({ attachment: a, removable = false }: { attachment: Attachment; re
 }
 
 type Send = (text: string, file?: File) => Promise<void>;
+type Decide = (id: number, yes: boolean) => Promise<void>;
 
-function Thread({ messages, typing, send }: { messages: Msg[]; typing: boolean; send: Send }) {
+function Thread({ messages, typing, send, cards, decide }: { messages: Msg[]; typing: boolean; send: Send; cards: Card[]; decide: Decide }) {
+  // The dots stand for work not yet shown; once words or tools arrive, they show it.
+  const working = typing && !messages.at(-1)?.live;
   const runtime = useExternalStoreRuntime({
     messages,
     convertMessage: convert,
@@ -223,7 +226,7 @@ function Thread({ messages, typing, send }: { messages: Msg[]; typing: boolean; 
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="flex h-full flex-col">
         <header className="flex h-[57px] shrink-0 items-center justify-between border-b border-hair bg-paper px-[max(20px,env(safe-area-inset-left))] max-sm:h-[51px] max-sm:px-3.5">
-          <span className="font-brand text-xl font-semibold tracking-[-0.01em]">{NAME}</span>
+          <span className="font-serif text-[22px] tracking-[-0.01em]">{NAME}</span>
           <ThemeButton className="-mr-2" />
         </header>
         <ThreadPrimitive.Viewport className="flex flex-1 flex-col overflow-y-auto">
@@ -233,11 +236,12 @@ function Thread({ messages, typing, send }: { messages: Msg[]; typing: boolean; 
                 message.role === "user" ? <UserMessage /> : message.role === "assistant" ? <AssistantMessage /> : <Note />
               }
             </ThreadPrimitive.Messages>
-            {typing && <Dots />}
+            {working && <Dots />}
           </main>
           <ThreadPrimitive.ViewportFooter className="sticky bottom-0 mt-auto bg-[linear-gradient(transparent,var(--paper)_14px)] px-5 pt-[18px] pb-[max(14px,env(safe-area-inset-bottom))] max-sm:px-3.5 max-sm:pt-3 max-sm:pb-[max(8px,env(safe-area-inset-bottom))]">
             <div className="relative mx-auto w-[min(740px,100%)]">
-              <ThreadPrimitive.ScrollToBottom className="absolute -top-12 left-1/2 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-frame bg-lift text-mid shadow-lift hover:text-ink disabled:invisible">
+              <Tray cards={cards} decide={decide} />
+              <ThreadPrimitive.ScrollToBottom className="absolute -top-12 left-1/2 z-10 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-frame bg-lift text-mid shadow-lift hover:text-ink disabled:invisible">
                 <Arrow down />
               </ThreadPrimitive.ScrollToBottom>
               <ComposerPrimitive.Root className="rounded-3xl border border-frame bg-lift py-[7px] pr-[7px] pl-2 shadow-lift focus-within:border-soft max-sm:py-[5px] max-sm:pr-[5px] max-sm:pl-1.5">
@@ -296,7 +300,7 @@ function Time({ className = "" }: { className?: string }) {
 // breaks anywhere rather than running off the page.
 function UserMessage() {
   return (
-    <MessagePrimitive.Root className="group flex flex-col items-end gap-1.5">
+    <MessagePrimitive.Root className="rise group flex flex-col items-end gap-1.5">
       <MessagePrimitive.Attachments>{({ attachment }) => <Chip attachment={attachment} />}</MessagePrimitive.Attachments>
       <MessagePrimitive.If hasContent>
       <div className="relative w-fit max-w-[min(82%,560px)] rounded-[20px_20px_6px_20px] border-[1.25px] border-edge px-[17px] py-2.5 whitespace-pre-wrap [overflow-wrap:anywhere]">
@@ -309,19 +313,30 @@ function UserMessage() {
   );
 }
 
-const Text = () => (
-  <StreamdownTextPrimitive plugins={{ code, math }} mode="static" lineNumbers={false} controls={{ code: true, table: false }} />
-);
+// A live answer is parsed as it streams, its unfinished markdown closed
+// for it, and shows a caret until the whole answer replaces it.
+function Text() {
+  const { live } = useCustom();
+  return (
+    <StreamdownTextPrimitive
+      plugins={{ code, math }}
+      mode={live ? "streaming" : "static"}
+      containerClassName={live ? "writing" : undefined}
+      lineNumbers={false}
+      controls={{ code: true, table: false }}
+    />
+  );
+}
 
 function AssistantMessage() {
   const { plain } = useCustom();
   return (
-    <MessagePrimitive.Root className="group relative">
+    <MessagePrimitive.Root className="rise group relative">
       {plain ? (
         // A draft waiting for approval: framed and named on its frame, as
         // UniiChat frames a report.
         <div className="relative mt-2 rounded-[14px] border-[1.25px] border-edge px-5 py-3.5 whitespace-pre-wrap [overflow-wrap:anywhere]">
-          <span className="absolute -top-[0.75em] left-3.5 bg-paper px-1.5 text-xs font-semibold text-mid">Draft</span>
+          <span className="absolute -top-[0.75em] left-3.5 bg-paper px-1.5 text-xs font-semibold tracking-wide text-mid uppercase">Draft</span>
           <MessagePrimitive.Parts />
         </div>
       ) : (
@@ -458,7 +473,7 @@ function Note() {
   const style = "font-serif text-[14.5px] leading-relaxed whitespace-pre-wrap text-mid italic [overflow-wrap:anywhere]";
   if (!fed) {
     return (
-      <MessagePrimitive.Root className={style}>
+      <MessagePrimitive.Root className={`rise ${style}`}>
         <MessagePrimitive.Parts />
       </MessagePrimitive.Root>
     );
@@ -469,7 +484,7 @@ function Note() {
   const body = text.slice(fed[0].length);
   const label = { routine: "Routine", task: "Task", alert: "Alert", message: "Message", seat: "From Bridge" }[fed[1]];
   return (
-    <MessagePrimitive.Root className={style}>
+    <MessagePrimitive.Root className={`rise ${style}`}>
       <details className="group">
         <summary className="cursor-pointer list-none truncate marker:hidden [&::-webkit-details-marker]:hidden">
           <span className="not-italic">{label}</span>
@@ -478,5 +493,71 @@ function Note() {
         <div className="mt-1">{body}</div>
       </details>
     </MessagePrimitive.Root>
+  );
+}
+
+// Acts waiting for the person's word sit above the composer, where the
+// next thing is done, until a verdict here or in Matrix settles them. A
+// mail draft reads as a letter on a sheet of its own.
+function Tray({ cards, decide }: { cards: Card[]; decide: Decide }) {
+  if (cards.length === 0) return null;
+  return (
+    <div className="mb-3 flex max-h-[min(52vh,520px)] flex-col gap-3.5 overflow-y-auto pt-2.5">
+      {cards.map((c) => (
+        <Letter key={c.id} card={c} decide={decide} />
+      ))}
+    </div>
+  );
+}
+
+function Letter({ card: c, decide }: { card: Card; decide: Decide }) {
+  const { to, account, subject, body } = c.act;
+  const [open, setOpen] = useState(false);
+  const head = "w-16 shrink-0 text-[11px] font-semibold tracking-wider text-soft uppercase";
+  return (
+    <article className="rise relative shrink-0 rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift" aria-label={`Draft to ${to}`}>
+      <span className="absolute -top-[0.75em] left-3.5 rounded bg-lift px-1.5 text-xs font-semibold tracking-wide text-accent uppercase">
+        Waiting on you
+      </span>
+      <dl className="flex flex-col gap-0.5 border-b border-dashed border-frame px-5 pt-4 pb-2.5 text-[14px]">
+        <div className="flex items-baseline">
+          <dt className={head}>To</dt>
+          <dd className="truncate">{to}</dd>
+        </div>
+        {account && (
+          <div className="flex items-baseline">
+            <dt className={head}>From</dt>
+            <dd className="truncate text-mid">{account}</dd>
+          </div>
+        )}
+        <div className="flex items-baseline">
+          <dt className={head}>Subject</dt>
+          <dd className="font-medium [overflow-wrap:anywhere]">{subject}</dd>
+        </div>
+      </dl>
+      {/* Folded to a few lines so the talk stays in view; a click reads it whole. */}
+      <div onClick={() => setOpen(!open)} title={open ? undefined : "Read it all"} className="cursor-pointer px-5 py-3">
+        <p className={`font-serif text-[15.5px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${open ? "max-h-72 overflow-y-auto" : "line-clamp-3"}`}>
+          {body}
+        </p>
+      </div>
+      {c.error && <p className="px-5 pb-1 text-[13px] text-accent">{c.error}</p>}
+      <footer className="flex items-center justify-end gap-2 px-3.5 pb-3">
+        {c.busy ? (
+          <span className="flex h-9 items-center gap-2 px-3 text-[13.5px] text-mid">
+            <span className="size-3 animate-spin rounded-full border-[1.5px] border-hair border-t-accent" /> Working
+          </span>
+        ) : (
+          <>
+            <button onClick={() => decide(c.id, false)} className="h-9 rounded-full px-4 text-[14px] text-mid hover:bg-hover hover:text-ink">
+              Drop
+            </button>
+            <button onClick={() => decide(c.id, true)} className="h-9 rounded-full bg-ink px-5 text-[14px] font-medium text-paper hover:opacity-85">
+              Send
+            </button>
+          </>
+        )}
+      </footer>
+    </article>
   );
 }

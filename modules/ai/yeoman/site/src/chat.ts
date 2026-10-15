@@ -26,12 +26,22 @@ export type Tool = { id: string; name: string; input: unknown; result?: string; 
 
 type Step =
   | { type: "call"; id: string; name: string; input: unknown }
-  | { type: "result"; id: string; text: string; error: boolean };
+  | { type: "result"; id: string; text: string; error: boolean }
+  | { type: "text"; text: string };
+
+/** An act waiting for the person's word: today only a mail draft. */
+export type Act = { kind: "mail"; account: string | null; to: string; subject: string; body: string };
+export type Pending = { id: number; act: Act; event: string | null };
+/** A card in the tray: `busy` while a verdict is carried out, `error` when it failed. */
+export type Card = Pending & { busy?: boolean; error?: string };
 
 type Said = { i: number; kind: string; text: string; date: string };
 
 type Shown =
-  | { type: "said"; id: string; text: string; plain: boolean }
+  | { type: "said"; id: string; text: string; plain: boolean; aside: boolean }
+  | { type: "heard"; text: string }
+  | { type: "pending"; pending: Pending }
+  | { type: "settled"; id: number; text: string; done: boolean }
   | { type: "react"; to: string; emoji: string }
   | { type: "picture"; png: string }
   | { type: "typing"; on: boolean }
@@ -39,34 +49,50 @@ type Shown =
 
 const ROLE: Record<string, Msg["role"]> = { user: "user", talk: "assistant", note: "system" };
 
+// A draft as Matrix shows it (pending.rs `Act::show`), kept in hippo as talk;
+// on reload it is framed as it was.
+const DRAFT = /^Draft to [^\n]+\nSubject: [\s\S]*\n\n👍 sends it, 👎 drops it\.$/;
+
 export type Chat =
   | { state: "loading" }
   | { state: "signed-out" }
   | { state: "error"; error: string }
-  | { state: "ready"; messages: Msg[]; typing: boolean; send: (text: string, file?: File) => Promise<void> };
+  | {
+      state: "ready";
+      messages: Msg[];
+      typing: boolean;
+      send: (text: string, file?: File) => Promise<void>;
+      cards: Card[];
+      decide: (id: number, yes: boolean) => Promise<void>;
+    };
 
 export function useChat(): Chat {
   const [status, setStatus] = useState<"loading" | "signed-out" | "ready" | string>("loading");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [typing, setTyping] = useState(false);
+  const [cards, setCards] = useState<Card[]>([]);
 
   useEffect(() => {
     let events: EventSource | undefined;
     let gone = false;
     const load = async () => {
-      const r = await fetch("/api/history");
+      const [r, w] = await Promise.all([fetch("/api/history"), fetch("/api/pending")]);
       if (r.status === 401) return setStatus("signed-out");
       if (!r.ok) return setStatus(`History failed: ${r.status}`);
       const said: Said[] = await r.json();
+      // The tray is extra: a chat without it still works.
+      const waiting: Pending[] = w.ok ? await w.json() : [];
       if (gone) return;
       setMessages(
         said.map((m) => ({
           id: `h-${m.i}`,
           role: ROLE[m.kind],
           text: m.text,
+          plain: m.kind === "talk" && DRAFT.test(m.text),
           date: new Date(m.date),
         })),
       );
+      setCards(waiting);
       setStatus("ready");
       events = new EventSource("/api/events");
       events.onmessage = (e) => {
@@ -74,11 +100,23 @@ export function useChat(): Chat {
         switch (s.type) {
           case "said":
             setMessages((ms) => {
-              // The answer joins the tools that led to it; a draft stands alone.
+              // The answer joins the tools and words that led to it; a
+              // draft, or what came from no turn, stands alone.
               const last = ms.at(-1);
-              if (!s.plain && last?.live) return [...ms.slice(0, -1), { ...last, id: s.id, text: s.text, live: false }];
+              if (!s.plain && !s.aside && last?.live) return [...ms.slice(0, -1), { ...last, id: s.id, text: s.text, live: false }];
               return [...ms, { id: s.id, role: "assistant", text: s.text, plain: s.plain, date: new Date() }];
             });
+            break;
+          case "heard":
+            setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "user", text: s.text, date: new Date() }]);
+            break;
+          case "pending":
+            setCards((cs) => (cs.some((c) => c.id === s.pending.id) ? cs : [...cs, s.pending]));
+            break;
+          case "settled":
+            setCards((cs) => (s.done ? cs.filter((c) => c.id !== s.id) : cs.map((c) => (c.id === s.id ? { ...c, busy: false, error: s.text } : c))));
+            // What came of it stays in the talk, as it does in hippo.
+            if (s.done) setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: s.text, date: new Date() }]);
             break;
           case "step":
             setMessages((ms) => step(ms, s.step));
@@ -91,8 +129,9 @@ export function useChat(): Chat {
             break;
           case "typing":
             setTyping(s.on);
-            // A turn that ended without an answer leaves its tools standing.
-            if (!s.on) setMessages((ms) => ms.map((m) => (m.live ? { ...m, live: false } : m)));
+            // A turn that ended without an answer leaves its tools standing,
+            // and loses the words it never finished.
+            if (!s.on) setMessages((ms) => ms.flatMap((m) => (!m.live ? [m] : m.tools ? [{ ...m, text: "", live: false }] : [])));
             break;
         }
       };
@@ -122,19 +161,39 @@ export function useChat(): Chat {
     setMessages((ms) => ms.map((m) => (m.id === local ? { ...m, id } : m)));
   }, []);
 
+  const decide = useCallback(async (id: number, yes: boolean) => {
+    setCards((cs) => cs.map((c) => (c.id === id ? { ...c, busy: true, error: undefined } : c)));
+    const r = await fetch("/api/decide", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, yes }),
+    });
+    if (r.status === 401) return setStatus("signed-out");
+    // Gone means decided already, here or in Matrix.
+    if (r.status === 404) return setCards((cs) => cs.filter((c) => c.id !== id));
+    // Accepted: `settled` comes over the stream once it is carried out.
+    if (!r.ok) setCards((cs) => cs.map((c) => (c.id === id ? { ...c, busy: false, error: `That failed (${r.status}).` } : c)));
+  }, []);
+
   if (status === "loading" || status === "signed-out") return { state: status };
   if (status !== "ready") return { state: "error", error: status };
-  return { state: "ready", messages, typing, send };
+  return { state: "ready", messages, typing, send, cards, decide };
 }
 
 function step(ms: Msg[], s: Step): Msg[] {
+  const last = ms.at(-1);
+  if (s.type === "text") {
+    if (last?.live) return [...ms.slice(0, -1), { ...last, text: last.text + s.text }];
+    return [...ms, { id: crypto.randomUUID(), role: "assistant", text: s.text, live: true, date: new Date() }];
+  }
   if (s.type === "result") {
     const done = (t: Tool) => (t.id === s.id ? { ...t, result: s.text, error: s.error } : t);
     return ms.map((m) => (m.tools?.some((t) => t.id === s.id) ? { ...m, tools: m.tools.map(done) } : m));
   }
   const tool = { id: s.id, name: s.name, input: s.input };
-  const last = ms.at(-1);
-  if (last?.live) return [...ms.slice(0, -1), { ...last, tools: [...(last.tools ?? []), tool] }];
+  // Words before a call lead into it and are not the answer, which
+  // comes whole in `said`.
+  if (last?.live) return [...ms.slice(0, -1), { ...last, text: "", tools: [...(last.tools ?? []), tool] }];
   return [...ms, { id: `w-${s.id}`, role: "assistant", text: "", tools: [tool], live: true, date: new Date() }];
 }
 

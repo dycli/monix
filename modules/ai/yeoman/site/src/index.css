@@ -6,10 +6,11 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* UniiChat's look (uniichat.com/style.css): dark ink on warm paper, or
-   light ink on a soft black. What a person says is framed, what the
-   machine wrote (code) is filled. Light is cream and brown rather than
-   pure white, which glares on a phone at night. */
+/* Paper, after UniiChat (uniichat.com/style.css): dark ink on warm
+   cream by day, pale ink on soot-dark card stock by night, both with a
+   faint grain. What a person says is framed, what the machine wrote (code)
+   is filled, and the one colour is a red pencil mark for what wants
+   attention. Neither is pure white or black, which glare on a phone. */
 :root {
   --ink: #2a221c;
   --mid: #6b5d51;
@@ -21,20 +22,24 @@
   --hover: #e6dbca;
   --frame: #d3c5b1;
   --edge: #3a2e25;
+  --accent: #b0482a;
   --shadow: 0 1px 2px rgb(60 40 20 / 0.06), 0 6px 20px rgb(60 40 20 / 0.06);
+  --grain: 0.07;
 }
 :root[data-theme="dark"] {
-  --ink: #e3e3e6;
-  --mid: #a6a6ad;
-  --soft: #8a8a92;
-  --hair: #36363c;
-  --paper: #171719;
-  --lift: #222226;
-  --block: #2c2c31;
-  --hover: #37373d;
-  --frame: #4c4c53;
-  --edge: #85858d;
+  --ink: #ebe3d5;
+  --mid: #b0a390;
+  --soft: #8a7e70;
+  --hair: #38322b;
+  --paper: #1b1815;
+  --lift: #24201c;
+  --block: #2e2924;
+  --hover: #3a332c;
+  --frame: #564c41;
+  --edge: #a3968a;
+  --accent: #e08a62;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 28px rgb(0 0 0 / 0.45);
+  --grain: 0.045;
 }
 
 @theme inline {
@@ -48,6 +53,7 @@
   --color-hover: var(--hover);
   --color-frame: var(--frame);
   --color-edge: var(--edge);
+  --color-accent: var(--accent);
   --shadow-lift: var(--shadow);
   --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
@@ -85,6 +91,21 @@
     font: 16px/1.55 var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-wrap: balance;
+  }
+  /* The grain: fractal noise laid over everything, cards included, so the
+     page reads as one sheet. */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+    opacity: var(--grain);
+    mix-blend-mode: multiply;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  html[data-theme="dark"] body::after {
+    mix-blend-mode: screen;
   }
   ::selection {
     background: var(--ink);
@@ -190,4 +211,41 @@
 /* Copy only: the primitive's controls can't drop download on their own. */
 .md [data-streamdown="code-block-download-button"] {
   display: none;
+}
+
+/* What arrives settles onto the page rather than popping in. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.rise {
+  animation: rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+/* A pen still writing: a soft caret after the last word of a live answer. */
+.writing > :last-child::after,
+.writing > div > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: 0.3em;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 0.05em;
+  animation: pulse 1.1s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+    transform: scale(0.75);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .writing > :last-child::after,
+  .writing > div > :last-child::after {
+    animation: none;
+  }
 }

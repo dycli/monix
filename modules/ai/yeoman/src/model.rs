@@ -96,6 +96,8 @@ pub enum Step {
         text: String,
         error: bool,
     },
+    /// More of the words being written, as they come.
+    Text { text: String },
 }
 
 /// The steps in one stream-json line: tool calls from the model, results
@@ -107,6 +109,16 @@ pub fn steps(line: &str) -> Vec<Step> {
     let parts = ev["message"]["content"].as_array().into_iter().flatten();
     let s = |v: &Value| v.as_str().unwrap_or_default().to_owned();
     match ev["type"].as_str() {
+        // With --include-partial-messages, the words arrive as deltas
+        // before the whole message does.
+        Some("stream_event")
+            if ev["event"]["type"] == "content_block_delta"
+                && ev["event"]["delta"]["type"] == "text_delta" =>
+        {
+            vec![Step::Text {
+                text: s(&ev["event"]["delta"]["text"]),
+            }]
+        }
         Some("assistant") => parts
             .filter(|c| c["type"] == "tool_use")
             .map(|c| Step::Call {
@@ -199,6 +211,9 @@ impl Model for Claude {
         ]);
         if let Some(effort) = &self.effort {
             cmd.args(["--effort", effort]);
+        }
+        if run.steps.is_some() {
+            cmd.arg("--include-partial-messages");
         }
         if let Some((file, servers)) = &self.mcp {
             let allowed: Vec<String> = servers.iter().map(|s| format!("mcp__{s}")).collect();
@@ -508,6 +523,10 @@ mod tests {
             ] => assert_eq!(text.len(), STEP_MAX - 1),
             other => panic!("{other:?}"),
         }
+        let delta = r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}}"#;
+        assert_eq!(steps(delta), vec![Step::Text { text: "Hel".into() }]);
+        let start = r#"{"type":"stream_event","event":{"type":"content_block_start","index":0}}"#;
+        assert!(steps(start).is_empty());
         assert!(steps(r#"{"type":"result","result":"hi"}"#).is_empty());
         assert!(steps("not json").is_empty());
     }

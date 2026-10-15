@@ -14,6 +14,7 @@
 use crate::door::{Door, Message};
 use crate::hippo::{Hippo, Said};
 use crate::model::{Attachment, Step};
+use crate::pending::{self, Pending};
 use crate::{Read, fits, read};
 use axum::extract::{DefaultBodyLimit, Multipart, State};
 use axum::http::{HeaderMap, StatusCode, header};
@@ -54,11 +55,29 @@ const UPLOAD_MAX: usize = crate::PDF_MAX + SEND_MAX + 64 * 1024;
 #[derive(Clone, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum Shown {
-    /// A message from the yeoman; `plain` is shown word for word.
+    /// A message from the yeoman; `plain` is shown word for word. One
+    /// `aside` came from no turn (a reminder, an alert's answer), so it
+    /// stands apart from any answer being worked out.
     Said {
         id: String,
         text: String,
         plain: bool,
+        aside: bool,
+    },
+    /// What the person wrote by another door, as it comes in.
+    Heard {
+        text: String,
+    },
+    /// An act waiting for the person's word.
+    Pending {
+        pending: Pending,
+    },
+    /// The verdict on act `id` is carried out; when not `done` the act
+    /// failed and still waits.
+    Settled {
+        id: u64,
+        text: String,
+        done: bool,
     },
     React {
         to: String,
@@ -82,9 +101,31 @@ enum Shown {
 pub struct Web {
     shown: broadcast::Sender<Shown>,
     ids: Arc<AtomicU64>,
+    aside: bool,
 }
 
 impl Web {
+    pub fn new() -> Self {
+        Self {
+            shown: broadcast::channel(256).0,
+            ids: Arc::new(AtomicU64::new(0)),
+            aside: false,
+        }
+    }
+
+    /// The same pages, for what comes from no turn.
+    pub fn aside(&self) -> Self {
+        Self {
+            aside: true,
+            ..self.clone()
+        }
+    }
+
+    /// Shows what the person wrote by another door.
+    pub fn heard(&self, text: &str) {
+        self.show(Shown::Heard { text: text.into() });
+    }
+
     fn id(&self) -> String {
         format!("web-{}", self.ids.fetch_add(1, Ordering::Relaxed))
     }
@@ -104,6 +145,7 @@ impl Door for Web {
             id: id.clone(),
             text: text.into(),
             plain: false,
+            aside: self.aside,
         });
         Ok(id)
     }
@@ -114,6 +156,7 @@ impl Door for Web {
             id: id.clone(),
             text: text.into(),
             plain: true,
+            aside: self.aside,
         });
         Ok(id)
     }
@@ -141,6 +184,22 @@ impl Door for Web {
         self.show(Shown::Typing { on });
     }
 
+    /// A card with the draft and buttons, not a message: it answers to
+    /// the act's own id.
+    async fn ask(&self, p: &Pending) -> Result<String, String> {
+        self.show(Shown::Pending { pending: p.clone() });
+        Ok(format!("act-{}", p.id))
+    }
+
+    async fn settle(&self, p: &Pending, outcome: &str, done: bool) -> Result<(), String> {
+        self.show(Shown::Settled {
+            id: p.id,
+            text: outcome.into(),
+            done,
+        });
+        Ok(())
+    }
+
     /// Already here: the page sent the bytes with the message. Photos
     /// arrive shrunk by the page, so one too big is refused rather than
     /// cut down.
@@ -156,6 +215,82 @@ impl Door for Web {
         }
         let photo = matches!(r, Read::Model(Attachment::Image { .. }));
         Ok((file.name.clone(), photo, r))
+    }
+}
+
+/// Another door whose talk the open pages see too, so the web is one
+/// conversation with Matrix as it happens, not only after a reload.
+/// Reactions answer the other door's messages and stay there.
+#[derive(Clone)]
+pub struct Mirror<D: Door> {
+    pub door: D,
+    pub web: Option<Web>,
+}
+
+impl<D: Door> Door for Mirror<D> {
+    type File = D::File;
+
+    async fn say(&self, text: &str) -> Result<String, String> {
+        let id = self.door.say(text).await?;
+        if let Some(w) = &self.web {
+            w.say(text).await?;
+        }
+        Ok(id)
+    }
+
+    async fn quote(&self, text: &str) -> Result<String, String> {
+        let id = self.door.quote(text).await?;
+        if let Some(w) = &self.web {
+            w.quote(text).await?;
+        }
+        Ok(id)
+    }
+
+    async fn react(&self, to: &str, emoji: &str) -> Result<(), String> {
+        self.door.react(to, emoji).await
+    }
+
+    async fn picture(&self, png: Vec<u8>) -> Result<(), String> {
+        if let Some(w) = &self.web {
+            w.picture(png.clone()).await?;
+        }
+        self.door.picture(png).await
+    }
+
+    async fn typing(&self, on: bool) {
+        if let Some(w) = &self.web {
+            w.typing(on).await;
+        }
+        self.door.typing(on).await;
+    }
+
+    fn step(&self, step: Step) {
+        if let Some(w) = &self.web {
+            w.step(step.clone());
+        }
+        self.door.step(step);
+    }
+
+    async fn ask(&self, p: &Pending) -> Result<String, String> {
+        let id = self.door.ask(p).await?;
+        if let Some(w) = &self.web {
+            w.ask(p).await?;
+        }
+        Ok(id)
+    }
+
+    async fn settle(&self, p: &Pending, outcome: &str, done: bool) -> Result<(), String> {
+        if let Some(w) = &self.web {
+            w.settle(p, outcome, done).await?;
+        }
+        self.door.settle(p, outcome, done).await
+    }
+
+    fn fetch(
+        &self,
+        file: &Self::File,
+    ) -> impl Future<Output = Result<(String, bool, Read), String>> + Send {
+        self.door.fetch(file)
     }
 }
 
@@ -205,7 +340,10 @@ impl Gate {
 struct Site {
     web: Web,
     hippo: Arc<Hippo>,
+    state: PathBuf,
     messages: mpsc::UnboundedSender<(Web, Message<Web>)>,
+    /// Verdicts given on the page, by act id.
+    verdicts: mpsc::UnboundedSender<(u64, bool)>,
     notify: Notify,
     gate: Arc<Gate>,
     sessions: Mutex<Sessions>,
@@ -304,28 +442,36 @@ impl Site {
     }
 }
 
+/// The channels the page reaches the core by: what the person sends,
+/// with the door to answer through, and their verdicts on acts.
+pub struct Inbox {
+    pub messages: mpsc::UnboundedSender<(Web, Message<Web>)>,
+    pub verdicts: mpsc::UnboundedSender<(u64, bool)>,
+}
+
 /// Serves the chat page from `root` at `/`, the API, and every other path
-/// from `pages` (what show_page wrote) on `addr`, handing what the person
-/// sends to `messages` with the door to answer through. Requests to sign
-/// in go out through `notify`; their answers come back through `gate`.
+/// from `pages` (what show_page wrote) on `addr`, through the pages `web`.
+/// Requests to sign in go out through `notify`; their answers come back
+/// through `gate`.
+#[allow(clippy::too_many_arguments)]
 pub async fn serve(
     addr: &str,
     root: PathBuf,
     pages: PathBuf,
     state: &Path,
     hippo: Arc<Hippo>,
-    messages: mpsc::UnboundedSender<(Web, Message<Web>)>,
+    web: Web,
+    inbox: Inbox,
     (notify, gate): (Notify, Arc<Gate>),
 ) -> Result<(), String> {
     let dir = state.join("site");
     fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let site = Arc::new(Site {
-        web: Web {
-            shown: broadcast::channel(64).0,
-            ids: Arc::new(AtomicU64::new(0)),
-        },
+        web,
         hippo,
-        messages,
+        state: state.to_owned(),
+        messages: inbox.messages,
+        verdicts: inbox.verdicts,
         notify,
         gate,
         sessions: Mutex::new(Sessions::load(dir.join("sessions"))),
@@ -339,6 +485,8 @@ pub async fn serve(
             "/api/send",
             post(send).layer(DefaultBodyLimit::max(UPLOAD_MAX)),
         )
+        .route("/api/pending", get(waiting))
+        .route("/api/decide", post(decide))
         .route("/api/ask", post(ask))
         .route("/api/wait", post(wait))
         .fallback_service(ServeDir::new(pages))
@@ -449,6 +597,47 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
     Json(serde_json::json!({ "id": id })).into_response()
+}
+
+/// The acts waiting for the person's word, oldest first.
+async fn waiting(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    match pending::all(&site.state) {
+        Ok(all) => Json(all).into_response(),
+        Err(e) => {
+            eprintln!("yeoman: site pending: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct Verdict {
+    id: u64,
+    yes: bool,
+}
+
+/// The person's verdict on an act, as a 👍 or 👎 in Matrix would give
+/// it: 202 while it is carried out (the page hears how over SSE), 404 when
+/// the act is gone, decided already.
+async fn decide(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    Json(v): Json<Verdict>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let known = pending::all(&site.state).is_ok_and(|all| all.iter().any(|p| p.id == v.id));
+    if !known {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    if site.verdicts.send((v.id, v.yes)).is_err() {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    StatusCode::ACCEPTED.into_response()
 }
 
 /// A page asks to be let in: the person gets its code over Matrix, the

@@ -681,7 +681,7 @@ async fn show_pending(door: &impl Door, hippo: &Arc<Hippo>, state: &Path) {
     };
     for mut p in waiting.into_iter().filter(|p| p.event.is_none()) {
         let text = p.act.show();
-        let sent = match door.quote(&text).await {
+        let sent = match door.ask(&p).await {
             Ok(id) => id,
             Err(e) => {
                 eprintln!("yeoman: pending {}: {e}", p.id);
@@ -699,14 +699,17 @@ async fn show_pending(door: &impl Door, hippo: &Arc<Hippo>, state: &Path) {
     }
 }
 
-/// A 👍 or 👎 on the message `id` carries out the act it shows or drops
-/// it. Only the door's own check of the sender stands before this; the
-/// model is never in this path.
-async fn decide(door: impl Door, id: String, yes: bool, state: PathBuf, hippo: Arc<Hippo>) {
-    let Some(p) = pending::by_event(&state, &id) else {
+/// A verdict on the act `id` carries it out or drops it. Only the door's
+/// own check of the sender stands before this; the model is never in this
+/// path.
+async fn decide(door: impl Door, id: u64, yes: bool, state: PathBuf, hippo: Arc<Hippo>) {
+    let Some(p) = pending::all(&state)
+        .ok()
+        .and_then(|all| all.into_iter().find(|p| p.id == id))
+    else {
         return;
     };
-    // Claimed before it is carried out: a second thumb finds nothing.
+    // Claimed before it is carried out: a second verdict finds nothing.
     if pending::remove(&state, p.id).is_err() {
         return;
     }
@@ -718,16 +721,16 @@ async fn decide(door: impl Door, id: String, yes: bool, state: PathBuf, hippo: A
     } else {
         Ok("Dropped it.".to_owned())
     };
-    let text = match outcome {
-        Ok(done) => done,
+    let (text, done) = match outcome {
+        Ok(done) => (done, true),
         Err(e) => {
             if let Err(e) = pending::save(&state, &p) {
                 eprintln!("yeoman: pending {}: {e}", p.id);
             }
-            format!("(I couldn't: {e}. The draft still stands.)")
+            (format!("(I couldn't: {e}. The draft still stands.)"), false)
         }
     };
-    if let Err(e) = door.quote(&text).await {
+    if let Err(e) = door.settle(&p, &text, done).await {
         eprintln!("yeoman: pending {}: {e}", p.id);
     }
     if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await {
@@ -768,9 +771,20 @@ async fn run() -> Result<(), String> {
         verdicts,
     )
     .await?;
-    let (c, s) = (client.clone(), state.clone());
+    // The open pages, when there is a site: they see Matrix's talk too.
+    let web = var("YEOMAN_SITE").is_ok().then(site::Web::new);
+    let (c, s, w) = (
+        client.clone(),
+        state.clone(),
+        web.as_ref().map(|w| w.aside()),
+    );
     tokio::spawn(remind(
-        move || matrix::last(&c, &s),
+        move || {
+            matrix::last(&c, &s).map(|door| site::Mirror {
+                door,
+                web: w.clone(),
+            })
+        },
         hippo.clone(),
         model.clone(),
         state.clone(),
@@ -778,21 +792,29 @@ async fn run() -> Result<(), String> {
         house::House::from_env(),
     ));
     let gate = Arc::new(site::Gate::default());
-    let (s, h, g) = (state.clone(), hippo.clone(), gate.clone());
+    let (s, h, g, w) = (state.clone(), hippo.clone(), gate.clone(), web.clone());
     tokio::spawn(async move {
-        while let Some((door, id, yes)) = thumbs.recv().await {
+        while let Some((door, event, yes)) = thumbs.recv().await {
             // A thumb on a request to sign in is not a verdict on an act.
-            if g.answer(&id, yes) {
+            if g.answer(&event, yes) {
                 continue;
             }
-            tokio::spawn(decide(door, id, yes, s.clone(), h.clone()));
+            let Some(p) = pending::by_event(&s, &event) else {
+                continue;
+            };
+            let door = site::Mirror {
+                door,
+                web: w.as_ref().map(|w| w.aside()),
+            };
+            tokio::spawn(decide(door, p.id, yes, s.clone(), h.clone()));
         }
     });
     // One turn at a time, whichever door it comes from: each answer sees
     // the one before it in its memory.
     let turn = Arc::new(tokio::sync::Mutex::new(()));
-    if let Ok(addr) = var("YEOMAN_SITE") {
-        let (pages, mut from_web) = mpsc::unbounded_channel();
+    if let (Ok(addr), Some(web)) = (var("YEOMAN_SITE"), web.clone()) {
+        let (messages, mut from_web) = mpsc::unbounded_channel();
+        let (verdicts, mut clicks) = mpsc::unbounded_channel();
         let (c, s) = (client.clone(), state.clone());
         let notify: site::Notify = Box::new(move |text| {
             let door = matrix::last(&c, &s);
@@ -803,11 +825,32 @@ async fn run() -> Result<(), String> {
         });
         let root = PathBuf::from(var("YEOMAN_SITE_ROOT")?);
         let served = PathBuf::from(var("YEOMAN_PAGES")?);
-        let (s, h) = (state.clone(), hippo.clone());
+        let (s, h, w) = (state.clone(), hippo.clone(), web.clone());
         tokio::spawn(async move {
+            let inbox = site::Inbox { messages, verdicts };
             let gate = (notify, gate);
-            if let Err(e) = site::serve(&addr, root, served, &s, h, pages, gate).await {
+            if let Err(e) = site::serve(&addr, root, served, &s, h, w, inbox, gate).await {
                 eprintln!("yeoman: {e}");
+            }
+        });
+        // A verdict given on the page is told in Matrix too, where the
+        // draft was shown.
+        let (c, s, h, w) = (client.clone(), state.clone(), hippo.clone(), web.clone());
+        tokio::spawn(async move {
+            while let Some((id, yes)) = clicks.recv().await {
+                let (s, h) = (s.clone(), h.clone());
+                match matrix::last(&c, &s) {
+                    Some(door) => {
+                        let door = site::Mirror {
+                            door,
+                            web: Some(w.aside()),
+                        };
+                        tokio::spawn(decide(door, id, yes, s, h));
+                    }
+                    None => {
+                        tokio::spawn(decide(w.aside(), id, yes, s, h));
+                    }
+                }
             }
         });
         let (s, h, m, t) = (state.clone(), hippo.clone(), model.clone(), turn.clone());
@@ -821,6 +864,20 @@ async fn run() -> Result<(), String> {
     tokio::spawn(async move {
         while let Some((door, msg)) = inbox.recv().await {
             let _turn = turn.lock().await;
+            // The pages watch a Matrix turn as it happens: the words in,
+            // the work, the answer.
+            if let Some(w) = &web {
+                w.heard(&msg.text);
+            }
+            let door = site::Mirror {
+                door,
+                web: web.clone(),
+            };
+            let msg = Message {
+                id: msg.id,
+                text: msg.text,
+                file: msg.file,
+            };
             let outbox = state.join("outbox");
             reply(door, hippo.clone(), model.clone(), msg, &outbox).await;
         }

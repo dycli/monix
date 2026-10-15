@@ -4,6 +4,7 @@
 
 use crate::Read;
 use crate::model::Step;
+use crate::pending::Pending;
 use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -25,6 +26,23 @@ pub trait Door: Clone + Send + Sync + 'static {
     /// Shows a tool call or its result while the answer is being worked
     /// out. Called from the model's reader thread, so it must not block.
     fn step(&self, _step: Step) {}
+    /// Shows an act waiting for the person's word, returning the id a
+    /// verdict on it answers. Matrix shows the draft word for word.
+    fn ask(&self, p: &Pending) -> impl Future<Output = Result<String, String>> + Send {
+        let text = p.act.show();
+        async move { self.quote(&text).await }
+    }
+    /// Says how a verdict on `p` came out; `done` is false when the act
+    /// failed and still waits.
+    fn settle(
+        &self,
+        _p: &Pending,
+        outcome: &str,
+        _done: bool,
+    ) -> impl Future<Output = Result<(), String>> + Send {
+        let text = outcome.to_owned();
+        async move { self.quote(&text).await.map(|_| ()) }
+    }
     /// Downloads a file the person sent: its name, whether it is a photo,
     /// and what the model will see. Errors are what to tell the person.
     fn fetch(
