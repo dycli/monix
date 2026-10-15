@@ -56,6 +56,8 @@ in
   "hosts/water/secrets/suki-claude-key.age".publicKeys = singleton water ++ admin;
   # A Home Assistant long-lived access token, raw, for the assistants' home tools.
   "hosts/water/secrets/yeoman-home-token.age".publicKeys = singleton water ++ admin;
+  # Parallel account API key, raw (platform.parallel.ai), for the assistants' web search.
+  "hosts/water/secrets/yeoman-search-key.age".publicKeys = singleton water ++ admin;
   # Seerr's API key, raw (Settings > General), for the assistants' media requests.
   "hosts/water/secrets/yeoman-requests-key.age".publicKeys = singleton water ++ admin;
   # Databento API key, raw (db-...), for the market-data recorder.

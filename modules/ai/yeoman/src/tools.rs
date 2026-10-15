@@ -981,6 +981,15 @@ fn seerr() -> Result<Option<Seerr>, String> {
     Ok(Some(Seerr::new(url, key, person)))
 }
 
+/// Parallel's account key, when YEOMAN_SEARCH_KEY names its file.
+fn search_key() -> Result<Option<String>, String> {
+    let Some(file) = std::env::var_os("YEOMAN_SEARCH_KEY") else {
+        return Ok(None);
+    };
+    let key = fs::read_to_string(&file).map_err(|e| format!("search key: {e}"))?;
+    Ok(Some(key.trim().to_string()))
+}
+
 /// The calendars, when YEOMAN_CALDAV names the accounts file.
 fn calendar() -> Result<Option<Calendar>, String> {
     let Some(file) = std::env::var_os("YEOMAN_CALDAV") else {
@@ -1008,7 +1017,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
     };
     let tools = Tools {
         dir,
-        web: Arc::new(Web::new(hippo.clone())),
+        web: Arc::new(Web::new(hippo.clone(), search_key()?)),
         hippo,
         house: House::from_env().map(Arc::new),
         mail: mail()?,

@@ -296,6 +296,7 @@
               YEOMAN_KEEP = "http://${pc.addr}:${toString computers.keepPort}";
             }
             // optionalAttrs (cfg.homeTokenFile != null) { YEOMAN_HOME = "1"; }
+            // optionalAttrs (cfg.searchKeyFile != null) { YEOMAN_SEARCH_KEY = "${creds}/search"; }
             // optionalAttrs (cfg.requestsKeyFile != null) {
               YEOMAN_REQUESTS = "${creds}/requests";
               YEOMAN_SEERR = "http://127.0.0.1:${toString config.shipProxy.routes.q.port}";
@@ -508,7 +509,8 @@
                 ]
                 ++ optional (i.mailCredentialsFile != null) "mail:${i.mailCredentialsFile}"
                 ++ optional (cfg.homeTokenFile != null) "home:${cfg.homeTokenFile}"
-                ++ optional (cfg.requestsKeyFile != null) "requests:${cfg.requestsKeyFile}";
+                ++ optional (cfg.requestsKeyFile != null) "requests:${cfg.requestsKeyFile}"
+                ++ optional (cfg.searchKeyFile != null) "search:${cfg.searchKeyFile}";
                 RuntimeDirectory = n;
                 RuntimeDirectoryMode = "0700";
                 Restart = "always";
@@ -660,6 +662,16 @@
             agenix file holding a Home Assistant long-lived access token,
             for its MCP server; shared by the instances. Null leaves the
             home out.
+          '';
+        };
+
+        searchKeyFile = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = ''
+            agenix file holding a Parallel account API key, raw, which lifts
+            web search from the keyless rate limit; shared by the instances.
+            Null searches keyless.
           '';
         };
 

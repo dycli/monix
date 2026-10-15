@@ -1,4 +1,5 @@
-//! The yeoman's web: search and fetch through Parallel's keyless MCP server.
+//! The yeoman's web: search and fetch through Parallel's MCP server, keyless
+//! or with an account key for the higher rate limit.
 //! Search passes through. Fetch opens only links that a search in this same
 //! process returned, or that the person wrote themselves: a link the model
 //! made up could carry what it has read (mail, memory) out in its path or
@@ -10,21 +11,31 @@ use crate::hippo::Hippo;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::sync::Mutex;
+use std::thread;
 use std::time::Duration;
 use ureq::Agent;
 
 const PARALLEL: &str = "https://search.parallel.ai/mcp";
 const TIMEOUT: Duration = Duration::from_secs(90);
+/// Waits before retrying a rate-limited call; short, since a person is
+/// waiting on the reply.
+const BACKOFF: [Duration; 2] = [Duration::from_secs(3), Duration::from_secs(10)];
+/// What the model hears when the limit holds: without it, it falls back to
+/// searching in the browser, which is slower and trips bot walls.
+const LIMITED: &str = "Web search is rate-limited right now. Answer from what you know, \
+or say it couldn't be checked; don't search in the browser instead.";
 
 pub struct Web {
     hippo: Hippo,
     agent: Agent,
+    /// Parallel account key, sent as a bearer token.
+    key: Option<String>,
     /// Links the searches of this process returned, as `key` compares them.
     seen: Mutex<HashSet<String>>,
 }
 
 impl Web {
-    pub fn new(hippo: Hippo) -> Self {
+    pub fn new(hippo: Hippo, key: Option<String>) -> Self {
         let config = Agent::config_builder()
             .timeout_global(Some(TIMEOUT))
             .http_status_as_error(false)
@@ -32,32 +43,61 @@ impl Web {
         Web {
             hippo,
             agent: Agent::new_with_config(config),
+            key,
             seen: Mutex::new(HashSet::new()),
         }
     }
 
-    /// One tool call on Parallel's server, as one JSON-RPC post (it answers
-    /// plain JSON and needs no session), its text content joined.
+    /// One tool call on Parallel's server, retried while rate-limited.
     fn call(&self, tool: &str, args: Value) -> Result<String, String> {
+        let mut waits = BACKOFF.iter();
+        loop {
+            match self.post(tool, &args) {
+                Err(Fail::Limited) => match waits.next() {
+                    Some(wait) => thread::sleep(*wait),
+                    None => return Err(LIMITED.into()),
+                },
+                Err(Fail::Other(e)) => return Err(e),
+                Ok(text) => return Ok(text),
+            }
+        }
+    }
+
+    /// One JSON-RPC post (it answers plain JSON and needs no session), its
+    /// text content joined.
+    fn post(&self, tool: &str, args: &Value) -> Result<String, Fail> {
         let body = json!({
             "jsonrpc": "2.0", "id": 1, "method": "tools/call",
             "params": {"name": tool, "arguments": args},
         });
-        let mut resp = self
+        let mut req = self
             .agent
             .post(PARALLEL)
-            .header("Accept", "application/json, text/event-stream")
+            .header("Accept", "application/json, text/event-stream");
+        if let Some(key) = &self.key {
+            req = req.header("Authorization", &format!("Bearer {key}"));
+        }
+        let mut resp = req
             .send_json(&body)
-            .map_err(|e| format!("parallel: {e}"))?;
+            .map_err(|e| Fail::Other(format!("parallel: {e}")))?;
         let status = resp.status().as_u16();
+        if status == 429 {
+            return Err(Fail::Limited);
+        }
         if status >= 400 {
-            return Err(format!("parallel: {status}"));
+            return Err(Fail::Other(format!("parallel: {status}")));
         }
         let reply: Value = resp
             .body_mut()
             .read_json()
-            .map_err(|e| format!("parallel: {e}"))?;
-        content(&reply)
+            .map_err(|e| Fail::Other(format!("parallel: {e}")))?;
+        content(&reply).map_err(|e| {
+            if limited(&e) {
+                Fail::Limited
+            } else {
+                Fail::Other(e)
+            }
+        })
     }
 
     pub fn search(&self, objective: &str, queries: &[String]) -> Result<String, String> {
@@ -101,6 +141,17 @@ impl Web {
             .search(&literal(url.trim()))
             .is_ok_and(|out| wrote(&out))
     }
+}
+
+enum Fail {
+    Limited,
+    Other(String),
+}
+
+/// Whether an error is Parallel's rate limit, which it reports as a
+/// JSON-RPC error rather than a 429.
+fn limited(error: &str) -> bool {
+    error.to_lowercase().contains("rate limit")
 }
 
 /// A tool reply's text, or its error.
@@ -215,6 +266,9 @@ mod tests {
         assert_eq!(content(&bad).unwrap_err(), "parallel: no");
         let err = json!({"error": {"code": -32600, "message": "bad"}});
         assert_eq!(content(&err).unwrap_err(), "parallel: bad");
+        let limit = json!({"error": {"code": -32000, "message": "You've hit the free-tier rate limit for Parallel Search MCP."}});
+        assert!(limited(&content(&limit).unwrap_err()));
+        assert!(!limited("parallel: bad"));
     }
 
     #[test]
