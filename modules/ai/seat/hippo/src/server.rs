@@ -7,7 +7,7 @@ use crate::compactor::{Pump, Spent, pump};
 use crate::live::{Live, Sources};
 use crate::store::{Draft, Kind, Store, fmt_date};
 use crate::tree::{Tree, addr, flat};
-use crate::view::{CONTEXT, PLACEHOLDER, VIEW, View, bound};
+use crate::view::{CONTEXT, PLACEHOLDER, VIEW, View, head};
 use crate::watcher::Watcher;
 use chrono::{DateTime, Local};
 use regex::RegexBuilder;
@@ -40,6 +40,8 @@ pub struct Core {
     pub budget: u64,
     /// The compactions' own view, under `CONTEXT`.
     pub context: View,
+    /// Where `bound` last cut the compactions' view, so calls share a head.
+    pub context_cut: u64,
     pub pump: Pump,
     pub watcher: Watcher,
     pub live: Option<Live>,
@@ -59,6 +61,7 @@ impl Core {
             view,
             budget,
             context: View::default(),
+            context_cut: 0,
             pump: Pump::default(),
             watcher: Watcher::default(),
             live: None,
@@ -140,6 +143,7 @@ pub fn serve(
             view,
             budget,
             context,
+            context_cut: 0,
             pump: Pump {
                 spent: Spent::load(dir)?,
                 ..Pump::default()
@@ -407,19 +411,28 @@ fn render(c: &Core) -> Result<(String, Vec<String>), String> {
         };
         note = format!("{unbuilt} recent lines are not summarized yet{why}: zoom them.\n");
     }
-    let mut lines = Vec::new();
+    // A session loads the view once, so unlike the compactions' view it
+    // need not keep its head between renders.
+    let wrap = ("<chat>\n\n</chat>\n".len() + note.len()) as u64;
+    let cut = c
+        .view
+        .cut(&c.tree, c.budget.saturating_sub(wrap), 0, c.view.t);
+    let mut lines = head(&c.tree, cut)?;
     // A run of unbuilt parts shows as one line: one placeholder per part
     // once grew the view past what it was meant to hold whenever the
     // compactor stalled.
     let mut run: Option<(u64, u64)> = None;
     for &(l, i) in &c.view.parts {
         let (s, n) = addr(l, i);
+        if s < cut {
+            continue;
+        }
         match c.tree.text(l, i)? {
             Some(text) => {
                 if let Some((s, n)) = run.take() {
-                    lines.push((s, n, unbuilt_line(s, n)));
+                    lines.push(unbuilt_line(s, n));
                 }
-                lines.push((s, n, format!("{s}+{n}|{}", flat(&text))));
+                lines.push(format!("{s}+{n}|{}", flat(&text)));
             }
             None => {
                 run = Some(match run {
@@ -430,10 +443,9 @@ fn render(c: &Core) -> Result<(String, Vec<String>), String> {
         }
     }
     if let Some((s, n)) = run {
-        lines.push((s, n, unbuilt_line(s, n)));
+        lines.push(unbuilt_line(s, n));
     }
-    let wrap = ("<chat>\n\n</chat>\n".len() + note.len()) as u64;
-    Ok((note, bound(lines, c.budget.saturating_sub(wrap), &c.tree)?))
+    Ok((note, lines))
 }
 
 /// The line for `n` unbuilt messages from `s`.

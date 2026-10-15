@@ -7,7 +7,7 @@ use crate::compact::{self, Fail, PROMPT_VERSION, Step, Usage, cut};
 use crate::server::{Core, Shared};
 use crate::store::Msg;
 use crate::tree::{NODE, Node, addr, flat};
-use crate::view::bound;
+use crate::view::head;
 use chrono::{DateTime, Local};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -121,19 +121,29 @@ fn message(c: &Core, i: u64) -> Result<Msg, String> {
 
 /// The compactions' view up to `end` (exclusive), as `id+n|text` lines,
 /// never over the context budget. None until all of it is built.
-fn context(c: &Core, end: u64) -> Result<Option<Vec<String>>, String> {
-    let mut out = Vec::new();
+fn context(c: &mut Core, end: u64) -> Result<Option<Vec<String>>, String> {
+    // Calls work at the frontier of what is summarized, behind any backlog,
+    // so the cut is measured up to it, not to the newest message.
+    let frontier = c.view.first(&c.tree).max(end);
+    c.context_cut = c
+        .context
+        .cut(&c.tree, c.context_budget(), c.context_cut, frontier);
+    let cut = c.context_cut;
+    let mut out = head(&c.tree, cut.min(end))?;
     for &(l, i) in &c.context.parts {
         let (s, n) = addr(l, i);
         if s + n > end {
             break;
         }
+        if s < cut {
+            continue;
+        }
         match c.tree.text(l, i)? {
-            Some(t) => out.push((s, n, format!("{s}+{n}|{}", flat(&t)))),
+            Some(t) => out.push(format!("{s}+{n}|{}", flat(&t))),
             None => return Ok(None),
         }
     }
-    bound(out, c.context_budget(), &c.tree).map(Some)
+    Ok(Some(out))
 }
 
 enum Job {
@@ -156,7 +166,7 @@ fn apart(c: &Core, s: u64, n: u64) -> bool {
 }
 
 /// Prepares node `(l, i)`: free if its source fits in `NODE`.
-fn prepare(c: &Core, l: u8, i: u64) -> Result<Option<Job>, String> {
+fn prepare(c: &mut Core, l: u8, i: u64) -> Result<Option<Job>, String> {
     if l == 0 {
         let src = message(c, i)?.render();
         if src.len() <= NODE {
@@ -434,14 +444,32 @@ mod tests {
             })
             .unwrap();
         }
+        // A backlog behind them: logged, not summarized.
+        let backlog = (0..500)
+            .map(|k| crate::store::Draft {
+                kind: crate::store::Kind::Talk,
+                chat: Some("c".into()),
+                text: format!("later {k} ") + &"x".repeat(200),
+                date: chrono::Local::now(),
+                src: None,
+            })
+            .collect();
+        store.append(backlog).unwrap();
         // No level-1 node is built, so the context view cannot fold.
         let mut c = Core::for_test(store, tree, View::default(), crate::view::VIEW);
         c.sync();
         assert!(c.context.size() > 5 * c.context_budget());
-        let lines = context(&c, n).unwrap().unwrap();
-        let size: u64 = lines.iter().map(|l| l.len() as u64 + 1).sum();
-        assert!(size <= c.context_budget(), "context {size} bytes");
+        let budget = c.context_budget();
+        let size = |lines: &[String]| lines.iter().map(|l| l.len() as u64 + 1).sum::<u64>();
+        // The next message's call sees the history right before it: just
+        // under half the budget of it after a cut, never over the budget.
+        let lines = context(&mut c, n).unwrap().unwrap();
+        assert!(size(&lines) <= budget, "context {} bytes", size(&lines));
+        assert!(size(&lines) > budget / 3, "context {} bytes", size(&lines));
         assert!(lines.last().unwrap().starts_with(&format!("{}+1|", n - 1)));
+        // A call a little further back shares its head, so reads it cached.
+        let earlier = context(&mut c, n - 20).unwrap().unwrap();
+        assert_eq!(earlier[..10], lines[..10]);
     }
 
     #[test]

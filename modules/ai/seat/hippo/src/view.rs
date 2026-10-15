@@ -44,38 +44,17 @@ fn part_size(tree: &Tree, (l, i): (u8, u64)) -> u64 {
     label(l, i) + tree.size(l, i).unwrap_or(PLACEHOLDER.len() as u64)
 }
 
-/// Lines `(start, n, line)` in order, cut to at most `budget` bytes with
-/// their newlines. `fit` keeps a view under budget only as far as built
-/// parents allow, so while merges wait (a backlog, a pause) the oldest lines
-/// give way to the fewest tree nodes tiling what they covered: each one's
-/// summary if built, else `BEYOND`, so `zoom` opens either. Under budget
-/// the lines come back as they are.
-pub fn bound(
-    lines: Vec<(u64, u64, String)>,
-    budget: u64,
-    tree: &Tree,
-) -> Result<Vec<String>, String> {
-    let size = |l: &str| l.len() as u64 + 1;
-    let end = lines.last().map_or(0, |&(s, n, _)| s + n);
-    let mut rest: u64 = lines.iter().map(|(_, _, l)| size(l)).sum();
-    let mut cut = 0;
-    loop {
-        let at = lines.get(cut).map_or(end, |&(s, _, _)| s);
-        let head = cover(at);
-        let fits = rest + head.iter().map(|&p| head_size(tree, p)).sum::<u64>() <= budget;
-        if fits || cut == lines.len() {
-            let mut out = Vec::new();
-            for (l, i) in head {
-                let (s, n) = addr(l, i);
-                let text = tree.text(l, i)?.map_or(BEYOND.to_owned(), |t| flat(&t));
-                out.push(format!("{s}+{n}|{text}"));
-            }
-            out.extend(lines.into_iter().skip(cut).map(|(_, _, l)| l));
-            return Ok(out);
-        }
-        rest -= size(&lines[cut].2);
-        cut += 1;
+/// Lines for the nodes tiling messages `[0, at)`: each one's summary if
+/// built, else `BEYOND`, so `zoom` opens either. They stand for what `cut`
+/// leaves out.
+pub fn head(tree: &Tree, at: u64) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for (l, i) in cover(at) {
+        let (s, n) = addr(l, i);
+        let text = tree.text(l, i)?.map_or(BEYOND.to_owned(), |t| flat(&t));
+        out.push(format!("{s}+{n}|{text}"));
     }
+    Ok(out)
 }
 
 /// The fewest tree nodes tiling messages `[0, end)`, oldest first.
@@ -188,6 +167,44 @@ impl View {
             .count()
     }
 
+    /// The message before which the view's parts ending by `end`, rendered,
+    /// give way to `head`, so that they stay within `budget`; 0 when they fit
+    /// whole. `fit` keeps a view under budget only as far as built parents
+    /// allow, so while merges wait (a backlog, a pause) it can grow without
+    /// limit. Past the budget the cut moves on until the rest is at most half
+    /// of it, then holds at `last` while the view grows back, so successive
+    /// renders share their head and read it from the cache.
+    pub fn cut(&self, tree: &Tree, budget: u64, last: u64, end: u64) -> u64 {
+        let mut sizes: Vec<(u64, u64)> = Vec::new();
+        let mut covered = 0;
+        for &(l, i) in &self.parts {
+            let (s, n) = addr(l, i);
+            if s + n > end {
+                break;
+            }
+            sizes.push((s, part_size(tree, (l, i))));
+            covered = s + n;
+        }
+        if sizes.iter().map(|p| p.1).sum::<u64>() <= budget {
+            return 0;
+        }
+        let heads = |at: u64| -> u64 { cover(at).iter().map(|&p| head_size(tree, p)).sum() };
+        let at = |k: usize| sizes.get(k).map_or(covered, |p| p.0);
+        // A part merged across the last cut goes whole into the head.
+        let mut k = sizes
+            .iter()
+            .position(|p| p.0 >= last)
+            .unwrap_or(sizes.len());
+        let mut rest: u64 = sizes[k..].iter().map(|p| p.1).sum();
+        if rest + heads(at(k)) > budget {
+            while k < sizes.len() && rest + heads(at(k)) > budget / 2 {
+                rest -= sizes[k].1;
+                k += 1;
+            }
+        }
+        at(k)
+    }
+
     pub fn size(&self) -> u64 {
         self.size
     }
@@ -246,44 +263,88 @@ mod tests {
         .unwrap();
     }
 
-    #[test]
-    fn bound_cuts_the_oldest_lines_to_zoomable_nodes() {
-        let dir = std::env::temp_dir().join(format!("hippo-view-bound-{}", std::process::id()));
+    /// A tree of `n` messages of `size` bytes and their unmerged view.
+    fn unmerged(name: &str, n: u64, size: usize) -> (Tree, View) {
+        let dir = std::env::temp_dir().join(format!("hippo-view-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let mut t = Tree::open(&dir).unwrap();
-        let lines = |k: u64| -> Vec<(u64, u64, String)> {
-            (0..k)
-                .map(|i| (i, 1, format!("{i}+1|{}", "x".repeat(90))))
-                .collect()
-        };
-        let under = bound(lines(10), 10_000, &t).unwrap();
-        assert_eq!(
-            under,
-            lines(10).into_iter().map(|l| l.2).collect::<Vec<_>>()
-        );
-        let cut = bound(lines(1000), 10_000, &t).unwrap();
-        let size: usize = cut.iter().map(|l| l.len() + 1).sum();
+        let mut v = View::default();
+        for i in 0..n {
+            node(&mut t, 0, i, size);
+            v.append(&t, u64::MAX);
+        }
+        (t, v)
+    }
+
+    /// The view's lines from `cut` on, after its head.
+    fn rendered(t: &Tree, v: &View, cut: u64) -> Vec<String> {
+        let mut out = head(t, cut).unwrap();
+        for &(l, i) in &v.parts {
+            let (s, n) = addr(l, i);
+            if s >= cut {
+                out.push(format!("{s}+{n}|{}", t.text(l, i).unwrap().unwrap()));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn a_cut_view_fits_and_its_head_zooms() {
+        let (mut t, v) = unmerged("cut", 1000, 90);
+        assert_eq!(v.cut(&t, 1_000_000, 0, v.t), 0);
+        let cut = v.cut(&t, 10_000, 0, v.t);
+        let lines = rendered(&t, &v, cut);
+        let size: usize = lines.iter().map(|l| l.len() + 1).sum();
         assert!(size <= 10_000, "{size} bytes");
-        // The newest lines stay whole; the nodes before them tile the rest,
-        // each one zoom accepts.
-        assert_eq!(cut.last().unwrap(), &lines(1000)[999].2);
+        assert!(lines.last().unwrap().starts_with("999+1|"));
+        // The head tiles what was cut with nodes zoom accepts.
         let mut at = 0;
-        for line in cut.iter().take_while(|l| l.ends_with(BEYOND)) {
+        for line in lines.iter().take_while(|l| l.ends_with(BEYOND)) {
             let (id, n) = line.split_once('|').unwrap().0.split_once('+').unwrap();
             let (id, n): (u64, u64) = (id.parse().unwrap(), n.parse().unwrap());
             assert!(id == at && n.is_power_of_two() && id % n == 0, "{line}");
             at += n;
         }
-        assert!(at > 0);
-        assert!(cut.iter().any(|l| l.starts_with(&format!("{at}+1|x"))));
+        assert_eq!(at, cut);
         // A built node shows its summary instead.
         node(&mut t, 9, 0, 300);
-        let cut = bound(lines(1000), 10_000, &t).unwrap();
-        assert_eq!(cut[0], format!("0+512|{}", "x".repeat(300)));
-        assert!(cut.iter().map(|l| l.len() + 1).sum::<usize>() <= 10_000);
-        // A budget too small for any line leaves only the nodes.
-        let tiny = bound(lines(1000), 10, &t).unwrap();
-        assert!(tiny.iter().all(|l| !l.contains("+1|x")));
+        assert_eq!(
+            head(&t, cut).unwrap()[0],
+            format!("0+512|{}", "x".repeat(300))
+        );
+        let size: usize = rendered(&t, &v, v.cut(&t, 10_000, 0, v.t))
+            .iter()
+            .map(|l| l.len() + 1)
+            .sum();
+        assert!(size <= 10_000, "{size} bytes");
+    }
+
+    #[test]
+    fn a_cut_holds_while_the_view_grows() {
+        let (t, all) = unmerged("hold", 2_000, 220);
+        let (budget, mut cut, mut cuts) = (32_000, 0, Vec::new());
+        let mut v = View::default();
+        for _ in 0..2_000 {
+            v.append(&t, u64::MAX);
+            let next = v.cut(&t, budget, cut, v.t);
+            let size: usize = rendered(&t, &v, next).iter().map(|l| l.len() + 1).sum();
+            assert!(size as u64 <= budget, "{size} bytes");
+            if next != cut {
+                cuts.push(next);
+            }
+            cut = next;
+        }
+        // Each cut sheds half the budget: one per ~70 messages, not one each.
+        assert!(
+            cuts.len() <= 2_000 * 230 / 16_000 + 1,
+            "{} cuts",
+            cuts.len()
+        );
+        assert!(cuts.windows(2).all(|w| w[0] < w[1]));
+        assert_eq!(all.parts, v.parts);
+        // A view that fits again is not cut.
+        let small = View::fold(&t, 10, u64::MAX);
+        assert_eq!(small.cut(&t, budget, cut, small.t), 0);
     }
 
     #[test]
