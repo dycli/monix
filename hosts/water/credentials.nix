@@ -18,6 +18,8 @@ in
   matrix.tunnelTokenFile = config.secrets.matrix-cloudflare-tunnel-token.path;
   immich.tunnelTokenFile = config.secrets.immich-cloudflare-tunnel-token.path;
 
+  gitMirror.tokenFile = config.secrets.git-mirror-token.path;
+
   yeoman = {
     instances.sokka = {
       credentialsEnvFile = config.secrets.matrix-sokka-env.path;
@@ -57,6 +59,7 @@ in
       owner = "acme";
     };
     frigate-env.file = ./secrets/frigate.env.age;
+    git-mirror-token.file = ./secrets/git-mirror-token.age;
     sabnzbd-secrets = {
       file = ./secrets/sabnzbd-secrets.ini.age;
       owner = "sabnzbd";
