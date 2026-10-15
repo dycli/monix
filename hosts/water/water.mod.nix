@@ -63,6 +63,20 @@
 
         boot.loader.timeout = 5;
 
+        # Deploys read the NAS mirror, refreshed first, so GitHub being down
+        # only means deploying the last commit it saw.
+        switcharoo = {
+          source = "/srv/storage/git/dycli/monix.git";
+          refresh = "git-mirror.service";
+          mustRun = [
+            "hippo.service"
+            "sokka.service"
+            "suki.service"
+            "nginx.service"
+            "tuwunel.service"
+          ];
+        };
+
         home-manager.users.katara.wayland.windowManager.hyprland.extraConfig = lib.modules.mkAfter ''
           -- The ASPEED management output otherwise creates an unseen desktop.
           hl.monitor({ output = "VGA-1", disabled = true })

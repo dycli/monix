@@ -114,12 +114,20 @@ every `.age` file has a rule, and every rule points at a tracked file.
 
 ### switcharoo
 
-Hosts deploy with `switcharoo`. It pulls `origin/main` fast-forward only, so
-a host only ever runs published commits. It builds as the user with `nh`, then
-activates in a detached `systemd-run` unit. Activation can restart
-`tailscaled` or `sshd`; detached, the switch finishes even when the SSH
-session that started it dies. A switch over SSH that died halfway once left
-Air without DNS and with a stale sudo, which is why it works this way.
+Hosts deploy with `switcharoo`, which starts the root unit
+`switcharoo.service` (`modules/core/switcharoo.mod.nix`). It fetches `main`
+from a git remote, never a working tree: GitHub, or on Water the NAS
+mirror, so a GitHub outage can't block a deploy there. It activates the new
+system with `test`, waits for the jobs to settle, and rolls back if
+activation failed, a unit newly failed, or a required unit isn't running.
+Only a healthy system becomes the boot default. Running as a unit, a switch
+finishes even when the SSH session that started it dies; a switch over SSH
+that died halfway once left Air without DNS and with a stale sudo.
+
+polkit lets the primary user and the AI seat start it without a password.
+Commits touching access, keys or the deploy module itself are fenced:
+`switcharoo --approve` deploys them and asks for a wheel password. Each
+deploy is announced through `ship-alert`, and a failed one alerts.
 
 ## Desktop
 

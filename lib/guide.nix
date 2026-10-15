@@ -71,5 +71,11 @@
 
     Plain commit messages, with no attribution trailers (Co-Authored-By,
     Claude-Session, "Generated with Claude Code").
+
+    ## Deploys
+
+    `switcharoo` deploys pushed `main` and rolls back on its own if the host
+    turns unhealthy, so deploy after pushing. A switch can restart services
+    and kill long runs: check for them, and say so before deploying.
   '';
 }
