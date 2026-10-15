@@ -7,7 +7,7 @@ use crate::compactor::{Pump, Spent, pump};
 use crate::live::{Live, Sources};
 use crate::store::{Draft, Kind, Store, fmt_date};
 use crate::tree::{Tree, addr, flat};
-use crate::view::{CONTEXT, PLACEHOLDER, VIEW, View};
+use crate::view::{CONTEXT, PLACEHOLDER, VIEW, View, bound};
 use crate::watcher::Watcher;
 use chrono::{DateTime, Local};
 use regex::RegexBuilder;
@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -395,8 +395,18 @@ fn view(shared: &Arc<Shared>, a: &[String]) -> Result<String, String> {
 /// The view as text: one line per part, oldest first, and a note when
 /// recent lines wait for the compactor. The note goes last: it changes
 /// from turn to turn, and anything after it would miss the model's
-/// prompt cache.
+/// prompt cache. With `<chat>` around it, the whole stays within the
+/// budget.
 fn render(c: &Core) -> Result<(String, Vec<String>), String> {
+    let unbuilt = c.view.unbuilt(&c.tree);
+    let mut note = String::new();
+    if unbuilt > 0 {
+        let why = match c.pump.limit {
+            Some(t) => format!(" (compactor rate-limited until {})", t.format("%H:%M")),
+            None => String::new(),
+        };
+        note = format!("{unbuilt} recent lines are not summarized yet{why}: zoom them.\n");
+    }
     let mut lines = Vec::new();
     // A run of unbuilt parts shows as one line: one placeholder per part
     // once grew the view past what it was meant to hold whenever the
@@ -407,9 +417,9 @@ fn render(c: &Core) -> Result<(String, Vec<String>), String> {
         match c.tree.text(l, i)? {
             Some(text) => {
                 if let Some((s, n)) = run.take() {
-                    lines.push(unbuilt_line(s, n));
+                    lines.push((s, n, unbuilt_line(s, n)));
                 }
-                lines.push(format!("{s}+{n}|{}", flat(&text)));
+                lines.push((s, n, format!("{s}+{n}|{}", flat(&text))));
             }
             None => {
                 run = Some(match run {
@@ -420,18 +430,10 @@ fn render(c: &Core) -> Result<(String, Vec<String>), String> {
         }
     }
     if let Some((s, n)) = run {
-        lines.push(unbuilt_line(s, n));
+        lines.push((s, n, unbuilt_line(s, n)));
     }
-    let unbuilt = c.view.unbuilt(&c.tree);
-    let mut note = String::new();
-    if unbuilt > 0 {
-        let why = match c.pump.limit {
-            Some(t) => format!(" (compactor rate-limited until {})", t.format("%H:%M")),
-            None => String::new(),
-        };
-        note = format!("{unbuilt} recent lines are not summarized yet{why}: zoom them.\n");
-    }
-    Ok((note, lines))
+    let wrap = ("<chat>\n\n</chat>\n".len() + note.len()) as u64;
+    Ok((note, bound(lines, c.budget.saturating_sub(wrap), &c.tree)?))
 }
 
 /// The line for `n` unbuilt messages from `s`.
@@ -449,11 +451,24 @@ fn text(c: &Core) -> Result<String, String> {
     Ok(format!("<chat>\n{}\n</chat>\n{note}", lines.join("\n")))
 }
 
+/// While this file exists, `view.md` holds its text instead of the view, so
+/// a repair can keep the history out of every new context; like a pause,
+/// it outlives restarts. It takes effect at the next publish: at start, or
+/// when the next message arrives.
+pub fn override_file(store: &Path) -> PathBuf {
+    store.join("state/view-override.md")
+}
+
 /// Writes the whole view to `view.md` in the store, which the seat's Claude
 /// Code loads as a rules file at session start and after each compaction,
 /// and both views' parts, which the next start loads.
 pub fn publish(c: &mut Core) -> Result<(), String> {
-    let text = text(c)?;
+    let over = override_file(&c.store.dir);
+    let text = match fs::read_to_string(&over) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => text(c)?,
+        Err(e) => return Err(format!("{}: {e}", over.display())),
+    };
     let path = c.store.dir.join("view.md");
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
@@ -577,6 +592,12 @@ fn status(c: &Core, compacting: bool) -> String {
         c.view.size(),
         c.view.unbuilt(&c.tree)
     ));
+    if override_file(&s.dir).exists() {
+        out.push_str(&format!(
+            "view.md: overridden by {}\n",
+            override_file(&s.dir).display()
+        ));
+    }
     if !compacting {
         out.push_str("compactor: off\n");
     } else if crate::compactor::paused(&s.dir) {
@@ -659,4 +680,95 @@ fn status(c: &Core, compacting: bool) -> String {
         ));
     }
     out.trim_end().to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tree::Node;
+
+    /// A store of `n` messages, each its own built line, and no merges:
+    /// the state of a paused or backlogged compactor.
+    fn stalled(name: &str, n: u64, budget: u64) -> Core {
+        let dir = std::env::temp_dir().join(format!("hippo-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let mut store = Store::open(&dir, true).unwrap();
+        let drafts = (0..n)
+            .map(|k| Draft {
+                kind: Kind::Talk,
+                chat: Some("c".into()),
+                text: format!("message {k} {}", "x".repeat(200)),
+                date: Local::now(),
+                src: None,
+            })
+            .collect();
+        store.append(drafts).unwrap();
+        let mut tree = Tree::open(&dir).unwrap();
+        for i in 0..n {
+            let text = format!("talk: message {i} {}", "x".repeat(200));
+            tree.save(Node {
+                l: 0,
+                i,
+                size: text.len() as u64,
+                text,
+                model: String::new(),
+                prompt: String::new(),
+            })
+            .unwrap();
+        }
+        let mut c = Core::for_test(store, tree, View::default(), budget);
+        c.sync();
+        c
+    }
+
+    #[test]
+    fn a_stalled_view_publishes_within_its_budget() {
+        let mut c = stalled("stalled", 2_000, 50_000);
+        assert!(
+            c.view.size() > 4 * c.budget,
+            "the view did not outgrow its budget"
+        );
+        publish(&mut c).unwrap();
+        let file = fs::read_to_string(c.store.dir.join("view.md")).unwrap();
+        assert!(
+            file.len() as u64 <= c.budget,
+            "view.md {} bytes",
+            file.len()
+        );
+        assert!(file.starts_with("<chat>\n0+1024|") && file.ends_with("</chat>\n"));
+        // The newest message keeps its line, and what was cut still opens.
+        assert!(file.contains("\n1999+1|talk: message 1999 "));
+        assert!(
+            zoom(&c.store, &c.tree, 0, 1024)
+                .unwrap()
+                .starts_with("0+512|")
+        );
+        assert!(
+            zoom(&c.store, &c.tree, 0, 1)
+                .unwrap()
+                .contains("message 0 ")
+        );
+    }
+
+    #[test]
+    fn an_override_replaces_the_published_view() {
+        let mut c = stalled("override", 20, VIEW);
+        let over = override_file(&c.store.dir);
+        fs::create_dir_all(over.parent().unwrap()).unwrap();
+        fs::write(&over, "Repair: history is offline.\n").unwrap();
+        publish(&mut c).unwrap();
+        let path = c.store.dir.join("view.md");
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "Repair: history is offline.\n"
+        );
+        assert!(status(&c, false).contains("view.md: overridden"));
+        fs::remove_file(&over).unwrap();
+        publish(&mut c).unwrap();
+        assert!(
+            fs::read_to_string(&path)
+                .unwrap()
+                .contains("19+1|talk: message 19")
+        );
+    }
 }

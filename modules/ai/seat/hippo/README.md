@@ -52,6 +52,18 @@ is about to be rewritten anyway (Claude Code, before a compaction) can ask for
 the batch early with `hippo fold`, so the fresh context opens on a 64 KB view
 and the chat itself is the raw frontier.
 
+A batch merges only pairs whose parent is built, so while the compactor is
+paused or behind, the view outgrows its budget. What it prints and publishes,
+and the context sent to the compactor (32 KB), never do: past the budget the
+oldest lines give way to the fewest tree nodes covering them, each shown by
+its summary or, if unbuilt, as `0+1024|(older history, past the view's
+budget: zoom it or search)`; `zoom` opens either.
+
+While `state/view-override.md` exists in the store, `view.md` holds its text
+instead of the view, from the next start or message on; a repair uses it to
+keep the history out of every new context. Like a pause, it outlives
+restarts, and `status` names it.
+
 **Reading.** `hippo view` prints the view; `zoom <id> <n>` opens a line into
 its two halves, down to the whole message; `search <regex>` reads every
 message word for word; `date <id>` says when. The service answers over a
@@ -93,7 +105,7 @@ The service reads its configuration from the environment:
 | `HIPPO_BACKEND` | `claude` (the `claude` CLI, on a subscription), `http` (any chat-completions endpoint, with `HIPPO_URL` and `HIPPO_HTTP_EXTRA`) or `codex` (`HIPPO_CODEX`) |
 | `HIPPO_MODEL`, `HIPPO_EFFORT` | the compactor's model and reasoning effort |
 | `HIPPO_LEVELS` | per-level overrides, `level=backend/model/effort` separated by spaces, say `0=claude/haiku/xhigh` |
-| `HIPPO_VIEW` | the view budget in bytes, default 128000 |
+| `HIPPO_VIEW` | the view budget in bytes, line labels included, default 128000 |
 | `HIPPO_AGENT` | the agent's name, in the compactor's prompt and on the door's page; default Bridge |
 | `HIPPO_PERSON` | the person the agent works for, named on the door's page; default Dylan |
 

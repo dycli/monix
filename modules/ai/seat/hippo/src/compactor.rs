@@ -7,6 +7,7 @@ use crate::compact::{self, Fail, PROMPT_VERSION, Step, Usage, cut};
 use crate::server::{Core, Shared};
 use crate::store::Msg;
 use crate::tree::{NODE, Node, addr, flat};
+use crate::view::bound;
 use chrono::{DateTime, Local};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -118,8 +119,8 @@ fn message(c: &Core, i: u64) -> Result<Msg, String> {
     c.store.get(i)
 }
 
-/// The compactions' view up to `end` (exclusive), as `id+n|text` lines.
-/// None until all of it is built.
+/// The compactions' view up to `end` (exclusive), as `id+n|text` lines,
+/// never over the context budget. None until all of it is built.
 fn context(c: &Core, end: u64) -> Result<Option<Vec<String>>, String> {
     let mut out = Vec::new();
     for &(l, i) in &c.context.parts {
@@ -128,11 +129,11 @@ fn context(c: &Core, end: u64) -> Result<Option<Vec<String>>, String> {
             break;
         }
         match c.tree.text(l, i)? {
-            Some(t) => out.push(format!("{s}+{n}|{}", flat(&t))),
+            Some(t) => out.push((s, n, format!("{s}+{n}|{}", flat(&t)))),
             None => return Ok(None),
         }
     }
-    Ok(Some(out))
+    bound(out, c.context_budget(), &c.tree).map(Some)
 }
 
 enum Job {
@@ -366,7 +367,10 @@ fn fallback(a: &str, b: Option<&str>) -> String {
         Some(b) => cut(&flat(&format!("{a} {b}")), NODE).to_owned(),
         None => {
             let head = a.split(" THINK").next().unwrap_or(a);
-            format!("{} (summary refused: zoom it)", cut(&flat(head), 200).trim_end())
+            format!(
+                "{} (summary refused: zoom it)",
+                cut(&flat(head), 200).trim_end()
+            )
         }
     }
 }
@@ -399,6 +403,45 @@ mod tests {
         fn start(&self) -> Result<Box<dyn Chat>, Fail> {
             Ok(Box::new(FakeChat(self.0.clone())))
         }
+    }
+
+    #[test]
+    fn a_stalled_context_stays_within_its_budget() {
+        let dir = std::env::temp_dir().join(format!("hippo-ctx-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut store = crate::store::Store::open(&dir, true).unwrap();
+        let n = 1_000u64;
+        let drafts = (0..n)
+            .map(|k| crate::store::Draft {
+                kind: crate::store::Kind::Talk,
+                chat: Some("c".into()),
+                text: format!("message {k} ") + &"x".repeat(200),
+                date: chrono::Local::now(),
+                src: None,
+            })
+            .collect();
+        store.append(drafts).unwrap();
+        let mut tree = Tree::open(&dir).unwrap();
+        for i in 0..n {
+            let text = format!("talk: message {i} ") + &"x".repeat(200);
+            tree.save(Node {
+                l: 0,
+                i,
+                size: text.len() as u64,
+                text,
+                model: String::new(),
+                prompt: String::new(),
+            })
+            .unwrap();
+        }
+        // No level-1 node is built, so the context view cannot fold.
+        let mut c = Core::for_test(store, tree, View::default(), crate::view::VIEW);
+        c.sync();
+        assert!(c.context.size() > 5 * c.context_budget());
+        let lines = context(&c, n).unwrap().unwrap();
+        let size: u64 = lines.iter().map(|l| l.len() as u64 + 1).sum();
+        assert!(size <= c.context_budget(), "context {size} bytes");
+        assert!(lines.last().unwrap().starts_with(&format!("{}+1|", n - 1)));
     }
 
     #[test]

@@ -11,9 +11,10 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::tree::{Tree, addr};
+use crate::tree::{Tree, addr, flat};
 
-/// Budget of the view, in bytes of its lines' text.
+/// Budget of the view, in bytes of its lines as rendered, `id+n|` and
+/// newline included.
 pub const VIEW: u64 = 128_000;
 
 /// Budget of the compactions' own view: the same sawtooth, smaller, so they
@@ -21,6 +22,9 @@ pub const VIEW: u64 = 128_000;
 pub const CONTEXT: u64 = 32_000;
 
 pub const PLACEHOLDER: &str = "(not summarized yet: zoom it)";
+
+/// Text of an unbuilt node standing for history `bound` cut from the front.
+pub const BEYOND: &str = "(older history, past the view's budget: zoom it or search)";
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct View {
@@ -37,7 +41,67 @@ pub struct View {
 }
 
 fn part_size(tree: &Tree, (l, i): (u8, u64)) -> u64 {
-    tree.size(l, i).unwrap_or(PLACEHOLDER.len() as u64)
+    label(l, i) + tree.size(l, i).unwrap_or(PLACEHOLDER.len() as u64)
+}
+
+/// Lines `(start, n, line)` in order, cut to at most `budget` bytes with
+/// their newlines. `fit` keeps a view under budget only as far as built
+/// parents allow, so while merges wait (a backlog, a pause) the oldest lines
+/// give way to the fewest tree nodes tiling what they covered: each one's
+/// summary if built, else `BEYOND`, so `zoom` opens either. Under budget
+/// the lines come back as they are.
+pub fn bound(
+    lines: Vec<(u64, u64, String)>,
+    budget: u64,
+    tree: &Tree,
+) -> Result<Vec<String>, String> {
+    let size = |l: &str| l.len() as u64 + 1;
+    let end = lines.last().map_or(0, |&(s, n, _)| s + n);
+    let mut rest: u64 = lines.iter().map(|(_, _, l)| size(l)).sum();
+    let mut cut = 0;
+    loop {
+        let at = lines.get(cut).map_or(end, |&(s, _, _)| s);
+        let head = cover(at);
+        let fits = rest + head.iter().map(|&p| head_size(tree, p)).sum::<u64>() <= budget;
+        if fits || cut == lines.len() {
+            let mut out = Vec::new();
+            for (l, i) in head {
+                let (s, n) = addr(l, i);
+                let text = tree.text(l, i)?.map_or(BEYOND.to_owned(), |t| flat(&t));
+                out.push(format!("{s}+{n}|{text}"));
+            }
+            out.extend(lines.into_iter().skip(cut).map(|(_, _, l)| l));
+            return Ok(out);
+        }
+        rest -= size(&lines[cut].2);
+        cut += 1;
+    }
+}
+
+/// The fewest tree nodes tiling messages `[0, end)`, oldest first.
+fn cover(end: u64) -> Vec<(u8, u64)> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    for l in (0..64u8).rev() {
+        let n = 1u64 << l;
+        if end & n != 0 {
+            out.push((l, at / n));
+            at += n;
+        }
+    }
+    out
+}
+
+/// Bytes of a `bound` line for node `(l, i)`, newline included.
+fn head_size(tree: &Tree, (l, i): (u8, u64)) -> u64 {
+    label(l, i) + tree.size(l, i).unwrap_or(BEYOND.len() as u64)
+}
+
+/// Bytes of `id+n|` and the newline.
+fn label(l: u8, i: u64) -> u64 {
+    let (s, n) = addr(l, i);
+    let digits = |x: u64| x.checked_ilog10().unwrap_or(0) as u64 + 1;
+    digits(s) + digits(n) + 3
 }
 
 impl View {
@@ -180,6 +244,46 @@ mod tests {
             prompt: String::new(),
         })
         .unwrap();
+    }
+
+    #[test]
+    fn bound_cuts_the_oldest_lines_to_zoomable_nodes() {
+        let dir = std::env::temp_dir().join(format!("hippo-view-bound-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut t = Tree::open(&dir).unwrap();
+        let lines = |k: u64| -> Vec<(u64, u64, String)> {
+            (0..k)
+                .map(|i| (i, 1, format!("{i}+1|{}", "x".repeat(90))))
+                .collect()
+        };
+        let under = bound(lines(10), 10_000, &t).unwrap();
+        assert_eq!(
+            under,
+            lines(10).into_iter().map(|l| l.2).collect::<Vec<_>>()
+        );
+        let cut = bound(lines(1000), 10_000, &t).unwrap();
+        let size: usize = cut.iter().map(|l| l.len() + 1).sum();
+        assert!(size <= 10_000, "{size} bytes");
+        // The newest lines stay whole; the nodes before them tile the rest,
+        // each one zoom accepts.
+        assert_eq!(cut.last().unwrap(), &lines(1000)[999].2);
+        let mut at = 0;
+        for line in cut.iter().take_while(|l| l.ends_with(BEYOND)) {
+            let (id, n) = line.split_once('|').unwrap().0.split_once('+').unwrap();
+            let (id, n): (u64, u64) = (id.parse().unwrap(), n.parse().unwrap());
+            assert!(id == at && n.is_power_of_two() && id % n == 0, "{line}");
+            at += n;
+        }
+        assert!(at > 0);
+        assert!(cut.iter().any(|l| l.starts_with(&format!("{at}+1|x"))));
+        // A built node shows its summary instead.
+        node(&mut t, 9, 0, 300);
+        let cut = bound(lines(1000), 10_000, &t).unwrap();
+        assert_eq!(cut[0], format!("0+512|{}", "x".repeat(300)));
+        assert!(cut.iter().map(|l| l.len() + 1).sum::<usize>() <= 10_000);
+        // A budget too small for any line leaves only the nodes.
+        let tiny = bound(lines(1000), 10, &t).unwrap();
+        assert!(tiny.iter().all(|l| !l.contains("+1|x")));
     }
 
     #[test]
