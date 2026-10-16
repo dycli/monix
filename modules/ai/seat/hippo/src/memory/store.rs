@@ -350,6 +350,14 @@ impl Store {
         self.index.get(i as usize)?.chat.as_deref()
     }
 
+    /// The ids of one chat's messages, by its `harness:session` key, newest
+    /// first.
+    pub fn of_chat<'a>(&'a self, key: &'a str) -> impl Iterator<Item = u64> + 'a {
+        let ids = (0..self.index.len()).rev();
+        ids.filter(move |&i| self.index[i].chat.as_deref() == Some(key))
+            .map(|i| i as u64)
+    }
+
     /// Message `i`, read back from its file.
     pub fn get(&self, i: u64) -> Result<Msg, String> {
         let m = self

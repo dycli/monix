@@ -7,7 +7,7 @@ use crate::code::Follow;
 use crate::code::live::Sources;
 use crate::memory::compact::Backend;
 use crate::memory::compactor::{Pump, Spent, pump};
-use crate::memory::store::{Draft, Kind, Store, fmt_date};
+use crate::memory::store::{Draft, Kind, Store, chat_key, fmt_date};
 use crate::memory::tree::{Tree, addr, flat};
 use crate::memory::view::{CONTEXT, PLACEHOLDER, UNBUILT, VIEW, View, head};
 use chrono::{DateTime, Local};
@@ -243,6 +243,12 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
             }
             Ok(out.join("\n"))
         }
+        "chat" => {
+            let [harness, session] = a.as_slice() else {
+                return Err("Usage: hippo chat <harness> <session>".into());
+            };
+            this_chat(&core.lock().unwrap().store, harness, session)
+        }
         "search" => {
             let pattern = a.first().ok_or("Missing regex.")?;
             let re = RegexBuilder::new(pattern)
@@ -319,6 +325,59 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
         }
         other => Err(format!("Unknown command {other}.")),
     }
+}
+
+/// How many of the captain's messages the chat's own block quotes.
+const OWN_USER: usize = 4;
+/// A quoted message is cut past this many characters; `hippo zoom` has it.
+const OWN_CUT: usize = 800;
+
+/// `hippo chat <harness> <session>`: one chat's latest words, verbatim,
+/// for the hook that reopens it after a compaction or a resume. The view
+/// holds every chat in one timeline, so without this a compacted chat can
+/// take up another's work. The captain's last few messages and the chat's
+/// last reply, oldest first; nothing for a chat with no messages yet.
+fn this_chat(store: &Store, harness: &str, session: &str) -> Result<String, String> {
+    let key = chat_key(harness, session);
+    let (mut users, mut talk) = (0, false);
+    let mut own = Vec::new();
+    for i in store.of_chat(&key) {
+        if users == OWN_USER {
+            break;
+        }
+        let m = store.get(i)?;
+        match m.kind {
+            Kind::User => users += 1,
+            Kind::Talk if !talk => talk = true,
+            _ => continue,
+        }
+        own.push((i, m));
+    }
+    if own.is_empty() {
+        return Ok(String::new());
+    }
+    let mut out = String::from("## This chat\n\nYou are ");
+    match store.chats.get(&key) {
+        Some(rec) if !rec.cwd.is_empty() => out.push_str(&format!(
+            "the {harness} chat \"{}\", in {}",
+            rec.chat, rec.cwd
+        )),
+        Some(rec) => out.push_str(&format!("the {harness} chat \"{}\"", rec.chat)),
+        None => out.push_str(&key),
+    }
+    out.push_str(
+        ". The view holds every chat; these are this chat's own latest \
+         messages, word for word (`hippo zoom <id> 1` opens one whole). \
+         Carry on with this chat's work.\n\n",
+    );
+    for (i, m) in own.iter().rev() {
+        let mut text: String = m.text.chars().take(OWN_CUT).collect();
+        if text.len() < m.text.len() {
+            text.push('…');
+        }
+        out.push_str(&format!("{i} {}: {text}\n", m.kind.name()));
+    }
+    Ok(out.trim_end().to_owned())
 }
 
 /// `hippo view [page token]`: the whole view, paged. The first call waits
@@ -731,6 +790,46 @@ mod tests {
                 .unwrap()
                 .contains("message 0 ")
         );
+    }
+
+    #[test]
+    fn a_chat_quotes_only_its_own_latest_words() {
+        let dir = std::env::temp_dir().join(format!("hippo-own-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let mut store = Store::open(&dir, true).unwrap();
+        let msg = |k: usize, kind, s: &str, text: String| Draft {
+            kind,
+            chat: Some(s.into()),
+            text,
+            date: Local::now(),
+            src: Some(crate::memory::store::Src {
+                h: "claude".into(),
+                s: s.into(),
+                e: k.to_string(),
+            }),
+        };
+        let mut drafts = Vec::new();
+        for k in 0..6 {
+            drafts.push(msg(4 * k, Kind::User, "a", format!("a asks {k}")));
+            drafts.push(msg(4 * k + 1, Kind::Tool, "a", format!("a runs {k}")));
+            drafts.push(msg(4 * k + 2, Kind::Talk, "a", format!("a says {k}")));
+            drafts.push(msg(4 * k + 3, Kind::User, "b", format!("b asks {k}")));
+        }
+        drafts.push(msg(99, Kind::User, "a", "y".repeat(OWN_CUT + 5)));
+        store.append(drafts).unwrap();
+
+        let out = this_chat(&store, "claude", "a").unwrap();
+        let lines: Vec<&str> = out.lines().filter(|l| l.contains(": ")).collect();
+        assert!(out.starts_with("## This chat"));
+        assert!(!out.contains("b asks") && !out.contains("a runs"));
+        // The last four of the captain's, the last reply only, oldest first.
+        assert_eq!(lines[0], "12 user: a asks 3");
+        assert_eq!(lines[1], "16 user: a asks 4");
+        assert_eq!(lines[2], "20 user: a asks 5");
+        assert_eq!(lines[3], "22 talk: a says 5");
+        assert!(lines[4].starts_with("24 user: yyy") && lines[4].ends_with("y…"));
+        assert_eq!(lines.len(), 5);
+        assert_eq!(this_chat(&store, "claude", "fresh").unwrap(), "");
     }
 
     #[test]

@@ -237,6 +237,10 @@ Claude Code's from a PreCompact hook, Codex's from its `compact_prompt`,
 OpenCode's from the plugin. Muse's summary prompt is not configurable, so
 it keeps its own. A session comes
 back as handoff plus fresh view rather than a long transcript summary.
+The view holds every chat at once, so a compacted chat could take up a
+parallel chat's work; the handoff opens by naming this chat's project, and
+a hook adds the chat's own latest messages, verbatim, after the view
+(`hippo chat`), last so the view stays cached.
 Compactions went from 97-113 seconds to 16-18. Each harness first runs
 `hippo fold`: the seat is the one reader that keeps a live context
 between reads of the view, so its raw lines only duplicate that context,

@@ -91,7 +91,10 @@ in
         This conversation is recorded word for word in hippo, the seat's
         memory; its view reloads into context by itself and `hippo zoom`
         opens any message. So the summary is a handoff, not a record, and
-        it replaces the usual template: write exactly three short sections,
+        it replaces the usual template. The view holds every chat at once,
+        so open with one line naming this chat's work: the project, its
+        repository or directory, and the captain's latest request in their
+        words. Then write exactly three short sections,
         Pending Tasks, Current Work (which files are dirty, what has been
         verified on them and how, what has not) and Next Step, plus one
         line for any decision or standing rule from the last few turns not
@@ -113,9 +116,23 @@ in
 
       # Harnesses without rules files get the view from a
       # session-start hook, at startup and again after each compaction.
-      context = forSeat "hippo-context" ''
-        ${pkgs.coreutils}/bin/cat ${seat.hippo}/view.md
-      '';
+      context =
+        harness:
+        forSeat "hippo-context-${harness}" ''
+          ${pkgs.coreutils}/bin/cat ${seat.hippo}/view.md
+          ${own harness}
+        '';
+
+      # The view holds every chat in one timeline, so a compacted or resumed
+      # chat also gets its own latest words, verbatim, after it: the session
+      # id comes on the hook's stdin. Last, so the view's cache holds.
+      own =
+        harness:
+        forSeat "hippo-own-${harness}" ''
+          id=$(${lib.meta.getExe pkgs.jq} -r '.session_id // .sessionId // empty' 2>/dev/null)
+          [ -n "$id" ] || exit 0
+          ${pkgs.coreutils}/bin/timeout 5 ${lib.meta.getExe (package lib pkgs)} chat ${harness} "$id" | ${pkgs.gnused}/bin/sed '1s/^/\n/' || true
+        '';
 
       # The compactor's own claude calls get the seat's managed settings
       # without hooks or managed MCP servers: those would open the desktops'
@@ -146,6 +163,15 @@ in
               command = toString handoff;
             };
           };
+          # The view itself is a rules file; only the chat's own words come
+          # from a hook.
+          SessionStart = singleton {
+            matcher = "resume|compact";
+            hooks = singleton {
+              type = "command";
+              command = toString (own "claude");
+            };
+          };
         };
 
         # Codex, as close as its hooks allow: the view opens every
@@ -157,7 +183,7 @@ in
             matcher = "startup|resume|clear|compact";
             hooks = singleton {
               type = "command";
-              command = toString context;
+              command = toString (context "codex");
               additionalContextLimit = 0;
             };
           };
@@ -183,7 +209,7 @@ in
             slice =
               n:
               forSeat "hippo-context-${toString n}" ''
-                ${context} | LC_ALL=C ${pkgs.gawk}/bin/awk -v n=${toString n} '
+                ${context "muse"} | LC_ALL=C ${pkgs.gawk}/bin/awk -v n=${toString n} '
                   { l = length($0) + 1; if (b > 0 && b + l > 15000) { p++; b = 0 }; b += l }
                   p == n { print }'
               '';
@@ -213,7 +239,7 @@ in
         home-manager.users.${seat.user}.home.file.".config/opencode/plugins/hippo.js".text = ''
           import { execFileSync } from "node:child_process";
 
-          const context = ${toJSON (toString context)};
+          const context = ${toJSON (toString (context "opencode"))};
           const fold = ${toJSON (toString (forSeat "hippo-fold" fold))};
           const handoff = ${toJSON handoffText};
           const views = new Map();
@@ -222,7 +248,10 @@ in
             "experimental.chat.system.transform": async (input, output) => {
               if (!input.sessionID) return;
               if (!views.has(input.sessionID))
-                views.set(input.sessionID, execFileSync(context, { encoding: "utf8" }));
+                views.set(input.sessionID, execFileSync(context, {
+                    encoding: "utf8",
+                    input: JSON.stringify({ session_id: input.sessionID }),
+                  }));
               output.system.push(views.get(input.sessionID));
             },
             "experimental.session.compacting": async (input, output) => {

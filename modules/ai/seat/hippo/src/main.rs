@@ -28,6 +28,9 @@ Usage:
   hippo date <id>          date and time of message id
   hippo search <regex>     search every message, word for word
   hippo tail <n>           the last n messages whole, as JSON lines
+  hippo chat <harness> <session>
+                           one chat's latest messages, verbatim (the hook
+                           that reopens a chat after a compaction)
   hippo status             what the service is doing
   hippo fold               merge the view down to half its budget now (the
                            seat's PreCompact hook, before its context goes)
@@ -190,9 +193,8 @@ fn main() -> ExitCode {
             [addr, url] => door::run(addr, url, ask).map(|()| String::new()),
             _ => Err(USAGE.into()),
         },
-        "view" | "zoom" | "date" | "search" | "tail" | "status" | "fold" | "pause" | "resume" => {
-            ask(cmd, rest)
-        }
+        "view" | "zoom" | "date" | "search" | "tail" | "chat" | "status" | "fold" | "pause"
+        | "resume" => ask(cmd, rest),
         "help" | "-h" | "--help" => Ok(USAGE.into()),
         _ => Err(USAGE.into()),
     };
