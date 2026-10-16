@@ -66,6 +66,8 @@ in
   "hosts/water/secrets/sabnzbd-secrets.ini.age".publicKeys = singleton water ++ admin;
   # CLOUDFLARE_DNS_API_TOKEN=..., Zone→DNS→Edit on su.is, for DNS-01.
   "hosts/water/secrets/cloudflare-dns-token.env.age".publicKeys = singleton water ++ admin;
+  # Cloudflare account token, raw, "Read all resources", for the seat's Cloudflare MCP.
+  "hosts/water/secrets/cloudflare-read-token.age".publicKeys = singleton water ++ admin;
   # FRIGATE_RTSP_PASSWORD=...
   "hosts/water/secrets/frigate.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/git-mirror-token.age".publicKeys = singleton water ++ admin;
