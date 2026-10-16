@@ -31,6 +31,12 @@
       };
       shipCameras.lanSubnets = singleton "192.168.1.0/24";
 
+      # The Reolinks join once they are back on the wall.
+      frame.cameras = {
+        tapo1 = "Living room";
+        tapo2 = "Nursery";
+      };
+
       shipProxy.dashboardHost = "hp.su.is";
 
       services.syncthing.enable = true;

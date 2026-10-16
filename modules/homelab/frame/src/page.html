@@ -5,12 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Frame</title>
 <style>
-  /* Laid out for the frame on its side (portrait): the photo above, the
-     board below. A landscape screen puts the board beside the photo. */
+  /* A rail of tabs down the left, the chosen view beside it. Home on the
+     frame's side (portrait) has the photo above and the board below; on a
+     landscape screen the board sits beside the photo. --u is a hundredth of
+     the view's short side, so type scales with the screen. */
   :root {
     --ink: #2a2019; --dim: #6a5a4b; --faint: #93806b; --rule: #d2c2a8;
-    --paper: #e4d6bf;
-    --u: min(1vw, 0.5625vh);
+    --paper: #e4d6bf; --lift: #ede2cf; --accent: #b0482a;
+    --rail: 12.5vmin;
+    --u: min((100vw - var(--rail)) / 100, 0.5625vh);
   }
   /* No pinch zoom, scrolling or text selection: the frame is touched, not read. */
   html { touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -19,15 +22,45 @@
     background: var(--paper); color: var(--ink);
     font-family: system-ui, "Roboto", sans-serif;
   }
-  body { display: grid; grid-template-rows: 45fr 55fr; }
+  body { display: grid; grid-template-columns: var(--rail) 1fr; }
+  #main { display: grid; grid-template-rows: 45fr 55fr; min-width: 0; min-height: 0; }
   @media (orientation: landscape) {
-    body { grid-template-rows: none; grid-template-columns: 62fr 38fr; }
-    :root { --u: min(0.5625vw, 1vh); }
+    #main { grid-template-rows: none; grid-template-columns: 62fr 38fr; }
+    :root { --u: min((100vw - var(--rail)) * 0.005625, 1vh); }
   }
-  /* The menu's views: the photo or the board alone, full screen. */
-  body[data-view=photos], body[data-view=calendar] { grid-template: 1fr / 1fr; }
-  body[data-view=photos] #board, body[data-view=calendar] #photo { display: none; }
-  body[data-view=calendar] { --u: min(0.75vw, 0.75vh); }
+  /* The other views have the space to themselves. */
+  body:not([data-view=home]) #main { grid-template: 1fr / 1fr; }
+  body:not([data-view=home]):not([data-view=photos]) #photo,
+  body:not([data-view=home]):not([data-view=calendar]) #board { display: none; }
+  body[data-view=calendar] { --u: min((100vw - var(--rail)) * 0.0075, 0.75vh); }
+  #cams, #settings { display: none; }
+  body[data-view=cameras] #cams { display: grid; }
+  body[data-view=settings] #settings { display: block; }
+
+  #rail {
+    display: flex; flex-direction: column; align-items: stretch;
+    background: var(--lift); border-right: 1px solid var(--rule);
+    padding: 1.5vmin 0; gap: .6vmin; box-sizing: border-box; min-height: 0;
+  }
+  #rail button {
+    display: flex; flex-direction: column; align-items: center; gap: .7vmin;
+    font: inherit; font-size: 1.5vmin; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--dim); background: none; border: 0;
+    padding: 1.7vmin 0; margin: 0 1vmin; border-radius: 1.6vmin;
+    transition: background .25s, color .25s;
+  }
+  #rail button[hidden] { display: none; }
+  #rail svg {
+    width: 4vmin; height: 4vmin; fill: none; stroke: currentColor;
+    stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+  }
+  #rail button.on { background: var(--ink); color: var(--paper); }
+  #rail .time {
+    margin-top: auto; text-align: center; font-size: 2.6vmin; font-weight: 300;
+    color: var(--dim); font-variant-numeric: tabular-nums;
+  }
+  #rail .time small { display: block; font-size: 1.3vmin; letter-spacing: .12em; color: var(--faint); }
+  body[data-view=home] #rail .time { visibility: hidden; }
 
   #photo { position: relative; overflow: hidden; background: var(--paper); }
   #photo .slot { position: absolute; inset: 0; overflow: hidden; will-change: transform, opacity; }
@@ -54,12 +87,12 @@
   #now .feels { font-size: calc(3 * var(--u)); color: var(--dim); }
 
   #days {
-    display: grid; grid-template-columns: repeat(5, 1fr);
+    display: grid; grid-template-columns: repeat(5, 1fr); column-gap: calc(1.5 * var(--u));
     border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
     padding: calc(2 * var(--u)) 0;
   }
   #days:empty { display: none; }
-  .day { text-align: center; font-size: calc(3.2 * var(--u)); }
+  .day { text-align: center; font-size: calc(3 * var(--u)); white-space: nowrap; }
   .day .name { color: var(--dim); }
   .day .icon { font-size: calc(6 * var(--u)); line-height: 1.3; }
   .day .lo { color: var(--faint); }
@@ -95,11 +128,11 @@
   }
   #week .col { min-width: 0; overflow: hidden; padding: calc(2 * var(--u)) calc(1.4 * var(--u)); }
   #week .col + .col { border-left: 1px solid var(--rule); }
-  #week .today { background: #ede2cf; }
+  #week .today { background: var(--lift); }
   #week .head { margin-bottom: calc(2 * var(--u)); }
   #week .name { font-size: calc(2.8 * var(--u)); color: var(--faint); text-transform: uppercase; letter-spacing: .12em; }
   #week .num { font-size: calc(8 * var(--u)); font-weight: 200; line-height: 1.1; }
-  #week .today .num { color: #b0482a; }
+  #week .today .num { color: var(--accent); }
   #week .wx { font-size: calc(3 * var(--u)); color: var(--dim); }
   #week .item {
     background: color-mix(in srgb, var(--c) 14%, transparent); border-radius: calc(1.2 * var(--u));
@@ -109,32 +142,68 @@
   }
   #week .item .t { color: var(--dim); font-size: .8em; font-variant-numeric: tabular-nums; }
 
-  /* Held open by two fingers kept still on the screen. */
-  #menu {
-    position: fixed; inset: 0; display: grid; place-items: center;
-    background: rgb(42 32 25 / .25); z-index: 10;
+  /* Cameras: a tile each; tap one to have it fill the screen, rail and all. */
+  #cams {
+    grid-auto-rows: 1fr; gap: 2vmin; padding: 2.5vmin; min-height: 0; box-sizing: border-box;
   }
-  #menu[hidden] { display: none; }
-  #menu .card {
-    background: #ede2cf; border-radius: 24px; padding: 28px;
-    box-shadow: 0 12px 40px rgb(42 32 25 / .25); font-size: 26px;
+  @media (orientation: landscape) { #cams { grid-template-columns: 1fr 1fr; } }
+  #cams.one { grid-template: 1fr / 1fr; padding: 0; }
+  body.full { grid-template-columns: 1fr; }
+  body.full #rail { display: none; }
+  #cams.one .tile { border-radius: 0; border: 0; }
+  #cams.one .tile:not(.big) { display: none; }
+  .tile {
+    position: relative; overflow: hidden; border-radius: 2vmin;
+    background: var(--lift); border: 1px solid var(--rule);
   }
-  #menu nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-  #menu button {
-    font: inherit; color: var(--ink); background: var(--paper); border: 0;
-    border-radius: 16px; padding: 18px 26px; min-width: 130px;
+  .tile[hidden] { display: none; }
+  .tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .tile.big video { object-fit: contain; background: var(--ink); }
+  .tile .label {
+    position: absolute; left: 1.6vmin; bottom: 1.6vmin; padding: .7vmin 1.6vmin;
+    border-radius: 99px; background: rgb(237 226 207 / .85); color: var(--ink);
+    font-size: 2.2vmin; font-weight: 500;
   }
-  #menu nav button { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  #menu nav button span { font-size: 44px; line-height: 1; }
-  #menu button.on { background: #b0482a; color: #f6efe3; }
-  #settings { margin-top: 24px; border-top: 1px solid var(--rule); padding-top: 20px; }
-  #settings[hidden] { display: none; }
-  #settings .row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .tile .pad { display: none; }
+  #cams.one .tile.turns .pad { display: block; }
+  .pad button {
+    position: absolute; width: 11vmin; height: 11vmin; border-radius: 50%;
+    border: 0; background: rgb(237 226 207 / .8); color: var(--ink);
+    display: grid; place-items: center; transition: background .15s;
+  }
+  .pad button:active, .pad button.held { background: var(--paper); }
+  .pad svg { width: 5vmin; height: 5vmin; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .pad [data-way=left] { left: 3vmin; top: calc(50% - 5.5vmin); }
+  .pad [data-way=right] { right: 3vmin; top: calc(50% - 5.5vmin); }
+  .pad [data-way=up] { top: 3vmin; left: calc(50% - 5.5vmin); }
+  .pad [data-way=down] { bottom: 3vmin; left: calc(50% - 5.5vmin); }
+  #cams .quiet { display: none; place-self: center; font-size: 3vmin; }
+  #cams.none .quiet { display: block; }
+
+  #settings { padding: 6vmin 7vmin; font-size: 2.8vmin; }
+  #settings h1 { margin: 0 0 4vmin; font-size: 5vmin; font-weight: 300; }
+  #settings .row {
+    display: flex; align-items: center; gap: 1.4vmin;
+    padding: 2.4vmin 0; border-top: 1px solid var(--rule);
+  }
   #settings .row > div { flex: 1; color: var(--dim); }
-  #settings .row button { min-width: 0; padding: 12px 18px; }
+  #settings button {
+    font: inherit; color: var(--ink); background: var(--lift); border: 1px solid var(--rule);
+    border-radius: 1.4vmin; padding: 1.4vmin 2.4vmin;
+  }
+  #settings button.on { background: var(--accent); border-color: var(--accent); color: #f6efe3; }
 </style>
 </head>
 <body>
+<nav id="rail">
+  <button data-view="home"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></svg>Today</button>
+  <button data-view="calendar"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Calendar</button>
+  <button data-view="photos"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 8"/></svg>Photos</button>
+  <button data-view="cameras" hidden><svg viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 11l5-3v8l-5-3z"/></svg>Cameras</button>
+  <button data-view="settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Settings</button>
+  <div class="time"></div>
+</nav>
+<main id="main">
 <div id="photo">
   <div class="slot"><canvas></canvas><img alt=""></div>
   <div class="slot"><canvas></canvas><img alt=""></div>
@@ -149,22 +218,15 @@
   <div id="agenda"></div>
   <div id="week"></div>
 </div>
-<div id="menu" hidden>
-  <div class="card">
-    <nav>
-      <button data-view="home"><span>🏠</span>Home</button>
-      <button data-view="calendar"><span>📅</span>Calendar</button>
-      <button data-view="photos"><span>🖼️</span>Photos</button>
-      <button id="gear"><span>⚙️</span>Settings</button>
-    </nav>
-    <div id="settings" hidden>
-      <div class="row"><div>Each photo</div>
-        <button data-show="15">15 s</button><button data-show="30">30 s</button>
-        <button data-show="60">1 min</button><button data-show="300">5 min</button></div>
-      <div class="row"><div>Refresh the frame</div><button id="reload">Reload</button></div>
-    </div>
-  </div>
+<div id="cams"><div class="quiet">No cameras are on right now.</div></div>
+<div id="settings">
+  <h1>Settings</h1>
+  <div class="row"><div>Each photo</div>
+    <button data-show="15">15 s</button><button data-show="30">30 s</button>
+    <button data-show="60">1 min</button><button data-show="300">5 min</button></div>
+  <div class="row"><div>Refresh the frame</div><button id="reload">Reload</button></div>
 </div>
+</main>
 <script>
 // How long each photo stays, how often the album and the board are read.
 // Each photo's time is a setting, kept on the frame.
@@ -207,6 +269,9 @@ function tick() {
   const now = new Date();
   $("clock").textContent = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(/\s?[AP]M$/i, "");
   $("date").textContent = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+  const [t, ap] = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).split(/\s+/);
+  const rail = document.querySelector("#rail .time");
+  rail.replaceChildren(t, el("small", null, ap || ""));
 }
 
 function drawWeather(w) {
@@ -429,7 +494,7 @@ function restart() {
 // Dragging the photo moves it with the finger, the neighbour sliding in
 // beside it, as Frameo does. Let go past a fifth of the width, or flick, and
 // it carries on to that photo and restarts its time on screen; otherwise it
-// springs back. A second finger springs it back too (it may be the menu).
+// springs back. A second finger springs it back too.
 $("photo").addEventListener("pointerdown", e => {
   if (drag && e.pointerId !== drag.id) return void release(null);
   if (order.length < 2 || drag || busy || !e.isPrimary) return;
@@ -468,55 +533,137 @@ async function release(e) {
 $("photo").addEventListener("pointerup", release);
 $("photo").addEventListener("pointercancel", release);
 
-// The menu: two fingers held still for a second and a half, as on Wes Bos's
-// frame dashboard. It closes on a choice, a tap outside, or by itself.
-const fingers = new Map();
-let hold = 0, idle = 0;
-addEventListener("pointerdown", e => {
-  fingers.set(e.pointerId, [e.clientX, e.clientY]);
-  clearTimeout(hold);
-  if (fingers.size === 2) hold = setTimeout(openMenu, 1500);
-}, true);
-addEventListener("pointermove", e => {
-  const f = fingers.get(e.pointerId);
-  if (f && Math.hypot(e.clientX - f[0], e.clientY - f[1]) > 40) clearTimeout(hold);
-}, true);
-for (const t of ["pointerup", "pointercancel"])
-  addEventListener(t, e => { fingers.delete(e.pointerId); clearTimeout(hold); }, true);
+// Cameras stream only while their view is open; a tile that fails hides
+// and tries again later. A <video> lets its buffer grow behind a live
+// stream, and seeking one makes it ask for the stream again from the start,
+// so a tile that falls behind plays a little fast until it is near live,
+// and starts over if it falls far behind.
+const tiles = [];
+const watching = () => document.body.dataset.view === "cameras";
+function cams() {
+  $("cams").classList.toggle("none", tiles.every(t => t.hidden));
+}
+function start(t) {
+  const v = t.querySelector("video");
+  v.src = "/camera/" + encodeURIComponent(t.dataset.id) + "?t=" + Date.now();
+  v.play().catch(() => {});
+}
+function stop(t) {
+  const v = t.querySelector("video");
+  v.removeAttribute("src");
+  v.load();
+}
+function lost(t) {
+  if (!t.querySelector("video").getAttribute("src")) return;
+  stop(t);
+  t.hidden = true;
+  t.classList.remove("big");
+  $("cams").classList.remove("one");
+  document.body.classList.remove("full");
+  cams();
+  setTimeout(() => { if (watching()) { t.hidden = false; cams(); start(t); } }, 30e3);
+}
+// Arrows that pan and tilt while held. Each move turns the camera for half a
+// second on the server, so the page repeats it until the finger lifts.
+const ARROWS = { left: "M15 5l-7 7 7 7", right: "M9 5l7 7-7 7", up: "M5 15l7-7 7 7", down: "M5 9l7 7 7-7" };
+function pad(id) {
+  const box = el("div", "pad");
+  for (const [way, d] of Object.entries(ARROWS)) {
+    const b = el("button");
+    b.dataset.way = way;
+    b.innerHTML = `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
+    let every = 0;
+    const send = () => fetch(`/camera/${encodeURIComponent(id)}/${way}`, { method: "POST" }).catch(() => {});
+    const end = () => { clearInterval(every); every = 0; b.classList.remove("held"); };
+    b.addEventListener("pointerdown", e => {
+      b.setPointerCapture(e.pointerId);
+      b.classList.add("held");
+      send();
+      clearInterval(every);
+      every = setInterval(send, 300);
+    });
+    for (const t of ["pointerup", "pointercancel", "lostpointercapture"]) b.addEventListener(t, end);
+    box.append(b);
+  }
+  return box;
+}
+async function cameraList() {
+  try {
+    const list = await (await fetch("/api/cameras")).json();
+    for (const c of list) {
+      const t = el("div", c.turns ? "tile turns" : "tile"), v = el("video");
+      t.dataset.id = c.id;
+      v.muted = v.autoplay = v.playsInline = true;
+      v.addEventListener("error", () => lost(t));
+      v.addEventListener("ended", () => lost(t));
+      t.append(v, el("div", "label", c.name));
+      if (c.turns) t.append(pad(c.id));
+      t.addEventListener("click", e => {
+        if (e.target.closest(".pad button")) return;
+        const big = !$("cams").classList.contains("one");
+        t.classList.toggle("big", big);
+        $("cams").classList.toggle("one", big);
+        document.body.classList.toggle("full", big);
+      });
+      tiles.push(t);
+      $("cams").append(t);
+    }
+    document.querySelector("[data-view=cameras]").hidden = !tiles.length;
+  } catch {}
+  if (!tiles.length && watching()) view("home");
+  else if (watching()) view("cameras");
+}
+setInterval(() => {
+  if (!watching()) return;
+  for (const t of tiles) {
+    const v = t.querySelector("video"), b = v.buffered;
+    if (t.hidden || !b.length) continue;
+    const lag = b.end(b.length - 1) - v.currentTime;
+    if (lag > 10) { start(t); continue; }
+    v.playbackRate = lag > 1.5 ? 1.25 : lag < 0.7 ? 1 : v.playbackRate;
+    if (v.paused) v.play().catch(() => {});
+  }
+}, 1e3);
 
 function mark() {
-  for (const b of document.querySelectorAll("[data-view]"))
+  for (const b of document.querySelectorAll("#rail [data-view]"))
     b.classList.toggle("on", b.dataset.view === document.body.dataset.view);
   for (const b of document.querySelectorAll("[data-show]"))
     b.classList.toggle("on", Number(b.dataset.show) * 1e3 === SHOW);
 }
-function openMenu() {
+function view(v) {
   if (drag) release(null);
-  $("settings").hidden = true;
+  document.body.dataset.view = v;
+  // Settings is a visit; a reload returns to the view the house watches.
+  if (v !== "settings") localStorage.view = v;
   mark();
-  $("menu").hidden = false;
-  touched();
-}
-function closeMenu() { $("menu").hidden = true; clearTimeout(idle); }
-function touched() { clearTimeout(idle); idle = setTimeout(closeMenu, 20e3); }
-$("menu").addEventListener("click", e => {
-  touched();
-  const b = e.target.closest("button");
-  if (!b) return void (e.target === $("menu") && closeMenu());
-  if (b.dataset.view) {
-    document.body.dataset.view = localStorage.view = b.dataset.view;
-    return closeMenu();
+  for (const t of tiles) {
+    t.hidden = false;
+    t.classList.remove("big");
+    if (v === "cameras") start(t); else stop(t);
   }
+  $("cams").classList.remove("one");
+  document.body.classList.remove("full");
+  cams();
+}
+$("rail").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (b) view(b.dataset.view);
+});
+$("settings").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
   if (b.dataset.show) {
     SHOW = Number(localStorage.show = b.dataset.show) * 1e3;
     restart();
-    return mark();
+    mark();
   }
-  if (b.id === "gear") $("settings").hidden = !$("settings").hidden;
   if (b.id === "reload") location.reload();
 });
 
 document.body.dataset.view = localStorage.view || "home";
+mark();
+cameraList();
 tick();
 setInterval(tick, 1e3);
 readBoard();

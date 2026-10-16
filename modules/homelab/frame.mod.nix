@@ -14,7 +14,8 @@
       ...
     }:
     let
-      inherit (lib.attrsets) optionalAttrs;
+      inherit (lib.attrsets) mapAttrsToList optionalAttrs;
+      inherit (lib.strings) toJSON;
       inherit (lib.lists) optional singleton;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
@@ -50,6 +51,14 @@
           default = null;
           description = "`latitude,longitude` for the forecast; null = none.";
           example = "43.07,-70.76";
+        };
+        cameras = mkOption {
+          type = types.attrsOf types.str;
+          default = { };
+          description = "go2rtc streams the page shows live: stream name → label.";
+          example = {
+            tapo1 = "Living room";
+          };
         };
         lan = mkOption {
           type = types.submodule {
@@ -91,6 +100,20 @@
           }
           // optionalAttrs (cfg.weather != null) {
             FRAME_WEATHER = cfg.weather;
+          }
+          // optionalAttrs (cfg.cameras != { }) {
+            # The Tapos pan and tilt through Frigate's ONVIF link.
+            FRAME_CAMERAS =
+              cfg.cameras
+              |> mapAttrsToList (
+                id: name: {
+                  inherit id name;
+                  turns = config.shipCameras.tapo ? ${id};
+                }
+              )
+              |> toJSON;
+            FRAME_GO2RTC = "http://127.0.0.1:1984";
+            FRAME_FRIGATE = "ws://127.0.0.1:5000/ws";
           };
           serviceConfig = lib.ship.hardened.tenant // {
             DynamicUser = true;
@@ -102,7 +125,7 @@
             Restart = "on-failure";
             SocketBindDeny = "any";
             SocketBindAllow = singleton "tcp:${toString port}";
-            # Immich on loopback, the frame on its subnet, and the internet
+            # Immich, go2rtc and Frigate on loopback, the frame on its subnet, and the internet
             # for CalDAV and Open-Meteo; the rest of the LAN stays shut.
             # Allow is checked first, so the frame's subnet gets through.
             IPAddressAllow = fences.loopback ++ singleton cfg.lan.subnet;
