@@ -104,10 +104,11 @@
           subnet = "192.168.1.0/24";
         };
 
-        # The wall frame cannot join the tailnet either.
+        # The wall frame cannot join the tailnet either. It sits on the
+        # IoT VLAN, which OPNsense lets through to this port only.
         frame.lan = {
           interface = "enp209s0f0np0";
-          subnet = "192.168.1.0/24";
+          subnet = "192.168.30.0/24";
         };
 
         # Advertised tailnet exit node; "server" enables the forwarding
