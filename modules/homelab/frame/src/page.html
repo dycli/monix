@@ -8,12 +8,13 @@
   /* Laid out for the frame on its side (portrait): the photo above, the
      board below. A landscape screen puts the board beside the photo. */
   :root {
-    --ink: #f4ede1; --dim: #b9ae9c; --faint: #7d7466; --rule: #ffffff1c;
+    --ink: #2a2019; --dim: #6a5a4b; --faint: #93806b; --rule: #d2c2a8;
+    --paper: #e4d6bf;
     --u: min(1vw, 0.5625vh);
   }
   html, body {
     margin: 0; height: 100%; overflow: hidden; cursor: none;
-    background: #14110e; color: var(--ink);
+    background: var(--paper); color: var(--ink);
     font-family: system-ui, "Roboto", sans-serif;
   }
   body { display: grid; grid-template-rows: 45fr 55fr; }
@@ -22,17 +23,15 @@
     :root { --u: min(0.5625vw, 1vh); }
   }
 
-  #photo { position: relative; overflow: hidden; background: #000; }
+  #photo { position: relative; overflow: hidden; background: var(--paper); touch-action: none; }
+  #photo .slot { position: absolute; inset: 0; overflow: hidden; opacity: 0; transition: opacity 1.5s; }
+  #photo .slot.shown { opacity: 1; }
   #photo .blur {
     position: absolute; inset: -5%; width: 110%; height: 110%;
     background-size: cover; background-position: center;
-    filter: blur(40px) brightness(.55); opacity: 0; transition: opacity 1.5s;
+    filter: blur(40px) brightness(1.1) saturate(.7);
   }
-  #photo img {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    object-fit: contain; opacity: 0; transition: opacity 1.5s;
-  }
-  #photo .shown { opacity: 1; }
+  #photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 
   #board {
     display: flex; flex-direction: column; gap: calc(3 * var(--u));
@@ -61,7 +60,7 @@
   .day .name { color: var(--dim); }
   .day .icon { font-size: calc(6 * var(--u)); line-height: 1.3; }
   .day .lo { color: var(--faint); }
-  .day .rain { color: #8fb3d9; font-size: calc(2.6 * var(--u)); min-height: 1.2em; }
+  .day .rain { color: #3f6f9a; font-size: calc(2.6 * var(--u)); min-height: 1.2em; }
 
   #agenda { flex: 1; min-height: 0; overflow: hidden; font-size: calc(3.4 * var(--u)); }
   #agenda h2 {
@@ -85,8 +84,8 @@
 </head>
 <body>
 <div id="photo">
-  <div class="blur" id="ba"></div><div class="blur" id="bb"></div>
-  <img id="a" alt=""><img id="b" alt="">
+  <div class="slot" id="a"><div class="blur"></div><img alt=""></div>
+  <div class="slot" id="b"><div class="blur"></div><img alt=""></div>
 </div>
 <div id="board">
   <div id="top">
@@ -101,7 +100,8 @@
 const SHOW = 30e3, LIST = 10 * 60e3, BOARD = 5 * 60e3;
 const $ = id => document.getElementById(id);
 let order = [], next = 0, boot = null, board = null;
-let front = { img: $("a"), blur: $("ba") }, back = { img: $("b"), blur: $("bb") };
+const slot = id => ({ el: $(id), img: $(id).querySelector("img"), blur: $(id).querySelector(".blur") });
+let front = slot("a"), back = slot("b");
 
 // WMO weather codes, as Open-Meteo reports them.
 function icon(code, day = true) {
@@ -130,7 +130,7 @@ function el(tag, cls, text) {
 function hue(name) {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
-  return `hsl(${h} 55% 65%)`;
+  return `hsl(${h} 45% 42%)`;
 }
 
 function tick() {
@@ -250,16 +250,20 @@ async function list() {
 // Loads the next photo behind the shown one, then fades it in over a
 // blurred copy of itself that fills the bars.
 function advance() {
-  if (!order.length) return;
+  if (!order.length || drag) return;
   const id = order[next++ % order.length];
-  if (front.img.classList.contains("shown") && front.img.src.endsWith("/photo/" + id)) return;
+  if (front.el.classList.contains("shown") && front.img.src.endsWith("/photo/" + id)) return;
   back.img.onload = () => {
-    back.blur.style.backgroundImage = `url("${back.img.src}")`;
-    for (const e of [back.img, back.blur]) e.classList.add("shown");
-    for (const e of [front.img, front.blur]) e.classList.remove("shown");
+    back.el.classList.add("shown");
+    front.el.classList.remove("shown");
     [front, back] = [back, front];
   };
-  back.img.src = "/photo/" + id;
+  load(back, id);
+}
+
+function load(s, id) {
+  s.img.src = "/photo/" + id;
+  s.blur.style.backgroundImage = `url("/photo/${id}")`;
 }
 
 tick();
@@ -270,7 +274,67 @@ setInterval(readBoard, BOARD);
 setInterval(draw, 60e3);
 list().then(advance);
 setInterval(list, LIST);
-setInterval(advance, SHOW);
+let timer = setInterval(advance, SHOW);
+// Dragging the photo moves it with the finger, the neighbour sliding in
+// beside it, as Frameo does. Let go past a fifth of the width, or flick, and
+// it carries on to that photo and restarts its time on screen; otherwise it
+// springs back.
+let drag = null;
+const at = i => order[(i % order.length + order.length) % order.length];
+function slide(dx, ease) {
+  const w = $("photo").clientWidth, side = Math.sign(dx) || drag.side;
+  for (const s of [front, back]) s.el.style.transition = ease ? "transform .3s ease-out" : "none";
+  front.el.style.transform = `translateX(${dx}px)`;
+  back.el.style.transform = `translateX(${dx - side * w}px)`;
+}
+function settle(s) {
+  s.el.style.transition = "none";
+  s.el.style.transform = "";
+  void s.el.offsetWidth;
+  s.el.style.transition = "";
+}
+$("photo").addEventListener("pointerdown", e => {
+  if (order.length < 2 || drag) return;
+  $("photo").setPointerCapture(e.pointerId);
+  back.img.onload = null;
+  drag = { x: e.clientX, dx: 0, side: 0, t: e.timeStamp, v: 0 };
+});
+$("photo").addEventListener("pointermove", e => {
+  if (!drag || drag.done) return;
+  const dx = e.clientX - drag.x;
+  drag.v = (dx - drag.dx) / Math.max(e.timeStamp - drag.t, 1);
+  drag.dx = dx; drag.t = e.timeStamp;
+  const side = Math.sign(dx);
+  if (side && side !== drag.side) {
+    drag.side = side;
+    load(back, at(side < 0 ? next : next - 2));
+    back.el.style.transition = "none";
+    back.el.classList.add("shown");
+  }
+  if (drag.side) slide(dx, false);
+});
+function release() {
+  if (!drag || drag.done) return;
+  drag.done = true;
+  const { dx, v, side } = drag, w = $("photo").clientWidth;
+  if (!side) return void (drag = null);
+  const go = Math.sign(dx) === side && (Math.abs(dx) > w / 5 || (Math.abs(dx) > 30 && Math.abs(v) > .4));
+  slide(go ? side * w : 0, true);
+  setTimeout(() => {
+    if (go) {
+      next += side < 0 ? 1 : -1;
+      front.el.classList.remove("shown");
+      [front, back] = [back, front];
+      clearInterval(timer);
+      timer = setInterval(advance, SHOW);
+    }
+    back.el.classList.remove("shown");
+    settle(front); settle(back);
+    drag = null;
+  }, 300);
+}
+$("photo").addEventListener("pointerup", release);
+$("photo").addEventListener("pointercancel", release);
 // A daily reload lets the WebView start clean, once the server answers: a
 // reload that fails leaves the kiosk on an error page with nothing to retry.
 setTimeout(async function fresh() {
