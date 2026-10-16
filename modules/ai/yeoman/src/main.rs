@@ -265,6 +265,8 @@ struct Turn {
     endless: bool,
     steps: Option<Steps>,
     cards: bool,
+    /// The question the task waits on, which this turn may answer.
+    waiting: Option<String>,
 }
 
 fn answer(
@@ -280,6 +282,7 @@ fn answer(
         endless,
         steps,
         cards,
+        waiting,
     } = turn;
     let view = hippo.view()?;
     // Photos and PDFs go to the model as they are; text is inlined.
@@ -357,8 +360,17 @@ fn answer(
     };
     let (said, acts) = frame(from, said);
     hippo.log(kind, &logged)?;
+    // Here, not in the system prompt, which stays the same turn to turn.
+    let waiting = waiting
+        .map(|q| {
+            format!(
+                "\n\nYour task is waiting on {person}'s answer to: {q}\nIf this \
+                 answers it, pass it on with task_answer."
+            )
+        })
+        .unwrap_or_default();
     let prompt = format!(
-        "\nNow: {}\n\n{who}: {said}{inline}",
+        "\nNow: {}{waiting}\n\n{who}: {said}{inline}",
         Local::now().format("%Y-%m-%d %a %H:%M")
     );
     let tools = if model.tools() { TOOLS } else { NO_TOOLS };
@@ -427,7 +439,7 @@ async fn reply<D: Door>(
     hippo: Arc<Hippo>,
     model: Arc<dyn Model>,
     msg: Message<D>,
-    outbox: &Path,
+    state: &Path,
     stop: Arc<AtomicBool>,
 ) {
     // A stop asked for between turns is for none of them.
@@ -447,6 +459,7 @@ async fn reply<D: Door>(
     let file = failed.map_or(Ok(got), Err);
     let text = msg.text;
     let shown = door.clone();
+    let waiting = task::question(state);
     let reply = match file {
         Err(e) => {
             eprintln!("yeoman: {e}");
@@ -464,6 +477,7 @@ async fn reply<D: Door>(
                     stop: Some(stop),
                     steps: Some(steps),
                     cards: D::CARDS,
+                    waiting,
                     ..Turn::default()
                 },
             )
@@ -478,7 +492,7 @@ async fn reply<D: Door>(
             }
         }),
     };
-    send_images(&door, outbox).await;
+    send_images(&door, &state.join("outbox")).await;
     typing.stop().await;
     let sent = if is_reaction(&reply) {
         door.react(&msg.id, &reply).await
@@ -599,6 +613,7 @@ async fn remind<D: Door>(
         }
         show_pending(&door, &hippo, &state).await;
         tasks(&door, &hippo, &model, &state, &mut task).await;
+        door.task(task::running(&state), task::question(&state));
         let now = Local::now().naive_local();
         let due = match Book::open(&state, None).and_then(|b| b.read(|db| book::due(db, now))) {
             Ok(due) => due,
@@ -725,7 +740,9 @@ async fn tasks(
     if let Some(text) = task::take(state) {
         let stop = Arc::new(AtomicBool::new(false));
         let (hippo, model, flag) = (hippo.clone(), model.clone(), stop.clone());
+        let shown = door.clone();
         let handle = tokio::task::spawn_blocking(move || {
+            let steps: Steps = Arc::new(move |s| shown.task_step(s));
             answer(
                 &hippo,
                 model.as_ref(),
@@ -735,6 +752,7 @@ async fn tasks(
                 Turn {
                     stop: Some(flag),
                     endless: true,
+                    steps: Some(steps),
                     ..Turn::default()
                 },
             )
@@ -943,8 +961,7 @@ async fn run() -> Result<(), String> {
         tokio::spawn(async move {
             while let Some((door, msg)) = from_web.recv().await {
                 let _turn = t.lock().await;
-                let outbox = s.join("outbox");
-                reply(door, h.clone(), m.clone(), msg, &outbox, st.clone()).await;
+                reply(door, h.clone(), m.clone(), msg, &s, st.clone()).await;
             }
         });
     }
@@ -965,13 +982,12 @@ async fn run() -> Result<(), String> {
                 text: msg.text,
                 files: msg.files,
             };
-            let outbox = state.join("outbox");
             reply(
                 door,
                 hippo.clone(),
                 model.clone(),
                 msg,
-                &outbox,
+                &state,
                 stop.clone(),
             )
             .await;

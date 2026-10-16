@@ -177,6 +177,10 @@ mcp__yeoman__share_list,mcp__yeoman__list_remove,mcp__yeoman__tell,mcp__yeoman__
 mcp__yeoman__change_event,mcp__yeoman__cancel_event,mcp__image__make_image,mcp__yeoman__web_fetch,\
 mcp__computer,mcp__home,mcp__yeoman__media_request,mcp__yeoman__task";
 
+/// The task's question, and the turn's answer to it.
+const ASK: &str = "mcp__yeoman__ask";
+const ANSWER: &str = "mcp__yeoman__task_answer";
+
 impl Model for Claude {
     fn answer(
         &self,
@@ -220,9 +224,18 @@ impl Model for Claude {
         if let Some((file, servers)) = &self.mcp {
             let allowed: Vec<String> = servers.iter().map(|s| format!("mcp__{s}")).collect();
             cmd.args(["--mcp-config", file, "--allowedTools", &allowed.join(",")]);
+            // A task asks and waits; a turn passes the answer on. Each the
+            // other way round would wait on itself.
+            let mut denied = vec![if run.endless { ANSWER } else { ASK }];
             if !run.acts {
-                cmd.args(["--disallowedTools", ACTS]);
+                denied.push(ACTS);
             }
+            cmd.args(["--disallowedTools", &denied.join(",")]);
+        }
+        if run.endless {
+            // ask holds its call open until the person answers.
+            let ms = (crate::task::ASK_WAIT + Duration::from_secs(600)).as_millis();
+            cmd.env("MCP_TOOL_TIMEOUT", ms.to_string());
         }
         let mut child = cmd
             .stdin(Stdio::piped())

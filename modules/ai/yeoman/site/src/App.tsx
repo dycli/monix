@@ -17,7 +17,7 @@ import {
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
-import { askToSignIn, attachments, said, search, useChat, waitToSignIn, type Card, type Hit, type Msg } from "./chat";
+import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, type Card, type Hit, type Msg, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
 
@@ -313,12 +313,25 @@ function Chip({ attachment: a, removable = false }: { attachment: Attachment; re
 type Send = (text: string, files: File[]) => Promise<void>;
 type Decide = (id: number, yes: boolean) => Promise<void>;
 
-type ThreadProps = { messages: Msg[]; typing: boolean; send: Send; stop: () => Promise<void>; cards: Card[]; decide: Decide };
+type ThreadProps = {
+  messages: Msg[];
+  typing: boolean;
+  send: Send;
+  stop: () => Promise<void>;
+  cards: Card[];
+  decide: Decide;
+  task: Task | null;
+  stopTask: () => Promise<void>;
+  screen?: string;
+};
 
-function Thread({ messages, typing, send, stop, cards, decide }: ThreadProps) {
+function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, screen }: ThreadProps) {
   const [finding, setFinding] = useState(false);
   // The dots stand for work not yet shown; once words or tools arrive, they show it.
   const working = typing && !messages.at(-1)?.live;
+  // The screen shows while the turn or the task drives the computer.
+  const last = messages.at(-1);
+  const watching = !!screen && ((!!last?.live && drives(last.tools)) || drives(task?.tools));
   const runtime = useExternalStoreRuntime({
     messages,
     convertMessage: convert,
@@ -356,7 +369,12 @@ function Thread({ messages, typing, send, stop, cards, decide }: ThreadProps) {
           </main>
           <ThreadPrimitive.ViewportFooter className="sticky bottom-0 mt-auto bg-[linear-gradient(transparent,var(--paper)_14px)] px-5 pt-[18px] pb-[max(14px,env(safe-area-inset-bottom))] max-sm:px-3.5 max-sm:pt-3 max-sm:pb-[max(8px,env(safe-area-inset-bottom))]">
             <div className="relative mx-auto w-[min(740px,100%)]">
-              <Tray cards={cards} decide={decide} />
+              {/* What waits or works above the composer scrolls as one, so the talk stays in view. */}
+              <div className="max-h-[min(66vh,720px)] overflow-y-auto pt-2.5 empty:hidden">
+                {screen && <Screen url={screen} on={watching} />}
+                {task && <TaskStrip task={task} stop={stopTask} />}
+                <Tray cards={cards} decide={decide} />
+              </div>
               <ThreadPrimitive.ScrollToBottom className="absolute -top-12 left-1/2 z-10 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-frame bg-lift text-mid shadow-lift hover:text-ink disabled:invisible">
                 <Arrow down />
               </ThreadPrimitive.ScrollToBottom>
@@ -528,6 +546,12 @@ function gist(args: Args | undefined) {
 // spinner until the result is back; a click opens what went in and came out.
 function ToolLine({ toolName: name, args, result, isError }: ToolCallMessagePartProps) {
   const { live } = useCustom();
+  return <ToolRow name={name} args={args} result={result} isError={isError} live={live} />;
+}
+
+type Row = { name: string; args: Args | undefined; result: unknown; isError?: boolean; live?: boolean };
+
+function ToolRow({ name, args, result, isError, live }: Row) {
   const done = result !== undefined;
   const mark = !done ? (live ? "spin" : "·") : isError ? "✕" : "✓";
   return (
@@ -782,13 +806,86 @@ function Note() {
   );
 }
 
+// The computer's screen, watched while the yeoman works on it: noVNC's own
+// page, view only, so a stray tap does not fight the model. Take over opens
+// it with the keyboard, for a captcha or a sign-in only the person can do.
+// It opens by itself when the work turns to the computer; hidden, it stays
+// a line to bring it back.
+function Screen({ url, on }: { url: string; on: boolean }) {
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    if (on) setHidden(false);
+  }, [on]);
+  if (!on) return null;
+  const sep = url.includes("?") ? "&" : "?";
+  const bar = "flex h-8 items-center gap-1 px-1 text-[13px] text-mid";
+  const link = "rounded-full px-3 py-1 hover:bg-hover hover:text-ink";
+  return (
+    <section className="rise mb-3 overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift" aria-label="The computer's screen">
+      <div className={`${bar} justify-between`}>
+        <span className="flex items-center gap-2 pl-2.5 font-medium text-ink/80">
+          <span className="size-2 animate-pulse rounded-full bg-accent" /> On the computer
+        </span>
+        <span className="flex">
+          <a href={url} target="_blank" rel="noreferrer" className={link}>
+            Take over
+          </a>
+          <button type="button" onClick={() => setHidden(!hidden)} className={link}>
+            {hidden ? "Show" : "Hide"}
+          </button>
+        </span>
+      </div>
+      {!hidden && <iframe src={`${url}${sep}view_only=1`} title="The computer's screen" className="block aspect-[16/10] max-h-[42vh] w-full border-0 border-t border-hair bg-ink" />}
+    </section>
+  );
+}
+
+// The task running on its own, apart from the talk: what was asked, what it
+// is doing now, its work so far on a click, and Stop.
+function TaskStrip({ task, stop }: { task: Task; stop: () => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const now = task.tools.at(-1);
+  const doing = task.words.trim() ? task.words.trim().split("\n").at(-1) : now ? `${toolName(now.name)} ${gist(now.input as Args)}` : "Starting";
+  return (
+    <section className="rise relative mb-3 rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift" aria-label="The task under way">
+      <span className="absolute -top-[0.75em] left-3.5 rounded bg-lift px-1.5 text-xs font-semibold tracking-wide text-accent uppercase">
+        {task.question ? "Task · waiting on you" : "Task under way"}
+      </span>
+      <div className="flex items-start gap-3 px-4 pt-3.5 pb-3">
+        <button type="button" onClick={() => setOpen(!open)} className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left" aria-expanded={open}>
+          <p className={`text-[14.5px] [overflow-wrap:anywhere] ${open ? "" : "line-clamp-2"}`}>{task.text || "A task"}</p>
+          <p className="flex w-full items-center gap-2 text-[13px] text-mid">
+            {!task.question && <span className="size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-hair border-t-accent" />}
+            <span className="truncate">{task.question ?? doing}</span>
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={stop}
+          disabled={task.stopping}
+          className="h-9 shrink-0 rounded-full px-4 text-[14px] text-mid hover:bg-hover hover:text-ink disabled:opacity-50"
+        >
+          {task.stopping ? "Stopping" : "Stop"}
+        </button>
+      </div>
+      {open && task.tools.length > 0 && (
+        <div className="max-h-[38vh] overflow-y-auto border-t border-dashed border-frame px-4 pt-2.5 pb-1">
+          {task.tools.map((t) => (
+            <ToolRow key={t.id} name={t.name} args={t.input as Args} result={t.result} isError={t.error} live />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // Acts waiting for the person's word sit above the composer, where the
 // next thing is done, until a verdict here or in Matrix settles them. A
 // mail draft reads as a letter on a sheet of its own.
 function Tray({ cards, decide }: { cards: Card[]; decide: Decide }) {
   if (cards.length === 0) return null;
   return (
-    <div className="mb-3 flex max-h-[min(52vh,520px)] flex-col gap-3.5 overflow-y-auto pt-2.5">
+    <div className="mb-3 flex flex-col gap-3.5">
       {cards.map((c) => (
         <Letter key={c.id} card={c} decide={decide} />
       ))}

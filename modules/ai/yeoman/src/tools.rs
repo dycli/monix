@@ -723,11 +723,35 @@ impl Tools {
     }
 
     #[tool(
-        description = "In a task, tell your person something now rather than at the end: a question, or news worth the interruption."
+        description = "In a task, tell your person something now rather than at the end: news worth the interruption. To ask them something, use ask."
     )]
     fn say(&self, Parameters(Text { text }): Parameters<Text>) -> Result<String, String> {
         task::say(&self.dir, &text)?;
         Ok("Said.".into())
+    }
+
+    #[tool(
+        description = "In a task, ask your person something only they can settle (a choice, a code, whether to go ahead) and wait for the answer, which this returns. Ask one clear question; they may take hours."
+    )]
+    async fn ask(&self, Parameters(Text { text }): Parameters<Text>) -> Result<String, String> {
+        task::ask(&self.dir, &text)?;
+        let waited = std::time::Instant::now();
+        while waited.elapsed() < task::ASK_WAIT {
+            if let Some(answer) = task::answered(&self.dir) {
+                return Ok(answer);
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+        task::unask(&self.dir);
+        Err("No answer came. Carry on without it if you can; else end the task saying what is left.".into())
+    }
+
+    #[tool(
+        description = "Pass your person's answer on to the task waiting on their question, in their words."
+    )]
+    fn task_answer(&self, Parameters(Text { text }): Parameters<Text>) -> Result<String, String> {
+        task::answer(&self.dir, &text)?;
+        Ok("Passed on; the task carries on.".into())
     }
 
     /// The mail folders' names.

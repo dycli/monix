@@ -15,6 +15,7 @@ use crate::door::{Door, Message};
 use crate::hippo::{Hippo, Said};
 use crate::model::{Attachment, Step};
 use crate::pending::{self, Pending};
+use crate::task;
 use crate::{Read, fits, read};
 use axum::extract::{DefaultBodyLimit, Multipart, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode, header};
@@ -97,9 +98,16 @@ enum Shown {
     Typing {
         on: bool,
     },
-    /// A tool call or its result, while the answer is worked out.
+    /// A tool call or its result, while the answer is worked out; `task`
+    /// when it is the task's work, not the turn's.
     Step {
         step: Step,
+        task: bool,
+    },
+    /// The task under way and the question it waits on; none when it ended.
+    Task {
+        text: Option<String>,
+        question: Option<String>,
     },
 }
 
@@ -109,6 +117,8 @@ pub struct Web {
     shown: broadcast::Sender<Shown>,
     ids: Arc<AtomicU64>,
     aside: bool,
+    /// The task as last shown, so a tick that changes nothing is silent.
+    task: Arc<Mutex<(Option<String>, Option<String>)>>,
 }
 
 impl Web {
@@ -117,6 +127,7 @@ impl Web {
             shown: broadcast::channel(256).0,
             ids: Arc::new(AtomicU64::new(0)),
             aside: false,
+            task: Arc::default(),
         }
     }
 
@@ -188,7 +199,21 @@ impl Door for Web {
     }
 
     fn step(&self, step: Step) {
-        self.show(Shown::Step { step });
+        self.show(Shown::Step { step, task: false });
+    }
+
+    fn task_step(&self, step: Step) {
+        self.show(Shown::Step { step, task: true });
+    }
+
+    fn task(&self, text: Option<String>, question: Option<String>) {
+        let now = (text, question);
+        let mut last = self.task.lock().unwrap();
+        if *last != now {
+            *last = now.clone();
+            let (text, question) = now;
+            self.show(Shown::Task { text, question });
+        }
     }
 
     async fn typing(&self, on: bool) {
@@ -283,6 +308,20 @@ impl<D: Door> Door for Mirror<D> {
             w.step(step.clone());
         }
         self.door.step(step);
+    }
+
+    fn task_step(&self, step: Step) {
+        if let Some(w) = &self.web {
+            w.task_step(step.clone());
+        }
+        self.door.task_step(step);
+    }
+
+    fn task(&self, text: Option<String>, question: Option<String>) {
+        if let Some(w) = &self.web {
+            w.task(text.clone(), question.clone());
+        }
+        self.door.task(text, question);
     }
 
     async fn ask(&self, p: &Pending) -> Result<String, String> {
@@ -585,6 +624,8 @@ pub async fn serve(
         .route("/api/pending", get(waiting))
         .route("/api/decide", post(decide))
         .route("/api/stop", post(stop))
+        .route("/api/task", get(task_now))
+        .route("/api/task/stop", post(task_stop))
         .route("/api/ask", post(ask))
         .route("/api/wait", post(wait))
         .route("/api/push", get(push_key).post(push_add))
@@ -949,6 +990,31 @@ async fn stop(State(site): State<Arc<Site>>, headers: HeaderMap) -> StatusCode {
     StatusCode::ACCEPTED
 }
 
+/// The task under way, the question it waits on, and the computer's
+/// screen to watch it by, when the yeoman has one.
+async fn task_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    Json(serde_json::json!({
+        "text": task::running(&site.state),
+        "question": task::question(&site.state),
+        "screen": std::env::var("YEOMAN_SCREEN").ok(),
+    }))
+    .into_response()
+}
+
+/// Stops the task on the next tick, as cancel_task does.
+async fn task_stop(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    match task::cancel(&site.state) {
+        Ok(()) => StatusCode::ACCEPTED.into_response(),
+        Err(e) => (StatusCode::CONFLICT, e).into_response(),
+    }
+}
+
 /// A page asks to be let in: the person gets its code over Matrix, the
 /// page gets the code to show and a secret to wait with.
 async fn ask(State(site): State<Arc<Site>>) -> Response {
@@ -1067,6 +1133,23 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_task_is_shown_only_when_it_changes() {
+        let web = Web::new();
+        let mut seen = web.shown.subscribe();
+        web.task(Some("book Cure".into()), None);
+        web.aside().task(Some("book Cure".into()), None);
+        web.task(Some("book Cure".into()), Some("6:15 or 7:30?".into()));
+        web.task(None, None);
+        let mut shown = Vec::new();
+        while let Ok(Shown::Task { text, question }) = seen.try_recv() {
+            shown.push((text, question));
+        }
+        assert_eq!(shown.len(), 3);
+        assert_eq!(shown[1].1.as_deref(), Some("6:15 or 7:30?"));
+        assert_eq!(shown[2], (None, None));
+    }
 
     fn asked(gate: &Gate, secret: &str, event: &str) {
         gate.asks.lock().unwrap().insert(

@@ -25,6 +25,10 @@ export type Msg = {
 
 export type Tool = { id: string; name: string; input: unknown; result?: string; error?: boolean };
 
+/** The task running on its own: its request, the question it waits on,
+ * and its work so far. `stopping` once a stop is asked for. */
+export type Task = { text: string; question?: string; tools: Tool[]; words: string; stopping?: boolean };
+
 type Step =
   | { type: "call"; id: string; name: string; input: unknown }
   | { type: "result"; id: string; text: string; error: boolean }
@@ -46,7 +50,8 @@ type Shown =
   | { type: "react"; to: string; emoji: string }
   | { type: "picture"; png: string }
   | { type: "typing"; on: boolean }
-  | { type: "step"; step: Step };
+  | { type: "step"; step: Step; task: boolean }
+  | { type: "task"; text: string | null; question: string | null };
 
 const ROLE: Record<string, Msg["role"]> = { user: "user", talk: "assistant", note: "system" };
 
@@ -66,6 +71,10 @@ export type Chat =
       stop: () => Promise<void>;
       cards: Card[];
       decide: (id: number, yes: boolean) => Promise<void>;
+      task: Task | null;
+      stopTask: () => Promise<void>;
+      /** The computer's screen, when the yeoman has one. */
+      screen?: string;
     };
 
 export function useChat(): Chat {
@@ -73,6 +82,8 @@ export function useChat(): Chat {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [typing, setTyping] = useState(false);
   const [cards, setCards] = useState<Card[]>([]);
+  const [task, setTask] = useState<Task | null>(null);
+  const [screen, setScreen] = useState<string>();
 
   useEffect(() => {
     let events: EventSource | undefined;
@@ -82,7 +93,7 @@ export function useChat(): Chat {
     // History from hippo, again on every reconnect and return to the page:
     // what the stream carried while nothing listened is in hippo by then.
     const sync = async (): Promise<boolean> => {
-      const [r, w] = await Promise.all([fetch("/api/history"), fetch("/api/pending")]);
+      const [r, w, t] = await Promise.all([fetch("/api/history"), fetch("/api/pending"), fetch("/api/task")]);
       if (r.status === 401) {
         setStatus("signed-out");
         return false;
@@ -91,7 +102,14 @@ export function useChat(): Chat {
       const said: Said[] = await r.json();
       // The tray is extra: a chat without it still works.
       const waiting: Pending[] = w.ok ? await w.json() : [];
+      const now: { text: string | null; question: string | null; screen: string | null } | null = t.ok ? await t.json() : null;
       if (gone) return false;
+      if (now) {
+        setScreen(now.screen ?? undefined);
+        // The work so far went out over the stream; a page that missed it
+        // starts from the request.
+        setTask((k) => (now.text === null ? null : k?.text === now.text ? { ...k, question: now.question ?? undefined } : { text: now.text!, question: now.question ?? undefined, tools: [], words: "" }));
+      }
       setMessages(
         said.map((m) => ({
           id: `h-${m.i}`,
@@ -152,7 +170,11 @@ export function useChat(): Chat {
             if (s.done) setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: s.text, date: new Date() }]);
             break;
           case "step":
-            setMessages((ms) => step(ms, s.step));
+            if (s.task) setTask((k) => taskStep(k, s.step));
+            else setMessages((ms) => step(ms, s.step));
+            break;
+          case "task":
+            setTask((k) => (s.text === null ? null : { ...(k?.text === s.text ? k : { tools: [], words: "" }), text: s.text, question: s.question ?? undefined }));
             break;
           case "react":
             setMessages((ms) => ms.map((m) => (m.id === s.to ? { ...m, reaction: s.emoji } : m)));
@@ -210,6 +232,13 @@ export function useChat(): Chat {
     if (r.status === 401) setStatus("signed-out");
   }, []);
 
+  // The task ends on the yeoman's next tick, within half a minute.
+  const stopTask = useCallback(async () => {
+    setTask((k) => k && { ...k, stopping: true });
+    const r = await fetch("/api/task/stop", { method: "POST" });
+    if (r.status === 401) setStatus("signed-out");
+  }, []);
+
   const decide = useCallback(async (id: number, yes: boolean) => {
     setCards((cs) => cs.map((c) => (c.id === id ? { ...c, busy: true, error: undefined } : c)));
     const r = await fetch("/api/decide", {
@@ -226,8 +255,19 @@ export function useChat(): Chat {
 
   if (status === "loading" || status === "signed-out") return { state: status };
   if (status !== "ready") return { state: "error", error: status };
-  return { state: "ready", messages, typing, send, stop, cards, decide };
+  return { state: "ready", messages, typing, send, stop, cards, decide, task, stopTask, screen };
 }
+
+// A task's steps before the page heard it started still belong to it.
+function taskStep(k: Task | null, s: Step): Task {
+  const t = k ?? { text: "", tools: [], words: "" };
+  if (s.type === "text") return { ...t, words: t.words + s.text };
+  if (s.type === "result") return { ...t, tools: t.tools.map((x) => (x.id === s.id ? { ...x, result: s.text, error: s.error } : x)) };
+  return { ...t, words: "", tools: [...t.tools, { id: s.id, name: s.name, input: s.input }] };
+}
+
+/** Whether these tools drive the computer, so its screen is worth watching. */
+export const drives = (tools: Tool[] | undefined) => !!tools?.some((t) => t.name.startsWith("mcp__computer__"));
 
 function step(ms: Msg[], s: Step): Msg[] {
   const last = ms.at(-1);
