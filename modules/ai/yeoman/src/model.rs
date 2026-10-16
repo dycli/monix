@@ -65,11 +65,13 @@ pub fn from_env() -> Result<Box<dyn Model>, String> {
 
 /// The `claude` CLI in print mode: no built-in tools, no settings sources
 /// (so no hooks), no session saved; only the MCP servers in YEOMAN_MCP.
-/// How a turn runs. A task has no clock on it and can be stopped.
+/// How a turn runs: whether it may act, what stops it, and whether it
+/// has a clock on it (a task has none).
 #[derive(Clone, Default)]
 pub struct Run {
     pub acts: bool,
     pub stop: Option<Arc<AtomicBool>>,
+    pub endless: bool,
     /// Where each tool call and its result go as they happen, for a door
     /// that shows the work as well as the answer.
     pub steps: Option<Steps>,
@@ -268,7 +270,7 @@ impl Model for Claude {
             Ok((out, used))
         });
         let errors = drain(child.stderr.take().unwrap());
-        let deadline = run.stop.is_none().then(|| Instant::now() + TIMEOUT);
+        let deadline = (!run.endless).then(|| Instant::now() + TIMEOUT);
         let status = loop {
             if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
                 break status;

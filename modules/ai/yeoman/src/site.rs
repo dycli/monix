@@ -31,7 +31,7 @@ use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{broadcast, mpsc};
@@ -49,8 +49,11 @@ const ASK_GAP: Duration = Duration::from_secs(60);
 const CODE: &[u8] = b"23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const HISTORY: u64 = 200;
 const SEND_MAX: usize = 32 * 1024;
+/// The most files one message carries.
+const FILES_MAX: usize = 10;
 /// The largest request to /api/send: the biggest PDF the model takes, the
-/// words and the form's framing.
+/// words and the form's framing. It bounds all the files together, which
+/// keeps the model's request under its limit too.
 const UPLOAD_MAX: usize = crate::PDF_MAX + SEND_MAX + 64 * 1024;
 
 /// What an open page is told, as one SSE event each.
@@ -357,6 +360,7 @@ struct Site {
     verdicts: mpsc::UnboundedSender<(u64, bool)>,
     notify: Notify,
     gate: Arc<Gate>,
+    stop: Arc<AtomicBool>,
     sessions: Mutex<Sessions>,
     /// None when the site's address is unknown or the key would not load.
     push: Option<Arc<Push>>,
@@ -528,6 +532,8 @@ impl Site {
 pub struct Inbox {
     pub messages: mpsc::UnboundedSender<(Web, Message<Web>)>,
     pub verdicts: mpsc::UnboundedSender<(u64, bool)>,
+    /// Set to stop the turn under way.
+    pub stop: Arc<AtomicBool>,
 }
 
 /// Serves the chat page from `root` at `/`, the API, and every other path
@@ -555,6 +561,7 @@ pub async fn serve(
         verdicts: inbox.verdicts,
         notify,
         gate,
+        stop: inbox.stop,
         sessions: Mutex::new(Sessions::load(dir.join("sessions"))),
         push: push_from_env(&dir).map(Arc::new),
     });
@@ -568,6 +575,8 @@ pub async fn serve(
         .nest_service("/_site", ServeDir::new(root.join("_site")))
         .route("/manifest.webmanifest", get(manifest))
         .route("/api/history", get(history))
+        .route("/api/search", get(search))
+        .route("/api/said/{i}", get(said))
         .route("/api/events", get(events))
         .route(
             "/api/send",
@@ -575,6 +584,7 @@ pub async fn serve(
         )
         .route("/api/pending", get(waiting))
         .route("/api/decide", post(decide))
+        .route("/api/stop", post(stop))
         .route("/api/ask", post(ask))
         .route("/api/wait", post(wait))
         .route("/api/push", get(push_key).post(push_add))
@@ -696,6 +706,89 @@ async fn history(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response 
     }
 }
 
+#[derive(Deserialize)]
+struct Query {
+    q: String,
+}
+
+/// A message hippo found, cut to the words around the match.
+#[derive(Debug, PartialEq, Serialize)]
+struct Hit {
+    i: u64,
+    kind: String,
+    date: String,
+    text: String,
+}
+
+/// The messages matching `q`, a case-insensitive regex, newest last; hippo
+/// gives the newest few and says when there were more.
+async fn search(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    axum::extract::Query(Query { q }): axum::extract::Query<Query>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    if q.trim().is_empty() || q.len() > 200 {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let h = site.hippo.clone();
+    match tokio::task::spawn_blocking(move || h.search(&q)).await {
+        Ok(Ok(out)) => {
+            let more = out.starts_with(|c: char| c.is_ascii_digit()) && out.contains(" matches; ");
+            Json(serde_json::json!({ "hits": hits(&out), "more": more })).into_response()
+        }
+        // A regex that doesn't compile is the asker's.
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, e).into_response(),
+        Err(e) => {
+            eprintln!("yeoman: site search: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// hippo's search lines, `{i} {kind}[ [chat]] {YYYY-MM-DD HH:MM}: {excerpt}`.
+fn hits(out: &str) -> Vec<Hit> {
+    out.lines()
+        .filter_map(|l| {
+            let (i, rest) = l.split_once(' ')?;
+            let (head, text) = rest.split_once(": ")?;
+            let date = head.get(head.len().checked_sub(16)?..)?;
+            Some(Hit {
+                i: i.parse().ok()?,
+                kind: head.split(' ').next()?.to_owned(),
+                date: date.to_owned(),
+                text: text.to_owned(),
+            })
+        })
+        .collect()
+}
+
+/// One message whole, to open a search hit.
+async fn said(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    axum::extract::Path(i): axum::extract::Path<u64>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let h = site.hippo.clone();
+    match tokio::task::spawn_blocking(move || h.zoom(i, 1)).await {
+        // `{i}+1|{kind}[ [chat]]: {text}`
+        Ok(Ok(out)) => match out.split_once('|').and_then(|(_, m)| m.split_once(": ")) {
+            Some((_, text)) => text.to_owned().into_response(),
+            None => StatusCode::BAD_GATEWAY.into_response(),
+        },
+        Ok(Err(_)) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            eprintln!("yeoman: site said: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
 /// A message of the history, with the emoji the yeoman answered it by.
 #[derive(Serialize)]
 struct Line {
@@ -762,7 +855,7 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
         return StatusCode::UNAUTHORIZED.into_response();
     }
     let mut text = String::new();
-    let mut file = None;
+    let mut files = Vec::new();
     loop {
         let field = match form.next_field().await {
             Ok(Some(f)) => f,
@@ -778,13 +871,11 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
                 let name = field.file_name().unwrap_or("file").to_owned();
                 let mime = field.content_type().map(str::to_owned);
                 match field.bytes().await {
-                    Ok(b) => {
-                        file = Some(Upload {
-                            name,
-                            mime,
-                            data: b.to_vec(),
-                        })
-                    }
+                    Ok(b) => files.push(Upload {
+                        name,
+                        mime,
+                        data: b.to_vec(),
+                    }),
                     Err(e) => return (e.status(), e.body_text()).into_response(),
                 }
             }
@@ -792,14 +883,14 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
         }
     }
     let text = text.trim();
-    if (text.is_empty() && file.is_none()) || text.len() > SEND_MAX {
+    if (text.is_empty() && files.is_empty()) || text.len() > SEND_MAX || files.len() > FILES_MAX {
         return StatusCode::BAD_REQUEST.into_response();
     }
     let id = site.web.id();
     let msg = Message {
         id: id.clone(),
         text: text.to_owned(),
-        file,
+        files,
     };
     if site.messages.send((site.web.clone(), msg)).is_err() {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
@@ -846,6 +937,16 @@ async fn decide(
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
     StatusCode::ACCEPTED.into_response()
+}
+
+/// Stops the turn under way, from the page or Matrix; it answers
+/// "(Stopped.)". With no turn running it does nothing.
+async fn stop(State(site): State<Arc<Site>>, headers: HeaderMap) -> StatusCode {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED;
+    }
+    site.stop.store(true, Ordering::Relaxed);
+    StatusCode::ACCEPTED
 }
 
 /// A page asks to be let in: the person gets its code over Matrix, the
@@ -996,5 +1097,29 @@ mod tests {
         let c = code().unwrap();
         assert_eq!(c.len(), 4);
         assert!(c.bytes().all(|b| CODE.contains(&b)));
+    }
+
+    #[test]
+    fn search_lines() {
+        let out = "120 matches; the newest 2 follow. Narrow the regex for older ones.\n\
+                   12 user 2026-10-15 09:01: …the dentist on Friday…\n\
+                   40 talk [web] 2026-10-16 10:22: Booked: 10: 30 Friday";
+        assert_eq!(
+            hits(out),
+            vec![
+                Hit {
+                    i: 12,
+                    kind: "user".into(),
+                    date: "2026-10-15 09:01".into(),
+                    text: "…the dentist on Friday…".into(),
+                },
+                Hit {
+                    i: 40,
+                    kind: "talk".into(),
+                    date: "2026-10-16 10:22".into(),
+                    text: "Booked: 10: 30 Friday".into(),
+                },
+            ]
+        );
     }
 }

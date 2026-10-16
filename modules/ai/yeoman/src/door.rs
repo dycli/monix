@@ -59,7 +59,7 @@ pub struct Message<D: Door> {
     /// The message, for a reaction to it.
     pub id: String,
     pub text: String,
-    pub file: Option<D::File>,
+    pub files: Vec<D::File>,
 }
 
 /// Shows "typing" until dropped. A Matrix typing notice lapses after 4 s

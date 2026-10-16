@@ -144,7 +144,7 @@ to a minute, so use the web for anything X does not add to.";
 const QUIET: &str = "(nothing new)";
 
 /// Added always: files are read once and not kept.
-const FILES: &str = "\n\n{person} may send a photo or a file. You see it this once and \
+const FILES: &str = "\n\n{person} may send photos or files. You see them this once and \
 only your answer is remembered, so put what matters in it (dates, \
 amounts, names, places) along with whatever {person} asked.";
 
@@ -261,6 +261,8 @@ fn frame(from: From, said: String) -> (String, bool) {
 #[derive(Default)]
 struct Turn {
     stop: Option<Arc<AtomicBool>>,
+    /// No clock on it: a task.
+    endless: bool,
     steps: Option<Steps>,
     cards: bool,
 }
@@ -270,31 +272,41 @@ fn answer(
     model: &dyn Model,
     from: From,
     text: &str,
-    file: Option<(String, bool, Read)>,
+    files: Vec<(String, bool, Read)>,
     turn: Turn,
 ) -> Result<String, String> {
-    let Turn { stop, steps, cards } = turn;
+    let Turn {
+        stop,
+        endless,
+        steps,
+        cards,
+    } = turn;
     let view = hippo.view()?;
-    let (said, inline, files) = match file {
-        None => (text.to_owned(), String::new(), Vec::new()),
-        Some((name, photo, r)) => {
-            let what = if photo { "a photo" } else { "a file" };
-            let said = format!("(sent {what}: {name}) {text}")
-                .trim_end()
-                .to_owned();
-            match r {
-                Read::Model(a) => (said, String::new(), vec![a]),
-                Read::Text(t) => {
-                    let t: String = t.chars().take(TEXT_MAX).collect();
-                    (
-                        said,
-                        format!("\n<file name=\"{name}\">\n{t}\n</file>"),
-                        Vec::new(),
-                    )
-                }
+    // Photos and PDFs go to the model as they are; text is inlined.
+    let mut sent = Vec::new();
+    let mut inline = String::new();
+    let mut attached = Vec::new();
+    for (name, photo, r) in files {
+        sent.push(format!(
+            "{} {name}",
+            if photo { "a photo:" } else { "a file:" }
+        ));
+        match r {
+            Read::Model(a) => attached.push(a),
+            Read::Text(t) => {
+                let t: String = t.chars().take(TEXT_MAX).collect();
+                inline.push_str(&format!("\n<file name=\"{name}\">\n{t}\n</file>"));
             }
         }
+    }
+    let said = if sent.is_empty() {
+        text.to_owned()
+    } else {
+        format!("(sent {}) {text}", sent.join("; "))
+            .trim_end()
+            .to_owned()
     };
+    let files = attached;
     let (name, person) = (var("YEOMAN_NAME")?, var("YEOMAN_PERSON")?);
     let (kind, logged, who) = match from {
         From::Person => ("user", said.clone(), person.clone()),
@@ -391,7 +403,18 @@ fn answer(
             .replace("{name}", &name)
             .replace("{person}", &person)
             .replace("{QUIET}", QUIET);
-    let reply = model.answer(&system, &view, &prompt, &files, Run { acts, stop, steps })?;
+    let reply = model.answer(
+        &system,
+        &view,
+        &prompt,
+        &files,
+        Run {
+            acts,
+            stop,
+            endless,
+            steps,
+        },
+    )?;
     if reply.is_empty() {
         return Err("the model answered nothing".into());
     }
@@ -405,12 +428,23 @@ async fn reply<D: Door>(
     model: Arc<dyn Model>,
     msg: Message<D>,
     outbox: &Path,
+    stop: Arc<AtomicBool>,
 ) {
+    // A stop asked for between turns is for none of them.
+    stop.store(false, Ordering::Relaxed);
     let typing = Typing::start(&door);
-    let file = match &msg.file {
-        None => Ok(None),
-        Some(f) => door.fetch(f).await.map(Some),
-    };
+    let mut got = Vec::new();
+    let mut failed = None;
+    for f in &msg.files {
+        match door.fetch(f).await {
+            Ok(g) => got.push(g),
+            Err(e) => {
+                failed = Some(e);
+                break;
+            }
+        }
+    }
+    let file = failed.map_or(Ok(got), Err);
     let text = msg.text;
     let shown = door.clone();
     let reply = match file {
@@ -427,6 +461,7 @@ async fn reply<D: Door>(
                 &text,
                 file,
                 Turn {
+                    stop: Some(stop),
                     steps: Some(steps),
                     cards: D::CARDS,
                     ..Turn::default()
@@ -435,9 +470,12 @@ async fn reply<D: Door>(
         })
         .await
         .unwrap_or_else(|e| Err(e.to_string()))
-        .unwrap_or_else(|e| {
-            eprintln!("yeoman: {e}");
-            format!("(I couldn't answer that: {e})")
+        .unwrap_or_else(|e| match e.as_str() {
+            "stopped" => "(Stopped.)".to_owned(),
+            _ => {
+                eprintln!("yeoman: {e}");
+                format!("(I couldn't answer that: {e})")
+            }
         }),
     };
     send_images(&door, outbox).await;
@@ -506,7 +544,7 @@ async fn drain(
         let typing = Typing::start(door);
         let (h, m, ask) = (hippo.clone(), model.clone(), said.clone());
         let text = tokio::task::spawn_blocking(move || {
-            answer(&h, m.as_ref(), from, &ask, None, Turn::default())
+            answer(&h, m.as_ref(), from, &ask, Vec::new(), Turn::default())
         })
         .await
         .unwrap_or_else(|e| Err(e.to_string()))
@@ -582,7 +620,7 @@ async fn remind<D: Door>(
                             model.as_ref(),
                             From::Routine,
                             &ask,
-                            None,
+                            Vec::new(),
                             Turn::default(),
                         )
                     })
@@ -693,9 +731,10 @@ async fn tasks(
                 model.as_ref(),
                 From::Task,
                 &text,
-                None,
+                Vec::new(),
                 Turn {
                     stop: Some(flag),
+                    endless: true,
                     ..Turn::default()
                 },
             )
@@ -847,6 +886,8 @@ async fn run() -> Result<(), String> {
     // One turn at a time, whichever door it comes from: each answer sees
     // the one before it in its memory.
     let turn = Arc::new(tokio::sync::Mutex::new(()));
+    // Stops the turn under way, whichever door it came from.
+    let stop = Arc::new(AtomicBool::new(false));
     if let (Ok(addr), Some(web)) = (var("YEOMAN_SITE"), web.clone()) {
         let (messages, mut from_web) = mpsc::unbounded_channel();
         let (verdicts, mut clicks) = mpsc::unbounded_channel();
@@ -860,9 +901,13 @@ async fn run() -> Result<(), String> {
         });
         let root = PathBuf::from(var("YEOMAN_SITE_ROOT")?);
         let served = PathBuf::from(var("YEOMAN_PAGES")?);
-        let (s, h, w) = (state.clone(), hippo.clone(), web.clone());
+        let (s, h, w, st) = (state.clone(), hippo.clone(), web.clone(), stop.clone());
         tokio::spawn(async move {
-            let inbox = site::Inbox { messages, verdicts };
+            let inbox = site::Inbox {
+                messages,
+                verdicts,
+                stop: st,
+            };
             let gate = (notify, gate);
             if let Err(e) = site::serve(&addr, root, served, &s, h, w, inbox, gate).await {
                 eprintln!("yeoman: {e}");
@@ -888,11 +933,18 @@ async fn run() -> Result<(), String> {
                 }
             }
         });
-        let (s, h, m, t) = (state.clone(), hippo.clone(), model.clone(), turn.clone());
+        let (s, h, m, t, st) = (
+            state.clone(),
+            hippo.clone(),
+            model.clone(),
+            turn.clone(),
+            stop.clone(),
+        );
         tokio::spawn(async move {
             while let Some((door, msg)) = from_web.recv().await {
                 let _turn = t.lock().await;
-                reply(door, h.clone(), m.clone(), msg, &s.join("outbox")).await;
+                let outbox = s.join("outbox");
+                reply(door, h.clone(), m.clone(), msg, &outbox, st.clone()).await;
             }
         });
     }
@@ -911,10 +963,18 @@ async fn run() -> Result<(), String> {
             let msg = Message {
                 id: msg.id,
                 text: msg.text,
-                file: msg.file,
+                files: msg.files,
             };
             let outbox = state.join("outbox");
-            reply(door, hippo.clone(), model.clone(), msg, &outbox).await;
+            reply(
+                door,
+                hippo.clone(),
+                model.clone(),
+                msg,
+                &outbox,
+                stop.clone(),
+            )
+            .await;
         }
     });
     matrix::sync(&client).await

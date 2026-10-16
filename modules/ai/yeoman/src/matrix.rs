@@ -325,7 +325,7 @@ fn on_messages(
             let msg = Message {
                 id: ev.event_id.to_string(),
                 text,
-                file,
+                files: file.into_iter().collect(),
             };
             let _ = queue.send((Matrix(room), msg));
         }

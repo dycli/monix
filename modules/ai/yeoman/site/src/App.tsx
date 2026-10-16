@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  ActionBarPrimitive,
   AssistantRuntimeProvider,
   AttachmentPrimitive,
   ComposerPrimitive,
@@ -16,7 +17,7 @@ import {
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
-import { askToSignIn, attachments, useChat, waitToSignIn, type Card, type Msg } from "./chat";
+import { askToSignIn, attachments, said, search, useChat, waitToSignIn, type Card, type Hit, type Msg } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
 
@@ -37,15 +38,13 @@ const convert = (m: Msg): ThreadMessageLike => ({
     ...(m.text ? [{ type: "text" as const, text: m.text }] : []),
     ...(m.png ? [{ type: "image" as const, image: `data:image/png;base64,${m.png}` }] : []),
   ],
-  attachments: m.file && [
-    {
-      id: `${m.id}-file`,
-      type: m.file.image ? "image" : "document",
-      name: m.file.name,
-      status: { type: "complete" },
-      content: m.file.image ? [{ type: "image", image: m.file.image }] : [],
-    },
-  ],
+  attachments: m.files?.map((f, n) => ({
+    id: `${m.id}-file-${n}`,
+    type: f.image ? "image" : "document",
+    name: f.name,
+    status: { type: "complete" },
+    content: f.image ? [{ type: "image", image: f.image }] : [],
+  })),
   createdAt: m.date,
   metadata: { custom: { plain: m.plain ?? false, reaction: m.reaction ?? null, live: m.live ?? false } },
 });
@@ -61,7 +60,7 @@ export function App() {
   if (chat.state === "loading") return <Solo><Dots /></Solo>;
   if (chat.state === "signed-out") return <SignIn />;
   if (chat.state === "error") return <Solo><p className="text-mid">{chat.error}</p></Solo>;
-  return <Thread messages={chat.messages} typing={chat.typing} send={chat.send} cards={chat.cards} decide={chat.decide} />;
+  return <Thread {...chat} />;
 }
 
 /** A page with one thing on it, centred high, as UniiChat's sign-in. */
@@ -96,6 +95,86 @@ function ThemeButton({ className = "" }: { className?: string }) {
         )}
       </svg>
     </button>
+  );
+}
+
+/** A round icon button for the header; `children` are the icon's paths. */
+function HeaderButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={label} title={label} className="grid size-9 place-items-center rounded-full text-mid hover:bg-hover hover:text-ink">
+      <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        {children}
+      </svg>
+    </button>
+  );
+}
+
+const WHO: Record<string, string> = { user: "You", talk: NAME, note: "Note" };
+
+// Search over everything hippo keeps, not only the messages on the page: a
+// sheet over the chat with the hits newest first; a hit opens to the whole
+// message.
+function Search({ close }: { close: () => void }) {
+  const [words, setWords] = useState("");
+  const [found, setFound] = useState<{ hits: Hit[]; more: boolean } | { error: string }>();
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState<{ i: number; text?: string }>();
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && close();
+    addEventListener("keydown", esc);
+    return () => removeEventListener("keydown", esc);
+  }, [close]);
+  const find = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!words.trim()) return;
+    setBusy(true);
+    setOpen(undefined);
+    setFound(await search(words));
+    setBusy(false);
+  };
+  const show = async (i: number) => {
+    if (open?.i === i) return setOpen(undefined);
+    setOpen({ i });
+    const text = await said(i);
+    setOpen((o) => (o?.i === i ? { i, text: text ?? "(Couldn't open it.)" } : o));
+  };
+  return (
+    <div className="fixed inset-0 z-20 flex flex-col bg-paper/95 backdrop-blur-sm" role="dialog" aria-label="Search">
+      <form onSubmit={find} className="mx-auto flex w-[min(740px,100%-40px)] items-center gap-2 pt-3 max-sm:w-[calc(100%-28px)]">
+        <input
+          autoFocus
+          value={words}
+          onChange={(e) => setWords(e.target.value)}
+          placeholder="Search everything said"
+          className="h-11 flex-1 rounded-full border border-frame bg-lift px-4 text-base outline-none focus:border-soft"
+        />
+        <HeaderButton label="Close search" onClick={close}>
+          <path d="M18 6 6 18M6 6l12 12" />
+        </HeaderButton>
+      </form>
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto flex w-[min(740px,100%-40px)] flex-col gap-1 py-4 max-sm:w-[calc(100%-28px)]">
+          {busy && <Dots />}
+          {!busy && found && "error" in found && <p className="text-mid">{found.error}</p>}
+          {!busy && found && "hits" in found && found.hits.length === 0 && <p className="text-mid">Nothing found.</p>}
+          {!busy && found && "hits" in found && found.more && <p className="pb-2 text-[13px] text-soft">Only the newest matches; add words to find older ones.</p>}
+          {!busy &&
+            found &&
+            "hits" in found &&
+            [...found.hits].reverse().map((h) => (
+              <button key={h.i} onClick={() => void show(h.i)} className="rounded-xl px-3 py-2.5 text-left hover:bg-hover">
+                <div className="flex gap-2 text-xs text-soft">
+                  <span className="font-semibold text-mid">{WHO[h.kind] ?? h.kind}</span>
+                  <span>{h.date}</span>
+                </div>
+                <div className="mt-0.5 text-[14.5px] whitespace-pre-wrap [overflow-wrap:anywhere]">
+                  {open?.i === h.i ? (open.text ?? <Dots />) : h.text.replace(/\*\*|`/g, "")}
+                </div>
+              </button>
+            ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -231,10 +310,13 @@ function Chip({ attachment: a, removable = false }: { attachment: Attachment; re
   );
 }
 
-type Send = (text: string, file?: File) => Promise<void>;
+type Send = (text: string, files: File[]) => Promise<void>;
 type Decide = (id: number, yes: boolean) => Promise<void>;
 
-function Thread({ messages, typing, send, cards, decide }: { messages: Msg[]; typing: boolean; send: Send; cards: Card[]; decide: Decide }) {
+type ThreadProps = { messages: Msg[]; typing: boolean; send: Send; stop: () => Promise<void>; cards: Card[]; decide: Decide };
+
+function Thread({ messages, typing, send, stop, cards, decide }: ThreadProps) {
+  const [finding, setFinding] = useState(false);
   // The dots stand for work not yet shown; once words or tools arrive, they show it.
   const working = typing && !messages.at(-1)?.live;
   const runtime = useExternalStoreRuntime({
@@ -244,9 +326,8 @@ function Thread({ messages, typing, send, cards, decide }: { messages: Msg[]; ty
     adapters: { attachments },
     onNew: async (m: AppendMessage) => {
       const text = m.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("\n");
-      // The yeoman takes one file a message; the composer allows only one.
-      const file = m.attachments?.[0]?.file;
-      if (text.trim() || file) await send(text, file);
+      const files = (m.attachments ?? []).flatMap((a) => (a.file ? [a.file] : []));
+      if (text.trim() || files.length) await send(text, files);
     },
   });
   return (
@@ -255,10 +336,15 @@ function Thread({ messages, typing, send, cards, decide }: { messages: Msg[]; ty
         <header className="flex h-[57px] shrink-0 items-center justify-between border-b border-hair bg-paper px-[max(20px,env(safe-area-inset-left))] max-sm:h-[51px] max-sm:px-3.5">
           <span className="font-serif text-[22px] tracking-[-0.01em]">{NAME}</span>
           <div className="-mr-2 flex">
+            <HeaderButton label="Search the conversation" onClick={() => setFinding(true)}>
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </HeaderButton>
             <BellButton />
             <ThemeButton />
           </div>
         </header>
+        {finding && <Search close={() => setFinding(false)} />}
         <ThreadPrimitive.Viewport className="flex flex-1 flex-col overflow-y-auto">
           <main className="mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)]">
             <ThreadPrimitive.Messages>
@@ -281,8 +367,7 @@ function Thread({ messages, typing, send, cards, decide }: { messages: Msg[]; ty
                 </div>
                 <div className="flex items-end gap-1.5">
                 <ComposerPrimitive.AddAttachment
-                  multiple={false}
-                  aria-label="Attach a file"
+                  aria-label="Attach files"
                   className="grid size-[38px] shrink-0 place-items-center rounded-full text-mid hover:text-ink disabled:invisible"
                 >
                   <Clip />
@@ -292,6 +377,17 @@ function Thread({ messages, typing, send, cards, decide }: { messages: Msg[]; ty
                   placeholder={`Message ${NAME}`}
                   className="max-h-[40vh] flex-1 resize-none bg-transparent py-[7px] text-base leading-normal outline-none placeholder:text-soft"
                 />
+                {typing && (
+                  <button
+                    type="button"
+                    onClick={() => void stop()}
+                    aria-label="Stop"
+                    title="Stop"
+                    className="grid size-[38px] shrink-0 place-items-center rounded-full border border-frame text-ink hover:bg-hover"
+                  >
+                    <span className="size-3 rounded-[2px] bg-current" />
+                  </button>
+                )}
                 <ComposerPrimitive.Send aria-label="Send" className="grid size-[38px] shrink-0 place-items-center rounded-full bg-ink text-paper disabled:bg-hair disabled:text-soft">
                   <Arrow />
                 </ComposerPrimitive.Send>
@@ -331,7 +427,9 @@ function Time({ className = "" }: { className?: string }) {
 function UserMessage() {
   return (
     <MessagePrimitive.Root className="rise group flex flex-col items-end gap-1.5">
-      <MessagePrimitive.Attachments>{({ attachment }) => <Chip attachment={attachment} />}</MessagePrimitive.Attachments>
+      <div className="flex max-w-[min(82%,560px)] flex-wrap justify-end gap-1.5 empty:hidden">
+        <MessagePrimitive.Attachments>{({ attachment }) => <Chip attachment={attachment} />}</MessagePrimitive.Attachments>
+      </div>
       <MessagePrimitive.If hasContent>
       <div className="relative w-fit max-w-[min(82%,560px)] rounded-[20px_20px_6px_20px] border-[1.25px] border-edge px-[17px] py-2.5 whitespace-pre-wrap [overflow-wrap:anywhere]">
         <MessagePrimitive.Parts />
@@ -381,8 +479,34 @@ function AssistantMessage() {
         </div>
       )}
       <Reaction />
-      <Time className="mt-1" />
+      <div className="mt-1 flex items-center gap-2">
+        <Copy />
+        <Time />
+      </div>
     </MessagePrimitive.Root>
+  );
+}
+
+/** Copies the answer's words, shown with the time on hover; on a phone, always. */
+function Copy() {
+  const { live } = useCustom();
+  if (live) return null;
+  return (
+    <ActionBarPrimitive.Root>
+      <ActionBarPrimitive.Copy
+        aria-label="Copy"
+        title="Copy"
+        className="group/copy grid size-7 place-items-center rounded-md text-soft opacity-0 transition-opacity group-hover:opacity-100 hover:bg-hover hover:text-ink max-sm:opacity-100"
+      >
+        <svg viewBox="0 0 24 24" className="size-[15px] group-data-[copied]/copy:hidden" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="12" height="12" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+        <svg viewBox="0 0 24 24" className="hidden size-[15px] group-data-[copied]/copy:block" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      </ActionBarPrimitive.Copy>
+    </ActionBarPrimitive.Root>
   );
 }
 

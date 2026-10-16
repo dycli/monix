@@ -15,8 +15,8 @@ export type Msg = {
   png?: string;
   reaction?: string;
   date?: Date;
-  /** A file sent with the message; `image` is a local URL to show it by. */
-  file?: { name: string; image?: string };
+  /** Files sent with the message; `image` is a local URL to show one by. */
+  files?: { name: string; image?: string }[];
   /** The tools the model used on the way to this answer, in order. */
   tools?: Tool[];
   /** Still working: tool calls go here until the answer arrives. */
@@ -62,7 +62,8 @@ export type Chat =
       state: "ready";
       messages: Msg[];
       typing: boolean;
-      send: (text: string, file?: File) => Promise<void>;
+      send: (text: string, files: File[]) => Promise<void>;
+      stop: () => Promise<void>;
       cards: Card[];
       decide: (id: number, yes: boolean) => Promise<void>;
     };
@@ -185,13 +186,13 @@ export function useChat(): Chat {
     };
   }, []);
 
-  const send = useCallback(async (text: string, file?: File) => {
+  const send = useCallback(async (text: string, files: File[]) => {
     const local = crypto.randomUUID();
-    const shown = file && { name: file.name, image: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined };
-    setMessages((ms) => [...ms, { id: local, role: "user", text, file: shown, date: new Date() }]);
+    const shown = files.map((f) => ({ name: f.name, image: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined }));
+    setMessages((ms) => [...ms, { id: local, role: "user", text, files: shown, date: new Date() }]);
     const body = new FormData();
     body.set("text", text);
-    if (file) body.set("file", file);
+    for (const f of files) body.append("file", f);
     const r = await fetch("/api/send", { method: "POST", body });
     if (r.status === 401) return setStatus("signed-out");
     if (!r.ok) {
@@ -201,6 +202,12 @@ export function useChat(): Chat {
     // The server's id, so a reaction finds the message.
     const { id } = (await r.json()) as { id: string };
     setMessages((ms) => ms.map((m) => (m.id === local ? { ...m, id } : m)));
+  }, []);
+
+  // The turn answers "(Stopped.)" over the stream.
+  const stop = useCallback(async () => {
+    const r = await fetch("/api/stop", { method: "POST" });
+    if (r.status === 401) setStatus("signed-out");
   }, []);
 
   const decide = useCallback(async (id: number, yes: boolean) => {
@@ -219,7 +226,7 @@ export function useChat(): Chat {
 
   if (status === "loading" || status === "signed-out") return { state: status };
   if (status !== "ready") return { state: "error", error: status };
-  return { state: "ready", messages, typing, send, cards, decide };
+  return { state: "ready", messages, typing, send, stop, cards, decide };
 }
 
 function step(ms: Msg[], s: Step): Msg[] {
@@ -276,6 +283,30 @@ export const attachments: AttachmentAdapter = {
     return { ...a, status: { type: "complete" }, content: [] };
   },
 };
+
+/** A message hippo found, cut to the words around the match. */
+export type Hit = { i: number; kind: string; date: string; text: string };
+
+/** Messages holding the words in that order, newest last; `more` when hippo kept only the newest. */
+export async function search(words: string): Promise<{ hits: Hit[]; more: boolean } | { error: string }> {
+  // Plain words, not a regex: each escaped, anything allowed between them.
+  const q =
+    "(?s)" +
+    words
+      .trim()
+      .split(/\s+/)
+      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join(".*");
+  const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+  if (r.ok) return r.json();
+  return { error: `Search failed (${r.status}).` };
+}
+
+/** One message whole. */
+export async function said(i: number): Promise<string | undefined> {
+  const r = await fetch(`/api/said/${i}`);
+  return r.ok ? r.text() : undefined;
+}
 
 /** Asks to be let in; the yeoman posts the code to Matrix for a 👍. */
 export async function askToSignIn(): Promise<{ code: string; secret: string } | { error: string }> {
