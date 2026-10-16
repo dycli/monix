@@ -22,6 +22,10 @@ let
         args = [ ];
       };
       web.url = "https://search.parallel.ai/mcp";
+      cloudflare = {
+        command = "/run/current-system/sw/bin/kestrel-cloudflare-mcp";
+        args = [ ];
+      };
     }
     // (
       topology.desktops
