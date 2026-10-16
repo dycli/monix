@@ -5,35 +5,225 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Frame</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
-  img {
+  /* Laid out for the frame on its side (portrait): the photo above, the
+     board below. A landscape screen puts the board beside the photo. */
+  :root {
+    --ink: #f4ede1; --dim: #b9ae9c; --faint: #7d7466; --rule: #ffffff1c;
+    --u: min(1vw, 0.5625vh);
+  }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; cursor: none;
+    background: #14110e; color: var(--ink);
+    font-family: system-ui, "Roboto", sans-serif;
+  }
+  body { display: grid; grid-template-rows: 45fr 55fr; }
+  @media (orientation: landscape) {
+    body { grid-template-rows: none; grid-template-columns: 62fr 38fr; }
+    :root { --u: min(0.5625vw, 1vh); }
+  }
+
+  #photo { position: relative; overflow: hidden; background: #000; }
+  #photo .blur {
+    position: absolute; inset: -5%; width: 110%; height: 110%;
+    background-size: cover; background-position: center;
+    filter: blur(40px) brightness(.55); opacity: 0; transition: opacity 1.5s;
+  }
+  #photo img {
     position: absolute; inset: 0; width: 100%; height: 100%;
     object-fit: contain; opacity: 0; transition: opacity 1.5s;
   }
-  img.shown { opacity: 1; }
-  #time {
-    position: absolute; left: 3vw; bottom: 3vh;
-    color: #fff; font-family: system-ui, sans-serif;
-    text-shadow: 0 0 .4em #000, 0 0 .1em #000;
+  #photo .shown { opacity: 1; }
+
+  #board {
+    display: flex; flex-direction: column; gap: calc(3 * var(--u));
+    padding: calc(5 * var(--u)) calc(6 * var(--u));
+    min-height: 0; box-sizing: border-box;
   }
-  #clock { font-size: 9vh; font-weight: 300; line-height: 1; }
-  #date { font-size: 3vh; margin-top: .4em; }
+
+  #top { display: flex; align-items: flex-end; justify-content: space-between; }
+  #clock {
+    font-size: calc(15 * var(--u)); font-weight: 200; line-height: .9;
+    letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+  }
+  #date { font-size: calc(4 * var(--u)); color: var(--dim); margin-top: calc(1.5 * var(--u)); }
+  #now { text-align: right; }
+  #now .icon { font-size: calc(9 * var(--u)); line-height: 1; }
+  #now .temp { font-size: calc(9 * var(--u)); font-weight: 200; line-height: 1; }
+  #now .feels { font-size: calc(3 * var(--u)); color: var(--dim); }
+
+  #days {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+    padding: calc(2 * var(--u)) 0;
+  }
+  #days:empty { display: none; }
+  .day { text-align: center; font-size: calc(3.2 * var(--u)); }
+  .day .name { color: var(--dim); }
+  .day .icon { font-size: calc(6 * var(--u)); line-height: 1.3; }
+  .day .lo { color: var(--faint); }
+  .day .rain { color: #8fb3d9; font-size: calc(2.6 * var(--u)); min-height: 1.2em; }
+
+  #agenda { flex: 1; min-height: 0; overflow: hidden; font-size: calc(3.4 * var(--u)); }
+  #agenda h2 {
+    margin: calc(2 * var(--u)) 0 calc(.8 * var(--u)); font-size: calc(2.8 * var(--u));
+    font-weight: 500; color: var(--faint); text-transform: uppercase; letter-spacing: .12em;
+  }
+  #agenda h2:first-child { margin-top: 0; }
+  .ev { display: flex; gap: calc(2 * var(--u)); align-items: baseline; padding: calc(.5 * var(--u)) 0; }
+  .ev .when {
+    flex: 0 0 calc(15 * var(--u)); color: var(--dim);
+    font-variant-numeric: tabular-nums; font-size: .9em;
+  }
+  .ev .what { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ev .what::before {
+    content: ""; display: inline-block; width: .5em; height: .5em; border-radius: 50%;
+    background: var(--c); margin-right: .6em; vertical-align: .12em;
+  }
+  .ev .where { color: var(--faint); font-size: .85em; }
+  .quiet { color: var(--faint); }
 </style>
 </head>
 <body>
-<img id="a" alt=""><img id="b" alt="">
-<div id="time"><div id="clock"></div><div id="date"></div></div>
+<div id="photo">
+  <div class="blur" id="ba"></div><div class="blur" id="bb"></div>
+  <img id="a" alt=""><img id="b" alt="">
+</div>
+<div id="board">
+  <div id="top">
+    <div><div id="clock"></div><div id="date"></div></div>
+    <div id="now"></div>
+  </div>
+  <div id="days"></div>
+  <div id="agenda"></div>
+</div>
 <script>
-// How long each photo stays, and how often the album is read again.
-const SHOW = 30e3, LIST = 10 * 60e3;
-let order = [], next = 0, front = document.getElementById("a"), back = document.getElementById("b");
+// How long each photo stays, how often the album and the board are read.
+const SHOW = 30e3, LIST = 10 * 60e3, BOARD = 5 * 60e3;
+const $ = id => document.getElementById(id);
+let order = [], next = 0, boot = null, board = null;
+let front = { img: $("a"), blur: $("ba") }, back = { img: $("b"), blur: $("bb") };
+
+// WMO weather codes, as Open-Meteo reports them.
+function icon(code, day = true) {
+  if (code === 0) return day ? "☀️" : "🌙";
+  if (code <= 2) return day ? "⛅" : "☁️";
+  if (code === 3) return "☁️";
+  if (code <= 48) return "🌫️";
+  if (code <= 67 || (code >= 80 && code <= 82)) return "🌧️";
+  if (code <= 77 || code === 85 || code === 86) return "🌨️";
+  return "⛈️";
+}
+
+const deg = t => Math.round(t) + "°";
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const asDate = s => { const [y, m, d] = s.slice(0, 10).split("-").map(Number); return new Date(y, m - 1, d); };
+const weekday = (s, form = "short") => asDate(s).toLocaleDateString([], { weekday: form });
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+// A steady colour per calendar, so each person's events read at a glance.
+function hue(name) {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return `hsl(${h} 55% 65%)`;
+}
 
 function tick() {
   const now = new Date();
-  document.getElementById("clock").textContent =
-    now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  document.getElementById("date").textContent =
-    now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+  $("clock").textContent = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(/\s?[AP]M$/i, "");
+  $("date").textContent = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+}
+
+function drawWeather(w) {
+  const now = $("now"), days = $("days");
+  now.replaceChildren(); days.replaceChildren();
+  if (!w) return;
+  now.append(el("div", "icon", icon(w.now.code, w.now.day)), el("div", "temp", deg(w.now.temp)),
+             el("div", "feels", "feels " + deg(w.now.feels)));
+  const today = ymd(new Date());
+  for (const d of w.days) {
+    const cell = el("div", "day");
+    cell.append(el("div", "name", d.date === today ? "Today" : weekday(d.date)),
+                el("div", "icon", icon(d.code)));
+    const t = el("div");
+    t.append(deg(d.high) + " ", el("span", "lo", deg(d.low)));
+    cell.append(t, el("div", "rain", d.rain >= 20 ? d.rain + "%" : ""));
+    days.append(cell);
+  }
+}
+
+// Events by day from today. A whole-day event shows on each day it covers;
+// a timed one on its start day, until it ends.
+function drawAgenda(events) {
+  const box = $("agenda");
+  box.replaceChildren();
+  if (!events) return;
+  const now = new Date(), today = ymd(now);
+  const byDay = new Map();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    byDay.set(ymd(d), []);
+  }
+  for (const e of events) {
+    if (e.start.length === 10) {
+      const last = e.end ? asDate(e.end) : asDate(e.start);
+      if (e.end) last.setDate(last.getDate() - 1);
+      for (const [day, list] of byDay)
+        if (day >= e.start && asDate(day) <= last) list.push({ ...e, allDay: true });
+    } else {
+      const day = e.start.slice(0, 10);
+      const ends = new Date((e.end || e.start).replace(" ", "T"));
+      if (byDay.has(day) && (day !== today || ends > now)) byDay.get(day).push(e);
+    }
+  }
+  let any = false;
+  for (const [day, list] of byDay) {
+    if (!list.length) continue;
+    any = true;
+    list.sort((a, b) => (b.allDay ? 1 : 0) - (a.allDay ? 1 : 0) || a.start.localeCompare(b.start));
+    const tomorrow = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+    box.append(el("h2", null, day === today ? "Today" : day === tomorrow ? "Tomorrow"
+      : asDate(day).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })));
+    for (const e of list) {
+      const row = el("div", "ev");
+      row.style.setProperty("--c", hue(e.calendar));
+      const when = e.allDay ? "all day"
+        : new Date(e.start.replace(" ", "T")).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      const what = el("div", "what", e.summary);
+      if (e.location) what.append(el("span", "where", " · " + e.location));
+      row.append(el("div", "when", when), what);
+      box.append(row);
+    }
+  }
+  if (!any) box.append(el("div", "quiet", "Nothing on the calendar this week."));
+  // Drop the last rows that do not fit, and a day heading left bare.
+  while (box.scrollHeight > box.clientHeight && box.children.length > 1) {
+    box.lastChild.remove();
+    if (box.lastChild && box.lastChild.tagName === "H2") box.lastChild.remove();
+  }
+}
+
+function draw() {
+  if (!board) return;
+  drawWeather(board.weather);
+  drawAgenda(board.events);
+}
+
+async function readBoard() {
+  try {
+    const r = await fetch("/api/board", { cache: "no-store" });
+    if (!r.ok) return;
+    board = await r.json();
+    // A deploy restarts the server; reload so the wall gets the new page.
+    if (boot !== null && board.boot !== boot) return location.reload();
+    boot = board.boot;
+    draw();
+  } catch {}
 }
 
 function shuffle(list) {
@@ -57,25 +247,38 @@ async function list() {
   } catch {}
 }
 
-// Loads the next photo behind the shown one, then fades it in.
+// Loads the next photo behind the shown one, then fades it in over a
+// blurred copy of itself that fills the bars.
 function advance() {
   if (!order.length) return;
   const id = order[next++ % order.length];
-  back.onload = () => {
-    back.classList.add("shown");
-    front.classList.remove("shown");
+  if (front.img.classList.contains("shown") && front.img.src.endsWith("/photo/" + id)) return;
+  back.img.onload = () => {
+    back.blur.style.backgroundImage = `url("${back.img.src}")`;
+    for (const e of [back.img, back.blur]) e.classList.add("shown");
+    for (const e of [front.img, front.blur]) e.classList.remove("shown");
     [front, back] = [back, front];
   };
-  back.src = "/photo/" + id;
+  back.img.src = "/photo/" + id;
 }
 
 tick();
 setInterval(tick, 1e3);
+readBoard();
+setInterval(readBoard, BOARD);
+// Redraw at each new minute too, so past events drop off and days roll over.
+setInterval(draw, 60e3);
 list().then(advance);
 setInterval(list, LIST);
 setInterval(advance, SHOW);
-// A daily reload picks up a new page and lets the WebView start clean.
-setTimeout(() => location.reload(), 24 * 3600e3);
+// A daily reload lets the WebView start clean, once the server answers: a
+// reload that fails leaves the kiosk on an error page with nothing to retry.
+setTimeout(async function fresh() {
+  try {
+    if ((await fetch("/api/board", { cache: "no-store" })).ok) return location.reload();
+  } catch {}
+  setTimeout(fresh, 60e3);
+}, 24 * 3600e3);
 </script>
 </body>
 </html>

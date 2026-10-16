@@ -23,6 +23,9 @@ in
   frame = {
     immichKeyFile = config.secrets.frame-immich-key.path;
     album = "frame";
+    calendarCredentialsFile = config.secrets.yeoman-caldav-json.path;
+    # Portsmouth, NH.
+    weather = "43.07,-70.76";
   };
 
   yeoman = {
@@ -76,7 +79,10 @@ in
   # explicit trigger on its long-running consumer; oneshots need none.
   systemd.services.matrix-tunnel.restartTriggers = singleton ./secrets/matrix-cloudflare-tunnel-token.age;
   systemd.services.immich-tunnel.restartTriggers = singleton ./secrets/immich-cloudflare-tunnel-token.age;
-  systemd.services.frame.restartTriggers = singleton ./secrets/frame-immich-key.age;
+  systemd.services.frame.restartTriggers = [
+    ./secrets/frame-immich-key.age
+    ./secrets/yeoman-caldav.json.age
+  ];
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
   systemd.services.sokka.restartTriggers = [

@@ -1,7 +1,8 @@
 # The wall frame's homepage at https://frame.<domain>: one Immich album as
-# a slideshow with the time over it, served by ./frame. The frame (a rooted
-# Frameo on the LAN) cannot join the tailnet, so the server also listens on
-# the LAN port directly; the page carries photos only, never the Immich key.
+# a slideshow with the time, the week's calendar and the forecast, served by
+# ./frame. The frame (a rooted Frameo on the IoT VLAN) cannot join the
+# tailnet, so the server also listens on the LAN port directly; the page
+# carries photos and the board only, never the Immich key or CalDAV login.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.frame;
@@ -13,7 +14,8 @@
       ...
     }:
     let
-      inherit (lib.lists) singleton;
+      inherit (lib.attrsets) optionalAttrs;
+      inherit (lib.lists) optional singleton;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
@@ -37,6 +39,17 @@
         album = mkOption {
           type = types.str;
           description = "Name of the Immich album the frame shows.";
+        };
+        calendarCredentialsFile = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "yeoman's CalDAV accounts JSON; null = no calendar.";
+        };
+        weather = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "`latitude,longitude` for the forecast; null = none.";
+          example = "43.07,-70.76";
         };
         lan = mkOption {
           type = types.submodule {
@@ -71,17 +84,29 @@
             FRAME_IMMICH = "http://127.0.0.1:2283";
             FRAME_IMMICH_KEY_FILE = "%d/immich-key";
             FRAME_ALBUM = cfg.album;
+            FRAME_TZ = config.time.timeZone;
+          }
+          // optionalAttrs (cfg.calendarCredentialsFile != null) {
+            FRAME_CALDAV_FILE = "%d/caldav";
+          }
+          // optionalAttrs (cfg.weather != null) {
+            FRAME_WEATHER = cfg.weather;
           };
           serviceConfig = lib.ship.hardened.tenant // {
             DynamicUser = true;
             ExecStart = getExe frame;
-            LoadCredential = singleton "immich-key:${cfg.immichKeyFile}";
+            LoadCredential = [
+              "immich-key:${cfg.immichKeyFile}"
+            ]
+            ++ optional (cfg.calendarCredentialsFile != null) "caldav:${cfg.calendarCredentialsFile}";
             Restart = "on-failure";
             SocketBindDeny = "any";
             SocketBindAllow = singleton "tcp:${toString port}";
-            # Immich on loopback, the frame on the LAN; nothing else.
+            # Immich on loopback, the frame on its subnet, and the internet
+            # for CalDAV and Open-Meteo; the rest of the LAN stays shut.
+            # Allow is checked first, so the frame's subnet gets through.
             IPAddressAllow = fences.loopback ++ singleton cfg.lan.subnet;
-            IPAddressDeny = "any";
+            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
           };
         };
       };
