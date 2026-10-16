@@ -71,4 +71,6 @@ in
   # FRIGATE_RTSP_PASSWORD=...
   "hosts/water/secrets/frigate.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/git-mirror-token.age".publicKeys = singleton water ++ admin;
+  # Immich API key, raw, album.read + asset.view only, for the frame's photos.
+  "hosts/water/secrets/frame-immich-key.age".publicKeys = singleton water ++ admin;
 }
