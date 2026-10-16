@@ -12,6 +12,8 @@
     --paper: #e4d6bf;
     --u: min(1vw, 0.5625vh);
   }
+  /* No pinch zoom, scrolling or text selection: the frame is touched, not read. */
+  html { touch-action: none; user-select: none; -webkit-user-select: none; }
   html, body {
     margin: 0; height: 100%; overflow: hidden; cursor: none;
     background: var(--paper); color: var(--ink);
@@ -22,16 +24,17 @@
     body { grid-template-rows: none; grid-template-columns: 62fr 38fr; }
     :root { --u: min(0.5625vw, 1vh); }
   }
+  /* The menu's views: the photo or the board alone, full screen. */
+  body[data-view=photos], body[data-view=calendar] { grid-template: 1fr / 1fr; }
+  body[data-view=photos] #board, body[data-view=calendar] #photo { display: none; }
+  body[data-view=calendar] { --u: min(0.75vw, 0.75vh); }
 
-  #photo { position: relative; overflow: hidden; background: var(--paper); touch-action: none; }
-  #photo .slot { position: absolute; inset: 0; overflow: hidden; opacity: 0; transition: opacity 1.5s; }
-  #photo .slot.shown { opacity: 1; }
-  #photo .blur {
-    position: absolute; inset: -5%; width: 110%; height: 110%;
-    background-size: cover; background-position: center;
-    filter: blur(40px) brightness(1.1) saturate(.7);
-  }
-  #photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  #photo { position: relative; overflow: hidden; background: var(--paper); }
+  #photo .slot { position: absolute; inset: 0; overflow: hidden; will-change: transform, opacity; }
+  #photo .slot:nth-child(1) { transform: translateX(-100%); }
+  #photo .slot:nth-child(3) { transform: translateX(100%); }
+  #photo canvas, #photo img { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #photo img { object-fit: contain; }
 
   #board {
     display: flex; flex-direction: column; gap: calc(3 * var(--u));
@@ -80,12 +83,62 @@
   }
   .ev .where { color: var(--faint); font-size: .85em; }
   .quiet { color: var(--faint); }
+
+  /* The calendar view on a landscape screen: the week as seven columns. */
+  #week { display: none; }
+  @media (orientation: landscape) {
+    body[data-view=calendar] #days, body[data-view=calendar] #agenda { display: none; }
+    body[data-view=calendar] #week {
+      display: grid; grid-template-columns: repeat(7, 1fr); flex: 1; min-height: 0;
+      border-top: 1px solid var(--rule);
+    }
+  }
+  #week .col { min-width: 0; overflow: hidden; padding: calc(2 * var(--u)) calc(1.4 * var(--u)); }
+  #week .col + .col { border-left: 1px solid var(--rule); }
+  #week .today { background: #ede2cf; }
+  #week .head { margin-bottom: calc(2 * var(--u)); }
+  #week .name { font-size: calc(2.8 * var(--u)); color: var(--faint); text-transform: uppercase; letter-spacing: .12em; }
+  #week .num { font-size: calc(8 * var(--u)); font-weight: 200; line-height: 1.1; }
+  #week .today .num { color: #b0482a; }
+  #week .wx { font-size: calc(3 * var(--u)); color: var(--dim); }
+  #week .item {
+    background: color-mix(in srgb, var(--c) 14%, transparent); border-radius: calc(1.2 * var(--u));
+    border-left: calc(.8 * var(--u)) solid var(--c);
+    padding: calc(1 * var(--u)) calc(1.4 * var(--u)); margin-bottom: calc(1.2 * var(--u));
+    font-size: calc(3.4 * var(--u)); line-height: 1.25;
+  }
+  #week .item .t { color: var(--dim); font-size: .8em; font-variant-numeric: tabular-nums; }
+
+  /* Held open by two fingers kept still on the screen. */
+  #menu {
+    position: fixed; inset: 0; display: grid; place-items: center;
+    background: rgb(42 32 25 / .25); z-index: 10;
+  }
+  #menu[hidden] { display: none; }
+  #menu .card {
+    background: #ede2cf; border-radius: 24px; padding: 28px;
+    box-shadow: 0 12px 40px rgb(42 32 25 / .25); font-size: 26px;
+  }
+  #menu nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  #menu button {
+    font: inherit; color: var(--ink); background: var(--paper); border: 0;
+    border-radius: 16px; padding: 18px 26px; min-width: 130px;
+  }
+  #menu nav button { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  #menu nav button span { font-size: 44px; line-height: 1; }
+  #menu button.on { background: #b0482a; color: #f6efe3; }
+  #settings { margin-top: 24px; border-top: 1px solid var(--rule); padding-top: 20px; }
+  #settings[hidden] { display: none; }
+  #settings .row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  #settings .row > div { flex: 1; color: var(--dim); }
+  #settings .row button { min-width: 0; padding: 12px 18px; }
 </style>
 </head>
 <body>
 <div id="photo">
-  <div class="slot" id="a"><div class="blur"></div><img alt=""></div>
-  <div class="slot" id="b"><div class="blur"></div><img alt=""></div>
+  <div class="slot"><canvas></canvas><img alt=""></div>
+  <div class="slot"><canvas></canvas><img alt=""></div>
+  <div class="slot"><canvas></canvas><img alt=""></div>
 </div>
 <div id="board">
   <div id="top">
@@ -94,14 +147,31 @@
   </div>
   <div id="days"></div>
   <div id="agenda"></div>
+  <div id="week"></div>
+</div>
+<div id="menu" hidden>
+  <div class="card">
+    <nav>
+      <button data-view="home"><span>🏠</span>Home</button>
+      <button data-view="calendar"><span>📅</span>Calendar</button>
+      <button data-view="photos"><span>🖼️</span>Photos</button>
+      <button id="gear"><span>⚙️</span>Settings</button>
+    </nav>
+    <div id="settings" hidden>
+      <div class="row"><div>Each photo</div>
+        <button data-show="15">15 s</button><button data-show="30">30 s</button>
+        <button data-show="60">1 min</button><button data-show="300">5 min</button></div>
+      <div class="row"><div>Refresh the frame</div><button id="reload">Reload</button></div>
+    </div>
+  </div>
 </div>
 <script>
 // How long each photo stays, how often the album and the board are read.
-const SHOW = 30e3, LIST = 10 * 60e3, BOARD = 5 * 60e3;
+// Each photo's time is a setting, kept on the frame.
+const LIST = 10 * 60e3, BOARD = 5 * 60e3;
+let SHOW = (Number(localStorage.show) || 30) * 1e3;
 const $ = id => document.getElementById(id);
-let order = [], next = 0, boot = null, board = null;
-const slot = id => ({ el: $(id), img: $(id).querySelector("img"), blur: $(id).querySelector(".blur") });
-let front = slot("a"), back = slot("b");
+let order = [], boot = null, board = null;
 
 // WMO weather codes, as Open-Meteo reports them.
 function icon(code, day = true) {
@@ -159,10 +229,7 @@ function drawWeather(w) {
 
 // Events by day from today. A whole-day event shows on each day it covers;
 // a timed one on its start day, until it ends.
-function drawAgenda(events) {
-  const box = $("agenda");
-  box.replaceChildren();
-  if (!events) return;
+function week(events) {
   const now = new Date(), today = ymd(now);
   const byDay = new Map();
   for (let i = 0; i < 7; i++) {
@@ -181,19 +248,30 @@ function drawAgenda(events) {
       if (byDay.has(day) && (day !== today || ends > now)) byDay.get(day).push(e);
     }
   }
+  for (const list of byDay.values())
+    list.sort((a, b) => (b.allDay ? 1 : 0) - (a.allDay ? 1 : 0) || a.start.localeCompare(b.start));
+  return byDay;
+}
+
+const clock = e => e.allDay ? "all day"
+  : new Date(e.start.replace(" ", "T")).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+function drawAgenda(events) {
+  const box = $("agenda");
+  box.replaceChildren();
+  if (!events) return;
+  const now = new Date(), today = ymd(now);
   let any = false;
-  for (const [day, list] of byDay) {
+  for (const [day, list] of week(events)) {
     if (!list.length) continue;
     any = true;
-    list.sort((a, b) => (b.allDay ? 1 : 0) - (a.allDay ? 1 : 0) || a.start.localeCompare(b.start));
     const tomorrow = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
     box.append(el("h2", null, day === today ? "Today" : day === tomorrow ? "Tomorrow"
       : asDate(day).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })));
     for (const e of list) {
       const row = el("div", "ev");
       row.style.setProperty("--c", hue(e.calendar));
-      const when = e.allDay ? "all day"
-        : new Date(e.start.replace(" ", "T")).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      const when = clock(e);
       const what = el("div", "what", e.summary);
       if (e.location) what.append(el("span", "where", " · " + e.location));
       row.append(el("div", "when", when), what);
@@ -208,10 +286,34 @@ function drawAgenda(events) {
   }
 }
 
+// The calendar view's week: a column a day, with its forecast.
+function drawWeek(events, weather) {
+  const box = $("week");
+  box.replaceChildren();
+  const wx = new Map((weather ? weather.days : []).map(d => [d.date, d]));
+  const today = ymd(new Date());
+  for (const [day, list] of week(events || [])) {
+    const col = el("div", day === today ? "col today" : "col"), head = el("div", "head");
+    head.append(el("div", "name", day === today ? "Today" : weekday(day)),
+                el("div", "num", String(asDate(day).getDate())));
+    const w = wx.get(day);
+    if (w) head.append(el("div", "wx", `${icon(w.code)} ${deg(w.high)} / ${deg(w.low)}`));
+    col.append(head);
+    for (const e of list) {
+      const item = el("div", "item");
+      item.style.setProperty("--c", hue(e.calendar));
+      item.append(el("div", "t", clock(e)), el("div", null, e.summary));
+      col.append(item);
+    }
+    box.append(col);
+  }
+}
+
 function draw() {
   if (!board) return;
   drawWeather(board.weather);
   drawAgenda(board.events);
+  drawWeek(board.events, board.weather);
 }
 
 async function readBoard() {
@@ -242,30 +344,179 @@ async function list() {
     // A new shuffle only when the album changed, so the cycle runs through.
     if (ids.length !== order.length || ids.some(id => !order.includes(id))) {
       order = shuffle(ids);
-      next = 0;
+      shown = -1;
+      if (!busy && !drag) neighbours();
     }
   } catch {}
 }
 
-// Loads the next photo behind the shown one, then fades it in over a
-// blurred copy of itself that fills the bars.
-function advance() {
-  if (!order.length || drag) return;
-  const id = order[next++ % order.length];
-  if (front.el.classList.contains("shown") && front.img.src.endsWith("/photo/" + id)) return;
-  back.img.onload = () => {
-    back.el.classList.add("shown");
-    front.el.classList.remove("shown");
-    [front, back] = [back, front];
-  };
-  load(back, id);
+// Three slots: the previous photo off to the left, the shown one, the next
+// off to the right. Each is loaded, decoded and given its blurred fill ahead
+// of time, so a swipe or a fade only moves layers that are already drawn;
+// the frame's GPU is too slow to blur or decode while a finger moves.
+const slots = [...document.querySelectorAll("#photo .slot")].map(el =>
+  ({ el, img: el.querySelector("img"), fill: el.querySelector("canvas"), id: null, ready: null }));
+let [prev, cur, nxt] = slots;
+let shown = -1, busy = false, drag = null;
+const at = k => order[(k % order.length + order.length) % order.length];
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+// The fill behind the photo's bars: the photo drawn tiny and blurred once,
+// then stretched, which looks the same as a large blur and costs nothing
+// to move.
+function paint(s) {
+  const c = s.fill, iw = s.img.naturalWidth, ih = s.img.naturalHeight;
+  if (!iw || !c.clientWidth) return;
+  const w = 40, h = Math.max(1, Math.round(w * c.clientHeight / c.clientWidth));
+  c.width = w; c.height = h;
+  const g = c.getContext("2d");
+  g.filter = "blur(2px) brightness(1.1) saturate(.7)";
+  const k = Math.max(w / iw, h / ih) * 1.2;
+  g.drawImage(s.img, (w - iw * k) / 2, (h - ih * k) / 2, iw * k, ih * k);
 }
+new ResizeObserver(() => slots.forEach(paint)).observe($("photo"));
 
 function load(s, id) {
-  s.img.src = "/photo/" + id;
-  s.blur.style.backgroundImage = `url("/photo/${id}")`;
+  if (s.id !== id) {
+    s.id = id;
+    s.img.src = "/photo/" + id;
+    s.ready = s.img.decode().then(() => paint(s), () => {});
+  }
+  return s.ready;
 }
 
+function neighbours() {
+  if (!order.length) return;
+  load(prev, at(shown - 1));
+  load(nxt, at(shown + 1));
+}
+
+// Puts the three slots side by side, shifted by a finger's dx.
+function lay(dx = 0, ease = false) {
+  [prev, cur, nxt].forEach((s, k) => {
+    s.el.style.transition = ease ? "transform .3s ease-out" : "none";
+    s.el.style.transform = `translateX(calc(${(k - 1) * 100}% + ${dx}px))`;
+  });
+}
+
+// Fades the next photo in over the shown one.
+async function advance() {
+  if (!order.length || busy || drag) return;
+  busy = true;
+  const s = nxt;
+  await load(s, at(shown + 1));
+  if (s.id !== cur.id) {
+    s.el.style.cssText = "transition: none; transform: none; opacity: 0; z-index: 2";
+    void s.el.offsetWidth;
+    s.el.style.transition = "opacity 1.5s";
+    s.el.style.opacity = 1;
+    await wait(1500);
+    s.el.style.cssText = "";
+  }
+  shown++;
+  [prev, cur, nxt] = [cur, nxt, prev];
+  lay();
+  neighbours();
+  busy = false;
+}
+
+let timer;
+function restart() {
+  clearInterval(timer);
+  timer = setInterval(advance, SHOW);
+}
+
+// Dragging the photo moves it with the finger, the neighbour sliding in
+// beside it, as Frameo does. Let go past a fifth of the width, or flick, and
+// it carries on to that photo and restarts its time on screen; otherwise it
+// springs back. A second finger springs it back too (it may be the menu).
+$("photo").addEventListener("pointerdown", e => {
+  if (drag && e.pointerId !== drag.id) return void release(null);
+  if (order.length < 2 || drag || busy || !e.isPrimary) return;
+  $("photo").setPointerCapture(e.pointerId);
+  drag = { id: e.pointerId, x: e.clientX, dx: 0, t: e.timeStamp, v: 0, raf: 0 };
+});
+$("photo").addEventListener("pointermove", e => {
+  if (!drag || drag.done || e.pointerId !== drag.id) return;
+  const dx = e.clientX - drag.x;
+  drag.v = (dx - drag.dx) / Math.max(e.timeStamp - drag.t, 1);
+  drag.dx = dx;
+  drag.t = e.timeStamp;
+  // One move per frame, however many events the screen sends.
+  if (!drag.raf) drag.raf = requestAnimationFrame(() => {
+    if (drag && !drag.done) { drag.raf = 0; lay(drag.dx); }
+  });
+});
+async function release(e) {
+  if (!drag || drag.done || (e && e.pointerId !== drag.id)) return;
+  const d = drag;
+  d.done = true;
+  cancelAnimationFrame(d.raf);
+  const side = Math.sign(d.dx), w = $("photo").clientWidth;
+  const go = e && side && (Math.abs(d.dx) > w / 5 || (Math.abs(d.dx) > 30 && Math.sign(d.v) === side && Math.abs(d.v) > .4));
+  lay(go ? side * w : 0, true);
+  await wait(300);
+  if (go) {
+    if (side < 0) { shown++; [prev, cur, nxt] = [cur, nxt, prev]; }
+    else { shown--; [prev, cur, nxt] = [nxt, prev, cur]; }
+    lay();
+    neighbours();
+    restart();
+  }
+  drag = null;
+}
+$("photo").addEventListener("pointerup", release);
+$("photo").addEventListener("pointercancel", release);
+
+// The menu: two fingers held still for a second and a half, as on Wes Bos's
+// frame dashboard. It closes on a choice, a tap outside, or by itself.
+const fingers = new Map();
+let hold = 0, idle = 0;
+addEventListener("pointerdown", e => {
+  fingers.set(e.pointerId, [e.clientX, e.clientY]);
+  clearTimeout(hold);
+  if (fingers.size === 2) hold = setTimeout(openMenu, 1500);
+}, true);
+addEventListener("pointermove", e => {
+  const f = fingers.get(e.pointerId);
+  if (f && Math.hypot(e.clientX - f[0], e.clientY - f[1]) > 40) clearTimeout(hold);
+}, true);
+for (const t of ["pointerup", "pointercancel"])
+  addEventListener(t, e => { fingers.delete(e.pointerId); clearTimeout(hold); }, true);
+
+function mark() {
+  for (const b of document.querySelectorAll("[data-view]"))
+    b.classList.toggle("on", b.dataset.view === document.body.dataset.view);
+  for (const b of document.querySelectorAll("[data-show]"))
+    b.classList.toggle("on", Number(b.dataset.show) * 1e3 === SHOW);
+}
+function openMenu() {
+  if (drag) release(null);
+  $("settings").hidden = true;
+  mark();
+  $("menu").hidden = false;
+  touched();
+}
+function closeMenu() { $("menu").hidden = true; clearTimeout(idle); }
+function touched() { clearTimeout(idle); idle = setTimeout(closeMenu, 20e3); }
+$("menu").addEventListener("click", e => {
+  touched();
+  const b = e.target.closest("button");
+  if (!b) return void (e.target === $("menu") && closeMenu());
+  if (b.dataset.view) {
+    document.body.dataset.view = localStorage.view = b.dataset.view;
+    return closeMenu();
+  }
+  if (b.dataset.show) {
+    SHOW = Number(localStorage.show = b.dataset.show) * 1e3;
+    restart();
+    return mark();
+  }
+  if (b.id === "gear") $("settings").hidden = !$("settings").hidden;
+  if (b.id === "reload") location.reload();
+});
+
+document.body.dataset.view = localStorage.view || "home";
 tick();
 setInterval(tick, 1e3);
 readBoard();
@@ -274,67 +525,7 @@ setInterval(readBoard, BOARD);
 setInterval(draw, 60e3);
 list().then(advance);
 setInterval(list, LIST);
-let timer = setInterval(advance, SHOW);
-// Dragging the photo moves it with the finger, the neighbour sliding in
-// beside it, as Frameo does. Let go past a fifth of the width, or flick, and
-// it carries on to that photo and restarts its time on screen; otherwise it
-// springs back.
-let drag = null;
-const at = i => order[(i % order.length + order.length) % order.length];
-function slide(dx, ease) {
-  const w = $("photo").clientWidth, side = Math.sign(dx) || drag.side;
-  for (const s of [front, back]) s.el.style.transition = ease ? "transform .3s ease-out" : "none";
-  front.el.style.transform = `translateX(${dx}px)`;
-  back.el.style.transform = `translateX(${dx - side * w}px)`;
-}
-function settle(s) {
-  s.el.style.transition = "none";
-  s.el.style.transform = "";
-  void s.el.offsetWidth;
-  s.el.style.transition = "";
-}
-$("photo").addEventListener("pointerdown", e => {
-  if (order.length < 2 || drag) return;
-  $("photo").setPointerCapture(e.pointerId);
-  back.img.onload = null;
-  drag = { x: e.clientX, dx: 0, side: 0, t: e.timeStamp, v: 0 };
-});
-$("photo").addEventListener("pointermove", e => {
-  if (!drag || drag.done) return;
-  const dx = e.clientX - drag.x;
-  drag.v = (dx - drag.dx) / Math.max(e.timeStamp - drag.t, 1);
-  drag.dx = dx; drag.t = e.timeStamp;
-  const side = Math.sign(dx);
-  if (side && side !== drag.side) {
-    drag.side = side;
-    load(back, at(side < 0 ? next : next - 2));
-    back.el.style.transition = "none";
-    back.el.classList.add("shown");
-  }
-  if (drag.side) slide(dx, false);
-});
-function release() {
-  if (!drag || drag.done) return;
-  drag.done = true;
-  const { dx, v, side } = drag, w = $("photo").clientWidth;
-  if (!side) return void (drag = null);
-  const go = Math.sign(dx) === side && (Math.abs(dx) > w / 5 || (Math.abs(dx) > 30 && Math.abs(v) > .4));
-  slide(go ? side * w : 0, true);
-  setTimeout(() => {
-    if (go) {
-      next += side < 0 ? 1 : -1;
-      front.el.classList.remove("shown");
-      [front, back] = [back, front];
-      clearInterval(timer);
-      timer = setInterval(advance, SHOW);
-    }
-    back.el.classList.remove("shown");
-    settle(front); settle(back);
-    drag = null;
-  }, 300);
-}
-$("photo").addEventListener("pointerup", release);
-$("photo").addEventListener("pointercancel", release);
+restart();
 // A daily reload lets the WebView start clean, once the server answers: a
 // reload that fails leaves the kiosk on an error page with nothing to retry.
 setTimeout(async function fresh() {
