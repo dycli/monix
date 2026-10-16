@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frame</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: contain; opacity: 0; transition: opacity 1.5s;
+  }
+  img.shown { opacity: 1; }
+  #time {
+    position: absolute; left: 3vw; bottom: 3vh;
+    color: #fff; font-family: system-ui, sans-serif;
+    text-shadow: 0 0 .4em #000, 0 0 .1em #000;
+  }
+  #clock { font-size: 9vh; font-weight: 300; line-height: 1; }
+  #date { font-size: 3vh; margin-top: .4em; }
+</style>
+</head>
+<body>
+<img id="a" alt=""><img id="b" alt="">
+<div id="time"><div id="clock"></div><div id="date"></div></div>
+<script>
+// How long each photo stays, and how often the album is read again.
+const SHOW = 30e3, LIST = 10 * 60e3;
+let order = [], next = 0, front = document.getElementById("a"), back = document.getElementById("b");
+
+function tick() {
+  const now = new Date();
+  document.getElementById("clock").textContent =
+    now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  document.getElementById("date").textContent =
+    now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+}
+
+function shuffle(list) {
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+}
+
+async function list() {
+  try {
+    const r = await fetch("/api/photos");
+    if (!r.ok) return;
+    const ids = await r.json();
+    // A new shuffle only when the album changed, so the cycle runs through.
+    if (ids.length !== order.length || ids.some(id => !order.includes(id))) {
+      order = shuffle(ids);
+      next = 0;
+    }
+  } catch {}
+}
+
+// Loads the next photo behind the shown one, then fades it in.
+function advance() {
+  if (!order.length) return;
+  const id = order[next++ % order.length];
+  back.onload = () => {
+    back.classList.add("shown");
+    front.classList.remove("shown");
+    [front, back] = [back, front];
+  };
+  back.src = "/photo/" + id;
+}
+
+tick();
+setInterval(tick, 1e3);
+list().then(advance);
+setInterval(list, LIST);
+setInterval(advance, SHOW);
+// A daily reload picks up a new page and lets the WebView start clean.
+setTimeout(() => location.reload(), 24 * 3600e3);
+</script>
+</body>
+</html>

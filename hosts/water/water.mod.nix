@@ -104,6 +104,12 @@
           subnet = "192.168.1.0/24";
         };
 
+        # The wall frame cannot join the tailnet either.
+        frame.lan = {
+          interface = "enp209s0f0np0";
+          subnet = "192.168.1.0/24";
+        };
+
         # Advertised tailnet exit node; "server" enables the forwarding
         # sysctls. Devices opt in per network from the client.
         services.tailscale.useRoutingFeatures = "server";

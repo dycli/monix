@@ -14,6 +14,7 @@
 
       # Check name → crate directory and the tools its tests shell out to.
       crates = {
+        frame.path = "modules/homelab/frame";
         hippo.path = "modules/ai/seat/hippo";
         yeoman.path = "modules/ai/yeoman";
       };
