@@ -16,9 +16,9 @@
          installed app's system bars (Kavita fixed the same bar this way, 4d0c675). -->
     <meta name="color-scheme" content="light" />
     <!-- Before first paint, so a dark page never flashes white: the saved
-         choice, else the system's. src/theme.ts keeps it current. -->
+         choice, else light (the default). src/theme.ts keeps it current. -->
     <script>
-      var t = localStorage.getItem("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      var t = localStorage.getItem("theme") || "light";
       document.documentElement.dataset.theme = t;
       document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
         m.removeAttribute("media");

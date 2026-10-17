@@ -233,6 +233,61 @@
 .rise {
   animation: rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
+
+/* A card takes the screen: the talk dissolves away, Tom-Riddle-diary style,
+   and the card rises from behind the composer and fades in over it. */
+.dissolving {
+  opacity: 0;
+  filter: blur(7px);
+  transform: scale(1.015);
+  transition: opacity 0.3s ease, filter 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+.dissolving-reset {
+  transition: opacity 0.34s ease 0.04s, filter 0.34s ease 0.04s, transform 0.34s ease 0.04s;
+}
+@keyframes veil-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.985);
+  }
+}
+@keyframes card-sink {
+  to {
+    opacity: 0;
+    transform: translateY(22px) scale(0.985);
+  }
+}
+.card-layer {
+  animation: veil-in 0.34s ease both;
+}
+.card-layer.out {
+  animation: veil-in 0.28s ease reverse both;
+}
+.card-rise {
+  animation: card-rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) 0.06s both;
+}
+.card-layer.out .card-rise {
+  animation: card-sink 0.26s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dissolving,
+  .dissolving-reset,
+  .card-layer,
+  .card-layer.out,
+  .card-rise,
+  .card-layer.out .card-rise {
+    animation: none;
+    transition: none;
+    filter: none;
+    transform: none;
+  }
+}
 /* A pen still writing: a soft caret after the last word of a live answer. */
 .writing > :last-child::after,
 .writing > div > :last-child::after {

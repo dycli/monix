@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ActionBarPrimitive,
   AssistantRuntimeProvider,
@@ -22,6 +22,29 @@ import { useTheme } from "./theme";
 import { usePush } from "./push";
 
 type Args = ToolCallMessagePartProps["args"];
+
+// A card the model drew: which tool it came from and its result, so the
+// full-screen view can parse it the same way the inline summary does.
+type Kind = "weather" | "calendar" | "list" | "inbox" | "mail";
+type CardView = { key: string; msgId: string; toolName: string; kind: Kind; result: unknown };
+
+// A card takes the whole screen and the talk under it dissolves; closing it
+// leaves a one-line summary behind. `note` is called by each inline summary
+// as its result lands — the newest to arrive opens itself; `redraw` resends
+// the question that led to an answer, so its card is drawn afresh. Cards are
+// never stored: by nature they go stale, so a redraw is a fresh call.
+type Cards = { note: (v: CardView) => void; open: (v: CardView) => void; redraw: (msgId: string) => void };
+const CardCtx = createContext<Cards>({ note() {}, open() {}, redraw() {} });
+const useCards = () => useContext(CardCtx);
+
+// Which tool draws a card, by its name whichever server carries it.
+function cardKind(name: string): Kind | undefined {
+  if (name.endsWith("__weather")) return "weather";
+  if (name.endsWith("__events")) return "calendar";
+  if (/__(lists|list_add|list_remove|share_list)$/.test(name)) return "list";
+  if (name.endsWith("__mail_search")) return "inbox";
+  if (name.endsWith("__mail_read")) return "mail";
+}
 
 const convert = (m: Msg): ThreadMessageLike => ({
   id: m.id,
@@ -327,11 +350,60 @@ type ThreadProps = {
 
 function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, screen }: ThreadProps) {
   const [finding, setFinding] = useState(false);
+  // The card on screen, and whether it is on its way out so the talk fades
+  // back in rather than snapping.
+  const [card, setCard] = useState<CardView>();
+  const [closing, setClosing] = useState(false);
   // The dots stand for work not yet shown; once words or tools arrive, they show it.
   const working = typing && !messages.at(-1)?.live;
   // The screen shows while the turn or the task drives the computer.
   const last = messages.at(-1);
   const watching = !!screen && ((!!last?.live && drives(last.tools)) || drives(task?.tools));
+
+  // Each card is opened at most once by itself, the moment its result lands;
+  // the cards already in history when the page loads are marked seen without
+  // opening, so a return to the page does not throw an old card up.
+  const seen = useRef(new Set<string>());
+  const live = useRef(false);
+  useEffect(() => {
+    const t = setTimeout(() => (live.current = true), 400);
+    return () => clearTimeout(t);
+  }, []);
+  const show = (v: CardView) => {
+    setClosing(false);
+    setCard(v);
+  };
+  const close = () => {
+    setClosing(true);
+    setTimeout(() => {
+      setCard(undefined);
+      setClosing(false);
+    }, 300);
+  };
+  const api = useMemo<Cards>(() => {
+    const open = (v: CardView) => show(v);
+    return {
+      open,
+      note(v) {
+        if (seen.current.has(v.key)) return;
+        seen.current.add(v.key);
+        if (live.current) open(v);
+      },
+      redraw(msgId) {
+        // Resend the question that led here — the person's last words before
+        // this answer — so the card is drawn afresh from current data.
+        const i = messages.findIndex((m) => m.id === msgId);
+        for (let j = i - 1; j >= 0; j--) if (messages[j].role === "user") return void send(messages[j].text, []);
+      },
+    };
+  }, [messages, send]);
+  useEffect(() => {
+    if (!card) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && close();
+    addEventListener("keydown", esc);
+    return () => removeEventListener("keydown", esc);
+  }, [card]);
+
   const runtime = useExternalStoreRuntime({
     messages,
     convertMessage: convert,
@@ -340,13 +412,17 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
     onNew: async (m: AppendMessage) => {
       const text = m.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("\n");
       const files = (m.attachments ?? []).flatMap((a) => (a.file ? [a.file] : []));
-      if (text.trim() || files.length) await send(text, files);
+      if (text.trim() || files.length) {
+        if (card) close();
+        await send(text, files);
+      }
     },
   });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+     <CardCtx.Provider value={api}>
       <ThreadPrimitive.Root className="flex h-full flex-col">
-        <header className="flex h-[57px] shrink-0 items-center justify-between border-b border-hair bg-paper px-[max(20px,env(safe-area-inset-left))] max-sm:h-[51px] max-sm:px-3.5">
+        <header className="relative z-20 flex h-[57px] shrink-0 items-center justify-between border-b border-hair bg-paper px-[max(20px,env(safe-area-inset-left))] max-sm:h-[51px] max-sm:px-3.5">
           <span className="font-serif text-[22px] tracking-[-0.01em]">{NAME}</span>
           <div className="-mr-2 flex">
             <HeaderButton label="Search the conversation" onClick={() => setFinding(true)}>
@@ -359,7 +435,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
         </header>
         {finding && <Search close={() => setFinding(false)} />}
         <ThreadPrimitive.Viewport className="flex flex-1 flex-col overflow-y-auto">
-          <main className="mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)]">
+          <main className={`mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)] ${card ? (closing ? "dissolving-reset" : "dissolving") : ""}`}>
             <ThreadPrimitive.Messages>
               {({ message }) =>
                 message.role === "user" ? <UserMessage /> : message.role === "assistant" ? <AssistantMessage /> : <Note />
@@ -367,7 +443,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
             </ThreadPrimitive.Messages>
             {working && <Dots />}
           </main>
-          <ThreadPrimitive.ViewportFooter className="sticky bottom-0 mt-auto bg-[linear-gradient(transparent,var(--paper)_14px)] px-5 pt-[18px] pb-[max(14px,env(safe-area-inset-bottom))] max-sm:px-3.5 max-sm:pt-3 max-sm:pb-[max(8px,env(safe-area-inset-bottom))]">
+          <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-20 mt-auto bg-[linear-gradient(transparent,var(--paper)_14px)] px-5 pt-[18px] pb-[max(14px,env(safe-area-inset-bottom))] max-sm:px-3.5 max-sm:pt-3 max-sm:pb-[max(8px,env(safe-area-inset-bottom))]">
             <div className="relative mx-auto w-[min(740px,100%)]">
               {/* What waits or works above the composer scrolls as one, so the talk stays in view. */}
               <div className="max-h-[min(66vh,720px)] overflow-y-auto pt-2.5 empty:hidden">
@@ -395,28 +471,51 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
                   placeholder={`Message ${NAME}`}
                   className="max-h-[40vh] flex-1 resize-none bg-transparent py-[7px] text-base leading-normal outline-none placeholder:text-soft"
                 />
-                {typing && (
-                  <button
-                    type="button"
-                    onClick={() => void stop()}
-                    aria-label="Stop"
-                    title="Stop"
-                    className="grid size-[38px] shrink-0 place-items-center rounded-full border border-frame text-ink hover:bg-hover"
-                  >
-                    <span className="size-3 rounded-[2px] bg-current" />
-                  </button>
-                )}
-                <ComposerPrimitive.Send aria-label="Send" className="grid size-[38px] shrink-0 place-items-center rounded-full bg-ink text-paper disabled:bg-hair disabled:text-soft">
-                  <Arrow />
-                </ComposerPrimitive.Send>
+                <Trailing typing={typing} stop={stop} cardOpen={!!card && !closing} close={close} />
                 </div>
                 </ComposerPrimitive.AttachmentDropzone>
               </ComposerPrimitive.Root>
             </div>
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
+        {card && (
+          <div className={`card-layer fixed inset-0 z-10 bg-paper ${closing ? "out" : ""}`} onClick={close} aria-label="The card, full screen">
+            <div className="flex h-full justify-center px-6 pt-[72px] pb-[116px] max-sm:px-4 max-sm:pt-[60px] max-sm:pb-[100px]">
+              <div className="card-rise min-h-0 w-full max-w-[680px]" onClick={(e) => e.stopPropagation()}>
+                <CardBig view={card} />
+              </div>
+            </div>
+          </div>
+        )}
       </ThreadPrimitive.Root>
+     </CardCtx.Provider>
     </AssistantRuntimeProvider>
+  );
+}
+
+// The one button after the composer: Stop while the yeoman is answering;
+// else, with a card up and nothing typed, a down arrow to close it; else
+// Send, which the primitive greys when there is nothing to send. One button,
+// never two half-lit ones.
+function Trailing({ typing, stop, cardOpen, close }: { typing: boolean; stop: () => Promise<void>; cardOpen: boolean; close: () => void }) {
+  const text = useAuiState((s) => s.composer.text);
+  const round = "grid size-[38px] shrink-0 place-items-center rounded-full";
+  if (typing)
+    return (
+      <button type="button" onClick={() => void stop()} aria-label="Stop" title="Stop" className={`${round} border border-frame text-ink hover:bg-hover`}>
+        <span className="size-3 rounded-[2px] bg-current" />
+      </button>
+    );
+  if (cardOpen && !text.trim())
+    return (
+      <button type="button" onClick={close} aria-label="Close the card" title="Close the card" className={`${round} bg-ink text-paper hover:opacity-85`}>
+        <Arrow down />
+      </button>
+    );
+  return (
+    <ComposerPrimitive.Send aria-label="Send" className={`${round} bg-ink text-paper disabled:bg-hair disabled:text-soft`}>
+      <Arrow />
+    </ComposerPrimitive.Send>
   );
 }
 
@@ -499,9 +598,33 @@ function AssistantMessage() {
       <Reaction />
       <div className="mt-1 flex items-center gap-2">
         <Copy />
+        <Redraw />
         <Time />
       </div>
     </MessagePrimitive.Root>
+  );
+}
+
+// Circle-arrows beside Copy: redraw this answer's card full screen, or, when
+// it has none, resend the question that led to it.
+function Redraw() {
+  const { live } = useCustom();
+  const id = useAuiState((s) => s.message.id);
+  const cards = useCards();
+  if (live) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => cards.redraw(id)}
+      aria-label="Redraw"
+      title="Redraw"
+      className="grid size-7 place-items-center rounded-md text-soft opacity-0 transition-opacity group-hover:opacity-100 hover:bg-hover hover:text-ink max-sm:opacity-100"
+    >
+      <svg viewBox="0 0 24 24" className="size-[15px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 2v6h-6M3 22v-6h6" />
+        <path d="M3.5 9a9 9 0 0 1 14.85-3.36L21 8M21 15a9 9 0 0 1-14.85 3.36L3 16" />
+      </svg>
+    </button>
   );
 }
 
@@ -579,15 +702,160 @@ function ToolRow({ name, args, result, isError, live }: Row) {
   );
 }
 
-// Tools with a card of their own; the rest draw as a ToolLine. Keyed by the
-// tool's own name, whichever server carries it.
+// Tools with a card of their own show as a one-line summary in the talk and
+// open full screen; the rest draw as a ToolLine. Keyed by the tool's own
+// name, whichever server carries it.
 function Tool(props: ToolCallMessagePartProps) {
-  if (props.toolName.endsWith("__events")) return <CalendarCard {...props} />;
-  if (/__(lists|list_add|list_remove|share_list)$/.test(props.toolName)) return <ListCards {...props} />;
-  if (props.toolName.endsWith("__mail_search")) return <InboxCard {...props} />;
-  if (props.toolName.endsWith("__mail_read")) return <MailCard {...props} />;
-  if (props.toolName.endsWith("__weather")) return <WeatherCard {...props} />;
+  const kind = cardKind(props.toolName);
+  if (kind) return <CardInline {...props} kind={kind} />;
   return <ToolLine {...props} />;
+}
+
+// A tool's result read into a card's shape, if it parses; undefined while it
+// runs, when it failed, or when a long result was cut short on the way here.
+function parseCard(kind: Kind, result: unknown): unknown {
+  switch (kind) {
+    case "weather":
+      return parsed<Forecast>(result, isForecast);
+    case "calendar":
+      return events(result);
+    case "list":
+      return lists(result);
+    case "inbox":
+      return parsed<Mail[]>(result, (v) => Array.isArray(v) && v.every(isMail));
+    case "mail":
+      return parsed<Mail>(result, isMail);
+  }
+}
+
+// In the talk, a card is one quiet line: an icon and a word or two. While the
+// call runs or if its result won't parse it stays a ToolLine. As the result
+// lands it tells the overlay, which opens the newest to arrive; a tap reopens
+// it later.
+function CardInline(props: ToolCallMessagePartProps & { kind: Kind }) {
+  const { kind } = props;
+  const data = props.isError ? undefined : parseCard(kind, props.result);
+  const msgId = useAuiState((s) => s.message.id);
+  const cards = useCards();
+  const key = props.toolCallId;
+  const ready = data !== undefined;
+  useEffect(() => {
+    // A card opens itself once, the moment its result first parses.
+    if (ready) cards.note({ key, msgId, toolName: props.toolName, kind, result: props.result });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+  if (!ready) return <ToolLine {...props} />;
+  const [icon, label] = cardSummary(kind, data);
+  return (
+    <button
+      type="button"
+      onClick={() => cards.open({ key, msgId, toolName: props.toolName, kind, result: props.result })}
+      className="not-prose group/card my-1 flex max-w-full items-center gap-2 rounded-full border border-frame bg-lift py-1.5 pr-3.5 pl-2.5 text-[13.5px] text-mid last-of-type:mb-3 hover:bg-hover hover:text-ink"
+    >
+      <span className="text-[15px] leading-none">{icon}</span>
+      <span className="truncate font-medium text-ink/80">{label}</span>
+      <span className="shrink-0 text-soft transition-opacity group-hover/card:opacity-100 sm:opacity-0">Open</span>
+    </button>
+  );
+}
+
+// The one line a card folds to: an icon and the gist of what it holds.
+function cardSummary(kind: Kind, data: unknown): [string, string] {
+  switch (kind) {
+    case "weather": {
+      const w = data as Forecast;
+      const [icon, word] = sky(w.now.code, w.now.day);
+      return [icon, `${deg(w.now.temp)} · ${word}`];
+    }
+    case "calendar": {
+      const es = data as Event[];
+      return ["📅", es.length === 0 ? "Nothing on the calendar" : es.length === 1 ? es[0].summary : `${es.length} on the calendar`];
+    }
+    case "list": {
+      const ls = data as List[];
+      return ["🗂️", ls.length === 0 ? "No lists" : ls.map((l) => l.list).join(", ")];
+    }
+    case "inbox": {
+      const ms = data as Mail[];
+      const unread = ms.filter((m) => m.unread).length;
+      return ["✉️", ms.length === 0 ? "No mail" : unread ? `${unread} unread of ${ms.length}` : `${ms.length} messages`];
+    }
+    case "mail": {
+      const m = data as Mail;
+      return ["✉️", m.subject || "(no subject)"];
+    }
+  }
+}
+
+// A card full screen. Weather gets a reading of its own, large and centred;
+// the rest reuse their talk card, widened, since they already read well.
+function CardBig({ view }: { view: CardView }) {
+  if (view.kind === "weather") return <WeatherBig w={parseCard("weather", view.result) as Forecast} />;
+  const props = { toolName: view.toolName, result: view.result, isError: false, args: {} } as unknown as ToolCallMessagePartProps;
+  const Card = { calendar: CalendarCard, list: ListCards, inbox: InboxCard, mail: MailCard }[view.kind];
+  return <Card {...props} />;
+}
+
+// A list-like card given the whole screen: a titled header with its icon, and
+// a body that fills the rest and scrolls on its own. The talk shows only the
+// pill, so these are reached only full screen.
+function BigCard({ icon, title, children, bodyClass }: { icon: string; title: string; children: ReactNode; bodyClass?: string }) {
+  return (
+    <div className="not-prose flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border-[1.25px] border-edge bg-lift shadow-lift">
+      <header className="flex shrink-0 items-center gap-2.5 border-b border-hair px-5 py-3.5">
+        <span className="text-[22px] leading-none">{icon}</span>
+        <h3 className="min-w-0 flex-1 truncate font-serif text-[20px] text-ink">{title}</h3>
+      </header>
+      <div className={`min-h-0 flex-1 overflow-y-auto ${bodyClass ?? ""}`}>{children}</div>
+    </div>
+  );
+}
+
+// The weather, given the whole screen: now large at the top with today's
+// high, low and rain, then every day as a row filling the height — rich
+// enough to read on a phone without crowding.
+function WeatherBig({ w }: { w: Forecast }) {
+  const [icon, word] = sky(w.now.code, w.now.day);
+  const today = w.days[0];
+  return (
+    <div className="flex h-full flex-col text-center">
+      <div className="flex shrink-0 flex-col items-center pt-1">
+        <div className="text-[76px] leading-none max-sm:text-[64px]">{icon}</div>
+        <div className="mt-2 text-[88px] leading-[0.85] text-ink tabular-nums max-sm:text-[74px]">{deg(w.now.temp)}</div>
+        <div className="mt-3 text-[18px] text-mid">
+          {word} · feels {deg(w.now.feels)}
+        </div>
+        {today && (
+          <div className="mt-4 flex items-center gap-6 text-[15px] text-mid">
+            <span>High <span className="text-ink tabular-nums">{deg(today.high)}</span></span>
+            <span>Low <span className="text-ink tabular-nums">{deg(today.low)}</span></span>
+            {today.rain != null && <span>Rain <span className="text-accent tabular-nums">{today.rain}%</span></span>}
+          </div>
+        )}
+      </div>
+      {w.days.length > 0 && (
+        <ul className="mt-6 flex min-h-0 flex-1 flex-col overflow-y-auto rounded-[18px] border-[1.25px] border-edge bg-lift">
+          {w.days.map((d, i) => {
+            const [dayIcon, dayWord] = sky(d.code);
+            const [y, m, day] = d.date.split("-").map(Number);
+            const name = i === 0 ? "Today" : new Date(y, m - 1, day).toLocaleDateString(undefined, { weekday: "long" });
+            return (
+              <li key={d.date} className="flex flex-1 items-center gap-3 border-hair px-5 not-first:border-t max-sm:gap-2 max-sm:px-4">
+                <span className="w-28 shrink-0 text-left text-[15px] font-medium text-ink max-sm:w-20">{name}</span>
+                <span className="w-9 shrink-0 text-center text-[26px] leading-none" title={dayWord}>
+                  {dayIcon}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-left text-[14px] text-mid max-sm:hidden">{dayWord}</span>
+                <span className="w-12 shrink-0 text-right text-[13px] text-accent tabular-nums">{d.rain != null && d.rain > 0 ? `${d.rain}%` : ""}</span>
+                <span className="w-14 shrink-0 text-right text-[16px] text-ink tabular-nums">{deg(d.high)}</span>
+                <span className="w-12 shrink-0 text-right text-[15px] text-soft tabular-nums">{deg(d.low)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 // A tool's JSON result, if it parses and has the expected shape.
@@ -627,28 +895,28 @@ function CalendarCard(props: ToolCallMessagePartProps) {
   const days = new Map<string, Event[]>();
   for (const e of list) days.set(e.start.slice(0, 10), [...(days.get(e.start.slice(0, 10)) ?? []), e]);
   return (
-    <div className="not-prose my-2 overflow-hidden rounded-[14px] border-[1.25px] border-edge text-[14px] last-of-type:mb-3">
-      {days.size === 0 && <p className="px-4 py-3 text-mid">Nothing on the calendar.</p>}
+    <BigCard icon="📅" title="Calendar">
+      {days.size === 0 && <p className="px-5 py-4 text-[15px] text-mid">Nothing on the calendar.</p>}
       {[...days].map(([day, es]) => (
         <section key={day} className="border-hair not-first:border-t">
-          <h4 className="bg-lift px-4 py-1.5 text-xs font-semibold tracking-wide text-mid uppercase">{dayLabel(day)}</h4>
-          <ul className="flex flex-col py-1">
+          <h4 className="sticky top-0 z-10 bg-block px-5 py-2 text-xs font-semibold tracking-wide text-mid uppercase">{dayLabel(day)}</h4>
+          <ul className="flex flex-col py-1.5 text-[15px]">
             {es.map((e) => (
-              <li key={e.uid + e.start} className="flex gap-3 px-4 py-1.5">
-                <span className="w-[5.5rem] shrink-0 text-mid tabular-nums">
+              <li key={e.uid + e.start} className="flex gap-4 px-5 py-2">
+                <span className="w-24 shrink-0 text-mid tabular-nums max-sm:w-20">
                   {e.start.length > 10 ? `${e.start.slice(11)}–${e.end.startsWith(day) ? e.end.slice(11) : "…"}` : "All day"}
                 </span>
                 <span className="min-w-0">
                   <span className="text-ink">{e.summary}</span>
                   {e.repeats && <span className="ml-1.5 text-soft" title="Repeats">↻</span>}
-                  {e.location && <span className="block truncate text-[13px] text-soft">{e.location}</span>}
+                  {e.location && <span className="block truncate text-[13.5px] text-soft">{e.location}</span>}
                 </span>
               </li>
             ))}
           </ul>
         </section>
       ))}
-    </div>
+    </BigCard>
   );
 }
 
@@ -665,21 +933,31 @@ function lists(result: unknown) {
 function ListCards(props: ToolCallMessagePartProps) {
   const all = props.isError ? undefined : lists(props.result);
   if (!all) return <ToolLine {...props} />;
-  if (all.length === 0) return <p className="not-prose my-2 font-serif text-[14.5px] text-mid italic">No lists.</p>;
+  if (all.length === 0)
+    return (
+      <BigCard icon="🗂️" title="Lists">
+        <p className="px-5 py-4 font-serif text-[15px] text-mid italic">No lists.</p>
+      </BigCard>
+    );
+  // One list is named in the header; several share a generic title and keep
+  // their own names on each index card.
+  const heads = all.length > 1;
   return (
-    <div className="not-prose my-2 grid gap-3 last-of-type:mb-3 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]">
+    <BigCard icon="🗂️" title={heads ? "Lists" : all[0].list} bodyClass="grid gap-3 p-4 max-sm:p-3 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] sm:content-start">
       {all.map((l) => (
-        <section key={l.list} className="rounded-[3px] bg-lift px-4 pt-3 pb-2 shadow-lift">
-          <h4 className="flex items-baseline justify-between gap-2 border-b-[1.5px] border-accent/60 pb-1 font-serif text-[16px] text-ink">
-            <span className="min-w-0 truncate">{l.list}</span>
-            {l.shared && <span className="shrink-0 font-sans text-[11px] tracking-wide text-soft uppercase">shared</span>}
-          </h4>
+        <section key={l.list} className="rounded-[3px] bg-paper px-4 pt-3 pb-2 shadow-lift">
+          {heads && (
+            <h4 className="flex items-baseline justify-between gap-2 border-b-[1.5px] border-accent/60 pb-1 font-serif text-[16px] text-ink">
+              <span className="min-w-0 truncate">{l.list}</span>
+              {l.shared && <span className="shrink-0 font-sans text-[11px] tracking-wide text-soft uppercase">shared</span>}
+            </h4>
+          )}
           {l.items.length === 0 ? (
-            <p className="py-1.5 font-serif text-[14.5px] text-soft italic">Emptied and put away.</p>
+            <p className="py-1.5 font-serif text-[15px] text-soft italic">Emptied and put away.</p>
           ) : (
             <ul className="ruled">
               {l.items.map((item) => (
-                <li key={item} className="font-serif text-[15px] text-ink [overflow-wrap:anywhere]">
+                <li key={item} className="font-serif text-[15.5px] text-ink [overflow-wrap:anywhere]">
                   {item}
                 </li>
               ))}
@@ -688,7 +966,7 @@ function ListCards(props: ToolCallMessagePartProps) {
           {l.missing && <p className="pt-1 text-[12.5px] text-soft">Wasn't on it: {l.missing.join(", ")}</p>}
         </section>
       ))}
-    </div>
+    </BigCard>
   );
 }
 
@@ -716,55 +994,55 @@ function when(date: string) {
 function InboxCard(props: ToolCallMessagePartProps) {
   const list = props.isError ? undefined : parsed<Mail[]>(props.result, (v) => Array.isArray(v) && v.every(isMail));
   if (!list) return <ToolLine {...props} />;
+  const unread = list.filter((m) => m.unread).length;
   return (
-    <div className="not-prose my-2 overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift text-[14px] last-of-type:mb-3">
-      {list.length === 0 && <p className="px-4 py-3 text-mid">No mail found.</p>}
-      <ul className="divide-y divide-hair">
+    <BigCard icon="✉️" title={unread ? `Inbox · ${unread} unread` : "Inbox"}>
+      {list.length === 0 && <p className="px-5 py-4 text-[15px] text-mid">No mail found.</p>}
+      <ul className="divide-y divide-hair text-[15px]">
         {list.map((m) => (
-          <li key={m.uid} className="flex gap-3 px-4 py-2.5">
+          <li key={m.uid} className="flex gap-3 px-5 py-3">
             <span className={`mt-[0.55em] size-1.5 shrink-0 rounded-full ${m.unread ? "bg-accent" : ""}`} />
             <span className="min-w-0 flex-1">
               <span className="flex items-baseline gap-3">
                 <span className={`min-w-0 flex-1 truncate ${m.unread ? "font-semibold text-ink" : "text-mid"}`}>{sender(m.from)}</span>
                 <span className="shrink-0 text-[12.5px] text-soft tabular-nums">{when(m.date)}</span>
               </span>
-              <span className={`block truncate font-serif text-[15px] ${m.unread ? "text-ink" : "text-mid"}`}>{m.subject || "(no subject)"}</span>
+              <span className={`block truncate font-serif text-[16px] ${m.unread ? "text-ink" : "text-mid"}`}>{m.subject || "(no subject)"}</span>
             </span>
           </li>
         ))}
       </ul>
-    </div>
+    </BigCard>
   );
 }
 
 // One message read whole, as a letter folded to a few lines.
 function MailCard(props: ToolCallMessagePartProps) {
   const m = props.isError ? undefined : parsed<Mail>(props.result, isMail);
-  const [open, setOpen] = useState(false);
   if (!m) return <ToolLine {...props} />;
-  const head = "w-16 shrink-0 text-[11px] font-semibold tracking-wider text-soft uppercase";
+  const head = "w-14 shrink-0 text-[11px] font-semibold tracking-wider text-soft uppercase";
   return (
-    <article className="not-prose my-2 rounded-[14px] border-[1.25px] border-edge bg-lift last-of-type:mb-3">
-      <dl className="flex flex-col gap-0.5 border-b border-dashed border-frame px-5 pt-3.5 pb-2.5 text-[14px]">
+    <BigCard icon="✉️" title={m.subject || "(no subject)"}>
+      <dl className="flex flex-col gap-1 border-b border-dashed border-frame px-5 py-3.5 text-[14.5px]">
         <div className="flex items-baseline">
           <dt className={head}>From</dt>
           <dd className="min-w-0 flex-1 truncate" title={m.from}>{sender(m.from)}</dd>
-          <dd className="shrink-0 pl-3 text-[12.5px] text-soft">{when(m.date)}</dd>
+          <dd className="shrink-0 pl-3 text-[13px] text-soft">{when(m.date)}</dd>
         </div>
-        <div className="flex items-baseline">
-          <dt className={head}>Subject</dt>
-          <dd className="font-medium [overflow-wrap:anywhere]">{m.subject || "(no subject)"}</dd>
-        </div>
+        {m.to && (
+          <div className="flex items-baseline">
+            <dt className={head}>To</dt>
+            <dd className="min-w-0 flex-1 truncate" title={m.to}>{m.to}</dd>
+          </div>
+        )}
       </dl>
       {m.text && (
-        <div onClick={() => setOpen(!open)} title={open ? undefined : "Read it all"} className="cursor-pointer px-5 py-3">
-          <p className={`font-serif text-[15.5px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${open ? "max-h-96 overflow-y-auto" : "line-clamp-4"}`}>
-            {m.text.replace(/\n\[cut\]$/, "")}
-          </p>
+        <div className="px-5 py-4">
+          <p className="font-serif text-[16px] leading-relaxed whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">{m.text.replace(/\n\[cut\]$/, "")}</p>
         </div>
       )}
       {!!m.attachments?.length && (
-        <ul className="flex flex-wrap gap-1.5 px-5 pb-3">
+        <ul className="flex flex-wrap gap-1.5 px-5 pb-4">
           {m.attachments.map((a, i) => (
             <li key={i} className="max-w-full truncate rounded-full border border-hair bg-block px-2.5 py-0.5 text-[12.5px] text-mid">
               📎 {a}
@@ -772,7 +1050,7 @@ function MailCard(props: ToolCallMessagePartProps) {
           ))}
         </ul>
       )}
-    </article>
+    </BigCard>
   );
 }
 
@@ -791,43 +1069,6 @@ function sky(code: number, day = true): [string, string] {
   if (code <= 67 || (code >= 80 && code <= 82)) return ["🌧️", "Rain"];
   if (code <= 77 || code === 85 || code === 86) return ["🌨️", "Snow"];
   return ["⛈️", "Storm"];
-}
-
-// The forecast as a card: now large, the days as a row beneath. A running,
-// failed or unreadable call stays a ToolLine.
-function WeatherCard(props: ToolCallMessagePartProps) {
-  const w = props.isError ? undefined : parsed<Forecast>(props.result, isForecast);
-  if (!w) return <ToolLine {...props} />;
-  const [nowIcon, nowWord] = sky(w.now.code, w.now.day);
-  return (
-    <div className="not-prose my-2 overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift text-[14px] last-of-type:mb-3">
-      <div className="flex items-center gap-3 px-4 py-3">
-        <span className="text-[34px] leading-none">{nowIcon}</span>
-        <span className="min-w-0">
-          <span className="text-[26px] leading-none text-ink tabular-nums">{deg(w.now.temp)}</span>
-          <span className="block text-[13px] text-soft">{nowWord} · feels {deg(w.now.feels)}</span>
-        </span>
-      </div>
-      {w.days.length > 0 && (
-        <ul className="flex divide-x divide-hair border-t border-hair">
-          {w.days.map((d, i) => {
-            const [icon] = sky(d.code);
-            const [y, m, day] = d.date.split("-").map(Number);
-            const name = i === 0 ? "Now" : new Date(y, m - 1, day).toLocaleDateString(undefined, { weekday: "short" });
-            return (
-              <li key={d.date} className="flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2">
-                <span className="text-[12px] font-semibold tracking-wide text-mid uppercase">{name}</span>
-                <span className="text-[20px] leading-none" title={sky(d.code)[1]}>{icon}</span>
-                <span className="text-[13px] text-ink tabular-nums">{deg(d.high)}</span>
-                <span className="text-[12.5px] text-soft tabular-nums">{deg(d.low)}</span>
-                {d.rain != null && d.rain > 0 && <span className="text-[11px] text-accent tabular-nums">{d.rain}%</span>}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
 }
 
 // What the yeoman notes beside the talk: quiet, in the serif. Alerts land
