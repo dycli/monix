@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banks</title>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<style>
+  :root { --paper: #ece3d4; --lift: #f4ede1; --ink: #2b2620; --mid: #6b6156; --soft: #978b7d; --edge: #d6cab6; --accent: #b0482a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 28px 18px 60px; }
+  h1 { font: 400 30px/1.1 Georgia, serif; margin: 0 0 4px; }
+  .sub { color: var(--mid); margin: 0 0 22px; }
+  .tag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 99px; background: var(--accent); color: var(--lift); font-size: 12px; vertical-align: 4px; letter-spacing: .04em; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 26px; }
+  button { font: inherit; border: 1px solid var(--edge); background: var(--lift); color: var(--ink); border-radius: 10px; padding: 9px 14px; cursor: pointer; }
+  button:hover { border-color: var(--soft); }
+  button.main { background: var(--ink); color: var(--lift); border-color: var(--ink); }
+  button:disabled { opacity: .5; cursor: default; }
+  .item { background: var(--lift); border: 1px solid var(--edge); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
+  .item header { display: flex; align-items: baseline; gap: 10px; }
+  .item h2 { font: 400 20px Georgia, serif; margin: 0; flex: 1; }
+  .when { color: var(--soft); font-size: 13px; }
+  .row { display: flex; gap: 10px; padding: 7px 0; border-top: 1px solid var(--edge); }
+  .row:first-of-type { margin-top: 10px; }
+  .row .name { flex: 1; min-width: 0; }
+  .row .kind { color: var(--soft); font-size: 13px; }
+  .money { font-variant-numeric: tabular-nums; }
+  .warn { color: var(--accent); font-size: 13px; }
+  .note { color: var(--mid); font-size: 13px; margin-top: 8px; }
+  #error { color: var(--accent); min-height: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Banks<span id="env"></span></h1>
+  <p class="sub" id="slots"></p>
+  <div class="actions">
+    <button class="main" data-kind="bank">Add a bank or card</button>
+    <button class="main" data-kind="brokerage">Add a brokerage</button>
+    <button id="sync">Sync now</button>
+  </div>
+  <p id="error"></p>
+  <div id="items"></div>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+let sandbox = false;
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+  const text = await r.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+const money = (n, c) => n == null ? "" :
+  n.toLocaleString(undefined, { style: "currency", currency: c || "USD" });
+
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  Object.assign(e, attrs);
+  e.append(...kids.filter((k) => k != null));
+  return e;
+}
+
+async function load() {
+  const o = await api("/api/overview");
+  sandbox = o.sandbox;
+  $("#env").replaceChildren(o.sandbox ? el("span", { className: "tag", textContent: "SANDBOX" }) : "");
+  $("#slots").textContent = o.sandbox
+    ? "Test banks only. Log in with user_good / pass_good."
+    : `${o.slots.used} of ${o.slots.of} bank logins used. A login's slot is never given back.`;
+  $("#items").replaceChildren(...o.items.map((i) => el("section", { className: "item" },
+    el("header", {},
+      el("h2", { textContent: i.institution || "Linking…" }),
+      el("span", { className: "when", textContent: i.synced ? `synced ${i.synced} UTC` : i.status })),
+    ...i.accounts.map((a) => el("div", { className: "row" },
+      el("span", { className: "name" }, `${a.name}${a.mask ? " ··" + a.mask : ""} `,
+        el("span", { className: "kind", textContent: a.subtype || a.type || "" }),
+        a.duplicate ? el("div", { className: "warn", textContent: "Also linked through another login; counted twice." }) : null),
+      el("span", { className: "money", textContent: money(a.balance, a.currency) }))),
+    i.status === "login" ? el("div", {},
+      el("p", { className: "note", textContent: "The bank wants a fresh login." }),
+      el("button", { className: "main", textContent: "Log in again", onclick: () => open({ item: i.id }) })) : null,
+    i.status === "error" ? el("p", { className: "warn", textContent: i.error }) : null,
+  )));
+}
+
+async function open(ask) {
+  $("#error").textContent = "";
+  try {
+    const { link_token } = await api("/api/link", ask);
+    Plaid.create({
+      token: link_token,
+      onSuccess: async (public_token) => {
+        // Update mode keeps the Item's token; only a new Item is exchanged.
+        if (ask.item) await api("/api/sync", {});
+        else await api("/api/linked", { public_token });
+        await load();
+        setTimeout(load, 5000);
+      },
+      onExit: (err) => { if (err) $("#error").textContent = err.display_message || err.error_message || err.error_code; },
+    }).open();
+  } catch (e) {
+    $("#error").textContent = e.message;
+  }
+}
+
+document.querySelectorAll("[data-kind]").forEach((b) => b.onclick = () => open({ kind: b.dataset.kind }));
+$("#sync").onclick = async (ev) => {
+  ev.target.disabled = true;
+  try { await api("/api/sync", {}); await load(); } catch (e) { $("#error").textContent = e.message; }
+  ev.target.disabled = false;
+};
+load().catch((e) => $("#error").textContent = e.message);
+</script>
+</body>
+</html>
