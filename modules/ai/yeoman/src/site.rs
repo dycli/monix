@@ -18,7 +18,7 @@ use crate::pending::{self, Pending};
 use crate::task;
 use crate::{Read, fits, read};
 use axum::extract::{DefaultBodyLimit, Multipart, RawQuery, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -37,6 +37,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{broadcast, mpsc};
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeaderLayer;
+use tower_layer::Layer;
 
 use crate::push::{self, Push};
 
@@ -607,11 +609,29 @@ pub async fn serve(
     if let Some(push) = &site.push {
         tokio::spawn(ring(site.web.shown.subscribe(), push.clone()));
     }
+    // The entry document and the worker carry no hash in their names, so the
+    // browser must revalidate them each load; otherwise a deploy's new asset
+    // hashes never get picked up. The hashed assets under /_site are safe to
+    // keep forever.
+    let revalidate = SetResponseHeaderLayer::overriding(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-cache"),
+    );
+    let forever = SetResponseHeaderLayer::overriding(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=31536000, immutable"),
+    );
     let app = Router::new()
-        .route_service("/", ServeFile::new(root.join("index.html")))
+        .route_service(
+            "/",
+            revalidate.layer(ServeFile::new(root.join("index.html"))),
+        )
         // At the root, so its scope is the whole site.
-        .route_service("/sw.js", ServeFile::new(root.join("sw.js")))
-        .nest_service("/_site", ServeDir::new(root.join("_site")))
+        .route_service(
+            "/sw.js",
+            revalidate.layer(ServeFile::new(root.join("sw.js"))),
+        )
+        .nest_service("/_site", forever.layer(ServeDir::new(root.join("_site"))))
         .route("/manifest.webmanifest", get(manifest))
         .route("/api/history", get(history))
         .route("/api/search", get(search))
