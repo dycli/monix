@@ -241,44 +241,54 @@
 
 /* A card takes the screen: the talk dissolves away, Tom-Riddle-diary style,
    and the card rises from behind the composer and fades in over it. */
+/* Ink on paper: the talk lifts off — fading, blurring and washing toward the
+   paper's colour as if the ink evaporates — rather than a uniform blur. */
 .dissolving {
   opacity: 0;
-  filter: blur(7px);
-  transform: scale(1.015);
-  transition: opacity 0.3s ease, filter 0.3s ease, transform 0.3s ease;
+  filter: blur(5px) brightness(1.7);
+  transform: translateY(-5px);
+  transition: opacity 0.38s ease-in, filter 0.38s ease-in, transform 0.38s ease-in;
   pointer-events: none;
 }
 .dissolving-reset {
-  transition: opacity 0.34s ease 0.04s, filter 0.34s ease 0.04s, transform 0.34s ease 0.04s;
+  transition: opacity 0.4s ease 0.05s, filter 0.4s ease 0.05s, transform 0.4s ease 0.05s;
 }
 @keyframes veil-in {
   from {
     opacity: 0;
   }
 }
-@keyframes card-rise {
+/* The card is ink soaking into paper: it bleeds in from a wet, light blur and
+   settles sharp and dark. No slide, so it reads as drawn, not popped. */
+@keyframes ink-bleed {
   from {
     opacity: 0;
-    transform: translateY(22px) scale(0.985);
+    filter: blur(9px) brightness(1.7);
   }
 }
-@keyframes card-sink {
+@keyframes ink-lift {
   to {
     opacity: 0;
-    transform: translateY(22px) scale(0.985);
+    filter: blur(9px) brightness(1.7);
   }
 }
 .card-layer {
   animation: veil-in 0.34s ease both;
 }
 .card-layer.out {
-  animation: veil-in 0.28s ease reverse both;
+  animation: veil-in 0.3s ease reverse both;
 }
 .card-rise {
-  animation: card-rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) 0.06s both;
+  /* starts after the talk has begun to lift, so ink leaves then ink arrives */
+  animation: ink-bleed 0.5s ease 0.14s both;
 }
 .card-layer.out .card-rise {
-  animation: card-sink 0.26s ease both;
+  animation: ink-lift 0.3s ease-in both;
+}
+/* Streaming talk reads as writing: each block of markdown bleeds in once as it
+   arrives (pure CSS, no per-token cost). The grain overlay already sells paper. */
+.md > * {
+  animation: ink-bleed 0.45s ease both;
 }
 @media (prefers-reduced-motion: reduce) {
   .dissolving,
@@ -286,7 +296,8 @@
   .card-layer,
   .card-layer.out,
   .card-rise,
-  .card-layer.out .card-rise {
+  .card-layer.out .card-rise,
+  .md > * {
     animation: none;
     transition: none;
     filter: none;
