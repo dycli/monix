@@ -17,5 +17,6 @@
 
   admin = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF7/0+EtR35ZsgmHq0IXNY5gQ1SlTUGSRz+P38qGfn0F dylan@dylandavid.com"
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJDBVNCZldfLfl4pXuFxLF/nqmaO2sRSGcBVE4UChO8Q max@fw0"
   ];
 }
