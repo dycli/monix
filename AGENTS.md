@@ -152,7 +152,7 @@ Home aspects are expressed with home-manager (`home.packages`,
 
 ## Secrets
 
-`secrets.nix` is the agenix rule set (read by the CLI, not the flake). Add a
+`agenix-rules.nix` is the agenix rule set (read by the CLI, not the flake). Add a
 line there for each new secret before creating it with `agenix -e <path>.age`.
 Reference secrets in modules as `config.secrets.<name>.path`.
 

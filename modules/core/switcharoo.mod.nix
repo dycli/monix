@@ -228,7 +228,7 @@
             "modules/core/users.mod.nix"
             "modules/networking/ssh.mod.nix"
             "keys.nix"
-            "secrets.nix"
+            "agenix-rules.nix"
           ];
           description = "Repo paths whose changes only `switcharoo --approve` deploys.";
         };

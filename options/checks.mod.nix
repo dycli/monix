@@ -21,7 +21,7 @@
       cratePaths = attrValues crates |> map (crate: crate.path);
 
       # Every tracked .age needs a rule, and every rule a tracked file.
-      ruled = attrNames (import "${self}/secrets.nix");
+      ruled = attrNames (import "${self}/agenix-rules.nix");
       tracked =
         lib.filesystem.listFilesRecursive self
         |> map (path: removePrefix "${self}/" (toString path))
@@ -87,11 +87,11 @@
           secrets-rules =
             if unruled != [ ] then
               throw (
-                "tracked .age files without a secrets.nix rule:\n"
+                "tracked .age files without an agenix-rules.nix rule:\n"
                 + lib.strings.concatMapStrings (path: "  ${path}\n") unruled
               )
             else if dangling != [ ] then
-              lib.warn "secrets.nix rules awaiting their .age file: ${toString dangling}" (
+              lib.warn "agenix-rules.nix rules awaiting their .age file: ${toString dangling}" (
                 pkgs.runCommand "secrets-rules-ok" { } "touch $out"
               )
             else
