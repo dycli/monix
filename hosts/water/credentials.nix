@@ -21,7 +21,6 @@ in
   gitMirror.tokenFile = config.secrets.git-mirror-token.path;
 
   plaid.keysFile = config.secrets.plaid-env.path;
-  plaid.environment = "production";
 
   frame = {
     immichKeyFile = config.secrets.frame-immich-key.path;
