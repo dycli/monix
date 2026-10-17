@@ -87,7 +87,7 @@ Variants {
         }
 
         HyprlandFocusGrab {
-            active: rightRail.pinned
+            active: rightRail.ownsMode
             windows: [window]
             onCleared: BarModeService.close()
         }
