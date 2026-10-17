@@ -64,7 +64,7 @@
           };
           serviceConfig = lib.ship.hardened.tenant // {
             DynamicUser = true;
-            StateDirectory = "plaid/${cfg.environment}";
+            StateDirectory = "plaid";
             ExecStart = getExe plaid;
             LoadCredential = singleton "keys:${cfg.keysFile}";
             Restart = "on-failure";

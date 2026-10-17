@@ -425,6 +425,9 @@ async fn main() {
         secret.len()
     );
     let state = PathBuf::from(env("PLAID_STATE"));
+    // A subdirectory per environment; systemd only makes the parent for a
+    // dynamic user, refusing nested state directories once it exists.
+    std::fs::create_dir_all(&state).unwrap_or_else(|e| panic!("{}: {e}", state.display()));
     Store::open(&state).unwrap_or_else(|e| panic!("{e}"));
     let app = Arc::new(App {
         plaid: Plaid::new(sandbox, id, secret),
