@@ -16,7 +16,11 @@
   --mid: #6a5a4b;
   --soft: #93806b;
   --hair: #d2c2a8;
-  --paper: #e4d6bf;
+  /* Two points over the system bars' #e4d6bf (index.html, theme.ts, the
+     manifest in site.rs): the grain's multiply darkens the page by about
+     that much on average, so the paper as seen meets Android's flat
+     gesture bar without a seam. Dark is offset the other way below. */
+  --paper: #e6d8c1;
   --lift: #ede2cf;
   --block: #dacab0;
   --hover: #d0bfa3;
@@ -25,13 +29,19 @@
   --accent: #b0482a;
   --shadow: 0 1px 2px rgb(60 40 20 / 0.06), 0 6px 20px rgb(60 40 20 / 0.06);
   --grain: 0.07;
+  /* The composer sits at the foot of the screen, so its shade falls upward:
+     a drop shadow would darken the strip above Android's gesture bar, which
+     is painted flat --paper (the manifest's theme_color). */
+  --dock: 0 1px 2px rgb(60 40 20 / 0.06), 0 -6px 20px rgb(60 40 20 / 0.06);
 }
 :root[data-theme="dark"] {
   --ink: #ebe3d5;
   --mid: #b0a390;
   --soft: #8a7e70;
   --hair: #38322b;
-  --paper: #1b1815;
+  /* Four points under the bars' #1b1815: the dark grain screens, lifting
+     the page by about that much. */
+  --paper: #171411;
   --lift: #24201c;
   --block: #2e2924;
   --hover: #3a332c;
@@ -40,6 +50,7 @@
   --accent: #e08a62;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 28px rgb(0 0 0 / 0.45);
   --grain: 0.045;
+  --dock: 0 1px 2px rgb(0 0 0 / 0.4), 0 -8px 28px rgb(0 0 0 / 0.45);
 }
 
 @theme inline {
@@ -55,6 +66,7 @@
   --color-edge: var(--edge);
   --color-accent: var(--accent);
   --shadow-lift: var(--shadow);
+  --shadow-dock: var(--dock);
   --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --font-brand: "Avenir Next", Avenir, Futura, -apple-system, BlinkMacSystemFont, sans-serif;
