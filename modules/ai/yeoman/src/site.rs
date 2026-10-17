@@ -17,7 +17,7 @@ use crate::model::{Attachment, Step};
 use crate::pending::{self, Pending};
 use crate::task;
 use crate::{Read, fits, read};
-use axum::extract::{DefaultBodyLimit, Multipart, RawQuery, State};
+use axum::extract::{DefaultBodyLimit, Multipart, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -488,17 +488,12 @@ pub(crate) fn write_private(path: &Path, text: &str) -> Result<(), String> {
 /// What makes the page installable as an app. Its name is the
 /// assistant's, taken from the host as the page takes it: sokka.su.is is
 /// Sokka.
-async fn manifest(RawQuery(query): RawQuery, headers: HeaderMap) -> Response {
+async fn manifest(headers: HeaderMap) -> Response {
     let host = headers
         .get(header::HOST)
         .and_then(|h| h.to_str().ok())
         .unwrap_or_default();
     let name = name_of(host);
-    let paper = if query.as_deref() == Some("theme=dark") {
-        "#1b1815"
-    } else {
-        "#e4d6bf"
-    };
     let icon = |size: u32| {
         serde_json::json!({
             "src": format!("/_site/icon-{size}.png"),
@@ -515,20 +510,15 @@ async fn manifest(RawQuery(query): RawQuery, headers: HeaderMap) -> Response {
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
-        // One app whichever theme it was installed in; the id would
-        // otherwise come from start_url, which is the same, but say it.
         "id": "/",
-        // The installed app's splash and Android navigation bar take
-        // background_color at install, and no page code recolours them
-        // afterwards. Chrome ignores the manifest's dark-mode variants
-        // (theme_colors/background_colors lists, user_preferences): a phone
-        // in dark mode still got the light pair. So the page links
-        // ?theme=dark while it shows dark (src/theme.ts), and the install
-        // takes the theme on screen. Removed when Chrome draws installed
-        // apps edge to edge (crbug 506197579): then the page shows under
-        // the bar, as it does in a tab.
-        "background_color": paper,
-        "theme_color": paper,
+        // Chrome paints the installed app's splash and Android navigation
+        // bar from these at install and never again: the bar ignores the
+        // page's live theme-color (the status bar follows it) and the
+        // manifest's dark variants. So the bar is light paper, the default
+        // theme, in either theme. Revisit when Chrome draws installed apps
+        // edge to edge (crbug 506197579) or recolours the bar live.
+        "background_color": "#e4d6bf",
+        "theme_color": "#e4d6bf",
         "icons": [
             icon(192),
             icon(512),
