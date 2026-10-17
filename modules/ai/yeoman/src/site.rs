@@ -612,15 +612,16 @@ pub async fn serve(
     // The entry document and the worker carry no hash in their names, so the
     // browser must revalidate them each load; otherwise a deploy's new asset
     // hashes never get picked up. The hashed assets under /_site are safe to
-    // keep forever.
+    // keep forever, but only once found: a miss mid-deploy must not stick.
     let revalidate = SetResponseHeaderLayer::overriding(
         header::CACHE_CONTROL,
         HeaderValue::from_static("no-cache"),
     );
-    let forever = SetResponseHeaderLayer::overriding(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("public, max-age=31536000, immutable"),
-    );
+    let forever = SetResponseHeaderLayer::overriding(header::CACHE_CONTROL, |r: &Response<_>| {
+        r.status()
+            .is_success()
+            .then(|| HeaderValue::from_static("public, max-age=31536000, immutable"))
+    });
     let app = Router::new()
         .route_service(
             "/",

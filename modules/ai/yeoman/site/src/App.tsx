@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ActionBarPrimitive,
   AssistantRuntimeProvider,
@@ -23,18 +23,24 @@ import { usePush } from "./push";
 
 type Args = ToolCallMessagePartProps["args"];
 
-// A card the model drew: which tool it came from and its result, so the
-// full-screen view can parse it the same way the inline summary does.
+// A card the model drew, read from its tool's result. A tool may draw
+// several: each list is a card of its own. `key` is the tool call's id (with
+// `#n` for the nth of several), which holds from the first step to the answer.
 type Kind = "weather" | "calendar" | "list" | "inbox" | "mail";
-type CardView = { key: string; msgId: string; toolName: string; kind: Kind; result: unknown };
+type Face =
+  | { key: string; kind: "weather"; data: Forecast }
+  | { key: string; kind: "calendar"; data: Event[] }
+  | { key: string; kind: "list"; data: List | null }
+  | { key: string; kind: "inbox"; data: Mail[] }
+  | { key: string; kind: "mail"; data: Mail };
 
-// A card takes the whole screen and the talk under it dissolves; closing it
-// leaves a one-line summary behind. `note` is called by each inline summary
-// as its result lands — the newest to arrive opens itself; `redraw` resends
-// the question that led to an answer, so its card is drawn afresh. Cards are
-// never stored: by nature they go stale, so a redraw is a fresh call.
-type Cards = { note: (v: CardView) => void; open: (v: CardView) => void; redraw: (msgId: string) => void };
-const CardCtx = createContext<Cards>({ note() {}, open() {}, redraw() {} });
+// The cards of one answer make a deck that slides up from behind the
+// composer; closing it leaves each card's one-line summary in the talk.
+// `open` brings a deck back at a card; `redraw` resends the question that
+// led to an answer. Cards are never stored: by nature they go stale, so a
+// redraw is a fresh call.
+type Cards = { open: (key: string) => void; redraw: (msgId: string) => void };
+const CardCtx = createContext<Cards>({ open() {}, redraw() {} });
 const useCards = () => useContext(CardCtx);
 
 // Which tool draws a card, by its name whichever server carries it.
@@ -350,59 +356,83 @@ type ThreadProps = {
 
 function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, screen }: ThreadProps) {
   const [finding, setFinding] = useState(false);
-  // The card on screen, and whether it is on its way out so the talk fades
-  // back in rather than snapping.
-  const [card, setCard] = useState<CardView>();
-  const [closing, setClosing] = useState(false);
+  // The deck on screen, by the card it opened at, and whether it is on its
+  // way down so the talk fades back in rather than snapping.
+  const [open, setOpen] = useState<string>();
+  const [leaving, setLeaving] = useState(false);
+  const leave = useRef<number>(undefined);
   // The dots stand for work not yet shown; once words or tools arrive, they show it.
   const working = typing && !messages.at(-1)?.live;
   // The screen shows while the turn or the task drives the computer.
   const last = messages.at(-1);
   const watching = !!screen && ((!!last?.live && drives(last.tools)) || drives(task?.tools));
 
-  // Each card is opened at most once by itself, the moment its result lands;
-  // the cards already in history when the page loads are marked seen without
-  // opening, so a return to the page does not throw an old card up.
-  const seen = useRef(new Set<string>());
-  const live = useRef(false);
+  // The deck fills the screen down to the top of what sits on the composer,
+  // so it rises from behind it; measured, as the composer grows with text,
+  // files and the tray.
+  const dock = useRef<HTMLDivElement>(null);
+  const [edge, setEdge] = useState(0);
+  const measure = () => dock.current && setEdge(dock.current.getBoundingClientRect().top);
   useEffect(() => {
-    const t = setTimeout(() => (live.current = true), 400);
-    return () => clearTimeout(t);
+    const el = dock.current;
+    if (!el) return;
+    measure();
+    const o = new ResizeObserver(measure);
+    o.observe(el);
+    addEventListener("resize", measure);
+    return () => {
+      o.disconnect();
+      removeEventListener("resize", measure);
+    };
   }, []);
-  const show = (v: CardView) => {
-    setClosing(false);
-    setCard(v);
+
+  const holder = (key: string | undefined) => {
+    const id = key?.split("#")[0];
+    return id ? messages.find((m) => m.tools?.some((t) => t.id === id)) : undefined;
+  };
+  const shown = holder(open);
+  const deck = shown ? deckOf(shown) : [];
+
+  const show = (key: string) => {
+    measure();
+    window.clearTimeout(leave.current);
+    setLeaving(false);
+    setOpen(key);
   };
   const close = () => {
-    setClosing(true);
-    setTimeout(() => {
-      setCard(undefined);
-      setClosing(false);
-    }, 300);
+    setLeaving(true);
+    leave.current = window.setTimeout(() => {
+      setOpen(undefined);
+      setLeaving(false);
+    }, 280);
   };
-  const api = useMemo<Cards>(() => {
-    const open = (v: CardView) => show(v);
-    return {
-      open,
-      note(v) {
-        if (seen.current.has(v.key)) return;
-        seen.current.add(v.key);
-        if (live.current) open(v);
-      },
+
+  // A deck comes up by itself once, as its first card lands; cards already
+  // on the page when it loads stay folded.
+  const seen = useRef<Set<string>>(null);
+  seen.current ??= new Set(messages.flatMap(deckOf).map((f) => f.key));
+  useEffect(() => {
+    const fresh = messages.flatMap(deckOf).filter((f) => !seen.current!.has(f.key));
+    if (!fresh.length) return;
+    for (const f of fresh) seen.current!.add(f.key);
+    // A card landing in the deck already up joins it, a swipe away.
+    if (!shown || leaving || holder(fresh[0].key) !== shown) show(fresh[0].key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
+
+  const api = useMemo<Cards>(
+    () => ({
+      open: show,
       redraw(msgId) {
         // Resend the question that led here — the person's last words before
         // this answer — so the card is drawn afresh from current data.
         const i = messages.findIndex((m) => m.id === msgId);
         for (let j = i - 1; j >= 0; j--) if (messages[j].role === "user") return void send(messages[j].text, []);
       },
-    };
-  }, [messages, send]);
-  useEffect(() => {
-    if (!card) return;
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && close();
-    addEventListener("keydown", esc);
-    return () => removeEventListener("keydown", esc);
-  }, [card]);
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [messages, send],
+  );
 
   const runtime = useExternalStoreRuntime({
     messages,
@@ -413,7 +443,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
       const text = m.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("\n");
       const files = (m.attachments ?? []).flatMap((a) => (a.file ? [a.file] : []));
       if (text.trim() || files.length) {
-        if (card) close();
+        if (open) close();
         await send(text, files);
       }
     },
@@ -435,7 +465,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
         </header>
         {finding && <Search close={() => setFinding(false)} />}
         <ThreadPrimitive.Viewport className="flex flex-1 flex-col overflow-y-auto">
-          <main className={`mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)] ${card ? (closing ? "dissolving-reset" : "dissolving") : ""}`}>
+          <main className={`mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)] fades ${deck.length && !leaving ? "faded" : ""}`}>
             <ThreadPrimitive.Messages>
               {({ message }) =>
                 message.role === "user" ? <UserMessage /> : message.role === "assistant" ? <AssistantMessage /> : <Note />
@@ -444,7 +474,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
             {working && <Dots />}
           </main>
           <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-20 mt-auto bg-[linear-gradient(transparent,var(--paper)_14px)] px-5 pt-[18px] pb-[max(14px,env(safe-area-inset-bottom))] max-sm:px-3.5 max-sm:pt-3 max-sm:pb-[max(8px,env(safe-area-inset-bottom))]">
-            <div className="relative mx-auto w-[min(740px,100%)]">
+            <div ref={dock} className="relative mx-auto w-[min(740px,100%)]">
               {/* What waits or works above the composer scrolls as one, so the talk stays in view. */}
               <div className="max-h-[min(66vh,720px)] overflow-y-auto pt-2.5 empty:hidden">
                 {screen && <Screen url={screen} on={watching} />}
@@ -471,22 +501,14 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
                   placeholder={`Message ${NAME}`}
                   className="max-h-[40vh] flex-1 resize-none bg-transparent py-[7px] text-base leading-normal outline-none placeholder:text-soft"
                 />
-                <Trailing typing={typing} stop={stop} cardOpen={!!card && !closing} close={close} />
+                <Trailing typing={typing} stop={stop} cardOpen={!!deck.length && !leaving} close={close} />
                 </div>
                 </ComposerPrimitive.AttachmentDropzone>
               </ComposerPrimitive.Root>
             </div>
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
-        {card && (
-          <div className={`card-layer fixed inset-x-0 top-0 z-10 h-[100dvh] bg-paper ${closing ? "out" : ""}`} onClick={close} aria-label="The card, full screen">
-            <div className="flex h-full justify-center px-6 pt-[72px] pb-[116px] max-sm:px-4 max-sm:pt-[60px] max-sm:pb-[100px]">
-              <div className="card-rise min-h-0 w-full max-w-[680px]" onClick={(e) => e.stopPropagation()}>
-                <CardBig view={card} />
-              </div>
-            </div>
-          </div>
-        )}
+        {deck.length > 0 && <Deck key={deck[0].key} faces={deck} start={open!} leaving={leaving} edge={edge} close={close} />}
       </ThreadPrimitive.Root>
      </CardCtx.Provider>
     </AssistantRuntimeProvider>
@@ -703,7 +725,7 @@ function ToolRow({ name, args, result, isError, live }: Row) {
 }
 
 // Tools with a card of their own show as a one-line summary in the talk and
-// open full screen; the rest draw as a ToolLine. Keyed by the tool's own
+// come up as a deck; the rest draw as a ToolLine. Keyed by the tool's own
 // name, whichever server carries it.
 function Tool(props: ToolCallMessagePartProps) {
   const kind = cardKind(props.toolName);
@@ -713,7 +735,7 @@ function Tool(props: ToolCallMessagePartProps) {
 
 // A tool's result read into a card's shape, if it parses; undefined while it
 // runs, when it failed, or when a long result was cut short on the way here.
-function parseCard(kind: Kind, result: unknown): unknown {
+function parseCard(kind: Kind, result: unknown): Forecast | Event[] | List[] | Mail[] | Mail | undefined {
   switch (kind) {
     case "weather":
       return parsed<Forecast>(result, isForecast);
@@ -728,28 +750,36 @@ function parseCard(kind: Kind, result: unknown): unknown {
   }
 }
 
-// In the talk, a card is one quiet line: an icon and a word or two. While the
-// call runs or if its result won't parse it stays a ToolLine. As the result
-// lands it tells the overlay, which opens the newest to arrive; a tap reopens
-// it later.
+// The cards one tool call drew: none while it runs or if it failed, one per
+// list, else one.
+function facesOf(t: { id: string; name: string; result?: unknown; error?: boolean }): Face[] {
+  const kind = cardKind(t.name);
+  if (!kind || t.error) return [];
+  const data = parseCard(kind, t.result);
+  if (data === undefined) return [];
+  if (kind === "list") {
+    const ls = data as List[];
+    return ls.length ? ls.map((l, n) => ({ key: `${t.id}#${n}`, kind, data: l })) : [{ key: t.id, kind, data: null }];
+  }
+  return [{ key: t.id, kind, data } as Face];
+}
+
+/** An answer's cards, in the order its tools ran. */
+const deckOf = (m: Msg) => (m.tools ?? []).flatMap(facesOf);
+
+// In the talk, a card is one quiet line: an icon and a word or two; a tap
+// brings its deck back. While the call runs or if its result won't parse it
+// stays a ToolLine.
 function CardInline(props: ToolCallMessagePartProps & { kind: Kind }) {
-  const { kind } = props;
-  const data = props.isError ? undefined : parseCard(kind, props.result);
-  const msgId = useAuiState((s) => s.message.id);
+  const faces = facesOf({ id: props.toolCallId, name: props.toolName, result: props.result, error: props.isError });
   const cards = useCards();
-  const key = props.toolCallId;
-  const ready = data !== undefined;
-  useEffect(() => {
-    // A card opens itself once, the moment its result first parses.
-    if (ready) cards.note({ key, msgId, toolName: props.toolName, kind, result: props.result });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready]);
-  if (!ready) return <ToolLine {...props} />;
-  const [icon, label] = cardSummary(kind, data);
+  if (!faces.length) return <ToolLine {...props} />;
+  const data = parseCard(props.kind, props.result)!;
+  const [icon, label] = cardSummary(props.kind, data);
   return (
     <button
       type="button"
-      onClick={() => cards.open({ key, msgId, toolName: props.toolName, kind, result: props.result })}
+      onClick={() => cards.open(faces[0].key)}
       className="not-prose group/card my-1 flex max-w-full items-center gap-2 rounded-full border border-frame bg-lift py-1.5 pr-3.5 pl-2.5 text-[13.5px] text-mid last-of-type:mb-3 hover:bg-hover hover:text-ink"
     >
       <span className="text-[15px] leading-none">{icon}</span>
@@ -787,73 +817,217 @@ function cardSummary(kind: Kind, data: unknown): [string, string] {
   }
 }
 
-// A card full screen. Weather gets a reading of its own, large and centred;
-// the rest reuse their talk card, widened, since they already read well.
-function CardBig({ view }: { view: CardView }) {
-  if (view.kind === "weather") return <WeatherBig w={parseCard("weather", view.result) as Forecast} />;
-  const props = { toolName: view.toolName, result: view.result, isError: false, args: {} } as unknown as ToolCallMessagePartProps;
-  const Card = { calendar: CalendarCard, list: ListCards, inbox: InboxCard, mail: MailCard }[view.kind];
-  return <Card {...props} />;
+// An answer's cards as a deck: it slides up from behind the composer and
+// fills the screen above it, the talk faded behind. Several cards sit side by
+// side, a swipe apart, the next peeking in at the edge, as a phone's card
+// carousels do; dots, arrows and the arrow keys move between them. A tap
+// beside the cards, Escape, or the composer's ▼ puts it away.
+function Deck({ faces, start, leaving, edge, close }: { faces: Face[]; start: string; leaving: boolean; edge: number; close: () => void }) {
+  const track = useRef<HTMLDivElement>(null);
+  const [at, setAt] = useState(() => Math.max(0, faces.findIndex((f) => f.key === start)));
+  const many = faces.length > 1;
+
+  const go = (n: number, smooth = true) => {
+    const el = track.current;
+    const card = el?.children[n] as HTMLElement | undefined;
+    if (!el || !card) return;
+    el.scrollTo({ left: card.offsetLeft - (el.clientWidth - card.offsetWidth) / 2, behavior: smooth ? "smooth" : "instant" });
+  };
+  useLayoutEffect(() => go(at, false), []);
+  const step = () => {
+    const el = track.current;
+    if (!el) return;
+    const mid = el.scrollLeft + el.clientWidth / 2;
+    const n = [...el.children].findIndex((c) => {
+      const h = c as HTMLElement;
+      return mid >= h.offsetLeft - 8 && mid <= h.offsetLeft + h.offsetWidth + 8;
+    });
+    if (n >= 0) setAt(n);
+  };
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+      // Arrows move between cards unless the person is typing.
+      if (document.activeElement instanceof HTMLTextAreaElement && document.activeElement.value) return;
+      if (e.key === "ArrowRight" && at < faces.length - 1) go(at + 1);
+      if (e.key === "ArrowLeft" && at > 0) go(at - 1);
+    };
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  });
+
+  const arrow = "absolute top-1/2 z-10 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-frame bg-lift text-mid shadow-lift hover:text-ink disabled:invisible max-sm:hidden";
+  return (
+    <div className="fixed inset-x-0 top-0 z-10 overflow-hidden" style={{ height: edge || "100dvh" }} onClick={close} aria-label="Cards" role="region">
+      <div className={`flex h-full flex-col pt-[72px] max-sm:pt-[63px] ${leaving ? "deck-down" : "deck-up"}`}>
+        <div
+          ref={track}
+          onScroll={step}
+          className="deck flex min-h-0 flex-1 snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-[max(20px,calc((100%-680px)/2))] max-sm:gap-2.5"
+        >
+          {faces.map((f, n) => (
+            <div
+              key={f.key}
+              className={`h-full w-[min(680px,100vw-40px)] shrink-0 snap-center snap-always transition-opacity duration-300 ${n === at ? "" : "opacity-45"}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <CardFace face={f} />
+            </div>
+          ))}
+        </div>
+        <div className={`flex shrink-0 items-center justify-center gap-1.5 ${many ? "h-9" : "h-3"}`}>
+          {many &&
+            faces.map((f, n) => (
+              <button
+                key={f.key}
+                type="button"
+                aria-label={`Card ${n + 1} of ${faces.length}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  go(n);
+                }}
+                className={`h-1.5 rounded-full transition-all ${n === at ? "w-5 bg-ink/70" : "w-1.5 bg-ink/20"}`}
+              />
+            ))}
+        </div>
+      </div>
+      {many && (
+        <>
+          <button type="button" aria-label="Previous card" disabled={at === 0} onClick={(e) => (e.stopPropagation(), go(at - 1))} className={`${arrow} left-[max(12px,calc((100%-680px)/2-56px))]`}>
+            <Chevron left />
+          </button>
+          <button type="button" aria-label="Next card" disabled={at === faces.length - 1} onClick={(e) => (e.stopPropagation(), go(at + 1))} className={`${arrow} right-[max(12px,calc((100%-680px)/2-56px))]`}>
+            <Chevron />
+          </button>
+        </>
+      )}
+    </div>
+  );
 }
 
-// A list-like card given the whole screen: a titled header with its icon, and
-// a body that fills the rest and scrolls on its own. The talk shows only the
-// pill, so these are reached only full screen.
-function BigCard({ icon, title, children, bodyClass }: { icon: string; title: string; children: ReactNode; bodyClass?: string }) {
+const Chevron = ({ left = false }: { left?: boolean }) => (
+  <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d={left ? "m15 18-6-6 6-6" : "m9 18 6-6-6-6"} />
+  </svg>
+);
+
+function CardFace({ face: f }: { face: Face }) {
+  switch (f.kind) {
+    case "weather":
+      return <WeatherCard w={f.data} />;
+    case "calendar":
+      return <CalendarCard list={f.data} />;
+    case "list":
+      return <ListCard list={f.data} />;
+    case "inbox":
+      return <InboxCard list={f.data} />;
+    case "mail":
+      return <MailCard m={f.data} />;
+  }
+}
+
+// The frame every card shares: a sheet lifted off the page, filling the
+// height the deck gives it.
+const SHEET = "not-prose flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border-[1.25px] border-edge bg-lift shadow-lift";
+
+// A list-like card: a titled header with its icon, and a body that fills the
+// rest and scrolls on its own.
+function BigCard({ icon, title, tag, children, bodyClass }: { icon: string; title: string; tag?: string; children: ReactNode; bodyClass?: string }) {
   return (
-    <div className="not-prose flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border-[1.25px] border-edge bg-lift shadow-lift">
+    <div className={SHEET}>
       <header className="flex shrink-0 items-center gap-2.5 border-b border-hair px-5 py-3.5">
         <span className="text-[22px] leading-none">{icon}</span>
         <h3 className="min-w-0 flex-1 truncate font-serif text-[20px] text-ink">{title}</h3>
+        {tag && <span className="shrink-0 text-[11px] font-semibold tracking-wide text-soft uppercase">{tag}</span>}
       </header>
       <div className={`min-h-0 flex-1 overflow-y-auto ${bodyClass ?? ""}`}>{children}</div>
     </div>
   );
 }
 
-// The weather, given the whole screen: now large at the top with today's
-// high, low and rain, then every day as a row filling the height — rich
-// enough to read on a phone without crowding.
-function WeatherBig({ w }: { w: Forecast }) {
+// "2026-10-17T07:05", local, as the clock reads it.
+function clock(t: string, minutes = true) {
+  const [y, m, d] = t.slice(0, 10).split("-").map(Number);
+  const at = new Date(y, m - 1, d, Number(t.slice(11, 13)), Number(t.slice(14, 16)));
+  return at.toLocaleTimeString(undefined, minutes ? { hour: "numeric", minute: "2-digit" } : { hour: "numeric" });
+}
+
+// The weather: now large at the top with how it feels, wind, humidity and
+// the sun; the day ahead every three hours; then the week, each day's span
+// drawn against the week's, as phone weather apps draw it.
+function WeatherCard({ w }: { w: Forecast }) {
   const [icon, word] = sky(w.now.code, w.now.day);
   const today = w.days[0];
+  const hours = w.hours.filter((_, n) => n % 3 === 0);
+  const lo = Math.min(...w.days.map((d) => d.low));
+  const hi = Math.max(...w.days.map((d) => d.high));
+  const span = Math.max(1, hi - lo);
+  const stat = (label: string, value: string) => (
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="text-[11px] font-semibold tracking-wide text-soft uppercase">{label}</span>
+      <span className="text-[15px] text-ink tabular-nums">{value}</span>
+    </div>
+  );
   return (
-    <div className="flex h-full flex-col text-center">
-      <div className="flex shrink-0 flex-col items-center pt-1">
-        <div className="text-[76px] leading-none max-sm:text-[64px]">{icon}</div>
-        <div className="mt-2 text-[88px] leading-[0.85] text-ink tabular-nums max-sm:text-[74px]">{deg(w.now.temp)}</div>
-        <div className="mt-3 text-[18px] text-mid">
-          {word} · feels {deg(w.now.feels)}
+    <div className={SHEET}>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="flex items-center justify-center gap-4 px-5 pt-6 pb-2">
+          <span className="text-[64px] leading-none max-sm:text-[54px]">{icon}</span>
+          <span className="text-[84px] leading-[0.85] text-ink tabular-nums max-sm:text-[70px]">{deg(w.now.temp)}</span>
         </div>
+        <p className="text-center text-[17px] text-mid">
+          {word} · feels {deg(w.now.feels)}
+        </p>
         {today && (
-          <div className="mt-4 flex items-center gap-6 text-[15px] text-mid">
-            <span>High <span className="text-ink tabular-nums">{deg(today.high)}</span></span>
-            <span>Low <span className="text-ink tabular-nums">{deg(today.low)}</span></span>
-            {today.rain != null && <span>Rain <span className="text-accent tabular-nums">{today.rain}%</span></span>}
-          </div>
+          <p className="mt-1 text-center text-[15px] text-mid">
+            High <span className="text-ink tabular-nums">{deg(today.high)}</span> · Low <span className="text-ink tabular-nums">{deg(today.low)}</span>
+          </p>
         )}
-      </div>
-      {w.days.length > 0 && (
-        <ul className="mt-6 flex min-h-0 flex-1 flex-col overflow-y-auto rounded-[18px] border-[1.25px] border-edge bg-lift">
-          {w.days.map((d, i) => {
+        <div className="mx-5 mt-5 grid grid-cols-4 gap-2 border-y border-hair py-3 max-sm:mx-4">
+          {stat("Wind", `${Math.round(w.now.wind)} mph`)}
+          {stat("Humidity", `${w.now.humidity}%`)}
+          {today && stat("Sunrise", clock(today.sunrise))}
+          {today && stat("Sunset", clock(today.sunset))}
+        </div>
+        {hours.length > 0 && (
+          <ol className="mx-5 grid border-b border-hair py-3 max-sm:mx-4" style={{ gridTemplateColumns: `repeat(${hours.length}, minmax(0, 1fr))` }}>
+            {hours.map((h, n) => (
+              <li key={h.time} className="flex flex-col items-center gap-1">
+                <span className="text-[12px] whitespace-nowrap text-soft">{n === 0 ? "Now" : clock(h.time, false)}</span>
+                <span className="text-[22px] leading-none" title={sky(h.code, h.day)[1]}>
+                  {sky(h.code, h.day)[0]}
+                </span>
+                <span className="text-[15px] text-ink tabular-nums">{deg(h.temp)}</span>
+                <span className="h-4 text-[11.5px] text-accent tabular-nums">{h.rain ? `${h.rain}%` : ""}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+        <ul className="flex flex-col px-5 py-1.5 max-sm:px-4">
+          {w.days.map((d, n) => {
             const [dayIcon, dayWord] = sky(d.code);
             const [y, m, day] = d.date.split("-").map(Number);
-            const name = i === 0 ? "Today" : new Date(y, m - 1, day).toLocaleDateString(undefined, { weekday: "long" });
+            const name = n === 0 ? "Today" : new Date(y, m - 1, day).toLocaleDateString(undefined, { weekday: "short" });
             return (
-              <li key={d.date} className="flex flex-1 items-center gap-3 border-hair px-5 not-first:border-t max-sm:gap-2 max-sm:px-4">
-                <span className="w-28 shrink-0 text-left text-[15px] font-medium text-ink max-sm:w-20">{name}</span>
-                <span className="w-9 shrink-0 text-center text-[26px] leading-none" title={dayWord}>
+              <li key={d.date} className="flex items-center gap-3 border-hair py-2.5 not-first:border-t max-sm:gap-2">
+                <span className="w-14 shrink-0 text-[15px] font-medium text-ink">{name}</span>
+                <span className="w-8 shrink-0 text-center text-[22px] leading-none" title={dayWord}>
                   {dayIcon}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-left text-[14px] text-mid max-sm:hidden">{dayWord}</span>
-                <span className="w-12 shrink-0 text-right text-[13px] text-accent tabular-nums">{d.rain != null && d.rain > 0 ? `${d.rain}%` : ""}</span>
-                <span className="w-14 shrink-0 text-right text-[16px] text-ink tabular-nums">{deg(d.high)}</span>
-                <span className="w-12 shrink-0 text-right text-[15px] text-soft tabular-nums">{deg(d.low)}</span>
+                <span className="w-9 shrink-0 text-[12.5px] text-accent tabular-nums">{d.rain ? `${d.rain}%` : ""}</span>
+                <span className="w-9 shrink-0 text-right text-[15px] text-soft tabular-nums">{deg(d.low)}</span>
+                <span className="relative h-1.5 min-w-8 flex-1 rounded-full bg-hair">
+                  <span
+                    className="absolute inset-y-0 rounded-full bg-accent/70"
+                    style={{ left: `${((d.low - lo) / span) * 100}%`, right: `${((hi - d.high) / span) * 100}%` }}
+                  />
+                </span>
+                <span className="w-9 shrink-0 text-right text-[15px] text-ink tabular-nums">{deg(d.high)}</span>
               </li>
             );
           })}
         </ul>
-      )}
+      </div>
     </div>
   );
 }
@@ -887,11 +1061,8 @@ function dayLabel(day: string) {
   return ahead === 0 ? `Today · ${name}` : ahead === 1 ? `Tomorrow · ${name}` : name;
 }
 
-// The calendar as a card, by day; a running, failed or unreadable call stays
-// a ToolLine.
-function CalendarCard(props: ToolCallMessagePartProps) {
-  const list = props.isError ? undefined : events(props.result);
-  if (!list) return <ToolLine {...props} />;
+// The calendar as a card, by day.
+function CalendarCard({ list }: { list: Event[] }) {
   const days = new Map<string, Event[]>();
   for (const e of list) days.set(e.start.slice(0, 10), [...(days.get(e.start.slice(0, 10)) ?? []), e]);
   return (
@@ -928,44 +1099,29 @@ function lists(result: unknown) {
   return v && (Array.isArray(v) ? v : [v]);
 }
 
-// Each list as an index card: a ruled line under every item, the title over
-// a red rule. A running, failed or unreadable call stays a ToolLine.
-function ListCards(props: ToolCallMessagePartProps) {
-  const all = props.isError ? undefined : lists(props.result);
-  if (!all) return <ToolLine {...props} />;
-  if (all.length === 0)
+// A list as an index card: a ruled line under every item. A deck holds one
+// card per list; `null` is the answer that there are none.
+function ListCard({ list: l }: { list: List | null }) {
+  if (!l)
     return (
       <BigCard icon="🗂️" title="Lists">
         <p className="px-5 py-4 font-serif text-[15px] text-mid italic">No lists.</p>
       </BigCard>
     );
-  // One list is named in the header; several share a generic title and keep
-  // their own names on each index card.
-  const heads = all.length > 1;
   return (
-    <BigCard icon="🗂️" title={heads ? "Lists" : all[0].list} bodyClass="grid gap-3 p-4 max-sm:p-3 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] sm:content-start">
-      {all.map((l) => (
-        <section key={l.list} className="rounded-[3px] bg-paper px-4 pt-3 pb-2 shadow-lift">
-          {heads && (
-            <h4 className="flex items-baseline justify-between gap-2 border-b-[1.5px] border-accent/60 pb-1 font-serif text-[16px] text-ink">
-              <span className="min-w-0 truncate">{l.list}</span>
-              {l.shared && <span className="shrink-0 font-sans text-[11px] tracking-wide text-soft uppercase">shared</span>}
-            </h4>
-          )}
-          {l.items.length === 0 ? (
-            <p className="py-1.5 font-serif text-[15px] text-soft italic">Emptied and put away.</p>
-          ) : (
-            <ul className="ruled">
-              {l.items.map((item) => (
-                <li key={item} className="font-serif text-[15.5px] text-ink [overflow-wrap:anywhere]">
-                  {item}
-                </li>
-              ))}
-            </ul>
-          )}
-          {l.missing && <p className="pt-1 text-[12.5px] text-soft">Wasn't on it: {l.missing.join(", ")}</p>}
-        </section>
-      ))}
+    <BigCard icon="🗂️" title={l.list} tag={l.shared ? "shared" : undefined} bodyClass="px-5 py-2">
+      {l.items.length === 0 ? (
+        <p className="py-1.5 font-serif text-[15px] text-soft italic">Emptied and put away.</p>
+      ) : (
+        <ul className="ruled">
+          {l.items.map((item) => (
+            <li key={item} className="font-serif text-[16px] text-ink [overflow-wrap:anywhere]">
+              {item}
+            </li>
+          ))}
+        </ul>
+      )}
+      {l.missing && <p className="pt-1 pb-2 text-[12.5px] text-soft">Wasn't on it: {l.missing.join(", ")}</p>}
     </BigCard>
   );
 }
@@ -991,9 +1147,7 @@ function when(date: string) {
 }
 
 // A search as an inbox: newest first, unread in ink with a red mark.
-function InboxCard(props: ToolCallMessagePartProps) {
-  const list = props.isError ? undefined : parsed<Mail[]>(props.result, (v) => Array.isArray(v) && v.every(isMail));
-  if (!list) return <ToolLine {...props} />;
+function InboxCard({ list }: { list: Mail[] }) {
   const unread = list.filter((m) => m.unread).length;
   return (
     <BigCard icon="✉️" title={unread ? `Inbox · ${unread} unread` : "Inbox"}>
@@ -1016,10 +1170,8 @@ function InboxCard(props: ToolCallMessagePartProps) {
   );
 }
 
-// One message read whole, as a letter folded to a few lines.
-function MailCard(props: ToolCallMessagePartProps) {
-  const m = props.isError ? undefined : parsed<Mail>(props.result, isMail);
-  if (!m) return <ToolLine {...props} />;
+// One message read whole, as a letter.
+function MailCard({ m }: { m: Mail }) {
   const head = "w-14 shrink-0 text-[11px] font-semibold tracking-wider text-soft uppercase";
   return (
     <BigCard icon="✉️" title={m.subject || "(no subject)"}>
@@ -1054,10 +1206,15 @@ function MailCard(props: ToolCallMessagePartProps) {
   );
 }
 
-// Weather as the weather tool reports it: now, then a day a row.
-type Forecast = { now: { temp: number; feels: number; code: number; day: boolean }; days: { date: string; code: number; high: number; low: number; rain: number | null }[] };
+// Weather as the weather tool reports it: now, the coming hours, the week.
+// Times are local, "YYYY-MM-DDTHH:MM".
+type Forecast = {
+  now: { temp: number; feels: number; code: number; day: boolean; wind: number; humidity: number };
+  hours: { time: string; temp: number; code: number; day: boolean; rain: number | null }[];
+  days: { date: string; code: number; high: number; low: number; rain: number | null; sunrise: string; sunset: string }[];
+};
 
-const isForecast = (v: any) => typeof v?.now?.temp === "number" && Array.isArray(v.days);
+const isForecast = (v: any) => typeof v?.now?.temp === "number" && Array.isArray(v.hours) && Array.isArray(v.days);
 const deg = (t: number) => `${Math.round(t)}°`;
 
 // WMO weather codes, as Open-Meteo reports them, to an emoji and a word.

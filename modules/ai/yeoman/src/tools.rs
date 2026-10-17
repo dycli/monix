@@ -582,7 +582,7 @@ impl Tools {
     }
 
     #[tool(
-        description = "The weather at the ship's place: now, how it feels, and the high, low and chance of rain for the next few days, in °F."
+        description = "The weather at home: now (temperature, how it feels, wind, humidity), the next 24 hours, and each day's high, low, chance of rain, sunrise and sunset for the week, in °F and mph."
     )]
     fn weather(&self) -> Result<String, String> {
         let weather = self.weather.as_deref().ok_or("There is no weather here.")?;

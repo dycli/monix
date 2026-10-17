@@ -110,16 +110,29 @@ export function useChat(): Chat {
         // starts from the request.
         setTask((k) => (now.text === null ? null : k?.text === now.text ? { ...k, question: now.question ?? undefined } : { text: now.text!, question: now.question ?? undefined, tools: [], words: "" }));
       }
-      setMessages(
-        said.map((m) => ({
+      setMessages((was) => {
+        const now: Msg[] = said.map((m) => ({
           id: `h-${m.i}`,
           role: ROLE[m.kind],
           text: m.text,
           plain: m.kind === "talk" && DRAFT.test(m.text),
           reaction: m.reaction ?? undefined,
           date: new Date(m.date),
-        })),
-      );
+        }));
+        // hippo keeps no tools, and a phone resyncs each time the page comes
+        // back, so an answer found again by its words keeps the tools (and
+        // cards) this page saw.
+        for (const m of was) {
+          if (!m.tools || !m.text) continue;
+          for (let j = now.length - 1; j >= 0; j--) {
+            if (now[j].role === "assistant" && !now[j].tools && now[j].text === m.text) {
+              now[j].tools = m.tools;
+              break;
+            }
+          }
+        }
+        return now;
+      });
       setCards(waiting);
       setStatus("ready");
       ready = true;

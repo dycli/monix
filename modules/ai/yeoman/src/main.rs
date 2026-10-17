@@ -84,7 +84,7 @@ its own and its answer is sent when done.";
 
 /// Added when the door draws the calendar's events and the lists as cards.
 const CARDS: &str = "\n\n{person} sees what the events, list, mail and weather tools \
-return drawn as cards above your answer. Don't repeat what a card shows: say in a \
+return drawn as cards over the talk. Don't repeat what a card shows: say in a \
 line or two what stands out (what's next, a clash, a free stretch) or that \
 it's done.";
 

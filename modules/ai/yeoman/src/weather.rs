@@ -1,11 +1,12 @@
-//! Weather from Open-Meteo, which needs no key: now and the next few days
-//! for one place, in °F.
+//! Weather from Open-Meteo, which needs no key: now, the coming hours and
+//! the next week for one place, in °F and mph.
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use ureq::Agent;
 
-const DAYS: u32 = 5;
+const DAYS: u32 = 7;
+const HOURS: u32 = 24;
 
 pub struct Weather {
     url: String,
@@ -16,6 +17,7 @@ pub struct Weather {
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Report {
     pub now: Now,
+    pub hours: Vec<Hour>,
     pub days: Vec<Day>,
 }
 
@@ -25,8 +27,21 @@ pub struct Now {
     pub feels: f64,
     pub code: u8,
     pub day: bool,
+    pub wind: f64,
+    pub humidity: u8,
 }
 
+/// `time` is local, "YYYY-MM-DDTHH:MM".
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Hour {
+    pub time: String,
+    pub temp: f64,
+    pub code: u8,
+    pub day: bool,
+    pub rain: Option<u8>,
+}
+
+/// `sunrise` and `sunset` are local, "YYYY-MM-DDTHH:MM".
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Day {
     pub date: String,
@@ -34,11 +49,14 @@ pub struct Day {
     pub high: f64,
     pub low: f64,
     pub rain: Option<u8>,
+    pub sunrise: String,
+    pub sunset: String,
 }
 
 #[derive(Deserialize)]
 struct Answer {
     current: Current,
+    hourly: Hourly,
     daily: Daily,
 }
 
@@ -48,6 +66,17 @@ struct Current {
     apparent_temperature: f64,
     weather_code: u8,
     is_day: u8,
+    wind_speed_10m: f64,
+    relative_humidity_2m: u8,
+}
+
+#[derive(Deserialize)]
+struct Hourly {
+    time: Vec<String>,
+    temperature_2m: Vec<f64>,
+    weather_code: Vec<u8>,
+    is_day: Vec<u8>,
+    precipitation_probability: Vec<Option<u8>>,
 }
 
 #[derive(Deserialize)]
@@ -57,6 +86,8 @@ struct Daily {
     temperature_2m_max: Vec<f64>,
     temperature_2m_min: Vec<f64>,
     precipitation_probability_max: Vec<Option<u8>>,
+    sunrise: Vec<String>,
+    sunset: Vec<String>,
 }
 
 impl Weather {
@@ -68,9 +99,10 @@ impl Weather {
             .ok_or("YEOMAN_WEATHER is latitude,longitude")?;
         let url = format!(
             "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}\
-             &current=temperature_2m,apparent_temperature,weather_code,is_day\
-             &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max\
-             &temperature_unit=fahrenheit&timezone={zone}&forecast_days={DAYS}"
+             &current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,relative_humidity_2m\
+             &hourly=temperature_2m,weather_code,is_day,precipitation_probability&forecast_hours={HOURS}\
+             &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset\
+             &temperature_unit=fahrenheit&wind_speed_unit=mph&timezone={zone}&forecast_days={DAYS}"
         );
         let agent = Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(30)))
@@ -91,6 +123,18 @@ impl Weather {
 }
 
 fn read(a: Answer) -> Report {
+    let h = a.hourly;
+    let hours = (0..h.time.len())
+        .filter_map(|i| {
+            Some(Hour {
+                time: h.time.get(i)?.clone(),
+                temp: *h.temperature_2m.get(i)?,
+                code: *h.weather_code.get(i)?,
+                day: *h.is_day.get(i)? == 1,
+                rain: h.precipitation_probability.get(i).copied().flatten(),
+            })
+        })
+        .collect();
     let d = a.daily;
     let days = (0..d.time.len())
         .filter_map(|i| {
@@ -100,6 +144,8 @@ fn read(a: Answer) -> Report {
                 high: *d.temperature_2m_max.get(i)?,
                 low: *d.temperature_2m_min.get(i)?,
                 rain: d.precipitation_probability_max.get(i).copied().flatten(),
+                sunrise: d.sunrise.get(i)?.clone(),
+                sunset: d.sunset.get(i)?.clone(),
             })
         })
         .collect();
@@ -109,7 +155,10 @@ fn read(a: Answer) -> Report {
             feels: a.current.apparent_temperature,
             code: a.current.weather_code,
             day: a.current.is_day == 1,
+            wind: a.current.wind_speed_10m,
+            humidity: a.current.relative_humidity_2m,
         },
+        hours,
         days,
     }
 }
@@ -121,8 +170,10 @@ mod tests {
     #[test]
     fn an_answer_reads_into_now_and_days() {
         let a: Answer = serde_json::from_str(
-            r#"{"current":{"time":"2026-10-16T14:00","temperature_2m":58.3,"apparent_temperature":55.1,"weather_code":2,"is_day":1},
-                "daily":{"time":["2026-10-16","2026-10-17"],"weather_code":[2,61],"temperature_2m_max":[61.0,55.2],"temperature_2m_min":[44.1,47.0],"precipitation_probability_max":[5,null]}}"#,
+            r#"{"current":{"time":"2026-10-16T14:00","temperature_2m":58.3,"apparent_temperature":55.1,"weather_code":2,"is_day":1,"wind_speed_10m":9.4,"relative_humidity_2m":61},
+                "hourly":{"time":["2026-10-16T14:00","2026-10-16T15:00"],"temperature_2m":[58.3,57.9],"weather_code":[2,3],"is_day":[1,1],"precipitation_probability":[0,null]},
+                "daily":{"time":["2026-10-16","2026-10-17"],"weather_code":[2,61],"temperature_2m_max":[61.0,55.2],"temperature_2m_min":[44.1,47.0],"precipitation_probability_max":[5,null],
+                         "sunrise":["2026-10-16T07:04","2026-10-17T07:05"],"sunset":["2026-10-16T18:02","2026-10-17T18:00"]}}"#,
         )
         .unwrap();
         let r = read(a);
@@ -131,5 +182,9 @@ mod tests {
         assert_eq!(r.days.len(), 2);
         assert_eq!(r.days[1].code, 61);
         assert_eq!(r.days[1].rain, None);
+        assert_eq!(r.days[1].sunset, "2026-10-17T18:00");
+        assert_eq!(r.now.humidity, 61);
+        assert_eq!(r.hours.len(), 2);
+        assert_eq!(r.hours[1].rain, None);
     }
 }
