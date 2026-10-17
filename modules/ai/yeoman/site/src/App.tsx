@@ -479,7 +479,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
         {card && (
-          <div className={`card-layer fixed inset-0 z-10 bg-paper ${closing ? "out" : ""}`} onClick={close} aria-label="The card, full screen">
+          <div className={`card-layer fixed inset-x-0 top-0 z-10 h-[100dvh] bg-paper ${closing ? "out" : ""}`} onClick={close} aria-label="The card, full screen">
             <div className="flex h-full justify-center px-6 pt-[72px] pb-[116px] max-sm:px-4 max-sm:pt-[60px] max-sm:pb-[100px]">
               <div className="card-rise min-h-0 w-full max-w-[680px]" onClick={(e) => e.stopPropagation()}>
                 <CardBig view={card} />

@@ -85,7 +85,12 @@
   html,
   body,
   #root {
-    height: 100%;
+    /* dvh, not %: a percentage height tracks the small (toolbar-shown)
+       viewport, so when Chrome's URL bar retracts the app column stays short
+       while a fixed overlay fills the taller visible area — the composer then
+       floats mid-screen over a full-screen card. dvh follows the visible
+       viewport, keeping the column and the card the same height. */
+    height: 100dvh;
   }
   body {
     background: var(--paper);
