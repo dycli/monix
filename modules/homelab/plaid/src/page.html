@@ -68,6 +68,12 @@ function el(tag, attrs, ...kids) {
   return e;
 }
 
+const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+const counts = (accounts) => {
+  const sum = (k) => accounts.reduce((n, a) => n + a[k], 0);
+  return [plural(sum("transactions"), "transaction"), plural(sum("holdings"), "holding")].join(" · ");
+};
+
 async function load() {
   const o = await api("/api/overview");
   sandbox = o.sandbox;
@@ -84,6 +90,7 @@ async function load() {
         el("span", { className: "kind", textContent: a.subtype || a.type || "" }),
         a.duplicate ? el("div", { className: "warn", textContent: "Also linked through another login; counted twice." }) : null),
       el("span", { className: "money", textContent: money(a.balance, a.currency) }))),
+    el("p", { className: "note", textContent: counts(i.accounts) }),
     i.status === "login" ? el("div", {},
       el("p", { className: "note", textContent: "The bank wants a fresh login." }),
       el("button", { className: "main", textContent: "Log in again", onclick: () => open({ item: i.id }) })) : null,

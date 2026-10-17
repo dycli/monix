@@ -376,7 +376,9 @@ impl Store {
                  a.name, a.mask, a.type, a.subtype, a.current, a.currency,
                  EXISTS (SELECT 1 FROM accounts b JOIN items j ON j.item_id = b.item_id
                          WHERE b.item_id != a.item_id AND j.institution = i.institution
-                         AND b.mask = a.mask AND b.type = a.type AND b.subtype IS a.subtype)
+                         AND b.mask = a.mask AND b.type = a.type AND b.subtype IS a.subtype),
+                 (SELECT count(*) FROM transactions t WHERE t.account_id = a.account_id),
+                 (SELECT count(*) FROM holdings h WHERE h.account_id = a.account_id)
                  FROM items i LEFT JOIN accounts a ON a.item_id = i.item_id
                  ORDER BY i.rowid, a.type, a.name",
             )
@@ -402,6 +404,8 @@ impl Store {
                                 "balance": r.get::<_, Option<f64>>(10)?,
                                 "currency": r.get::<_, Option<String>>(11)?,
                                 "duplicate": r.get::<_, bool>(12)?,
+                                "transactions": r.get::<_, i64>(13)?,
+                                "holdings": r.get::<_, i64>(14)?,
                             }))
                         }),
                 ))
