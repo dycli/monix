@@ -13,6 +13,7 @@ use crate::mail::{self, Account, Imap};
 use crate::media::Seerr;
 use crate::pending::{self, Act};
 use crate::task;
+use crate::weather::Weather;
 use crate::web::Web;
 use crate::x;
 use crate::youtube::Youtube;
@@ -55,6 +56,8 @@ struct Tools {
     youtube: Option<Arc<Youtube>>,
     /// The X search service's socket, when there is one.
     x: Option<PathBuf>,
+    /// The weather, when a place is set.
+    weather: Option<Arc<Weather>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -578,6 +581,15 @@ impl Tools {
         self.web.fetch(&f.urls, f.objective.as_deref())
     }
 
+    #[tool(
+        description = "The weather at the ship's place: now, how it feels, and the high, low and chance of rain for the next few days, in °F."
+    )]
+    fn weather(&self) -> Result<String, String> {
+        let weather = self.weather.as_deref().ok_or("There is no weather here.")?;
+        let report = weather.report()?;
+        serde_json::to_string(&report).map_err(|e| e.to_string())
+    }
+
     /// Search X: the posts found, with author, date and link. Takes up to
     /// a minute.
     #[tool]
@@ -1024,6 +1036,17 @@ fn calendar() -> Result<Option<Calendar>, String> {
     Calendar::new(&accounts, &zone).map(Some)
 }
 
+/// The weather, when YEOMAN_WEATHER gives the place as `latitude,longitude`;
+/// days in the ship's zone (YEOMAN_TZ).
+fn weather() -> Result<Option<Weather>, String> {
+    let Some(place) = std::env::var_os("YEOMAN_WEATHER") else {
+        return Ok(None);
+    };
+    let place = place.to_string_lossy();
+    let zone = std::env::var("YEOMAN_TZ").map_err(|_| "YEOMAN_TZ is not set")?;
+    Weather::new(&place, &zone).map(Some)
+}
+
 /// The mail, when YEOMAN_MAIL names the accounts file and YEOMAN_IMAP the server.
 fn mail() -> Result<Option<(String, Vec<Account>)>, String> {
     let Some(file) = std::env::var_os("YEOMAN_MAIL") else {
@@ -1055,6 +1078,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
         calendar: calendar()?.map(Arc::new),
         youtube: std::env::var_os("YEOMAN_YTDLP").map(|b| Arc::new(Youtube::new(PathBuf::from(b)))),
         x: std::env::var_os("YEOMAN_X").map(PathBuf::from),
+        weather: weather()?.map(Arc::new),
         tool_router: Tools::tool_router(),
     };
     let running = tools

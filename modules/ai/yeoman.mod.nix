@@ -319,6 +319,9 @@
                     YEOMAN_TZ = config.time.timeZone;
                     YEOMAN_YTDLP = getExe pkgs.yt-dlp;
                   }
+                  // optionalAttrs (cfg.weather != null) {
+                    YEOMAN_WEATHER = cfg.weather;
+                  }
                   // optionalAttrs (i.mailCredentialsFile != null) {
                     YEOMAN_MAIL = "${creds}/mail";
                     YEOMAN_IMAP = cfg.mailServer;
@@ -710,6 +713,16 @@
           type = types.ints.positive;
           default = 128000;
           description = "Budget of each memory view, sent with every call.";
+        };
+
+        weather = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          example = "43.07,-70.76";
+          description = ''
+            `latitude,longitude` for the forecast the weather tool reads
+            from Open-Meteo; shared by the instances. Null leaves it out.
+          '';
         };
       };
 

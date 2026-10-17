@@ -19,6 +19,7 @@ mod push;
 mod site;
 mod task;
 mod tools;
+mod weather;
 mod web;
 mod x;
 mod youtube;
@@ -82,7 +83,7 @@ nothing is sent. Work that takes a while is a task: start it, worded as \
 its own and its answer is sent when done.";
 
 /// Added when the door draws the calendar's events and the lists as cards.
-const CARDS: &str = "\n\n{person} sees what the events, list and mail tools \
+const CARDS: &str = "\n\n{person} sees what the events, list, mail and weather tools \
 return drawn as cards above your answer. Don't repeat what a card shows: say in a \
 line or two what stands out (what's next, a clash, a free stretch) or that \
 it's done.";

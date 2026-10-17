@@ -46,6 +46,8 @@ in
     homeTokenFile = config.secrets.yeoman-home-token.path;
     requestsKeyFile = config.secrets.yeoman-requests-key.path;
     mailServer = "imap.migadu.com";
+    # Portsmouth, NH.
+    weather = "43.07,-70.76";
   };
 
   secrets = {

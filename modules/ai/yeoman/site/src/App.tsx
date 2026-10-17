@@ -586,6 +586,7 @@ function Tool(props: ToolCallMessagePartProps) {
   if (/__(lists|list_add|list_remove|share_list)$/.test(props.toolName)) return <ListCards {...props} />;
   if (props.toolName.endsWith("__mail_search")) return <InboxCard {...props} />;
   if (props.toolName.endsWith("__mail_read")) return <MailCard {...props} />;
+  if (props.toolName.endsWith("__weather")) return <WeatherCard {...props} />;
   return <ToolLine {...props} />;
 }
 
@@ -772,6 +773,60 @@ function MailCard(props: ToolCallMessagePartProps) {
         </ul>
       )}
     </article>
+  );
+}
+
+// Weather as the weather tool reports it: now, then a day a row.
+type Forecast = { now: { temp: number; feels: number; code: number; day: boolean }; days: { date: string; code: number; high: number; low: number; rain: number | null }[] };
+
+const isForecast = (v: any) => typeof v?.now?.temp === "number" && Array.isArray(v.days);
+const deg = (t: number) => `${Math.round(t)}°`;
+
+// WMO weather codes, as Open-Meteo reports them, to an emoji and a word.
+function sky(code: number, day = true): [string, string] {
+  if (code === 0) return [day ? "☀️" : "🌙", "Clear"];
+  if (code <= 2) return [day ? "⛅" : "☁️", "Partly cloudy"];
+  if (code === 3) return ["☁️", "Overcast"];
+  if (code <= 48) return ["🌫️", "Fog"];
+  if (code <= 67 || (code >= 80 && code <= 82)) return ["🌧️", "Rain"];
+  if (code <= 77 || code === 85 || code === 86) return ["🌨️", "Snow"];
+  return ["⛈️", "Storm"];
+}
+
+// The forecast as a card: now large, the days as a row beneath. A running,
+// failed or unreadable call stays a ToolLine.
+function WeatherCard(props: ToolCallMessagePartProps) {
+  const w = props.isError ? undefined : parsed<Forecast>(props.result, isForecast);
+  if (!w) return <ToolLine {...props} />;
+  const [nowIcon, nowWord] = sky(w.now.code, w.now.day);
+  return (
+    <div className="not-prose my-2 overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift text-[14px] last-of-type:mb-3">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <span className="text-[34px] leading-none">{nowIcon}</span>
+        <span className="min-w-0">
+          <span className="text-[26px] leading-none text-ink tabular-nums">{deg(w.now.temp)}</span>
+          <span className="block text-[13px] text-soft">{nowWord} · feels {deg(w.now.feels)}</span>
+        </span>
+      </div>
+      {w.days.length > 0 && (
+        <ul className="flex divide-x divide-hair border-t border-hair">
+          {w.days.map((d, i) => {
+            const [icon] = sky(d.code);
+            const [y, m, day] = d.date.split("-").map(Number);
+            const name = i === 0 ? "Now" : new Date(y, m - 1, day).toLocaleDateString(undefined, { weekday: "short" });
+            return (
+              <li key={d.date} className="flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2">
+                <span className="text-[12px] font-semibold tracking-wide text-mid uppercase">{name}</span>
+                <span className="text-[20px] leading-none" title={sky(d.code)[1]}>{icon}</span>
+                <span className="text-[13px] text-ink tabular-nums">{deg(d.high)}</span>
+                <span className="text-[12.5px] text-soft tabular-nums">{deg(d.low)}</span>
+                {d.rain != null && d.rain > 0 && <span className="text-[11px] text-accent tabular-nums">{d.rain}%</span>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 
