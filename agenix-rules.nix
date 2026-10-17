@@ -42,10 +42,6 @@ in
   "hosts/water/secrets/matrix-registration.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/immich-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/hippo-door-passphrase.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/sokka-door-passphrase.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/suki-door-passphrase.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/hippo-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-sokka.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-suki.env.age".publicKeys = singleton water ++ admin;
   # Sokka's CalDAV accounts: [{"name","url","username","password"}, ...].
@@ -56,8 +52,6 @@ in
   "hosts/water/secrets/suki-claude-key.age".publicKeys = singleton water ++ admin;
   # A Home Assistant long-lived access token, raw, for the assistants' home tools.
   "hosts/water/secrets/yeoman-home-token.age".publicKeys = singleton water ++ admin;
-  # Parallel account API key, raw (platform.parallel.ai), for the assistants' web search.
-  "hosts/water/secrets/yeoman-search-key.age".publicKeys = singleton water ++ admin;
   # Seerr's API key, raw (Settings > General), for the assistants' media requests.
   "hosts/water/secrets/yeoman-requests-key.age".publicKeys = singleton water ++ admin;
   # Databento API key, raw (db-...), for the market-data recorder.
