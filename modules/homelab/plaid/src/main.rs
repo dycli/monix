@@ -53,8 +53,16 @@ fn keys(file: &str) -> Vec<(String, String)> {
         .unwrap_or_else(|e| panic!("{file}: {e}"))
         .lines()
         .filter_map(|l| l.split_once('='))
-        .map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned()))
+        .map(|(k, v)| (k.trim().to_owned(), unquote(v.trim()).to_owned()))
         .collect()
+}
+
+/// Env files often quote values; the quotes are not part of the key.
+fn unquote(v: &str) -> &str {
+    ['"', '\'']
+        .iter()
+        .find_map(|q| v.strip_prefix(*q).and_then(|v| v.strip_suffix(*q)))
+        .unwrap_or(v)
 }
 
 fn found(list: &[(String, String)], name: &str) -> Option<String> {
@@ -408,6 +416,14 @@ async fn main() {
     let id =
         found(&list, "PLAID_CLIENT_ID").unwrap_or_else(|| panic!("{file}: no PLAID_CLIENT_ID"));
     let secret = found(&list, secret_name).unwrap_or_else(|| panic!("{file}: no {secret_name}"));
+    // Lengths only: Plaid client ids are 24 characters and secrets 30, so a
+    // mangled paste shows here without the keys reaching the journal.
+    eprintln!(
+        "plaid: {} keys, client id {} chars, {secret_name} {} chars",
+        if sandbox { "sandbox" } else { "production" },
+        id.len(),
+        secret.len()
+    );
     let state = PathBuf::from(env("PLAID_STATE"));
     Store::open(&state).unwrap_or_else(|e| panic!("{e}"));
     let app = Arc::new(App {
@@ -452,5 +468,8 @@ mod tests {
         ];
         assert_eq!(found(&list, "PLAID_CLIENT_ID").as_deref(), Some("abc"));
         assert_eq!(found(&list, "PLAID_SANDBOX_SECRET"), None);
+        assert_eq!(unquote("\"abc\""), "abc");
+        assert_eq!(unquote("'abc'"), "abc");
+        assert_eq!(unquote("\"abc"), "\"abc");
     }
 }
