@@ -359,7 +359,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
   // The deck on screen, by the card it opened at, and whether it is on its
   // way down so the talk fades back in rather than snapping.
   const [open, setOpen] = useState<string>();
-  const [leaving, setLeaving] = useState(false);
+  const [leaving, setLeaving] = useState<Way | false>(false);
   const leave = useRef<number>(undefined);
   // The dots stand for work not yet shown; once words or tools arrive, they show it.
   const working = typing && !messages.at(-1)?.live;
@@ -399,8 +399,8 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
     setLeaving(false);
     setOpen(key);
   };
-  const close = () => {
-    setLeaving(true);
+  const close = (way: Way = "down") => {
+    setLeaving(way);
     leave.current = window.setTimeout(() => {
       setOpen(undefined);
       setLeaving(false);
@@ -530,7 +530,7 @@ function Trailing({ typing, stop, cardOpen, close }: { typing: boolean; stop: ()
     );
   if (cardOpen && !text.trim())
     return (
-      <button type="button" onClick={close} aria-label="Close the card" title="Close the card" className={`${round} bg-ink text-paper hover:opacity-85`}>
+      <button type="button" onClick={() => close()} aria-label="Close the card" title="Close the card" className={`${round} bg-ink text-paper hover:opacity-85`}>
         <Arrow down />
       </button>
     );
@@ -822,7 +822,10 @@ function cardSummary(kind: Kind, data: unknown): [string, string] {
 // side, a swipe apart, the next peeking in at the edge, as a phone's card
 // carousels do; dots, arrows and the arrow keys move between them. A tap
 // beside the cards, Escape, or the composer's ▼ puts it away.
-function Deck({ faces, start, leaving, edge, close }: { faces: Face[]; start: string; leaving: boolean; edge: number; close: () => void }) {
+// The way a deck leaves: down behind the composer, or flicked off the top.
+type Way = "up" | "down";
+
+function Deck({ faces, start, leaving, edge, close }: { faces: Face[]; start: string; leaving: Way | false; edge: number; close: (way?: Way) => void }) {
   const track = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState(() => Math.max(0, faces.findIndex((f) => f.key === start)));
   const many = faces.length > 1;
@@ -856,10 +859,79 @@ function Deck({ faces, start, leaving, edge, close }: { faces: Face[]; start: st
     return () => removeEventListener("keydown", key);
   });
 
+  // Swipe up or down to close, the deck following the finger: let go past a
+  // quarter of its height, or with a flick, and it leaves that way; short of
+  // that it springs back. A card body that can still scroll that way scrolls
+  // first, as phone sheets do. The gesture is decided on the first move,
+  // since once the browser starts scrolling it ignores preventDefault.
+  const sheet = useRef<HTMLDivElement>(null);
+  const shut = useRef(close);
+  shut.current = close;
+  useEffect(() => {
+    const el = sheet.current;
+    if (!el) return;
+    let mode: "wait" | "drag" | "pass" = "pass";
+    let target: EventTarget | null = null;
+    let x0 = 0, y0 = 0, dy = 0, last = 0, at = 0, speed = 0;
+    // Whether anything under the finger can still scroll the way it pulls.
+    const free = (down: boolean) => {
+      for (let n = target as HTMLElement | null; n && n !== el; n = n.parentElement)
+        if (down ? n.scrollTop > 0 : n.scrollTop + n.clientHeight < n.scrollHeight - 1) return false;
+      return true;
+    };
+    const back = () => {
+      el.style.transition = "transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)";
+      el.style.transform = "";
+    };
+    const start = (e: TouchEvent) => {
+      mode = e.touches.length === 1 ? "wait" : "pass";
+      target = e.target;
+      x0 = e.touches[0].clientX;
+      y0 = last = e.touches[0].clientY;
+      at = e.timeStamp;
+      dy = speed = 0;
+    };
+    const move = (e: TouchEvent) => {
+      const { clientX: x, clientY: y } = e.touches[0];
+      if (mode === "wait") mode = Math.abs(y - y0) > Math.abs(x - x0) && free(y > y0) ? "drag" : "pass";
+      if (mode !== "drag") return;
+      e.preventDefault();
+      if (e.timeStamp > at) speed = (y - last) / (e.timeStamp - at);
+      last = y;
+      at = e.timeStamp;
+      dy = y - y0;
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+    };
+    const end = () => {
+      if (mode !== "drag") return;
+      mode = "pass";
+      // A pull flicked back the other way at the end springs back.
+      const undone = speed * dy < 0 && Math.abs(speed) > 0.3;
+      if (!undone && (Math.abs(dy) > el.clientHeight / 4 || Math.abs(speed) > 0.5)) shut.current(dy < 0 ? "up" : "down");
+      else back();
+    };
+    const cancel = () => {
+      if (mode === "drag") back();
+      mode = "pass";
+    };
+    el.addEventListener("touchstart", start, { passive: true });
+    el.addEventListener("touchmove", move, { passive: false });
+    el.addEventListener("touchend", end);
+    el.addEventListener("touchcancel", cancel);
+    return () => {
+      el.removeEventListener("touchstart", start);
+      el.removeEventListener("touchmove", move);
+      el.removeEventListener("touchend", end);
+      el.removeEventListener("touchcancel", cancel);
+    };
+  }, []);
+
   const arrow = "absolute top-1/2 z-10 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-frame bg-lift text-mid shadow-lift hover:text-ink disabled:invisible max-sm:hidden";
   return (
-    <div className="fixed inset-x-0 top-0 z-10 overflow-hidden" style={{ height: edge || "100dvh" }} onClick={close} aria-label="Cards" role="region">
-      <div className={`flex h-full flex-col pt-[72px] max-sm:pt-[63px] ${leaving ? "deck-down" : "deck-up"}`}>
+    <div className="fixed inset-x-0 top-0 z-10 overflow-hidden" style={{ height: edge || "100dvh" }} onClick={() => close()} aria-label="Cards" role="region">
+      <div className={`h-full ${leaving === "up" ? "deck-off" : leaving ? "deck-down" : "deck-up"}`}>
+        <div ref={sheet} className="flex h-full flex-col pt-[72px] max-sm:pt-[63px]">
         <div
           ref={track}
           onScroll={step}
@@ -889,6 +961,7 @@ function Deck({ faces, start, leaving, edge, close }: { faces: Face[]; start: st
                 className={`h-1.5 rounded-full transition-all ${n === at ? "w-5 bg-ink/70" : "w-1.5 bg-ink/20"}`}
               />
             ))}
+        </div>
         </div>
       </div>
       {many && (

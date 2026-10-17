@@ -264,6 +264,15 @@
 .deck-down {
   animation: deck-down 0.28s cubic-bezier(0.4, 0, 1, 1) both;
 }
+/* Flicked away upward, off the top. */
+@keyframes deck-off {
+  to {
+    transform: translateY(-100%);
+  }
+}
+.deck-off {
+  animation: deck-off 0.28s cubic-bezier(0.4, 0, 1, 1) both;
+}
 .deck {
   scrollbar-width: none;
 }
@@ -273,7 +282,8 @@
 @media (prefers-reduced-motion: reduce) {
   .fades,
   .deck-up,
-  .deck-down {
+  .deck-down,
+  .deck-off {
     animation: none;
     transition: none;
   }
