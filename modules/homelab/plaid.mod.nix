@@ -1,6 +1,7 @@
 # The household's bank link at https://plaid.<domain> (tailnet only): ./plaid
 # holds the Plaid keys and each bank login's access token, pulls accounts,
-# transactions, holdings and card statements into finance.db every six hours,
+# transactions, holdings and card statements into finance.db every six hours
+# (under /var/lib/plaid/<environment>),
 # and serves the page where we link a bank. Its own dynamic user is the wall:
 # nothing else, Sokka included, can read the keys or the tokens.
 { self, ... }:
@@ -57,11 +58,13 @@
             PLAID_LISTEN = "127.0.0.1:${toString port}";
             PLAID_ENV = cfg.environment;
             PLAID_KEYS_FILE = "%d/keys";
-            PLAID_STATE = "%S/plaid";
+            # Each environment keeps its own databases, so test banks never
+            # mix with real ones.
+            PLAID_STATE = "%S/plaid/${cfg.environment}";
           };
           serviceConfig = lib.ship.hardened.tenant // {
             DynamicUser = true;
-            StateDirectory = "plaid";
+            StateDirectory = "plaid/${cfg.environment}";
             ExecStart = getExe plaid;
             LoadCredential = singleton "keys:${cfg.keysFile}";
             Restart = "on-failure";
