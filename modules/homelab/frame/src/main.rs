@@ -11,6 +11,8 @@
 //! - `FRAME_TZ`: the house's time zone, e.g. `America/New_York`.
 //! - `FRAME_CALDAV_FILE` (optional): yeoman's CalDAV accounts file.
 //! - `FRAME_WEATHER` (optional): `latitude,longitude` for the forecast.
+//! - `CACHE_DIRECTORY` (optional, set by systemd): where fitted photos
+//!   are kept between requests and restarts.
 //! - `FRAME_AIR` (optional): the AirGradient monitor's address.
 //! - `FRAME_CAMERAS` (optional): a JSON list of `{"id", "name", "turns"}`,
 //!   the go2rtc streams the page may show live, by their name, a label and
@@ -22,6 +24,7 @@
 mod air;
 mod calendar;
 mod home;
+mod photo;
 mod weather;
 
 use std::sync::Arc;
@@ -84,6 +87,7 @@ struct App {
     immich: Immich,
     cameras: Option<Cameras>,
     photos: Mutex<Option<(Instant, Vec<String>)>>,
+    cache: Option<photo::Cache>,
     calendar: Option<Calendar>,
     weather: Option<Weather>,
     air: Option<Air>,
@@ -192,28 +196,15 @@ impl Immich {
         }
     }
 
-    /// One photo at Immich's preview size, with its content type.
-    fn preview(&self, id: &str) -> Result<(String, Vec<u8>), String> {
-        let mut r = self
-            .agent
+    /// One photo at Immich's preview size.
+    fn preview(&self, id: &str) -> Result<Vec<u8>, String> {
+        self.agent
             .get(format!("{}/api/assets/{id}/thumbnail", self.base))
             .query("size", "preview")
             .header("x-api-key", &self.key)
             .call()
-            .map_err(|e| format!("preview: {e}"))?;
-        let kind = r
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("image/jpeg")
-            .to_owned();
-        let bytes = r
-            .body_mut()
-            .with_config()
-            .limit(32 << 20)
-            .read_to_vec()
-            .map_err(|e| format!("preview: {e}"))?;
-        Ok((kind, bytes))
+            .and_then(|mut r| r.body_mut().with_config().limit(32 << 20).read_to_vec())
+            .map_err(|e| format!("preview: {e}"))
     }
 }
 
@@ -250,7 +241,14 @@ async fn photos(State(app): State<Arc<App>>) -> Response {
         return Json(ids.clone()).into_response();
     }
     let a = app.clone();
-    match tokio::task::spawn_blocking(move || a.immich.photos()).await {
+    let listed = tokio::task::spawn_blocking(move || {
+        let ids = a.immich.photos()?;
+        if let Some(cache) = &a.cache {
+            cache.keep(&ids);
+        }
+        Ok::<_, String>(ids)
+    });
+    match listed.await {
         Ok(Ok(ids)) => {
             *held = Some((Instant::now(), ids.clone()));
             Json(ids).into_response()
@@ -264,11 +262,21 @@ async fn photo(State(app): State<Arc<App>>, Path(id): Path<String>) -> Response 
     if !is_id(&id) {
         return StatusCode::NOT_FOUND.into_response();
     }
-    match tokio::task::spawn_blocking(move || app.immich.preview(&id)).await {
-        Ok(Ok((kind, bytes))) => (
+    let fitted = tokio::task::spawn_blocking(move || {
+        if let Some(bytes) = app.cache.as_ref().and_then(|c| c.get(&id)) {
+            return Ok(bytes);
+        }
+        let bytes = photo::fit(&app.immich.preview(&id)?)?;
+        if let Some(cache) = &app.cache {
+            cache.put(&id, &bytes);
+        }
+        Ok(bytes)
+    });
+    match fitted.await {
+        Ok(Ok(bytes)) => (
             [
-                (header::CONTENT_TYPE, kind),
-                (header::CACHE_CONTROL, "max-age=86400".to_owned()),
+                (header::CONTENT_TYPE, "image/jpeg"),
+                (header::CACHE_CONTROL, "max-age=86400"),
             ],
             bytes,
         )
@@ -484,6 +492,9 @@ async fn main() {
                 .into(),
         }),
         photos: Mutex::new(None),
+        cache: std::env::var("CACHE_DIRECTORY")
+            .ok()
+            .map(|d| photo::Cache::new(&d)),
         calendar: std::env::var("FRAME_CALDAV_FILE").ok().map(|f| {
             let accounts = std::fs::read_to_string(&f).unwrap_or_else(|e| panic!("{f}: {e}"));
             Calendar::new(&accounts, &zone).unwrap_or_else(|e| panic!("{e}"))

@@ -208,13 +208,13 @@
   #settings { padding: 6vmin 7vmin; font-size: 2.8vmin; }
   #settings h1 { margin: 0 0 4vmin; font-size: 5vmin; font-weight: 300; }
   #settings .row {
-    display: flex; align-items: center; gap: 1.4vmin;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 1.4vmin;
     padding: 2.4vmin 0; border-top: 1px solid var(--rule);
   }
-  #settings .row > div { flex: 1; color: var(--dim); }
+  #settings .row > div { flex: 1 0 auto; color: var(--dim); }
   #settings button {
     font: inherit; color: var(--ink); background: var(--lift); border: 1px solid var(--rule);
-    border-radius: 1.4vmin; padding: 1.4vmin 2.4vmin;
+    border-radius: 1.4vmin; padding: 1.4vmin 2.4vmin; white-space: nowrap;
   }
   #settings button.on { background: var(--accent); border-color: var(--accent); color: #f6efe3; }
 </style>
@@ -250,6 +250,9 @@
   <div class="row"><div>Each photo</div>
     <button data-show="15">15 s</button><button data-show="30">30 s</button>
     <button data-show="60">1 min</button><button data-show="300">5 min</button></div>
+  <div class="row" id="turns" hidden><div>Hang</div>
+    <button data-turn="0">Landscape</button><button data-turn="90">Portrait</button>
+    <button data-turn="180">Landscape, flipped</button><button data-turn="-90">Portrait, flipped</button></div>
   <div class="row"><div>Refresh the frame</div><button id="reload">Reload</button></div>
 </div>
 </main>
@@ -260,6 +263,9 @@ const LIST = 10 * 60e3, BOARD = 60e3;
 let SHOW = (Number(localStorage.show) || 30) * 1e3;
 const $ = id => document.getElementById(id);
 let order = [], boot = null, board = null;
+// How the frame hangs: the kiosk's start page holds this page in a frame
+// and turns it, and tells it the current turn.
+let turn = null;
 
 // WMO weather codes, as Open-Meteo reports them.
 function icon(code, day = true) {
@@ -703,6 +709,8 @@ function mark() {
     b.classList.toggle("on", b.dataset.view === document.body.dataset.view);
   for (const b of document.querySelectorAll("[data-show]"))
     b.classList.toggle("on", Number(b.dataset.show) * 1e3 === SHOW);
+  for (const b of document.querySelectorAll("[data-turn]"))
+    b.classList.toggle("on", Number(b.dataset.turn) === turn);
 }
 function view(v) {
   if (drag) release(null);
@@ -731,7 +739,17 @@ $("settings").addEventListener("click", e => {
     restart();
     mark();
   }
+  // The start page is a file on the frame, whose origin is opaque, so the
+  // message can't name it; it carries only the turn.
+  if (b.dataset.turn) parent.postMessage({ turn: Number(b.dataset.turn) }, "*");
   if (b.id === "reload") location.reload();
+});
+
+addEventListener("message", e => {
+  if (e.source !== parent || parent === window || typeof e.data?.turn !== "number") return;
+  turn = e.data.turn;
+  $("turns").hidden = false;
+  mark();
 });
 
 document.body.dataset.view = localStorage.view || "home";

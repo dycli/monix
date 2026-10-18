@@ -201,6 +201,8 @@
           };
           serviceConfig = lib.ship.hardened.tenant // {
             DynamicUser = true;
+            # Photos shrunk to the screen, kept across restarts.
+            CacheDirectory = "frame";
             # The homepage reads Water's load, memory and uptime from /proc.
             ProcSubset = "all";
             ExecStart = getExe frame;

@@ -16,6 +16,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 ureq = { version = "3", default-features = false, features = ["json", "rustls"] }
 libc = "0.2"
 tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "webp"] }
 
 [profile.release]
 lto = "thin"
