@@ -341,11 +341,12 @@ function drawAir(a) {
   };
   const whole = n => String(Math.round(n));
   const [band, colour] = co2Band(a.co2);
-  const co2 = item(whole(a.co2), "ppm CO₂", "co2");
-  co2.style.setProperty("--c", colour);
-  co2.title = band;
-  air.append(el("span", "where-label", "Inside"), item(deg(a.temp), ""),
-             item(whole(a.humidity) + "%", "humidity"), co2,
+  // The dot is the CO₂ band, leading the row as its overall verdict.
+  const temp = item(deg(a.temp), "", "co2");
+  temp.style.setProperty("--c", colour);
+  temp.title = band;
+  air.append(el("span", "where-label", "Inside"), temp,
+             item(whole(a.humidity) + "%", ""), item(whole(a.co2), "ppm CO₂"),
              item(whole(a.pm25), "PM2.5"), item(whole(a.pm1), "PM1"), item(whole(a.pm10), "PM10"));
   if (a.voc != null) air.append(item(whole(a.voc), "VOC"));
   if (a.nox != null) air.append(item(whole(a.nox), "NOx"));
