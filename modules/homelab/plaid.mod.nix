@@ -76,9 +76,6 @@
             StateDirectoryMode = "0750";
             # Group-readable files; the vault folder is narrowed to the owner.
             UMask = "0027";
-            # A private user namespace keeps the state owned by nobody on disk,
-            # id-mapped in, and the finance group can't read through that.
-            PrivateUsers = false;
             ExecStart = getExe plaid;
             LoadCredential = singleton "keys:${cfg.keysFile}";
             Restart = "on-failure";
