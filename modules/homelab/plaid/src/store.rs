@@ -1,7 +1,10 @@
-//! Two SQLite files. `vault.db` holds each Item's access token and sync
-//! cursor and is read by this service alone. `finance.db` holds what the
-//! banks said, with no secret in it, so it can be shared read-only.
+//! Two SQLite files. `vault/vault.db` holds each Item's access token and
+//! sync cursor and is read by this service alone. `finance.db` holds what the
+//! banks said, with no secret in it, so the household's assistants read it
+//! through the group.
 
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -103,13 +106,30 @@ impl Store {
                 .map_err(|e| format!("{name}: {e}"))?;
             Ok(c)
         };
+        // The group may enter the state folder but not the vault folder;
+        // SQLite's journals sit beside their database, so the tokens' journal
+        // stays private too.
+        let mode = |path: &Path, bits: u32| {
+            fs::set_permissions(path, fs::Permissions::from_mode(bits))
+                .map_err(|e| format!("{}: {e}", path.display()))
+        };
+        mode(dir, 0o750)?;
+        let vault = dir.join("vault");
+        fs::create_dir_all(&vault).map_err(|e| format!("{}: {e}", vault.display()))?;
+        mode(&vault, 0o700)?;
+        // Before the vault had its own folder it sat beside finance.db.
+        if dir.join("vault.db").exists() && !vault.join("vault.db").exists() {
+            fs::rename(dir.join("vault.db"), vault.join("vault.db")).map_err(|e| e.to_string())?;
+        }
         let finance = open("finance.db", FINANCE)?;
-        // Readers see a consistent picture while a sync writes.
+        // A rollback journal, not WAL: a WAL reader needs write access to
+        // the shared-memory file, and readers here only get to read.
         finance
-            .pragma_update(None, "journal_mode", "wal")
+            .pragma_update(None, "journal_mode", "delete")
             .map_err(|e| e.to_string())?;
+        mode(&dir.join("finance.db"), 0o640)?;
         Ok(Self {
-            vault: open("vault.db", VAULT)?,
+            vault: open("vault/vault.db", VAULT)?,
             finance,
         })
     }

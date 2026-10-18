@@ -2,8 +2,9 @@
 # holds the Plaid keys and each bank login's access token, pulls accounts,
 # transactions, holdings and card statements into finance.db every six hours
 # (under /var/lib/plaid/<environment>),
-# and serves the page where we link a bank. Its own dynamic user is the wall:
-# nothing else, Sokka included, can read the keys or the tokens.
+# and serves the page where we link a bank. Its own user is the wall: nothing
+# else, Sokka included, can read the keys or the tokens. The `finance` group
+# reads finance.db and nothing more.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.plaid;
@@ -49,6 +50,12 @@
       config = mkIf (cfg.keysFile != null) {
         shipProxy.routes.plaid.port = port;
 
+        users.users.plaid = {
+          isSystemUser = true;
+          group = "finance";
+        };
+        users.groups.finance = { };
+
         systemd.services.plaid = {
           description = "The household's bank link";
           wantedBy = singleton "multi-user.target";
@@ -63,8 +70,12 @@
             PLAID_STATE = "%S/plaid/${cfg.environment}";
           };
           serviceConfig = lib.ship.hardened.tenant // {
-            DynamicUser = true;
+            User = "plaid";
+            Group = "finance";
             StateDirectory = "plaid";
+            StateDirectoryMode = "0750";
+            # Group-readable files; the vault folder is narrowed to the owner.
+            UMask = "0027";
             ExecStart = getExe plaid;
             LoadCredential = singleton "keys:${cfg.keysFile}";
             Restart = "on-failure";

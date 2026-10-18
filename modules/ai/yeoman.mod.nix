@@ -322,6 +322,9 @@
                   // optionalAttrs (cfg.weather != null) {
                     YEOMAN_WEATHER = cfg.weather;
                   }
+                  // optionalAttrs (cfg.financeDb != null) {
+                    YEOMAN_FINANCE = cfg.financeDb;
+                  }
                   // optionalAttrs (i.mailCredentialsFile != null) {
                     YEOMAN_MAIL = "${creds}/mail";
                     YEOMAN_IMAP = cfg.mailServer;
@@ -380,7 +383,9 @@
               "yeoman-x"
               "yeoman-household"
               "usage"
-            ];
+            ]
+            # Read access to the plaid service's finance.db, not its vault.
+            ++ lib.lists.optional (cfg.financeDb != null) "finance";
             StateDirectory = n;
             StateDirectoryMode = "0700";
             RestrictAddressFamilies = [
@@ -722,6 +727,17 @@
           description = ''
             `latitude,longitude` for the forecast the weather tool reads
             from Open-Meteo; shared by the instances. Null leaves it out.
+          '';
+        };
+
+        financeDb = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          example = "/var/lib/plaid/production/finance.db";
+          description = ''
+            The plaid service's finance.db, which the finance tool reads
+            through the `finance` group; shared by the instances. Null
+            leaves it out.
           '';
         };
       };

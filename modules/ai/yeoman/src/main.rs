@@ -7,6 +7,7 @@
 mod book;
 mod calendar;
 mod door;
+mod finance;
 mod hippo;
 mod house;
 mod keep;

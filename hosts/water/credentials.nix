@@ -51,6 +51,8 @@ in
     mailServer = "imap.migadu.com";
     # Portsmouth, NH.
     weather = "43.07,-70.76";
+    # The household's money, read-only.
+    financeDb = "/var/lib/plaid/${config.plaid.environment}/finance.db";
   };
 
   secrets = {

@@ -9,7 +9,7 @@
 //! - `PLAID_ENV`: `sandbox` (fake banks) or `production`.
 //! - `PLAID_KEYS_FILE`: `KEY=value` lines with `PLAID_CLIENT_ID` and
 //!   `PLAID_SECRET` (production) or `PLAID_SANDBOX_SECRET`.
-//! - `PLAID_STATE`: directory for `vault.db` and `finance.db`.
+//! - `PLAID_STATE`: directory for `finance.db` and `vault/vault.db`.
 
 mod api;
 mod store;
@@ -425,8 +425,7 @@ async fn main() {
         secret.len()
     );
     let state = PathBuf::from(env("PLAID_STATE"));
-    // A subdirectory per environment; systemd only makes the parent for a
-    // dynamic user, refusing nested state directories once it exists.
+    // A subdirectory per environment, so test banks never mix with real ones.
     std::fs::create_dir_all(&state).unwrap_or_else(|e| panic!("{}: {e}", state.display()));
     Store::open(&state).unwrap_or_else(|e| panic!("{e}"));
     let app = Arc::new(App {

@@ -6,6 +6,7 @@
 
 use crate::book::{self, Book, Repeat, Shelf};
 use crate::calendar::{Calendar, Change, NewEvent};
+use crate::finance::{self, Finance};
 use crate::hippo::Hippo;
 use crate::house::House;
 use crate::keep;
@@ -58,6 +59,8 @@ struct Tools {
     x: Option<PathBuf>,
     /// The weather, when a place is set.
     weather: Option<Arc<Weather>>,
+    /// The household's money, when the plaid service's database is shared.
+    finance: Option<Arc<Finance>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -265,6 +268,12 @@ struct Query {
     objective: String,
     /// 1-3 keyword queries of 3-6 words.
     search_queries: Vec<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Money {
+    /// One SQLite SELECT over finance.db. Leave it out to get the tables.
+    sql: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -588,6 +597,20 @@ impl Tools {
         let weather = self.weather.as_deref().ok_or("There is no weather here.")?;
         let report = weather.report()?;
         serde_json::to_string(&report).map_err(|e| e.to_string())
+    }
+
+    #[tool(
+        description = "The household's money as the banks report it: accounts and balances, transactions, investment holdings and card statements, synced every six hours. Without sql it gives the tables; with sql it runs one read-only SELECT and returns at most 200 rows, so sum and group in SQL. Transaction amounts are Plaid's: positive is money out. A joint account linked through both our logins appears twice, with the same institution, mask and type; count it once."
+    )]
+    fn finance(&self, Parameters(m): Parameters<Money>) -> Result<String, String> {
+        let finance = self
+            .finance
+            .as_deref()
+            .ok_or("There is no finance data here.")?;
+        match m.sql {
+            Some(sql) => finance.query(&sql),
+            None => finance.schema(),
+        }
     }
 
     /// Search X: the posts found, with author, date and link. Takes up to
@@ -1079,6 +1102,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
         youtube: std::env::var_os("YEOMAN_YTDLP").map(|b| Arc::new(Youtube::new(PathBuf::from(b)))),
         x: std::env::var_os("YEOMAN_X").map(PathBuf::from),
         weather: weather()?.map(Arc::new),
+        finance: finance::from_env().map(Arc::new),
         tool_router: Tools::tool_router(),
     };
     let running = tools
