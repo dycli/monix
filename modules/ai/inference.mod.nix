@@ -229,6 +229,11 @@ in
         flags =
           baseFlags
           ++ [
+            # The GGUFs' own template raises on any system message after the
+            # first, which OpenCode sends; this copy renders it as a system
+            # turn instead. Drop it once the upstream template accepts them.
+            "--chat-template-file"
+            "${./qwen38.jinja}"
             "--cache-type-k"
             "q8_0"
             "--cache-type-v"

@@ -30,6 +30,7 @@
 !*.tsx
 !*.css
 !*.html
+!*.jinja
 !modules/ai/yeoman/site/public/sw.js
 
 # The homepage's assets (modules/homelab/frame): its scripts, font and
