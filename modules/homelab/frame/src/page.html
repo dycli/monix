@@ -23,9 +23,10 @@
     font-family: system-ui, "Roboto", sans-serif;
   }
   body { display: grid; grid-template-columns: var(--rail) 1fr; }
-  #main { display: grid; grid-template-rows: 45fr 55fr; min-width: 0; min-height: 0; }
+  /* Home's photo is square, the board takes the rest. */
+  #main { display: grid; grid-template-rows: calc(100vw - var(--rail)) 1fr; min-width: 0; min-height: 0; }
   @media (orientation: landscape) {
-    #main { grid-template-rows: none; grid-template-columns: 62fr 38fr; }
+    #main { grid-template-rows: none; grid-template-columns: 100vh 1fr; }
     :root { --u: min((100vw - var(--rail)) * 0.005625, 1vh); }
   }
   /* The other views have the space to themselves. */
@@ -33,7 +34,9 @@
   body:not([data-view=home]):not([data-view=photos]) #photo,
   body:not([data-view=home]):not([data-view=calendar]) #board { display: none; }
   body[data-view=calendar] { --u: min((100vw - var(--rail)) * 0.0075, 0.75vh); }
-  #cams, #settings { display: none; }
+  #cams, #settings, #wx { display: none; }
+  body[data-view=weather] #wx { display: flex; }
+  body[data-view=weather] { --u: min((100vw - var(--rail)) / 100, 1vh); }
   body[data-view=cameras] #cams { display: grid; }
   body[data-view=settings] #settings { display: block; }
 
@@ -99,9 +102,9 @@
     font-size: calc(2.6 * var(--u)); font-weight: 600; color: var(--faint);
     text-transform: uppercase; letter-spacing: .14em;
   }
-  #now .where-label { margin-bottom: calc(.5 * var(--u)); }
   #air {
-    display: flex; align-items: baseline; column-gap: calc(1.8 * var(--u));
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    column-gap: calc(1.8 * var(--u)); row-gap: calc(.6 * var(--u));
     font-size: calc(2.6 * var(--u)); white-space: nowrap; color: var(--dim);
     font-variant-numeric: tabular-nums;
   }
@@ -202,6 +205,73 @@
   #cams .quiet { display: none; place-self: center; font-size: 3vmin; }
   #cams.none .quiet { display: block; }
 
+  /* Weather: now and its details, the next day as a chart, the week as
+     ranges. Side by side on a landscape screen, stacked on a portrait one. */
+  #wx {
+    gap: calc(5 * var(--u)); padding: calc(5 * var(--u)) calc(6 * var(--u));
+    min-height: 0; box-sizing: border-box; flex-direction: column;
+  }
+  #wx .left { display: flex; flex-direction: column; gap: calc(4 * var(--u)); flex: 1; min-height: 0; min-width: 0; }
+  @media (orientation: landscape) {
+    #wx { flex-direction: row; }
+    #wx .left { flex: 58 1 0; }
+    #wx .week { flex: 42 1 0; }
+    #wx .head .icon { font-size: calc(10 * var(--u)); }
+    #wx .head .temp { font-size: calc(13 * var(--u)); }
+    #wx .fact { padding: calc(1.2 * var(--u)) calc(1.8 * var(--u)); }
+    #wx .fact .v { font-size: calc(4 * var(--u)); }
+    #wx .row { font-size: calc(3 * var(--u)); }
+  }
+  #wx .head { display: flex; align-items: center; gap: calc(4 * var(--u)); }
+  #wx .head .icon { font-size: calc(13 * var(--u)); line-height: 1; }
+  #wx .head .temp { font-size: calc(16 * var(--u)); font-weight: 200; line-height: .9; }
+  #wx .head .what { font-size: calc(4.4 * var(--u)); }
+  #wx .head .sub { font-size: calc(3 * var(--u)); color: var(--dim); margin-top: calc(.8 * var(--u)); }
+  #wx .facts {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(1.6 * var(--u));
+  }
+  #wx .fact {
+    background: var(--lift); border: 1px solid var(--rule); border-radius: calc(1.6 * var(--u));
+    padding: calc(1.6 * var(--u)) calc(2 * var(--u));
+  }
+  #wx .fact .k { font-size: calc(2.3 * var(--u)); color: var(--faint); text-transform: uppercase; letter-spacing: .12em; }
+  #wx .fact .v { font-size: calc(5 * var(--u)); font-weight: 300; font-variant-numeric: tabular-nums; }
+  #wx .fact .n { font-size: calc(2.6 * var(--u)); color: var(--dim); }
+  #wx .chart { flex: 1; min-height: calc(30 * var(--u)); display: flex; flex-direction: column; padding: 0 calc(3 * var(--u)); }
+  #wx .plot { position: relative; flex: 1; min-height: 0; }
+  #wx .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #wx .plot .line { fill: none; stroke: var(--accent); stroke-width: 3; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  #wx .plot .area { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+  #wx .plot .night { fill: color-mix(in srgb, var(--ink) 6%, transparent); }
+  #wx .plot .t {
+    position: absolute; transform: translate(-50%, -130%); text-align: center;
+    font-size: calc(2.8 * var(--u)); font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  #wx .plot .t .i { display: block; font-size: 1.1em; }
+  #wx .bars { display: flex; align-items: flex-end; height: calc(5 * var(--u)); gap: 2px; border-bottom: 1px solid var(--rule); }
+  #wx .bars div { flex: 1; background: #3f6f9a; opacity: .55; border-radius: 2px 2px 0 0; }
+  #wx .hours { position: relative; height: calc(4 * var(--u)); font-size: calc(2.5 * var(--u)); color: var(--dim); }
+  #wx .hours span { position: absolute; top: calc(.8 * var(--u)); transform: translateX(-50%); white-space: nowrap; }
+  #wx .key { font-size: calc(2.3 * var(--u)); color: var(--faint); margin-top: calc(.4 * var(--u)); }
+  #wx .key b { color: #3f6f9a; font-weight: 400; }
+  #wx .week { display: flex; flex-direction: column; min-height: 0; }
+  #wx .row {
+    flex: 1; display: grid; align-items: center; column-gap: calc(1.4 * var(--u));
+    grid-template-columns: 3.4em 1.4em 2.2em 2em 1fr 2em;
+    font-size: calc(3.4 * var(--u)); border-top: 1px solid var(--rule);
+    max-height: calc(14 * var(--u));
+  }
+  #wx .row .name { color: var(--dim); }
+  #wx .row .rain { color: #3f6f9a; font-size: .8em; text-align: right; }
+  #wx .row .lo { color: var(--faint); text-align: right; font-variant-numeric: tabular-nums; }
+  #wx .row .hi { font-variant-numeric: tabular-nums; }
+  #wx .range { position: relative; height: calc(1.2 * var(--u)); border-radius: 99px; background: var(--rule); }
+  #wx .range div {
+    position: absolute; top: 0; bottom: 0; border-radius: 99px;
+    background: linear-gradient(90deg, #6f8fae, #c9a24a, #c4572f);
+    background-size: var(--w) 100%; background-position: var(--x) 0;
+  }
+
   #settings { padding: 6vmin 7vmin; font-size: 2.8vmin; }
   #settings h1 { margin: 0 0 4vmin; font-size: 5vmin; font-weight: 300; }
   #settings .row {
@@ -220,6 +290,7 @@
 <nav id="rail">
   <button data-view="home"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></svg>Today</button>
   <button data-view="calendar"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Calendar</button>
+  <button data-view="weather"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M9 2v1.5M3 8h1.5M4.8 3.8l1 1M13.2 3.8l-1 1"/><path d="M8 20h9a3.5 3.5 0 0 0 .3-7A5 5 0 0 0 8 14.2 2.9 2.9 0 0 0 8 20z"/></svg>Weather</button>
   <button data-view="photos"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 8"/></svg>Photos</button>
   <button data-view="cameras" hidden><svg viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 11l5-3v8l-5-3z"/></svg>Cameras</button>
   <button data-view="settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Settings</button>
@@ -241,6 +312,7 @@
   <div id="agenda"></div>
   <div id="week"></div>
 </div>
+<div id="wx"></div>
 <div id="cams"><div class="quiet">No cameras are on right now.</div></div>
 <div id="settings">
   <h1>Settings</h1>
@@ -307,10 +379,10 @@ function drawWeather(w) {
   const now = $("now"), days = $("days");
   now.replaceChildren(); days.replaceChildren();
   if (!w) return;
-  now.append(el("div", "where-label", "Outside"), el("div", "icon", icon(w.now.code, w.now.day)), el("div", "temp", deg(w.now.temp)),
+  now.append(el("div", "icon", icon(w.now.code, w.now.day)), el("div", "temp", deg(w.now.temp)),
              el("div", "feels", "feels " + deg(w.now.feels)));
   const today = ymd(new Date());
-  for (const d of w.days) {
+  for (const d of w.days.slice(0, 5)) {
     const cell = el("div", "day");
     cell.append(el("div", "name", d.date === today ? "Today" : weekday(d.date)),
                 el("div", "icon", icon(d.code)));
@@ -319,6 +391,115 @@ function drawWeather(w) {
     cell.append(t, el("div", "rain", d.rain >= 20 ? d.rain + "%" : ""));
     days.append(cell);
   }
+}
+
+// WMO weather codes in words.
+function says(code) {
+  const words = { 0: "Clear", 1: "Mostly clear", 2: "Partly cloudy", 3: "Overcast", 45: "Fog", 48: "Freezing fog",
+    51: "Light drizzle", 53: "Drizzle", 55: "Heavy drizzle", 56: "Freezing drizzle", 57: "Freezing drizzle",
+    61: "Light rain", 63: "Rain", 65: "Heavy rain", 66: "Freezing rain", 67: "Freezing rain",
+    71: "Light snow", 73: "Snow", 75: "Heavy snow", 77: "Snow grains", 80: "Showers", 81: "Showers",
+    82: "Heavy showers", 85: "Snow showers", 86: "Snow showers", 95: "Thunderstorms", 96: "Storms with hail", 99: "Storms with hail" };
+  return words[code] ?? "";
+}
+const hhmm = s => new Date(s).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const hourName = s => new Date(s).toLocaleTimeString([], { hour: "numeric" }).replace(/\s/, "").toLowerCase();
+const compass = from => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(from / 45) % 8];
+const uvSays = uv => uv < 3 ? "Low" : uv < 6 ? "Moderate" : uv < 8 ? "High" : uv < 11 ? "Very high" : "Extreme";
+
+function drawForecast(w) {
+  const box = $("wx");
+  box.replaceChildren();
+  if (!w || !w.hours) return;
+  const today = w.days[0], left = el("div", "left");
+
+  const head = el("div", "head"), words = el("div");
+  words.append(el("div", "what", says(w.now.code)),
+               el("div", "sub", "Feels " + deg(w.now.feels)), el("div", "sub", `High ${deg(today.high)} · Low ${deg(today.low)}`));
+  head.append(el("div", "icon", icon(w.now.code, w.now.day)), el("div", "temp", deg(w.now.temp)), words);
+
+  const facts = el("div", "facts");
+  const fact = (k, v, n) => {
+    const f = el("div", "fact");
+    f.append(el("div", "k", k), el("div", "v", v), el("div", "n", n));
+    facts.append(f);
+  };
+  fact("Wind", `${Math.round(w.now.wind)} mph ${compass(w.now.from)}`, `gusts ${Math.round(w.now.gust)}`);
+  fact("Humidity", Math.round(w.now.humidity) + "%", "dew point " + deg(w.now.dew));
+  fact("UV", String(Math.round(w.now.uv)), uvSays(w.now.uv) + (today.uv != null ? `, peak ${Math.round(today.uv)}` : ""));
+  fact("Rain", (today.rain ?? 0) + "%", today.fall ? `${today.fall.toFixed(2)} in today` : "none expected");
+  fact("Sunrise", hhmm(today.sunrise), "");
+  const light = (new Date(today.sunset) - new Date(today.sunrise)) / 60e3;
+  fact("Sunset", hhmm(today.sunset), `${Math.floor(light / 60)}h ${Math.round(light % 60)}m of daylight`);
+
+  left.append(head, facts, chart(w.hours));
+  box.append(left, ranges(w.days));
+}
+
+// The next day by the hour: temperature as a line over day and night, the
+// chance of rain as bars beneath. The line stretches to the box; labels are
+// placed over it in percentages, so nothing is measured.
+function chart(hours) {
+  const n = hours.length, temps = hours.map(h => h.temp);
+  const lo = Math.min(...temps), hi = Math.max(...temps), span = Math.max(hi - lo, 4);
+  const x = i => i / (n - 1) * 100, y = t => 30 + (1 - (t - lo) / span) * 62;
+  const wrap = el("div", "chart"), plot = el("div", "plot");
+  const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("preserveAspectRatio", "none");
+  const shape = (tag, attrs) => {
+    const e = document.createElementNS(ns, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    svg.append(e);
+  };
+  hours.forEach((h, i) => {
+    if (!h.day) shape("rect", { class: "night", x: Math.max(x(i - .5), 0), y: 0, width: 100 / (n - 1), height: 100 });
+  });
+  const pts = hours.map((h, i) => `${x(i).toFixed(2)},${y(h.temp).toFixed(2)}`).join(" L");
+  shape("path", { class: "area", d: `M0,100 L${pts} L100,100 Z` });
+  shape("path", { class: "line", d: `M${pts}` });
+  plot.append(svg);
+
+  const bars = el("div", "bars"), marks = el("div", "hours");
+  hours.forEach((h, i) => {
+    const b = el("div");
+    b.style.height = (h.rain ?? 0) + "%";
+    bars.append(b);
+    if (i % 3) return;
+    const t = el("div", "t");
+    t.style.left = x(i) + "%";
+    t.style.top = y(h.temp) + "%";
+    t.append(el("span", "i", icon(h.code, h.day)), deg(h.temp));
+    plot.append(t);
+    const m = el("span", null, i ? hourName(h.time) : "Now");
+    m.style.left = x(i) + "%";
+    marks.append(m);
+  });
+  const key = el("div", "key");
+  key.append(el("b", null, "▮"), " chance of rain");
+  wrap.append(plot, bars, marks, key);
+  return wrap;
+}
+
+// The week: each day's low to high on one scale, so warm and cold days
+// show as where their bar sits.
+function ranges(days) {
+  const list = el("div", "week");
+  const lo = Math.min(...days.map(d => d.low)), hi = Math.max(...days.map(d => d.high));
+  const at = t => (t - lo) / Math.max(hi - lo, 1) * 100;
+  const todayName = ymd(new Date());
+  for (const d of days) {
+    const row = el("div", "row"), range = el("div", "range"), fill = el("div");
+    const from = at(d.low), width = Math.max(at(d.high) - from, 2);
+    // The gradient spans the whole week, so a day's colour says its warmth.
+    fill.style.cssText = `left:${from}%;width:${width}%;--w:${10000 / width}%;--x:${from / Math.max(100 - width, 1) * 100}%`;
+    range.append(fill);
+    row.append(el("div", "name", d.date === todayName ? "Today" : weekday(d.date)), el("div", null, icon(d.code)),
+               el("div", "rain", d.rain >= 20 ? d.rain + "%" : ""), el("div", "lo", deg(d.low)), range,
+               el("div", "hi", deg(d.high)));
+    list.append(row);
+  }
+  return list;
 }
 
 // CO₂ bands after AirGradient's own: under 800 fresh, to 1000 fine,
@@ -346,14 +527,17 @@ function drawAir(a) {
   temp.style.setProperty("--c", colour);
   temp.title = band;
   air.append(el("span", "where-label", "Inside"), temp,
-             item(whole(a.humidity) + "%", ""), item(whole(a.co2), "ppm CO₂"),
+             item(whole(a.humidity) + "%", ""), item(whole(a.co2), "CO₂"),
              item(whole(a.pm25), "PM2.5"), item(whole(a.pm1), "PM1"), item(whole(a.pm10), "PM10"));
   if (a.voc != null) air.append(item(whole(a.voc), "VOC"));
   if (a.nox != null) air.append(item(whole(a.nox), "NOx"));
-  // One line: shrink the row to its width with a single measurement.
+  // One line if shrinking by a fifth at most gets it there, else two.
+  // Measured unwrapped, once.
   air.style.fontSize = "";
+  air.style.flexWrap = "nowrap";
   const over = air.scrollWidth / air.clientWidth;
-  if (over > 1) air.style.fontSize = parseFloat(getComputedStyle(air).fontSize) / over * 0.98 + "px";
+  air.style.flexWrap = "";
+  if (over > 1 && over <= 1.25) air.style.fontSize = parseFloat(getComputedStyle(air).fontSize) / over * 0.98 + "px";
 }
 
 // Events by day from today. A whole-day event shows on each day it covers;
@@ -441,6 +625,7 @@ function drawWeek(events, weather) {
 function draw() {
   if (!board) return;
   drawWeather(board.weather);
+  drawForecast(board.weather);
   drawAir(board.air);
   drawAgenda(board.events);
   drawWeek(board.events, board.weather);
