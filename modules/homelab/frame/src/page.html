@@ -93,28 +93,26 @@
   }
   #days:empty { display: none; }
 
-  /* Indoors, from the AirGradient: CO₂ leads, tinted by how stale the room is. */
-  /* Inside and outside each get a small heading; inside also sits on its
-     own tinted panel, so the two sets of numbers never read as one. */
+  /* Indoors, from the AirGradient: one quiet line above the clock, CO₂
+     first with a dot tinted by how stale the room is. */
   .where-label {
     font-size: calc(2.6 * var(--u)); font-weight: 600; color: var(--faint);
     text-transform: uppercase; letter-spacing: .14em;
   }
   #now .where-label { margin-bottom: calc(.5 * var(--u)); }
   #air {
-    display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; column-gap: calc(1.5 * var(--u));
-    align-items: baseline; font-size: calc(3 * var(--u)); white-space: nowrap;
-    background: var(--lift); border: 1px solid var(--rule); border-radius: calc(2 * var(--u));
-    padding: calc(1.6 * var(--u)) calc(2.4 * var(--u)) calc(2 * var(--u));
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    column-gap: calc(2.2 * var(--u)); row-gap: calc(.6 * var(--u));
+    font-size: calc(2.6 * var(--u)); white-space: nowrap; color: var(--dim);
+    font-variant-numeric: tabular-nums;
   }
-  #air .where-label { grid-column: 1 / -1; margin-bottom: calc(.6 * var(--u)); }
   #air:empty { display: none; }
-  #air .big { font-size: calc(6 * var(--u)); font-weight: 200; line-height: 1.1; }
-  #air .unit { color: var(--faint); font-size: .8em; margin-left: .25em; }
-  #air .what { color: var(--dim); }
-  #air .co2 .what::before {
+  #air .where-label { font-size: 1em; margin-right: calc(-.6 * var(--u)); }
+  #air b { font-weight: 400; color: var(--ink); }
+  #air small { color: var(--faint); font-size: .85em; margin-left: .3em; }
+  #air .co2::before {
     content: ""; display: inline-block; width: .6em; height: .6em; border-radius: 50%;
-    background: var(--c); margin-right: .5em; vertical-align: .05em;
+    background: var(--c); margin-right: .45em; vertical-align: .05em;
   }
   .day { text-align: center; font-size: calc(3 * var(--u)); white-space: nowrap; }
   .day .name { color: var(--dim); }
@@ -235,12 +233,12 @@
   <div class="slot"><canvas></canvas><img alt=""></div>
 </div>
 <div id="board">
+  <div id="air"></div>
   <div id="top">
     <div><div id="clock"></div><div id="date"></div></div>
     <div id="now"></div>
   </div>
   <div id="days"></div>
-  <div id="air"></div>
   <div id="agenda"></div>
   <div id="week"></div>
 </div>
@@ -337,19 +335,21 @@ function drawAir(a) {
   const air = $("air");
   air.replaceChildren();
   if (!a) return;
-  const cell = (cls, value, unit, what) => {
-    const c = el("div", cls), v = el("div", "big", value);
-    if (unit) v.append(el("span", "unit", unit));
-    c.append(v, el("div", "what", what));
+  const item = (value, label, cls = "") => {
+    const c = el("span", cls);
+    c.append(el("b", "", value), el("small", "", label));
     return c;
   };
+  const whole = n => String(Math.round(n));
   const [band, colour] = co2Band(a.co2);
-  const co2 = cell("co2", String(Math.round(a.co2)), "ppm", band);
+  const co2 = item(whole(a.co2), "ppm CO₂", "co2");
   co2.style.setProperty("--c", colour);
-  air.append(el("div", "where-label", "Inside"),
-             co2, cell("", deg(a.temp), "", "temperature"),
-             cell("", String(Math.round(a.humidity)), "%", "humidity"),
-             cell("", String(Math.round(a.pm25)), "µg", "PM2.5"));
+  co2.title = band;
+  air.append(el("span", "where-label", "Inside"), co2,
+             item(deg(a.temp), ""), item(whole(a.humidity) + "%", "humidity"),
+             item(whole(a.pm25), "PM2.5"), item(whole(a.pm1), "PM1"), item(whole(a.pm10), "PM10"));
+  if (a.voc != null) air.append(item(whole(a.voc), "VOC"));
+  if (a.nox != null) air.append(item(whole(a.nox), "NOx"));
 }
 
 // Events by day from today. A whole-day event shows on each day it covers;

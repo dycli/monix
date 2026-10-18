@@ -1,6 +1,6 @@
 //! Indoor air from an AirGradient monitor's local API, which needs no key:
-//! CO₂, temperature in °F, humidity and fine dust, as the monitor shows
-//! them (its compensated readings).
+//! CO₂, temperature in °F, humidity, dust, and the VOC and NOx indexes,
+//! as the monitor shows them (its compensated readings where it has them).
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -18,6 +18,12 @@ pub struct Reading {
     pub temp: f64,
     pub humidity: f64,
     pub pm25: f64,
+    pub pm1: f64,
+    pub pm10: f64,
+    /// Sensirion's indexes: VOC 100 is the room's usual, NOx 1 is clean.
+    /// The monitor leaves them out while the sensor warms up.
+    pub voc: Option<f64>,
+    pub nox: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -28,6 +34,10 @@ struct Measures {
     atmp_compensated: f64,
     rhum_compensated: f64,
     pm02_compensated: f64,
+    pm01: f64,
+    pm10: f64,
+    tvoc_index: Option<f64>,
+    nox_index: Option<f64>,
 }
 
 impl Air {
@@ -60,6 +70,10 @@ fn read(m: Measures) -> Reading {
         temp: m.atmp_compensated * 9.0 / 5.0 + 32.0,
         humidity: m.rhum_compensated,
         pm25: m.pm02_compensated,
+        pm1: m.pm01,
+        pm10: m.pm10,
+        voc: m.tvoc_index,
+        nox: m.nox_index,
     }
 }
 
@@ -70,7 +84,7 @@ mod tests {
     #[test]
     fn measures_read_into_a_reading() {
         let m: Measures = serde_json::from_str(
-            r#"{"pm02":0,"pm02Compensated":3.2,"atmp":19.46,"atmpCompensated":20.0,"rhum":66.43,"rhumCompensated":61.5,"rco2":829.33,"tvocIndex":10.67,"model":"I-9PSL"}"#,
+            r#"{"pm01":1.5,"pm02":0,"pm10":4,"pm02Compensated":3.2,"atmp":19.46,"atmpCompensated":20.0,"rhum":66.43,"rhumCompensated":61.5,"rco2":829.33,"tvocIndex":10.67,"model":"I-9PSL"}"#,
         )
         .unwrap();
         let r = read(m);
@@ -78,5 +92,7 @@ mod tests {
         assert!((r.temp - 68.0).abs() < 1e-9);
         assert_eq!(r.humidity, 61.5);
         assert_eq!(r.pm25, 3.2);
+        assert_eq!((r.pm1, r.pm10), (1.5, 4.0));
+        assert_eq!((r.voc, r.nox), (Some(10.67), None));
     }
 }
