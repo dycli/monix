@@ -601,6 +601,7 @@ function Text() {
       containerClassName={live ? "writing" : undefined}
       lineNumbers={false}
       controls={{ code: true, table: false }}
+      linkSafety={{ enabled: false }}
     />
   );
 }
