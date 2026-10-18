@@ -259,20 +259,21 @@ impl Model for Claude {
         let stdout = child.stdout.take().unwrap();
         let keep = self.keep.clone();
         let steps = run.steps.clone();
-        let reader = thread::spawn(move || -> std::io::Result<(String, bool)> {
+        let reader = thread::spawn(move || -> std::io::Result<(String, Option<String>)> {
             let mut out = String::new();
-            let mut used = false;
+            // The reply's last computer tool, once it drives the computer.
+            let mut used: Option<String> = None;
             for line in BufReader::new(stdout).lines() {
                 let line = line?;
-                // The browser is leased the moment the reply first drives
-                // it, before the reply's own session ends and closes it.
-                if let (false, Some(url)) = (used, &keep)
-                    && keep::uses_computer(&line)
-                {
-                    used = true;
-                    if let Err(e) = keep::hold(url, keep::LEASE) {
+                if let Some(call) = keep::computer_call(&line) {
+                    // The browser is leased the moment the reply first drives
+                    // it, before the reply's own session ends and closes it.
+                    if let (None, Some(url)) = (&used, &keep)
+                        && let Err(e) = keep::hold(url, keep::LEASE)
+                    {
                         eprintln!("yeoman: {e}");
                     }
+                    used = Some(call);
                 }
                 if let Some(show) = &steps {
                     self::steps(&line).into_iter().for_each(|s| show(s));
@@ -302,10 +303,17 @@ impl Model for Claude {
         };
         let _ = writer.join();
         let (out, used) = reader.join().unwrap().map_err(|e| e.to_string())?;
-        if let (true, Some(url)) = (used, &self.keep)
-            && let Err(e) = keep::hold(url, keep::LEASE)
-        {
-            eprintln!("yeoman: {e}");
+        // A reply that ends by closing the browser lets it go; otherwise the
+        // lease runs on from the reply's last use.
+        if let (Some(call), Some(url)) = (used, &self.keep) {
+            let kept = if call == "browser_close" {
+                keep::release(url)
+            } else {
+                keep::hold(url, keep::LEASE)
+            };
+            if let Err(e) = kept {
+                eprintln!("yeoman: {e}");
+            }
         }
         let result = out
             .lines()

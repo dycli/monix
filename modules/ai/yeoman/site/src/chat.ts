@@ -51,7 +51,8 @@ type Shown =
   | { type: "picture"; png: string }
   | { type: "typing"; on: boolean }
   | { type: "step"; step: Step; task: boolean }
-  | { type: "task"; text: string | null; question: string | null };
+  | { type: "task"; text: string | null; question: string | null }
+  | { type: "browser"; open: boolean };
 
 const ROLE: Record<string, Msg["role"]> = { user: "user", talk: "assistant", note: "system" };
 
@@ -75,6 +76,9 @@ export type Chat =
       stopTask: () => Promise<void>;
       /** The computer's screen, when the yeoman has one. */
       screen?: string;
+      /** Whether the computer's browser is open, and closing it. */
+      browser: boolean;
+      closeBrowser: () => Promise<void>;
     };
 
 export function useChat(): Chat {
@@ -84,6 +88,7 @@ export function useChat(): Chat {
   const [cards, setCards] = useState<Card[]>([]);
   const [task, setTask] = useState<Task | null>(null);
   const [screen, setScreen] = useState<string>();
+  const [browser, setBrowser] = useState(false);
 
   useEffect(() => {
     let events: EventSource | undefined;
@@ -102,10 +107,11 @@ export function useChat(): Chat {
       const said: Said[] = await r.json();
       // The tray is extra: a chat without it still works.
       const waiting: Pending[] = w.ok ? await w.json() : [];
-      const now: { text: string | null; question: string | null; screen: string | null } | null = t.ok ? await t.json() : null;
+      const now: { text: string | null; question: string | null; screen: string | null; browser?: boolean } | null = t.ok ? await t.json() : null;
       if (gone) return false;
       if (now) {
         setScreen(now.screen ?? undefined);
+        setBrowser(!!now.browser);
         // The work so far went out over the stream; a page that missed it
         // starts from the request.
         setTask((k) => (now.text === null ? null : k?.text === now.text ? { ...k, question: now.question ?? undefined } : { text: now.text!, question: now.question ?? undefined, tools: [], words: "" }));
@@ -189,6 +195,9 @@ export function useChat(): Chat {
           case "task":
             setTask((k) => (s.text === null ? null : { ...(k?.text === s.text ? k : { tools: [], words: "" }), text: s.text, question: s.question ?? undefined }));
             break;
+          case "browser":
+            setBrowser(s.open);
+            break;
           case "react":
             setMessages((ms) => ms.map((m) => (m.id === s.to ? { ...m, reaction: s.emoji } : m)));
             break;
@@ -252,6 +261,13 @@ export function useChat(): Chat {
     if (r.status === 401) setStatus("signed-out");
   }, []);
 
+  // The keeper lets the browser go; the screen leaves with the news of it.
+  const closeBrowser = useCallback(async () => {
+    const r = await fetch("/api/browser/close", { method: "POST" });
+    if (r.status === 401) setStatus("signed-out");
+    else if (r.ok) setBrowser(false);
+  }, []);
+
   const decide = useCallback(async (id: number, yes: boolean) => {
     setCards((cs) => cs.map((c) => (c.id === id ? { ...c, busy: true, error: undefined } : c)));
     const r = await fetch("/api/decide", {
@@ -268,7 +284,7 @@ export function useChat(): Chat {
 
   if (status === "loading" || status === "signed-out") return { state: status };
   if (status !== "ready") return { state: "error", error: status };
-  return { state: "ready", messages, typing, send, stop, cards, decide, task, stopTask, screen };
+  return { state: "ready", messages, typing, send, stop, cards, decide, task, stopTask, screen, browser, closeBrowser };
 }
 
 // A task's steps before the page heard it started still belong to it.

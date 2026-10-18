@@ -15,8 +15,8 @@ use crate::door::{Door, Message};
 use crate::hippo::{Hippo, Said};
 use crate::model::{Attachment, Step};
 use crate::pending::{self, Pending};
-use crate::task;
 use crate::{Read, fits, read};
+use crate::{keep, task};
 use axum::extract::{DefaultBodyLimit, Multipart, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -111,6 +111,10 @@ enum Shown {
         text: Option<String>,
         question: Option<String>,
     },
+    /// The computer's browser opened or closed.
+    Browser {
+        open: bool,
+    },
 }
 
 /// The open pages, as a door.
@@ -121,6 +125,8 @@ pub struct Web {
     aside: bool,
     /// The task as last shown, so a tick that changes nothing is silent.
     task: Arc<Mutex<(Option<String>, Option<String>)>>,
+    /// Whether the computer's browser is open, as the keeper last said.
+    browser: Arc<AtomicBool>,
 }
 
 impl Web {
@@ -130,6 +136,7 @@ impl Web {
             ids: Arc::new(AtomicU64::new(0)),
             aside: false,
             task: Arc::default(),
+            browser: Arc::default(),
         }
     }
 
@@ -151,6 +158,12 @@ impl Web {
 
     fn id(&self) -> String {
         format!("web-{}", self.ids.fetch_add(1, Ordering::Relaxed))
+    }
+
+    fn browser(&self, open: bool) {
+        if self.browser.swap(open, Ordering::Relaxed) != open {
+            self.show(Shown::Browser { open });
+        }
     }
 
     fn show(&self, s: Shown) {
@@ -599,6 +612,9 @@ pub async fn serve(
     if let Some(push) = &site.push {
         tokio::spawn(ring(site.web.shown.subscribe(), push.clone()));
     }
+    if let Ok(url) = std::env::var("YEOMAN_KEEP") {
+        tokio::spawn(watch_browser(url, site.web.clone()));
+    }
     // The entry document and the worker carry no hash in their names, so the
     // browser must revalidate them each load; otherwise a deploy's new asset
     // hashes never get picked up. The hashed assets under /_site are safe to
@@ -637,6 +653,7 @@ pub async fn serve(
         .route("/api/stop", post(stop))
         .route("/api/task", get(task_now))
         .route("/api/task/stop", post(task_stop))
+        .route("/api/browser/close", post(browser_close))
         .route("/api/ask", post(ask))
         .route("/api/wait", post(wait))
         .route("/api/push", get(push_key).post(push_add))
@@ -1001,8 +1018,40 @@ async fn stop(State(site): State<Arc<Site>>, headers: HeaderMap) -> StatusCode {
     StatusCode::ACCEPTED
 }
 
+/// Follows the keeper, so the screen stays on the page while the browser is
+/// open, past the reply that opened it, and goes when the lease ends. The
+/// keeper is on the computer's own link, so asking it often costs nothing.
+async fn watch_browser(url: String, web: Web) {
+    loop {
+        let u = url.clone();
+        if let Ok(Ok(open)) = tokio::task::spawn_blocking(move || keep::open(&u)).await {
+            web.browser(open);
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+/// Closes the computer's browser, as computer_close does.
+async fn browser_close(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Ok(url) = std::env::var("YEOMAN_KEEP") else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match tokio::task::spawn_blocking(move || keep::release(&url)).await {
+        Ok(Ok(_)) => {
+            site.web.browser(false);
+            StatusCode::ACCEPTED.into_response()
+        }
+        Ok(Err(e)) => (StatusCode::BAD_GATEWAY, e).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
 /// The task under way, the question it waits on, and the computer's
-/// screen to watch it by, when the yeoman has one.
+/// screen to watch it by, when the yeoman has one, and whether its browser
+/// is open.
 async fn task_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
     if !site.signed(&headers) {
         return StatusCode::UNAUTHORIZED.into_response();
@@ -1011,6 +1060,7 @@ async fn task_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response
         "text": task::running(&site.state),
         "question": task::question(&site.state),
         "screen": std::env::var("YEOMAN_SCREEN").ok(),
+        "browser": site.web.browser.load(Ordering::Relaxed),
     }))
     .into_response()
 }

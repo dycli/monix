@@ -352,9 +352,11 @@ type ThreadProps = {
   task: Task | null;
   stopTask: () => Promise<void>;
   screen?: string;
+  browser: boolean;
+  closeBrowser: () => Promise<void>;
 };
 
-function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, screen }: ThreadProps) {
+function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, screen, browser, closeBrowser }: ThreadProps) {
   const [finding, setFinding] = useState(false);
   // The deck on screen, by the card it opened at, and whether it is on its
   // way down so the talk fades back in rather than snapping.
@@ -363,9 +365,13 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
   const leave = useRef<number>(undefined);
   // The dots stand for work not yet shown; once words or tools arrive, they show it.
   const working = typing && !messages.at(-1)?.live;
-  // The screen shows while the turn or the task drives the computer.
+  // The screen shows while the browser is open: from the moment the turn or
+  // the task drives it until the yeoman or the person closes it. On a wide
+  // screen it takes the right side, at a size worth reading.
   const last = messages.at(-1);
-  const watching = !!screen && ((!!last?.live && drives(last.tools)) || drives(task?.tools));
+  const driving = (!!last?.live && drives(last.tools)) || drives(task?.tools);
+  const watching = !!screen && (browser || driving);
+  const wide = useWide();
 
   // The deck fills the screen down to the top of what sits on the composer,
   // so it rises from behind it; measured, as the composer grows with text,
@@ -464,7 +470,8 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
           </div>
         </header>
         {finding && <Search close={() => setFinding(false)} />}
-        <ThreadPrimitive.Viewport className="flex flex-1 flex-col overflow-y-auto">
+        <div className="flex min-h-0 flex-1">
+        <ThreadPrimitive.Viewport className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           <main className={`mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)] fades ${deck.length && !leaving ? "faded" : ""}`}>
             <ThreadPrimitive.Messages>
               {({ message }) =>
@@ -477,7 +484,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
             <div ref={dock} className="relative mx-auto w-[min(740px,100%)]">
               {/* What waits or works above the composer scrolls as one, so the talk stays in view. */}
               <div className="max-h-[min(66vh,720px)] overflow-y-auto pt-2.5 empty:hidden">
-                {screen && <Screen url={screen} on={watching} />}
+                {screen && !wide && <Screen url={screen} on={watching} driving={driving} close={closeBrowser} />}
                 {task && <TaskStrip task={task} stop={stopTask} />}
                 <Tray cards={cards} decide={decide} />
               </div>
@@ -508,6 +515,8 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
             </div>
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
+        {screen && wide && <Screen url={screen} on={watching} driving={driving} close={closeBrowser} pane />}
+        </div>
         {deck.length > 0 && <Deck key={deck[0].key} faces={deck} start={open!} leaving={leaving} edge={edge} close={close} />}
       </ThreadPrimitive.Root>
      </CardCtx.Provider>
@@ -1332,12 +1341,27 @@ function Note() {
   );
 }
 
-// The computer's screen, watched while the yeoman works on it: noVNC's own
+// Whether the window is wide enough for the screen to sit beside the talk.
+function useWide() {
+  const query = "(min-width: 1024px)";
+  const [wide, setWide] = useState(() => matchMedia(query).matches);
+  useEffect(() => {
+    const m = matchMedia(query);
+    const change = () => setWide(m.matches);
+    m.addEventListener("change", change);
+    return () => m.removeEventListener("change", change);
+  }, []);
+  return wide;
+}
+
+// The computer's screen, watched while its browser is open: noVNC's own
 // page, view only, so a stray tap does not fight the model. Take over opens
 // it with the keyboard, for a captcha or a sign-in only the person can do.
-// It opens by itself when the work turns to the computer; hidden, it stays
-// a line to bring it back.
-function Screen({ url, on }: { url: string; on: boolean }) {
+// It opens by itself when the work turns to the computer and stays until
+// the browser closes; Close closes it, though not while the yeoman is at
+// it. Hidden, it stays a line to bring it back. As a pane it fills the
+// right of a wide window, top to bottom.
+function Screen({ url, on, driving, close, pane }: { url: string; on: boolean; driving: boolean; close: () => Promise<void>; pane?: boolean }) {
   const [hidden, setHidden] = useState(false);
   useEffect(() => {
     if (on) setHidden(false);
@@ -1347,7 +1371,10 @@ function Screen({ url, on }: { url: string; on: boolean }) {
   const bar = "flex h-8 items-center gap-1 px-1 text-[13px] text-mid";
   const link = "rounded-full px-3 py-1 hover:bg-hover hover:text-ink";
   return (
-    <section className="rise mb-3 overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift" aria-label="The computer's screen">
+    <section
+      className={`rise overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift ${pane ? "my-4 mr-4 flex w-[58%] shrink-0 flex-col" : "mb-3"}`}
+      aria-label="The computer's screen"
+    >
       <div className={`${bar} justify-between`}>
         <span className="flex items-center gap-2 pl-2.5 font-medium text-ink/80">
           <span className="size-2 animate-pulse rounded-full bg-accent" /> On the computer
@@ -1356,12 +1383,25 @@ function Screen({ url, on }: { url: string; on: boolean }) {
           <a href={url} target="_blank" rel="noreferrer" className={link}>
             Take over
           </a>
-          <button type="button" onClick={() => setHidden(!hidden)} className={link}>
-            {hidden ? "Show" : "Hide"}
-          </button>
+          {!pane && (
+            <button type="button" onClick={() => setHidden(!hidden)} className={link}>
+              {hidden ? "Show" : "Hide"}
+            </button>
+          )}
+          {!driving && (
+            <button type="button" onClick={() => void close()} className={link}>
+              Close
+            </button>
+          )}
         </span>
       </div>
-      {!hidden && <iframe src={`${url}${sep}view_only=1`} title="The computer's screen" className="block aspect-[16/10] max-h-[42vh] w-full border-0 border-t border-hair bg-ink" />}
+      {!hidden && (
+        <iframe
+          src={`${url}${sep}view_only=1`}
+          title="The computer's screen"
+          className={`block w-full border-0 border-t border-hair bg-ink ${pane ? "min-h-0 flex-1" : "aspect-[16/10] max-h-[42vh]"}`}
+        />
+      )}
     </section>
   );
 }

@@ -13,39 +13,49 @@ pub fn hold(url: &str, seconds: u64) -> Result<String, String> {
     post(&format!("{url}/hold?seconds={seconds}"))
 }
 
+/// Whether a lease runs, so the browser is open.
+pub fn open(url: &str) -> Result<bool, String> {
+    agent()
+        .get(url)
+        .call()
+        .and_then(|mut r| r.body_mut().read_to_string())
+        .map(|state| state != "closed")
+        .map_err(|e| format!("keeper: {e}"))
+}
+
 /// Ends the lease now.
 pub fn release(url: &str) -> Result<String, String> {
     post(&format!("{url}/release"))
 }
 
-fn post(url: &str) -> Result<String, String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
+fn agent() -> ureq::Agent {
+    ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(10)))
         .build()
-        .into();
-    agent
+        .into()
+}
+
+fn post(url: &str) -> Result<String, String> {
+    agent()
         .post(url)
         .send_empty()
         .and_then(|mut r| r.body_mut().read_to_string())
         .map_err(|e| format!("keeper: {e}"))
 }
 
-/// Whether a stream-json event from the model calls a computer tool.
-pub fn uses_computer(line: &str) -> bool {
-    let Ok(ev) = serde_json::from_str::<serde_json::Value>(line) else {
-        return false;
-    };
-    ev.get("type").and_then(|t| t.as_str()) == Some("assistant")
-        && ev["message"]["content"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|c| {
-                c.get("type").and_then(|t| t.as_str()) == Some("tool_use")
-                    && c.get("name")
-                        .and_then(|n| n.as_str())
-                        .is_some_and(|n| n.starts_with("mcp__computer__"))
-            })
+/// The last computer tool a stream-json event from the model calls, if any.
+pub fn computer_call(line: &str) -> Option<String> {
+    let ev = serde_json::from_str::<serde_json::Value>(line).ok()?;
+    if ev.get("type").and_then(|t| t.as_str()) != Some("assistant") {
+        return None;
+    }
+    ev["message"]["content"]
+        .as_array()?
+        .iter()
+        .filter(|c| c.get("type").and_then(|t| t.as_str()) == Some("tool_use"))
+        .filter_map(|c| c.get("name")?.as_str()?.strip_prefix("mcp__computer__"))
+        .next_back()
+        .map(str::to_owned)
 }
 
 #[cfg(test)]
@@ -55,10 +65,10 @@ mod tests {
     #[test]
     fn a_computer_tool_call_is_seen_in_the_stream() {
         let line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"hi"},{"type":"tool_use","name":"mcp__computer__browser_navigate","input":{}}]}}"#;
-        assert!(uses_computer(line));
+        assert_eq!(computer_call(line).as_deref(), Some("browser_navigate"));
         let other = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__yeoman__web_search","input":{}}]}}"#;
-        assert!(!uses_computer(other));
-        assert!(!uses_computer(r#"{"type":"result","result":"done"}"#));
-        assert!(!uses_computer("not json"));
+        assert_eq!(computer_call(other), None);
+        assert_eq!(computer_call(r#"{"type":"result","result":"done"}"#), None);
+        assert_eq!(computer_call("not json"), None);
     }
 }
