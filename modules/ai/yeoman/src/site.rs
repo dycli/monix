@@ -127,6 +127,8 @@ pub struct Web {
     task: Arc<Mutex<(Option<String>, Option<String>)>>,
     /// Whether the computer's browser is open, as the keeper last said.
     browser: Arc<AtomicBool>,
+    /// Whether a turn is under way, for a page that missed the news.
+    typing: Arc<AtomicBool>,
 }
 
 impl Web {
@@ -137,6 +139,7 @@ impl Web {
             aside: false,
             task: Arc::default(),
             browser: Arc::default(),
+            typing: Arc::default(),
         }
     }
 
@@ -232,7 +235,10 @@ impl Door for Web {
     }
 
     async fn typing(&self, on: bool) {
-        self.show(Shown::Typing { on });
+        // The beat asks twice a second; the page hears only the change.
+        if self.typing.swap(on, Ordering::Relaxed) != on {
+            self.show(Shown::Typing { on });
+        }
     }
 
     /// A card with the draft and buttons, not a message: it answers to
@@ -898,18 +904,12 @@ async fn events(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     let rx = site.web.shown.subscribe();
+    // A page too slow to keep up has lost news it can't do without, such
+    // as the end of a turn: ending the stream makes it reconnect and sync.
     let stream = futures_util::stream::unfold(rx, |mut rx| async move {
-        loop {
-            match rx.recv().await {
-                Ok(s) => {
-                    let e = Event::default().json_data(&s).unwrap_or_default();
-                    return Some((Ok::<_, Infallible>(e), rx));
-                }
-                // A page too slow to keep up skips ahead; a reload fills in.
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => return None,
-            }
-        }
+        let s = rx.recv().await.ok()?;
+        let e = Event::default().json_data(&s).unwrap_or_default();
+        Some((Ok::<_, Infallible>(e), rx))
     });
     Sse::new(stream)
         .keep_alive(KeepAlive::default())
@@ -1050,8 +1050,8 @@ async fn browser_close(State(site): State<Arc<Site>>, headers: HeaderMap) -> Res
 }
 
 /// The task under way, the question it waits on, and the computer's
-/// screen to watch it by, when the yeoman has one, and whether its browser
-/// is open.
+/// screen to watch it by, when the yeoman has one, whether its browser
+/// is open, and whether a turn is under way.
 async fn task_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
     if !site.signed(&headers) {
         return StatusCode::UNAUTHORIZED.into_response();
@@ -1062,6 +1062,7 @@ async fn task_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response
         "screen": std::env::var("YEOMAN_SCREEN").ok(),
         "size": std::env::var("YEOMAN_SCREEN_SIZE").ok(),
         "browser": site.web.browser.load(Ordering::Relaxed),
+        "typing": site.web.typing.load(Ordering::Relaxed),
     }))
     .into_response()
 }

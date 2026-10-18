@@ -91,8 +91,11 @@ impl<D: Door> Typing<D> {
         }
     }
 
-    pub async fn stop(self) {
+    pub async fn stop(mut self) {
         self.beat.abort();
+        // A beat already running on another thread would otherwise land
+        // its "on" after this "off" and leave the page typing.
+        let _ = (&mut self.beat).await;
         self.door.typing(false).await;
     }
 }

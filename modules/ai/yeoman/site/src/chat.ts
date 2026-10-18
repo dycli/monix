@@ -110,13 +110,15 @@ export function useChat(): Chat {
       const said: Said[] = await r.json();
       // The tray is extra: a chat without it still works.
       const waiting: Pending[] = w.ok ? await w.json() : [];
-      const now: { text: string | null; question: string | null; screen: string | null; size?: string | null; browser?: boolean } | null = t.ok ? await t.json() : null;
+      const now: { text: string | null; question: string | null; screen: string | null; size?: string | null; browser?: boolean; typing?: boolean } | null = t.ok ? await t.json() : null;
       if (gone) return false;
       if (now) {
         setScreen(now.screen ?? undefined);
         const [w, h] = (now.size ?? "").split("x").map(Number);
         setShape(w && h ? w / h : undefined);
         setBrowser(!!now.browser);
+        // The end of a turn may have gone out while nothing listened.
+        setTyping(!!now.typing);
         // The work so far went out over the stream; a page that missed it
         // starts from the request.
         setTask((k) => (now.text === null ? null : k?.text === now.text ? { ...k, question: now.question ?? undefined } : { text: now.text!, question: now.question ?? undefined, tools: [], words: "" }));
