@@ -94,10 +94,20 @@
   #days:empty { display: none; }
 
   /* Indoors, from the AirGradient: CO₂ leads, tinted by how stale the room is. */
+  /* Inside and outside each get a small heading; inside also sits on its
+     own tinted panel, so the two sets of numbers never read as one. */
+  .where-label {
+    font-size: calc(2.6 * var(--u)); font-weight: 600; color: var(--faint);
+    text-transform: uppercase; letter-spacing: .14em;
+  }
+  #now .where-label { margin-bottom: calc(.5 * var(--u)); }
   #air {
     display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; column-gap: calc(1.5 * var(--u));
     align-items: baseline; font-size: calc(3 * var(--u)); white-space: nowrap;
+    background: var(--lift); border: 1px solid var(--rule); border-radius: calc(2 * var(--u));
+    padding: calc(1.6 * var(--u)) calc(2.4 * var(--u)) calc(2 * var(--u));
   }
+  #air .where-label { grid-column: 1 / -1; margin-bottom: calc(.6 * var(--u)); }
   #air:empty { display: none; }
   #air .big { font-size: calc(6 * var(--u)); font-weight: 200; line-height: 1.1; }
   #air .unit { color: var(--faint); font-size: .8em; margin-left: .25em; }
@@ -229,8 +239,8 @@
     <div><div id="clock"></div><div id="date"></div></div>
     <div id="now"></div>
   </div>
-  <div id="air"></div>
   <div id="days"></div>
+  <div id="air"></div>
   <div id="agenda"></div>
   <div id="week"></div>
 </div>
@@ -294,7 +304,7 @@ function drawWeather(w) {
   const now = $("now"), days = $("days");
   now.replaceChildren(); days.replaceChildren();
   if (!w) return;
-  now.append(el("div", "icon", icon(w.now.code, w.now.day)), el("div", "temp", deg(w.now.temp)),
+  now.append(el("div", "where-label", "Outside"), el("div", "icon", icon(w.now.code, w.now.day)), el("div", "temp", deg(w.now.temp)),
              el("div", "feels", "feels " + deg(w.now.feels)));
   const today = ymd(new Date());
   for (const d of w.days) {
@@ -328,9 +338,10 @@ function drawAir(a) {
     return c;
   };
   const [band, colour] = co2Band(a.co2);
-  const co2 = cell("co2", String(a.co2), "ppm", band);
+  const co2 = cell("co2", String(Math.round(a.co2)), "ppm", band);
   co2.style.setProperty("--c", colour);
-  air.append(co2, cell("", deg(a.temp), "", "inside"),
+  air.append(el("div", "where-label", "Inside"),
+             co2, cell("", deg(a.temp), "", "temperature"),
              cell("", String(Math.round(a.humidity)), "%", "humidity"),
              cell("", String(Math.round(a.pm25)), "µg", "PM2.5"));
 }

@@ -14,7 +14,7 @@ pub struct Air {
 /// What the page draws.
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Reading {
-    pub co2: u32,
+    pub co2: f64,
     pub temp: f64,
     pub humidity: f64,
     pub pm25: f64,
@@ -23,7 +23,8 @@ pub struct Reading {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Measures {
-    rco2: u32,
+    /// A whole number on some firmware, an average with decimals on others.
+    rco2: f64,
     atmp_compensated: f64,
     rhum_compensated: f64,
     pm02_compensated: f64,
@@ -69,11 +70,11 @@ mod tests {
     #[test]
     fn measures_read_into_a_reading() {
         let m: Measures = serde_json::from_str(
-            r#"{"pm02":0,"pm02Compensated":3.2,"atmp":19.46,"atmpCompensated":20.0,"rhum":66.43,"rhumCompensated":61.5,"rco2":976,"tvocIndex":10.67,"model":"I-9PSL"}"#,
+            r#"{"pm02":0,"pm02Compensated":3.2,"atmp":19.46,"atmpCompensated":20.0,"rhum":66.43,"rhumCompensated":61.5,"rco2":829.33,"tvocIndex":10.67,"model":"I-9PSL"}"#,
         )
         .unwrap();
         let r = read(m);
-        assert_eq!(r.co2, 976);
+        assert_eq!(r.co2, 829.33);
         assert!((r.temp - 68.0).abs() < 1e-9);
         assert_eq!(r.humidity, 61.5);
         assert_eq!(r.pm25, 3.2);
