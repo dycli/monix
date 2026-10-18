@@ -52,7 +52,7 @@ Item {
         cursorShape: Qt.PointingHandCursor
         onClicked: event => {
             if (event.button === Qt.MiddleButton) {
-                PowerService.idleInhibited = !PowerService.idleInhibited;
+                PowerService.toggleIdleInhibit();
             } else {
                 root.menuToggleRequested();
             }

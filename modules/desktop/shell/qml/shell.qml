@@ -19,7 +19,7 @@ ShellRoot {
         target: "power"
 
         function toggleIdleInhibit(): void {
-            PowerService.idleInhibited = !PowerService.idleInhibited;
+            PowerService.toggleIdleInhibit();
         }
 
         function idleInhibited(): bool {

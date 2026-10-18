@@ -1,7 +1,6 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
 
-import QtCore
 import QtQuick
 import Quickshell.Io
 import Quickshell.Services.UPower
@@ -23,33 +22,40 @@ QtObject {
     readonly property string currentProfileKey: profilesAvailable
         ? profileKey(PowerProfiles.profile) : "default"
 
+    // Keep awake is a user unit holding a logind idle lock, so it outlives
+    // shell restarts; the shell only reads and flips it.
     property bool idleInhibited: false
-    property bool idleStateLoaded: false
 
-    property FileView idleStateFile: FileView {
-        path: StandardPaths.writableLocation(StandardPaths.RuntimeLocation)
-            + "/kestrel-idle-inhibited"
-        blockLoading: true
-        blockWrites: true
-        watchChanges: false
-
-        onLoaded: {
-            root.idleInhibited = text().trim() === "true";
-            root.idleStateLoaded = true;
-        }
-        onLoadFailed: {
-            root.idleStateLoaded = true;
-            root.saveIdleState();
-        }
+    property Process idleStatusProcess: Process {
+        command: ["systemctl", "--user", "is-active", "--quiet", "kestrel-keep-awake.service"]
+        onExited: exitCode => root.idleInhibited = exitCode === 0
     }
 
-    onIdleInhibitedChanged: {
-        if (idleStateLoaded)
-            saveIdleState();
+    property Process idleControlProcess: Process {
+        onExited: root.refreshIdle()
     }
 
-    function saveIdleState(): void {
-        idleStateFile.setText(idleInhibited ? "true\n" : "false\n");
+    property Timer idleRefreshTimer: Timer {
+        interval: 5000
+        repeat: true
+        running: true
+        onTriggered: root.refreshIdle()
+    }
+
+    Component.onCompleted: refreshIdle()
+
+    function refreshIdle(): void {
+        if (!idleStatusProcess.running)
+            idleStatusProcess.running = true;
+    }
+
+    function toggleIdleInhibit(): void {
+        if (idleControlProcess.running)
+            return;
+        idleControlProcess.command = [
+            "systemctl", "--user", idleInhibited ? "stop" : "start", "kestrel-keep-awake.service"
+        ];
+        idleControlProcess.running = true;
     }
 
     readonly property string status: {

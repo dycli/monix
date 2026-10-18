@@ -153,7 +153,7 @@ Column {
         icon: "󰒳"
         label: "Keep awake"
         detail: PowerService.idleInhibited ? "On" : "Off"
-        onActivated: PowerService.idleInhibited = !PowerService.idleInhibited
+        onActivated: PowerService.toggleIdleInhibit()
     }
 
     Text {

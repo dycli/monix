@@ -81,11 +81,6 @@ Variants {
             && BarModeService.isActive(window.modelData.name)
             ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
-        IdleInhibitor {
-            window: window
-            enabled: PowerService.idleInhibited
-        }
-
         HyprlandFocusGrab {
             active: rightRail.ownsMode
             windows: [window]

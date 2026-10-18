@@ -239,5 +239,25 @@
           ExecStart = getExe pkgs.hyprlock;
         };
       };
+
+      # Keep awake holds a logind idle lock, which hypridle obeys. A Wayland
+      # inhibitor on the bar died with every shell restart (each deploy), and
+      # Hyprland never honoured the new one, so the screen locked 10 minutes
+      # later.
+      systemd.user.services.kestrel-keep-awake = {
+        Unit = {
+          Description = "Keep the session awake";
+          PartOf = [ "graphical-session.target" ];
+          After = [ "graphical-session.target" ];
+        };
+        Service.ExecStart = lib.strings.escapeShellArgs [
+          (getExe' pkgs.systemd "systemd-inhibit")
+          "--what=idle"
+          "--who=Kestrel"
+          "--why=Keep awake is on"
+          (getExe' pkgs.coreutils "sleep")
+          "infinity"
+        ];
+      };
     };
 }
