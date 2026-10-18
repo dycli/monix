@@ -19,7 +19,11 @@
       # Use MagicDNS names and the tailnet's filtering resolver.
       services.tailscale.extraSetFlags = singleton "--accept-dns=true";
 
-      homeAssistant.lanSubnets = singleton "192.168.1.0/24";
+      # 192.168.30.0/24 is the IoT VLAN (frame, AirGradient).
+      homeAssistant.lanSubnets = [
+        "192.168.1.0/24"
+        "192.168.30.0/24"
+      ];
 
       shipCameras.reolink = {
         cam1 = "192.168.1.201";
