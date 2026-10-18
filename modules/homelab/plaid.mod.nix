@@ -76,11 +76,9 @@
             StateDirectoryMode = "0750";
             # Group-readable files; the vault folder is narrowed to the owner.
             UMask = "0027";
-            # As a DynamicUser the state was owned by nobody on disk and
-            # id-mapped in; the move to a static user kept that owner, which
-            # the finance group can't read through. Root sets the real owner
-            # before each start; drop this once /var/lib/plaid is plaid:finance.
-            ExecStartPre = "+${pkgs.coreutils}/bin/chown -R plaid:finance /var/lib/plaid";
+            # A private user namespace keeps the state owned by nobody on disk,
+            # id-mapped in, and the finance group can't read through that.
+            PrivateUsers = false;
             ExecStart = getExe plaid;
             LoadCredential = singleton "keys:${cfg.keysFile}";
             Restart = "on-failure";
