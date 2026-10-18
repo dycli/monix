@@ -101,8 +101,7 @@
   }
   #now .where-label { margin-bottom: calc(.5 * var(--u)); }
   #air {
-    display: flex; flex-wrap: wrap; align-items: baseline;
-    column-gap: calc(2.2 * var(--u)); row-gap: calc(.6 * var(--u));
+    display: flex; align-items: baseline; column-gap: calc(1.8 * var(--u));
     font-size: calc(2.6 * var(--u)); white-space: nowrap; color: var(--dim);
     font-variant-numeric: tabular-nums;
   }
@@ -345,11 +344,15 @@ function drawAir(a) {
   const co2 = item(whole(a.co2), "ppm CO₂", "co2");
   co2.style.setProperty("--c", colour);
   co2.title = band;
-  air.append(el("span", "where-label", "Inside"), co2,
-             item(deg(a.temp), ""), item(whole(a.humidity) + "%", "humidity"),
+  air.append(el("span", "where-label", "Inside"), item(deg(a.temp), ""),
+             item(whole(a.humidity) + "%", "humidity"), co2,
              item(whole(a.pm25), "PM2.5"), item(whole(a.pm1), "PM1"), item(whole(a.pm10), "PM10"));
   if (a.voc != null) air.append(item(whole(a.voc), "VOC"));
   if (a.nox != null) air.append(item(whole(a.nox), "NOx"));
+  // One line: shrink the row to its width with a single measurement.
+  air.style.fontSize = "";
+  const over = air.scrollWidth / air.clientWidth;
+  if (over > 1) air.style.fontSize = parseFloat(getComputedStyle(air).fontSize) / over * 0.98 + "px";
 }
 
 // Events by day from today. A whole-day event shows on each day it covers;
@@ -441,6 +444,8 @@ function draw() {
   drawAgenda(board.events);
   drawWeek(board.events, board.weather);
 }
+// Turning the frame changes the width the air row must fit.
+addEventListener("resize", () => board && drawAir(board.air));
 
 async function readBoard() {
   try {
