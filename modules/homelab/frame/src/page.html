@@ -475,7 +475,8 @@ async function list() {
 // of time, so a swipe or a fade only moves layers that are already drawn;
 // the frame's GPU is too slow to blur or decode while a finger moves.
 const slots = [...document.querySelectorAll("#photo .slot")].map(el =>
-  ({ el, img: el.querySelector("img"), fill: el.querySelector("canvas"), id: null, ready: null }));
+  ({ el, img: el.querySelector("img"), fill: el.querySelector("canvas"), id: null, ready: null,
+     url: null, small: null, painted: "" }));
 let [prev, cur, nxt] = slots;
 let shown = -1, busy = false, drag = null;
 const at = k => order[(k % order.length + order.length) % order.length];
@@ -483,24 +484,41 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
 // The fill behind the photo's bars: the photo drawn tiny and blurred once,
 // then stretched, which looks the same as a large blur and costs nothing
-// to move.
+// to move. It draws from a small bitmap decoded off the main thread: drawing
+// the <img> itself decodes the whole photo on the main thread, about two
+// seconds a photo on the frame's CPU. A view switch that hides and shows the
+// photo leaves the canvas as it was, so it is redrawn only when its shape
+// or photo changes.
 function paint(s) {
-  const c = s.fill, iw = s.img.naturalWidth, ih = s.img.naturalHeight;
-  if (!iw || !c.clientWidth) return;
+  const c = s.fill, b = s.small;
+  if (!b || !c.clientWidth) return;
   const w = 40, h = Math.max(1, Math.round(w * c.clientHeight / c.clientWidth));
+  const key = `${s.id} ${w}x${h}`;
+  if (s.painted === key) return;
+  s.painted = key;
   c.width = w; c.height = h;
   const g = c.getContext("2d");
   g.filter = "blur(2px) brightness(1.1) saturate(.7)";
-  const k = Math.max(w / iw, h / ih) * 1.2;
-  g.drawImage(s.img, (w - iw * k) / 2, (h - ih * k) / 2, iw * k, ih * k);
+  const k = Math.max(w / b.width, h / b.height) * 1.2;
+  g.drawImage(b, (w - b.width * k) / 2, (h - b.height * k) / 2, b.width * k, b.height * k);
 }
 new ResizeObserver(() => slots.forEach(paint)).observe($("photo"));
 
 function load(s, id) {
   if (s.id !== id) {
     s.id = id;
-    s.img.src = "/photo/" + id;
-    s.ready = s.img.decode().then(() => paint(s), () => {});
+    s.ready = (async () => {
+      const blob = await (await fetch("/photo/" + id)).blob();
+      const small = await createImageBitmap(blob, { resizeWidth: 64, resizeQuality: "low" });
+      const url = URL.createObjectURL(blob);
+      if (s.id !== id) return URL.revokeObjectURL(url), small.close();
+      if (s.url) URL.revokeObjectURL(s.url);
+      s.small?.close();
+      s.url = url; s.small = small;
+      s.img.src = url;
+      await s.img.decode();
+      paint(s);
+    })().catch(() => {});
   }
   return s.ready;
 }
