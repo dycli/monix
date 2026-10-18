@@ -266,12 +266,14 @@
   .hours span { position: absolute; top: calc(.8 * var(--u)); transform: translateX(-50%); white-space: nowrap; }
   .key { font-size: calc(2.3 * var(--u)); color: var(--faint); margin-top: calc(.4 * var(--u)); }
   .key b { color: #3f6f9a; font-weight: 400; }
-  #wx .week { display: flex; flex-direction: column; min-height: 0; }
+  /* Under the chart in portrait the week keeps its rows' height; the chart
+     takes what's left rather than squeezing the days. */
+  #wx .week { display: flex; flex-direction: column; min-height: 0; flex-shrink: 0; }
   #wx .row {
     flex: 1; display: grid; align-items: center; column-gap: calc(1.4 * var(--u));
     grid-template-columns: 3.4em 1.4em 2.2em 2em 1fr 2em;
     font-size: calc(3.4 * var(--u)); border-top: 1px solid var(--rule);
-    max-height: calc(14 * var(--u));
+    min-height: calc(8.5 * var(--u)); max-height: calc(14 * var(--u));
   }
   #wx .row .name { color: var(--dim); }
   #wx .row .rain { color: #3f6f9a; font-size: .8em; text-align: right; }
