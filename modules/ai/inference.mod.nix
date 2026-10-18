@@ -243,6 +243,10 @@ in
       inference.models = {
         "qwen3.8-27b-q4-k-m" = qwen38 147456 "Qwen3.8-27B-Q4_K_M.gguf";
         "qwen3.8-27b-q5-k-s" = qwen38 98304 "Qwen3.8-27B-Q5_K_S.gguf";
+        # orcarouter's uncensored fine-tune, pulled from Ollama's registry
+        # (registry.ollama.ai/v2/orcarouter/qwen3.8-27b-uncensored/blobs/…),
+        # which serves the same GGUF without Hugging Face's sign-in gate.
+        "qwen3.8-27b-uncensored-q4-k-m" = qwen38 147456 "Qwen3.8-27B-Uncensored-Q4_K_M.gguf";
       };
     };
 
