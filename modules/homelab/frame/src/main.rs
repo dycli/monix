@@ -11,6 +11,7 @@
 //! - `FRAME_TZ`: the house's time zone, e.g. `America/New_York`.
 //! - `FRAME_CALDAV_FILE` (optional): yeoman's CalDAV accounts file.
 //! - `FRAME_WEATHER` (optional): `latitude,longitude` for the forecast.
+//! - `FRAME_AIR` (optional): the AirGradient monitor's address.
 //! - `FRAME_CAMERAS` (optional): a JSON list of `{"id", "name", "turns"}`,
 //!   the go2rtc streams the page may show live, by their name, a label and
 //!   whether Frigate can pan and tilt them.
@@ -18,6 +19,7 @@
 //! - `FRAME_FRIGATE` (with a camera that turns): Frigate's unauthenticated
 //!   internal websocket, e.g. `ws://127.0.0.1:5000/ws`, to pan and tilt.
 
+mod air;
 mod calendar;
 mod weather;
 
@@ -34,6 +36,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
 
+use air::Air;
 use calendar::Calendar;
 use weather::Weather;
 
@@ -44,6 +47,8 @@ const PAGE: u32 = 1000;
 /// How long the calendar and the forecast are reused.
 const CALENDAR_FRESH: Duration = Duration::from_secs(300);
 const WEATHER_FRESH: Duration = Duration::from_secs(900);
+/// The monitor itself updates about once a minute.
+const AIR_FRESH: Duration = Duration::from_secs(60);
 /// Days of calendar the board shows, today first.
 const AHEAD: i64 = 7;
 
@@ -80,9 +85,11 @@ struct App {
     photos: Mutex<Option<(Instant, Vec<String>)>>,
     calendar: Option<Calendar>,
     weather: Option<Weather>,
+    air: Option<Air>,
     /// The last good answer of each, kept through outages.
     events: Mutex<Option<(Instant, Value)>>,
     forecast: Mutex<Option<(Instant, Value)>>,
+    indoors: Mutex<Option<(Instant, Value)>>,
     /// When this server started; the page reloads when it changes, so a
     /// deploy reaches the wall without anyone touching the frame.
     boot: u64,
@@ -265,7 +272,8 @@ async fn photo(State(app): State<Arc<App>>, Path(id): Path<String>) -> Response 
     }
 }
 
-/// Everything around the photos: the calendar from today and the forecast.
+/// Everything around the photos: the calendar from today, the forecast
+/// and the air indoors.
 async fn board(State(app): State<Arc<App>>) -> Response {
     let a = app.clone();
     let events = match &app.calendar {
@@ -292,9 +300,21 @@ async fn board(State(app): State<Arc<App>>) -> Response {
         }
         None => Value::Null,
     };
+    let a = app.clone();
+    let air = match &app.air {
+        Some(_) => {
+            cached(&app.indoors, AIR_FRESH, move || {
+                let air = a.air.as_ref().expect("checked above");
+                air.reading()
+                    .map(|r| serde_json::to_value(r).unwrap_or_default())
+            })
+            .await
+        }
+        None => Value::Null,
+    };
     (
         [(header::CACHE_CONTROL, "no-cache")],
-        Json(json!({ "boot": app.boot, "events": events, "weather": forecast })),
+        Json(json!({ "boot": app.boot, "events": events, "weather": forecast, "air": air })),
     )
         .into_response()
 }
@@ -465,8 +485,10 @@ async fn main() {
         weather: std::env::var("FRAME_WEATHER")
             .ok()
             .map(|p| Weather::new(&p, &zone).unwrap_or_else(|e| panic!("{e}"))),
+        air: std::env::var("FRAME_AIR").ok().map(|host| Air::new(&host)),
         events: Mutex::new(None),
         forecast: Mutex::new(None),
+        indoors: Mutex::new(None),
         boot: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_secs()),

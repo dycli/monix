@@ -1,6 +1,6 @@
 # The wall frame's homepage at https://frame.<domain>: one Immich album as
-# a slideshow with the time, the week's calendar and the forecast, served by
-# ./frame. The frame (a rooted Frameo on the IoT VLAN) cannot join the
+# a slideshow with the time, the week's calendar, the forecast and the air
+# indoors, served by ./frame. The frame (a rooted Frameo on the IoT VLAN) cannot join the
 # tailnet, so the server also listens on the LAN port directly; the page
 # carries photos and the board only, never the Immich key or CalDAV login.
 { self, ... }:
@@ -52,6 +52,12 @@
           description = "`latitude,longitude` for the forecast; null = none.";
           example = "43.07,-70.76";
         };
+        air = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Address of an AirGradient monitor on the frame's subnet; null = none.";
+          example = "192.168.30.191";
+        };
         cameras = mkOption {
           type = types.attrsOf types.str;
           default = { };
@@ -100,6 +106,9 @@
           }
           // optionalAttrs (cfg.weather != null) {
             FRAME_WEATHER = cfg.weather;
+          }
+          // optionalAttrs (cfg.air != null) {
+            FRAME_AIR = cfg.air;
           }
           // optionalAttrs (cfg.cameras != { }) {
             # The Tapos pan and tilt through Frigate's ONVIF link.

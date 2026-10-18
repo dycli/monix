@@ -36,6 +36,9 @@
       shipCameras.lanSubnets = singleton "192.168.1.0/24";
 
       # The Reolinks join once they are back on the wall.
+      # The AirGradient ONE, on the IoT VLAN with the frame.
+      frame.air = "192.168.30.191";
+
       frame.cameras = {
         tapo1 = "Living room";
         tapo2 = "Nursery";
