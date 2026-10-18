@@ -352,11 +352,12 @@ type ThreadProps = {
   task: Task | null;
   stopTask: () => Promise<void>;
   screen?: string;
+  shape?: number;
   browser: boolean;
   closeBrowser: () => Promise<void>;
 };
 
-function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, screen, browser, closeBrowser }: ThreadProps) {
+function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, screen, shape, browser, closeBrowser }: ThreadProps) {
   const [finding, setFinding] = useState(false);
   // The deck on screen, by the card it opened at, and whether it is on its
   // way down so the talk fades back in rather than snapping.
@@ -484,7 +485,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
             <div ref={dock} className="relative mx-auto w-[min(740px,100%)]">
               {/* What waits or works above the composer scrolls as one, so the talk stays in view. */}
               <div className="max-h-[min(66vh,720px)] overflow-y-auto pt-2.5 empty:hidden">
-                {screen && !wide && <Screen url={screen} on={watching} driving={driving} close={closeBrowser} />}
+                {screen && !wide && <Screen url={screen} shape={shape} on={watching} driving={driving} close={closeBrowser} />}
                 {task && <TaskStrip task={task} stop={stopTask} />}
                 <Tray cards={cards} decide={decide} />
               </div>
@@ -515,7 +516,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
             </div>
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
-        {screen && wide && <Screen url={screen} on={watching} driving={driving} close={closeBrowser} pane />}
+        {screen && wide && <Screen url={screen} shape={shape} on={watching} driving={driving} close={closeBrowser} pane />}
         </div>
         {deck.length > 0 && <Deck key={deck[0].key} faces={deck} start={open!} leaving={leaving} edge={edge} close={close} />}
       </ThreadPrimitive.Root>
@@ -1361,7 +1362,7 @@ function useWide() {
 // the browser closes; Close closes it, though not while the yeoman is at
 // it. Hidden, it stays a line to bring it back. As a pane it fills the
 // right of a wide window, top to bottom.
-function Screen({ url, on, driving, close, pane }: { url: string; on: boolean; driving: boolean; close: () => Promise<void>; pane?: boolean }) {
+function Screen({ url, shape = 16 / 9, on, driving, close, pane }: { url: string; shape?: number; on: boolean; driving: boolean; close: () => Promise<void>; pane?: boolean }) {
   const [hidden, setHidden] = useState(false);
   useEffect(() => {
     if (on) setHidden(false);
@@ -1399,7 +1400,10 @@ function Screen({ url, on, driving, close, pane }: { url: string; on: boolean; d
         <iframe
           src={`${url}${sep}view_only=1`}
           title="The computer's screen"
-          className={`block w-full border-0 border-t border-hair bg-ink ${pane ? "min-h-0 flex-1" : "aspect-[16/10] max-h-[42vh]"}`}
+          className={`block border-0 border-t border-hair bg-ink ${pane ? "min-h-0 w-full flex-1" : "mx-auto"}`}
+          // Inline, the frame takes the screen's own shape, as wide as fits
+          // under 42vh, so noVNC scales it with no bands.
+          style={pane ? undefined : { aspectRatio: shape, width: `min(100%, ${42 * shape}vh)` }}
         />
       )}
     </section>

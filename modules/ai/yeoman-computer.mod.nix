@@ -68,6 +68,12 @@
               keeper = pkgs.writers.writePython3Bin "desk-keeper" {
                 libraries = singleton pkgs.python3Packages.mcp;
               } (readFile ./yeoman-computer/keeper.py);
+              # The headless output starts at wlroots' 1280x720 whatever the
+              # viewport, so it is sized to the screen before the browser opens.
+              browse = pkgs.writeShellScript "desk-browse" ''
+                ${getExe pkgs.wlr-randr} --output HEADLESS-1 --custom-mode ${computers.screen}
+                exec ${getExe playwright} "$@"
+              '';
               desktop = pkgs.writeShellApplication {
                 name = "desk";
                 runtimeInputs = [
@@ -83,7 +89,7 @@
                   # The profile goes by environment: the nixpkgs wrapper turns
                   # on isolated mode, which refuses a profile, unless this is set.
                   export PLAYWRIGHT_MCP_USER_DATA_DIR=/home/pc/profile
-                  exec cage -- ${getExe playwright} \
+                  exec cage -- ${browse} \
                     --host 0.0.0.0 --port ${toString computers.mcpPort} \
                     --allowed-hosts ${addr n},${addr n}:${toString computers.mcpPort},localhost,localhost:${toString computers.mcpPort} \
                     --browser chrome --executable-path ${getExe pkgs.brave} --sandbox \
@@ -307,7 +313,19 @@
             )
             |> listToAttrs
           )
-          // (owners |> map (n: nameValuePair n { environment.YEOMAN_SCREEN = screenUrl n; }) |> listToAttrs);
+          // (
+            owners
+            |> map (
+              n:
+              nameValuePair n {
+                environment = {
+                  YEOMAN_SCREEN = screenUrl n;
+                  YEOMAN_SCREEN_SIZE = computers.screen;
+                };
+              }
+            )
+            |> listToAttrs
+          );
       };
     };
 }

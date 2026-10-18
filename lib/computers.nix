@@ -38,7 +38,7 @@ in
   vncPort = 5900;
   # The nth screen on the host's loopback, for the person's browser.
   screenPort = index: 6080 + index;
-  screen = "1280x720";
+  screen = "1280x1024";
 
   # Each assistant's desk: screenshots and downloads out, uploads in.
   desks = "/var/lib/yeoman-desks";

@@ -76,6 +76,8 @@ export type Chat =
       stopTask: () => Promise<void>;
       /** The computer's screen, when the yeoman has one. */
       screen?: string;
+      /** Its width over its height. */
+      shape?: number;
       /** Whether the computer's browser is open, and closing it. */
       browser: boolean;
       closeBrowser: () => Promise<void>;
@@ -88,6 +90,7 @@ export function useChat(): Chat {
   const [cards, setCards] = useState<Card[]>([]);
   const [task, setTask] = useState<Task | null>(null);
   const [screen, setScreen] = useState<string>();
+  const [shape, setShape] = useState<number>();
   const [browser, setBrowser] = useState(false);
 
   useEffect(() => {
@@ -107,10 +110,12 @@ export function useChat(): Chat {
       const said: Said[] = await r.json();
       // The tray is extra: a chat without it still works.
       const waiting: Pending[] = w.ok ? await w.json() : [];
-      const now: { text: string | null; question: string | null; screen: string | null; browser?: boolean } | null = t.ok ? await t.json() : null;
+      const now: { text: string | null; question: string | null; screen: string | null; size?: string | null; browser?: boolean } | null = t.ok ? await t.json() : null;
       if (gone) return false;
       if (now) {
         setScreen(now.screen ?? undefined);
+        const [w, h] = (now.size ?? "").split("x").map(Number);
+        setShape(w && h ? w / h : undefined);
         setBrowser(!!now.browser);
         // The work so far went out over the stream; a page that missed it
         // starts from the request.
@@ -284,7 +289,7 @@ export function useChat(): Chat {
 
   if (status === "loading" || status === "signed-out") return { state: status };
   if (status !== "ready") return { state: "error", error: status };
-  return { state: "ready", messages, typing, send, stop, cards, decide, task, stopTask, screen, browser, closeBrowser };
+  return { state: "ready", messages, typing, send, stop, cards, decide, task, stopTask, screen, shape, browser, closeBrowser };
 }
 
 // A task's steps before the page heard it started still belong to it.

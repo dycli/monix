@@ -1060,6 +1060,7 @@ async fn task_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response
         "text": task::running(&site.state),
         "question": task::question(&site.state),
         "screen": std::env::var("YEOMAN_SCREEN").ok(),
+        "size": std::env::var("YEOMAN_SCREEN_SIZE").ok(),
         "browser": site.web.browser.load(Ordering::Relaxed),
     }))
     .into_response()
