@@ -89,12 +89,20 @@
   #now .temp { font-size: calc(9 * var(--u)); font-weight: 200; line-height: 1; }
   #now .feels { font-size: calc(3 * var(--u)); color: var(--dim); }
 
-  #days {
-    display: grid; grid-template-columns: repeat(5, 1fr); column-gap: calc(1.5 * var(--u));
+  /* Today's next hours, the Weather tab's chart at a fixed height. */
+  #hourly {
+    display: flex; height: calc(30 * var(--u)); flex-shrink: 0;
     border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
-    padding: calc(2 * var(--u)) 0;
+    padding: calc(1 * var(--u)) 0;
   }
-  #days:empty { display: none; }
+  #hourly:empty { display: none; }
+  #hourly .chart { min-height: 0; }
+  /* Room above the warmest hour for its label, which sits over the point. */
+  #hourly .plot { margin-top: calc(7 * var(--u)); }
+  /* Beside the photo the column is narrow: label every six hours. */
+  @media (orientation: landscape) {
+    #hourly .plot .t:nth-child(odd), #hourly .hours span:nth-child(even) { display: none; }
+  }
 
   /* Indoors, from the AirGradient: one quiet line above the clock, CO₂
      first with a dot tinted by how stale the room is. */
@@ -116,13 +124,14 @@
     content: ""; display: inline-block; width: .6em; height: .6em; border-radius: 50%;
     background: var(--c); margin-right: .45em; vertical-align: .05em;
   }
-  .day { text-align: center; font-size: calc(3 * var(--u)); white-space: nowrap; }
-  .day .name { color: var(--dim); }
-  .day .icon { font-size: calc(6 * var(--u)); line-height: 1.3; }
-  .day .lo { color: var(--faint); }
-  .day .rain { color: #3f6f9a; font-size: calc(2.6 * var(--u)); min-height: 1.2em; }
 
-  #agenda { flex: 1; min-height: 0; overflow: hidden; font-size: calc(3.4 * var(--u)); }
+  /* The rest of the week scrolls under a finger; the page itself never
+     pans, so the agenda opts back in to vertical touch scrolling. */
+  #agenda {
+    flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    touch-action: pan-y; scrollbar-width: none; font-size: calc(3.4 * var(--u));
+  }
+  #agenda::-webkit-scrollbar { display: none; }
   #agenda h2 {
     margin: calc(2 * var(--u)) 0 calc(.8 * var(--u)); font-size: calc(2.8 * var(--u));
     font-weight: 500; color: var(--faint); text-transform: uppercase; letter-spacing: .12em;
@@ -144,7 +153,7 @@
   /* The calendar view on a landscape screen: the week as seven columns. */
   #week { display: none; }
   @media (orientation: landscape) {
-    body[data-view=calendar] #days, body[data-view=calendar] #air,
+    body[data-view=calendar] #hourly, body[data-view=calendar] #air,
     body[data-view=calendar] #agenda { display: none; }
     body[data-view=calendar] #week {
       display: grid; grid-template-columns: repeat(7, 1fr); flex: 1; min-height: 0;
@@ -237,23 +246,23 @@
   #wx .fact .k { font-size: calc(2.3 * var(--u)); color: var(--faint); text-transform: uppercase; letter-spacing: .12em; }
   #wx .fact .v { font-size: calc(5 * var(--u)); font-weight: 300; font-variant-numeric: tabular-nums; }
   #wx .fact .n { font-size: calc(2.6 * var(--u)); color: var(--dim); }
-  #wx .chart { flex: 1; min-height: calc(30 * var(--u)); display: flex; flex-direction: column; padding: 0 calc(3 * var(--u)); }
-  #wx .plot { position: relative; flex: 1; min-height: 0; }
-  #wx .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-  #wx .plot .line { fill: none; stroke: var(--accent); stroke-width: 3; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
-  #wx .plot .area { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
-  #wx .plot .night { fill: color-mix(in srgb, var(--ink) 6%, transparent); }
-  #wx .plot .t {
+  .chart { flex: 1; min-height: calc(30 * var(--u)); display: flex; flex-direction: column; padding: 0 calc(3 * var(--u)); }
+  .plot { position: relative; flex: 1; min-height: 0; }
+  .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .plot .line { fill: none; stroke: var(--accent); stroke-width: 3; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .plot .area { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .plot .night { fill: color-mix(in srgb, var(--ink) 6%, transparent); }
+  .plot .t {
     position: absolute; transform: translate(-50%, -130%); text-align: center;
     font-size: calc(2.8 * var(--u)); font-variant-numeric: tabular-nums; white-space: nowrap;
   }
-  #wx .plot .t .i { display: block; font-size: 1.1em; }
-  #wx .bars { display: flex; align-items: flex-end; height: calc(5 * var(--u)); gap: 2px; border-bottom: 1px solid var(--rule); }
-  #wx .bars div { flex: 1; background: #3f6f9a; opacity: .55; border-radius: 2px 2px 0 0; }
-  #wx .hours { position: relative; height: calc(4 * var(--u)); font-size: calc(2.5 * var(--u)); color: var(--dim); }
-  #wx .hours span { position: absolute; top: calc(.8 * var(--u)); transform: translateX(-50%); white-space: nowrap; }
-  #wx .key { font-size: calc(2.3 * var(--u)); color: var(--faint); margin-top: calc(.4 * var(--u)); }
-  #wx .key b { color: #3f6f9a; font-weight: 400; }
+  .plot .t .i { display: block; font-size: 1.1em; }
+  .bars { display: flex; align-items: flex-end; height: calc(5 * var(--u)); gap: 2px; border-bottom: 1px solid var(--rule); }
+  .bars div { flex: 1; background: #3f6f9a; opacity: .55; border-radius: 2px 2px 0 0; }
+  .hours { position: relative; height: calc(4 * var(--u)); font-size: calc(2.5 * var(--u)); color: var(--dim); }
+  .hours span { position: absolute; top: calc(.8 * var(--u)); transform: translateX(-50%); white-space: nowrap; }
+  .key { font-size: calc(2.3 * var(--u)); color: var(--faint); margin-top: calc(.4 * var(--u)); }
+  .key b { color: #3f6f9a; font-weight: 400; }
   #wx .week { display: flex; flex-direction: column; min-height: 0; }
   #wx .row {
     flex: 1; display: grid; align-items: center; column-gap: calc(1.4 * var(--u));
@@ -308,7 +317,7 @@
     <div><div id="clock"></div><div id="date"></div></div>
     <div id="now"></div>
   </div>
-  <div id="days"></div>
+  <div id="hourly"></div>
   <div id="agenda"></div>
   <div id="week"></div>
 </div>
@@ -376,21 +385,12 @@ function tick() {
 }
 
 function drawWeather(w) {
-  const now = $("now"), days = $("days");
-  now.replaceChildren(); days.replaceChildren();
+  const now = $("now"), hourly = $("hourly");
+  now.replaceChildren(); hourly.replaceChildren();
   if (!w) return;
   now.append(el("div", "icon", icon(w.now.code, w.now.day)), el("div", "temp", deg(w.now.temp)),
              el("div", "feels", "feels " + deg(w.now.feels)));
-  const today = ymd(new Date());
-  for (const d of w.days.slice(0, 5)) {
-    const cell = el("div", "day");
-    cell.append(el("div", "name", d.date === today ? "Today" : weekday(d.date)),
-                el("div", "icon", icon(d.code)));
-    const t = el("div");
-    t.append(deg(d.high) + " ", el("span", "lo", deg(d.low)));
-    cell.append(t, el("div", "rain", d.rain >= 20 ? d.rain + "%" : ""));
-    days.append(cell);
-  }
+  if (w.hours) hourly.append(chart(w.hours));
 }
 
 // WMO weather codes in words.
@@ -570,7 +570,7 @@ const clock = e => e.allDay ? "all day"
   : new Date(e.start.replace(" ", "T")).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
 function drawAgenda(events) {
-  const box = $("agenda");
+  const box = $("agenda"), top = box.scrollTop;
   box.replaceChildren();
   if (!events) return;
   const now = new Date(), today = ymd(now);
@@ -592,11 +592,8 @@ function drawAgenda(events) {
     }
   }
   if (!any) box.append(el("div", "quiet", "Nothing on the calendar this week."));
-  // Drop the last rows that do not fit, and a day heading left bare.
-  while (box.scrollHeight > box.clientHeight && box.children.length > 1) {
-    box.lastChild.remove();
-    if (box.lastChild && box.lastChild.tagName === "H2") box.lastChild.remove();
-  }
+  // Redrawn each minute; keep the reader's place.
+  box.scrollTop = top;
 }
 
 // The calendar view's week: a column a day, with its forecast.
