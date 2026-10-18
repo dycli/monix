@@ -65,6 +65,16 @@
           MemoryHigh = "14G";
           MemoryMax = "18G";
         };
+        # The chats' own cargo and evaluators run in paseo, outside the
+        # daemon's fence; on 2026-10-17 paseo peaked at 16G with 11G in zram.
+        # MemoryHigh only slows it past 12G; no MemoryMax, so a chat is
+        # never killed for a build beside it.
+        # A deploy never restarts it: that would end every chat and its long
+        # runs. A new paseo takes over at the next manual restart or boot.
+        systemd.services.paseo = {
+          serviceConfig.MemoryHigh = "12G";
+          restartIfChanged = false;
+        };
 
         boot.loader.timeout = 5;
 
