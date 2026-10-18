@@ -65,6 +65,8 @@ def codex():
             for raw in p.stdout:
                 msg = json.loads(raw)
                 if msg.get("id") == id:
+                    if "error" in msg:
+                        raise RuntimeError(msg["error"].get("message", msg["error"]))
                     return msg["result"]
             raise RuntimeError("codex app-server closed")
 
