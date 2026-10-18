@@ -53,12 +53,17 @@
         hardware.amdgpu.opencl.enable = true;
 
         # Builds use every core, at idle priority, and run in a memory fence:
-        # past it a build fails, never the services beside it.
+        # past it a build fails, never the services beside it. Six jobs of
+        # eight cores still fill all 48 threads; the default (48 jobs, each
+        # on every core) linked enough Rust at once to thrash the desktop.
+        # MemoryHigh slows builds well before the rest of the machine swaps.
         nix.daemonCPUSchedPolicy = "idle";
         nix.daemonIOSchedClass = "idle";
+        nix.settings.max-jobs = 6;
+        nix.settings.cores = 8;
         systemd.services.nix-daemon.serviceConfig = {
-          MemoryHigh = "18G";
-          MemoryMax = "22G";
+          MemoryHigh = "14G";
+          MemoryMax = "18G";
         };
 
         boot.loader.timeout = 5;
