@@ -41,16 +41,6 @@
           '';
         };
 
-        dashboardHost = mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          example = "home.su.is";
-          description = ''
-            Full hostname for the homepage dashboard vhost; null disables
-            the vhost.
-          '';
-        };
-
         routes = mkOption {
           type = lib.types.attrsOf (
             lib.types.submodule (
@@ -84,7 +74,7 @@
           default = { };
           description = ''
             Reverse-proxy routes, one per service, contributed by the owning
-            module. The nginx vhosts here and the homepage tiles both derive
+            module. The nginx vhosts here derive
             from these, so a service's subdomain and port live in one place.
           '';
         };
@@ -137,18 +127,13 @@
                 )
               )
             )
-            // optionalAttrs (cfg.dashboardHost != null && config.services.homepage-dashboard.enable) {
-              ${cfg.dashboardHost} = proxy config.services.homepage-dashboard.listenPort { };
-            }
-            # Plain hostname, tailnet IP and MagicDNS name on :80.
-            // optionalAttrs config.services.homepage-dashboard.enable {
-              homepage-catchall = {
+            # Plain hostname, tailnet IP and MagicDNS name on :80 go to the
+            # homepage.
+            // optionalAttrs (cfg.routes ? home) {
+              home-catchall = {
                 serverName = config.networking.hostName;
                 default = true;
-                locations."/" = {
-                  proxyPass = "http://127.0.0.1:${toString config.services.homepage-dashboard.listenPort}";
-                  proxyWebsockets = true;
-                };
+                locations."/".return = "302 https://${cfg.routes.home.subdomain}.${cfg.domain}$request_uri";
               };
             }
             # The wildcard DNS record resolves every name. Without an

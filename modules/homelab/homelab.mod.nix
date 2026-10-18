@@ -44,7 +44,114 @@
         tapo2 = "Nursery";
       };
 
-      shipProxy.dashboardHost = "hp.su.is";
+      # The homepage at home.su.is: services in the order it lists them.
+      frame.services = [
+        {
+          name = "Jellyfin";
+          about = "Movies & TV";
+          icon = "jellyfin";
+          route = "fin";
+        }
+        {
+          name = "Seerr";
+          about = "Requests";
+          icon = "jellyseerr";
+          route = "q";
+        }
+        {
+          name = "Immich";
+          about = "Photos";
+          icon = "immich";
+          route = "pix";
+        }
+        {
+          name = "Home Assistant";
+          about = "Smart home";
+          icon = "home-assistant";
+          route = "ha";
+        }
+        {
+          name = "Frigate";
+          about = "Cameras";
+          icon = "frigate";
+          url = "https://frigate.su.is";
+          check = "http://127.0.0.1:5000/api/version";
+        }
+        {
+          name = "Calibre-Web";
+          about = "eBooks";
+          icon = "calibre-web";
+          route = "calibre";
+        }
+        {
+          name = "Sokka";
+          about = "Dylan's assistant";
+          icon = "";
+          route = "sokka";
+        }
+        {
+          name = "Suki";
+          about = "Gab's assistant";
+          icon = "";
+          route = "suki";
+        }
+        {
+          name = "Plaid";
+          about = "Money";
+          icon = "";
+          route = "plaid";
+        }
+        {
+          name = "Frame";
+          about = "Wall frame";
+          icon = "";
+          route = "frame";
+        }
+        {
+          name = "Sonarr";
+          about = "TV";
+          icon = "sonarr";
+          route = "sonarr";
+        }
+        {
+          name = "Radarr";
+          about = "Movies";
+          icon = "radarr";
+          route = "radarr";
+        }
+        {
+          name = "Prowlarr";
+          about = "Indexers";
+          icon = "prowlarr";
+          route = "prowlarr";
+        }
+        {
+          name = "Bazarr";
+          about = "Subtitles";
+          icon = "bazarr";
+          route = "bazarr";
+        }
+        {
+          name = "SABnzbd";
+          about = "Downloads";
+          icon = "sabnzbd";
+          route = "sab";
+        }
+      ];
+      frame.disks = [
+        {
+          label = "System";
+          path = "/";
+        }
+        {
+          label = "Storage";
+          path = "/srv/storage";
+        }
+        {
+          label = "Backup";
+          path = "/srv/backup";
+        }
+      ];
 
       services.syncthing.enable = true;
 

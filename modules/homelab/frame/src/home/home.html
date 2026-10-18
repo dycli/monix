@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<!-- Layout and markup after Glance's document.html and page.html (AGPL-3.0). -->
+<html lang="en" id="top" data-scheme="light">
+<head>
+<title>Home</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#e4d6bf">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="/home/glance.css">
+<link rel="stylesheet" href="/home/home.css">
+<script type="module" src="/home/home.js"></script>
+</head>
+<body>
+<div class="flex flex-column body-content">
+  <div class="header-container content-bounds">
+    <div class="header flex padding-inline-widget widget-content-frame">
+      <div class="logo">home</div>
+      <nav class="desktop-navigation flex grow hide-scrollbars">
+        <a href="/" class="nav-item nav-item-current" aria-current="page"><div class="nav-item-text">Home</div></a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="mobile-navigation">
+    <div class="mobile-navigation-icons">
+      <a class="mobile-navigation-label" href="#top">↑</a>
+      <label class="mobile-navigation-label"><input type="radio" class="mobile-navigation-input" name="column" value="0" autocomplete="off"><div class="mobile-navigation-pill"></div></label>
+      <label class="mobile-navigation-label"><input type="radio" class="mobile-navigation-input" name="column" value="1" autocomplete="off" checked><div class="mobile-navigation-pill"></div></label>
+      <label class="mobile-navigation-label"><input type="radio" class="mobile-navigation-input" name="column" value="2" autocomplete="off"><div class="mobile-navigation-pill"></div></label>
+    </div>
+  </div>
+
+  <div class="content-bounds grow">
+    <main class="page content-ready" id="page">
+      <h1 class="visually-hidden">Home</h1>
+      <div class="page-content" id="page-content">
+        <div class="page-columns">
+
+          <div class="page-column page-column-small">
+            <div class="widget widget-type-clock">
+              <div class="widget-content">
+                <div class="clock">
+                  <div class="flex justify-between items-center">
+                    <div>
+                      <div class="color-highlight size-h1" id="date"></div>
+                      <div id="year"></div>
+                    </div>
+                    <div class="text-right">
+                      <div class="clock-time size-h1" id="time"></div>
+                      <div id="weekday"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="widget widget-type-weather" id="weather" hidden>
+              <div class="widget-header"><h2 class="uppercase">Weather</h2></div>
+              <div class="widget-content"></div>
+            </div>
+            <div class="widget widget-type-air" id="air" hidden>
+              <div class="widget-header"><h2 class="uppercase">Indoors</h2></div>
+              <div class="widget-content"></div>
+            </div>
+          </div>
+
+          <div class="page-column page-column-full">
+            <div class="widget widget-type-search">
+              <div class="widget-content widget-content-frameless">
+                <div class="search widget-content-frame padding-inline-widget flex gap-15 items-center">
+                  <div class="search-icon-container">
+                    <svg class="search-icon" stroke="var(--color-text-subdue)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+                  </div>
+                  <input class="search-input" type="text" placeholder="Search the web, or a service's name…" autocomplete="off" autofocus>
+                  <div class="search-bang"></div>
+                  <kbd class="hide-on-mobile" title="Press [S] to focus the search input">S</kbd>
+                </div>
+              </div>
+            </div>
+            <div class="widget widget-type-monitor" id="services">
+              <div class="widget-header"><h2 class="uppercase">Services</h2></div>
+              <div class="widget-content"></div>
+            </div>
+            <div class="widget widget-type-events" id="events" hidden>
+              <div class="widget-header"><h2 class="uppercase">Coming up</h2></div>
+              <div class="widget-content"></div>
+            </div>
+          </div>
+
+          <div class="page-column page-column-small">
+            <div class="widget widget-type-server-stats" id="server" hidden>
+              <div class="widget-header"><h2 class="uppercase">Server</h2></div>
+              <div class="widget-content"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

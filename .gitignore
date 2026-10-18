@@ -32,6 +32,12 @@
 !*.html
 !modules/ai/yeoman/site/public/sw.js
 
+# The homepage's assets (modules/homelab/frame): its scripts, font and
+# Glance's licence.
+!modules/homelab/frame/src/home/*.js
+!modules/homelab/frame/src/home/*.woff2
+!modules/homelab/frame/src/home/LICENSE
+
 # Assets: docs diagrams and the desktop wallpaper.
 !*.svg
 !*.jpg

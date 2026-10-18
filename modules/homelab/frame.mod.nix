@@ -1,6 +1,8 @@
 # The wall frame's homepage at https://frame.<domain>: one Immich album as
 # a slideshow with the time, the week's calendar, the forecast and the air
-# indoors, served by ./frame. The frame (a rooted Frameo on the IoT VLAN) cannot join the
+# indoors, served by ./frame. The same server answers https://home.<domain>
+# with the house's homepage: the services, Water's health and the same
+# board. The frame (a rooted Frameo on the IoT VLAN) cannot join the
 # tailnet, so the server also listens on the LAN port directly; the page
 # carries photos and the board only, never the Immich key or CalDAV login.
 { self, ... }:
@@ -15,7 +17,7 @@
     }:
     let
       inherit (lib.attrsets) mapAttrsToList optionalAttrs;
-      inherit (lib.strings) toJSON;
+      inherit (lib.strings) concatStringsSep toJSON;
       inherit (lib.lists) optional singleton;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf;
@@ -66,6 +68,59 @@
             tapo1 = "Living room";
           };
         };
+        services = mkOption {
+          type = types.listOf (
+            types.submodule {
+              options = {
+                name = mkOption { type = types.str; };
+                about = mkOption {
+                  type = types.str;
+                  default = "";
+                };
+                icon = mkOption {
+                  type = types.str;
+                  default = "";
+                  description = "Name in the dashboard-icons set, e.g. `sonarr`.";
+                };
+                route = mkOption {
+                  type = types.nullOr types.str;
+                  default = null;
+                  description = "shipProxy route the service is reached by.";
+                };
+                url = mkOption {
+                  type = types.nullOr types.str;
+                  default = null;
+                  description = "Address to open, for a service without a route.";
+                };
+                check = mkOption {
+                  type = types.nullOr types.str;
+                  default = null;
+                  description = "Loopback address to check; defaults to the route's port.";
+                };
+              };
+            }
+          );
+          default = [ ];
+          description = "Services the homepage lists and checks, in order.";
+        };
+        disks = mkOption {
+          type = types.listOf (
+            types.submodule {
+              options = {
+                label = mkOption { type = types.str; };
+                path = mkOption { type = types.str; };
+              };
+            }
+          );
+          default = [ ];
+          description = "Filesystems the homepage shows, in order.";
+          example = [
+            {
+              label = "System";
+              path = "/";
+            }
+          ];
+        };
         lan = mkOption {
           type = types.submodule {
             options = {
@@ -87,6 +142,7 @@
 
       config = mkIf (cfg.immichKeyFile != null) {
         shipProxy.routes.frame.port = port;
+        shipProxy.routes.home.port = port;
 
         networking.firewall.interfaces.${cfg.lan.interface}.allowedTCPPorts = singleton port;
 
@@ -110,6 +166,25 @@
           // optionalAttrs (cfg.air != null) {
             FRAME_AIR = cfg.air;
           }
+          // optionalAttrs (cfg.services != [ ]) {
+            FRAME_SERVICES =
+              cfg.services
+              |> map (
+                s:
+                let
+                  route = config.shipProxy.routes.${s.route};
+                in
+                {
+                  inherit (s) name about icon;
+                  url = if s.route != null then "https://${route.subdomain}.${config.shipProxy.domain}" else s.url;
+                  check = if s.check != null then s.check else "http://127.0.0.1:${toString route.port}/";
+                }
+              )
+              |> toJSON;
+          }
+          // optionalAttrs (cfg.disks != [ ]) {
+            FRAME_DISKS = cfg.disks |> map (d: "${d.label}=${d.path}") |> concatStringsSep ",";
+          }
           // optionalAttrs (cfg.cameras != { }) {
             # The Tapos pan and tilt through Frigate's ONVIF link.
             FRAME_CAMERAS =
@@ -126,6 +201,8 @@
           };
           serviceConfig = lib.ship.hardened.tenant // {
             DynamicUser = true;
+            # The homepage reads Water's load, memory and uptime from /proc.
+            ProcSubset = "all";
             ExecStart = getExe frame;
             LoadCredential = [
               "immich-key:${cfg.immichKeyFile}"

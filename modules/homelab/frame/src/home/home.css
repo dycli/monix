@@ -1,0 +1,42 @@
+/* Ours on top of Glance's CSS: the paper theme the frame and the chat use,
+   as Glance theme values (light scheme, like its "Peachy" preset), and the
+   widgets Glance has no style for. */
+
+:root {
+  --bgh: 37;
+  --bgs: 41%;
+  --bgl: 82%;
+  --cm: 1.1;
+  --tsm: 0.6;
+  --color-primary: hsl(14, 61%, 43%);
+  --color-positive: hsl(105, 30%, 36%);
+  --color-negative: hsl(4, 62%, 46%);
+}
+
+/* The forecast is by day: five wide columns, every value shown. */
+.weather-days .weather-column {
+  width: 20%;
+}
+.weather-days .weather-column-value,
+.weather-days .weather-column-time {
+  opacity: 1;
+  transform: none;
+}
+
+.event-day + .event-day {
+  margin-top: 1.5rem;
+}
+.event-time {
+  width: 7.5rem;
+}
+
+/* A service without a dashboard icon gets its initial in the icon's place,
+   so every name lines up. */
+.monitor-site-icon.monogram {
+  display: grid;
+  place-items: center;
+  border-radius: var(--border-radius);
+  background: var(--color-widget-background-highlight);
+  color: var(--color-text-subdue);
+  font-size: var(--font-size-h3);
+}

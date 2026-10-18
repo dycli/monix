@@ -21,6 +21,7 @@
 
 mod air;
 mod calendar;
+mod home;
 mod weather;
 
 use std::sync::Arc;
@@ -29,7 +30,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use axum::Router;
 use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{Html, IntoResponse, Json, Response};
 use axum::routing::get;
 use serde::{Deserialize, Serialize};
@@ -86,6 +87,7 @@ struct App {
     calendar: Option<Calendar>,
     weather: Option<Weather>,
     air: Option<Air>,
+    home: home::Home,
     /// The last good answer of each, kept through outages.
     events: Mutex<Option<(Instant, Value)>>,
     forecast: Mutex<Option<(Instant, Value)>>,
@@ -229,11 +231,15 @@ fn failed(e: String) -> Response {
     (StatusCode::BAD_GATEWAY, "Immich is unavailable").into_response()
 }
 
-async fn page() -> impl IntoResponse {
+async fn page(headers: HeaderMap) -> Response {
+    if home::is_home(&headers) {
+        return home::page();
+    }
     (
         [(header::CACHE_CONTROL, "no-cache")],
         Html(include_str!("page.html")),
     )
+        .into_response()
 }
 
 async fn photos(State(app): State<Arc<App>>) -> Response {
@@ -486,6 +492,7 @@ async fn main() {
             .ok()
             .map(|p| Weather::new(&p, &zone).unwrap_or_else(|e| panic!("{e}"))),
         air: std::env::var("FRAME_AIR").ok().map(|host| Air::new(&host)),
+        home: home::Home::from_env(),
         events: Mutex::new(None),
         forecast: Mutex::new(None),
         indoors: Mutex::new(None),
@@ -501,6 +508,8 @@ async fn main() {
         .route("/api/cameras", get(cameras))
         .route("/camera/{id}", get(camera))
         .route("/camera/{id}/{way}", axum::routing::post(turn))
+        .route("/home/{name}", get(home::asset))
+        .route("/api/home", get(home::status))
         .with_state(app);
     let listen = env("FRAME_LISTEN");
     let socket = tokio::net::TcpListener::bind(&listen)

@@ -1,0 +1,352 @@
+// The homepage's client. The clock, search, monitor and server-stats
+// widgets are ports of Glance's page.js and templates (AGPL-3.0) to
+// client-side rendering against this server's /api/home and /api/board.
+
+import { setupPopovers } from "./popover.js";
+
+const STATUS_EVERY = 30_000;
+const BOARD_EVERY = 300_000;
+
+const $ = (id) => document.getElementById(id);
+
+// Builds markup with every interpolated value escaped, except fragments
+// wrapped in raw().
+const esc = (v) =>
+  String(v ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+class Raw {
+  constructor(s) { this.s = s; }
+}
+const raw = (s) => new Raw(s);
+function html(parts, ...values) {
+  return parts.reduce(
+    (out, p, i) => out + p + (i < values.length ? (values[i] instanceof Raw ? values[i].s : esc(values[i])) : ""),
+    "",
+  );
+}
+
+// --- Clock (Glance setupClocks, local time, 12h) ---
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function tick() {
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  $("time").textContent = `${h % 12 || 12}:${m < 10 ? "0" + m : m} ${h < 12 ? "AM" : "PM"}`;
+  $("date").textContent = `${now.getDate()} ${MONTHS[now.getMonth()]}`;
+  $("weekday").textContent = WEEKDAYS[now.getDay()];
+  $("year").textContent = now.getFullYear();
+  setTimeout(tick, (60 - now.getSeconds()) * 1000);
+}
+
+// --- Search (Glance setupSearchBoxes) ---
+// Bangs as Glance has them, plus the services by name: "son" + Enter opens
+// Sonarr.
+
+const ENGINE = "https://search.brave.com/search?q=!QUERY!";
+const BANGS = [
+  { shortcut: "!yt", title: "YouTube", url: "https://www.youtube.com/results?search_query=!QUERY!" },
+  { shortcut: "!gh", title: "GitHub", url: "https://github.com/search?q=!QUERY!&type=repositories" },
+  { shortcut: "!nix", title: "NixOS packages", url: "https://search.nixos.org/packages?channel=unstable&query=!QUERY!" },
+  { shortcut: "!w", title: "Wikipedia", url: "https://en.wikipedia.org/w/index.php?search=!QUERY!" },
+  { shortcut: "!m", title: "Maps", url: "https://www.google.com/maps/search/!QUERY!" },
+];
+let services = [];
+
+function setupSearch() {
+  const input = document.querySelector(".search-input");
+  const bangElement = document.querySelector(".search-bang");
+  const kbd = document.querySelector(".search kbd");
+  const bangs = Object.fromEntries(BANGS.map((b) => [b.shortcut, b]));
+  let current = null;
+  let lastQuery = "";
+
+  // A service whose name starts with what was typed, if only one does.
+  const service = (text) => {
+    const t = text.toLowerCase();
+    if (t.length < 2) return null;
+    const hits = services.filter((s) => s.name.toLowerCase().startsWith(t));
+    return hits.length === 1 ? hits[0] : null;
+  };
+
+  const show = (title) => (bangElement.textContent = title ?? "");
+
+  input.addEventListener("input", () => {
+    const value = input.value.trim();
+    const words = value.split(" ");
+    if (value in bangs) current = bangs[value];
+    else if (words.length >= 2 && words[0] in bangs) current = bangs[words[0]];
+    else current = null;
+    const s = current ? null : service(value);
+    show(current ? current.title : s ? `→ ${s.name}` : null);
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") return input.blur();
+    if (event.key === "ArrowUp" && lastQuery) return void (input.value = lastQuery);
+    if (event.key !== "Enter") return;
+    const text = input.value.trim();
+    const s = current ? null : service(text);
+    let url;
+    if (s) url = s.url;
+    else {
+      const query = current ? text.slice(current.shortcut.length + 1) : text;
+      if (!query && !current) return;
+      url = (current ? current.url : ENGINE).replace("!QUERY!", encodeURIComponent(query));
+      lastQuery = query;
+    }
+    if (event.ctrlKey || event.metaKey) window.open(url, "_blank");
+    else location.href = url;
+    input.value = "";
+    current = null;
+    show(null);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+    if (event.code !== "KeyS") return;
+    input.focus();
+    event.preventDefault();
+  });
+  kbd.addEventListener("mousedown", () => requestAnimationFrame(() => input.focus()));
+}
+
+// --- Services (Glance monitor widget) ---
+
+const OK_ICON = `<svg fill="var(--color-positive)" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd" /></svg>`;
+const BAD_ICON = `<svg fill="var(--color-negative)" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" /></svg>`;
+
+// Icons from the dashboard-icons set, as Glance's `di:` prefix loads them.
+const iconURL = (name) => `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/${name}.svg`;
+
+function renderServices(list) {
+  services = list;
+  const items = list.map((s) => {
+    const st = s.state ?? {};
+    const status = st.up
+      ? html`<li title="${st.code}">${s.about}</li><li>${st.ms}ms</li>`
+      : html`<li class="color-negative" title="${st.error ?? st.code ?? ""}">${st.error ? "Down" : "Error " + st.code}</li>`;
+    return html`<li class="monitor-site flex items-center gap-15">
+      ${raw(
+        s.icon
+          ? html`<img class="monitor-site-icon" src="${iconURL(s.icon)}" alt="" loading="lazy">`
+          : html`<div class="monitor-site-icon monogram" aria-hidden="true">${s.name[0]}</div>`,
+      )}
+      <div class="grow min-width-0">
+        <a class="size-h3 color-highlight text-truncate block" href="${s.url}" rel="noreferrer">${s.name}</a>
+        <ul class="list-horizontal-text">${raw(status)}</ul>
+      </div>
+      <div class="monitor-site-status-icon">${raw(st.up ? OK_ICON : BAD_ICON)}</div>
+    </li>`;
+  });
+  $("services").querySelector(".widget-content").innerHTML =
+    `<ul class="dynamic-columns list-gap-20 list-with-separator">${items.join("")}</ul>`;
+  showImages($("services"));
+}
+
+// Glance's setupLazyImages: its CSS hides a lazy image until it is marked
+// loaded, and an image already in the cache shows without the fade.
+function showImages(root) {
+  for (const img of root.querySelectorAll('img[loading="lazy"]')) {
+    if (img.complete && img.naturalWidth) img.classList.add("cached");
+    else img.addEventListener("load", () => img.classList.add("loaded"), { once: true });
+  }
+}
+
+// --- Server (Glance server-stats widget) ---
+
+function size(mb) {
+  if (mb >= 1024 * 1024) return [(mb / 1024 / 1024).toFixed(1), "TB"];
+  if (mb >= 1024) return [(mb / 1024).toFixed(1), "GB"];
+  return [mb, "MB"];
+}
+const pct = (used, total) => (total ? Math.round((used / total) * 100) : 0);
+const notice = (p) => (p >= 85 ? " progress-value-notice" : "");
+const pair = (label, used, total) => {
+  const [u, uu] = size(used);
+  const [t, tu] = size(total);
+  return html`<div class="flex margin-top-3"><div class="size-h5">${label}</div><div class="value-separator"></div>
+    <div class="color-highlight text-very-compact">${u} <span class="color-base size-h5">${uu} /</span> ${t} <span class="color-base size-h5">${tu}</span></div></div>`;
+};
+function uptime(secs) {
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  return d ? `${d}d ${h}h` : `${h}h ${Math.floor((secs % 3600) / 60)}m`;
+}
+
+const SERVER_ICON = `<svg class="server-icon" stroke="var(--color-positive)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 17.25v-.228a4.5 4.5 0 0 0-.12-1.03l-2.268-9.64a3.375 3.375 0 0 0-3.285-2.602H7.923a3.375 3.375 0 0 0-3.285 2.602l-2.268 9.64a4.5 4.5 0 0 0-.12 1.03v.228m19.5 0a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3m19.5 0a3 3 0 0 0-3-3H5.25a3 3 0 0 0-3 3m16.5 0h.008v.008h-.008v-.008Zm-3 0h.008v.008h-.008v-.008Z" /></svg>`;
+
+function renderServer(s) {
+  const box = $("server");
+  if (!s) return void (box.hidden = true);
+  box.hidden = false;
+  const mem = pct(s.mem_used, s.mem_total);
+  const swap = pct(s.swap_used, s.swap_total);
+  const disks = s.disks.map((d) => ({ ...d, p: pct(d.used, d.total) }));
+  const hot = s.temp != null && s.temp >= 80;
+  box.querySelector(".widget-content").innerHTML = html`<div class="server">
+    <div class="server-info">
+      <div class="server-details">
+        <div class="server-name color-highlight size-h3">${s.host}</div>
+        <div>${uptime(s.uptime)} uptime</div>
+      </div>
+      <div class="shrink-0">${raw(SERVER_ICON)}</div>
+    </div>
+    <div class="server-stats">
+      <div class="flex-1">
+        <div class="flex items-end size-h5"><div>CPU</div>${raw(hot ? '<span class="color-negative" style="margin-left:.4em">●</span>' : "")}
+          <div class="color-highlight margin-left-auto text-very-compact">${s.load1} <span class="color-base">%</span></div></div>
+        <div data-popover-type="html">
+          <div data-popover-html>
+            <div class="flex"><div class="size-h5">1M AVG</div><div class="value-separator"></div><div class="color-highlight text-very-compact">${s.load1} <span class="color-base size-h5">%</span></div></div>
+            <div class="flex margin-top-3"><div class="size-h5">15M AVG</div><div class="value-separator"></div><div class="color-highlight text-very-compact">${s.load15} <span class="color-base size-h5">%</span></div></div>
+            ${raw(s.temp != null ? html`<div class="flex margin-top-3"><div class="size-h5">TEMP C</div><div class="value-separator"></div><div class="color-highlight text-very-compact">${s.temp} <span class="color-base size-h5">°</span></div></div>` : "")}
+          </div>
+          <div class="progress-bar progress-bar-combined">
+            <div class="progress-value${notice(s.load1)}" style="--percent: ${s.load1}"></div>
+            <div class="progress-value${notice(s.load15)}" style="--percent: ${s.load15}"></div>
+          </div>
+        </div>
+      </div>
+      <div class="flex-1">
+        <div class="flex justify-between items-end size-h5"><div>RAM</div>
+          <div class="color-highlight text-very-compact">${mem} <span class="color-base">%</span></div></div>
+        <div data-popover-type="html">
+          <div data-popover-html>${raw(pair("RAM", s.mem_used, s.mem_total))}${raw(s.swap_total ? pair("SWAP", s.swap_used, s.swap_total) : "")}</div>
+          <div class="progress-bar progress-bar-combined">
+            <div class="progress-value${notice(mem)}" style="--percent: ${mem}"></div>
+            ${raw(s.swap_total ? html`<div class="progress-value${notice(swap)}" style="--percent: ${swap}"></div>` : "")}
+          </div>
+        </div>
+      </div>
+      <div class="flex-1">
+        <div class="flex justify-between items-end size-h5"><div>DISK</div>
+          <div class="color-highlight text-very-compact">${disks[0]?.p ?? "n/a"} <span class="color-base">%</span></div></div>
+        <div data-popover-type="html">
+          <div data-popover-html>${raw(disks.map((d) => pair(d.name.toUpperCase(), d.used, d.total)).join(""))}</div>
+          <div class="progress-bar progress-bar-combined">
+            ${raw(disks.slice(0, 2).map((d) => html`<div class="progress-value${notice(d.p)}" style="--percent: ${d.p}"></div>`).join(""))}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  setupPopovers();
+}
+
+// --- Weather (after Glance's widget, by day: the forecast has no hours) ---
+
+const WEATHER = {
+  0: "Clear Sky", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast", 45: "Fog", 48: "Rime Fog",
+  51: "Drizzle", 53: "Drizzle", 55: "Drizzle", 56: "Drizzle", 57: "Drizzle", 61: "Rain",
+  63: "Moderate Rain", 65: "Heavy Rain", 66: "Freezing Rain", 67: "Freezing Rain", 71: "Snow",
+  73: "Moderate Snow", 75: "Heavy Snow", 77: "Snow Grains", 80: "Rain", 81: "Moderate Rain",
+  82: "Heavy Rain", 85: "Snow", 86: "Snow", 95: "Thunderstorm", 96: "Thunderstorm", 99: "Thunderstorm",
+};
+const DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function renderWeather(w) {
+  const box = $("weather");
+  if (!w) return void (box.hidden = true);
+  box.hidden = false;
+  const highs = w.days.map((d) => d.high);
+  const lo = Math.min(...highs);
+  const span = Math.max(...highs) - lo || 1;
+  const columns = w.days.map((d, i) => {
+    const day = DAY[new Date(d.date + "T12:00").getDay()];
+    return html`<div class="weather-column${i === 0 ? " weather-column-current" : ""}" title="${WEATHER[d.code] ?? ""}, low ${Math.round(d.low)}°${d.rain ? `, ${d.rain}% rain` : ""}">
+      ${raw((d.rain ?? 0) >= 40 ? '<div class="weather-column-rain"></div>' : "")}
+      <div class="weather-column-value">${Math.round(d.high)}</div>
+      <div class="weather-bar" style="--weather-bar-height: ${((d.high - lo) / span).toFixed(2)}"></div>
+      <div class="weather-column-time">${i === 0 ? "Today" : day}</div>
+    </div>`;
+  });
+  box.querySelector(".widget-content").innerHTML = html`<div class="widget-small-content-bounds">
+    <div class="size-h2 color-highlight text-center">${WEATHER[w.now.code] ?? ""}, ${Math.round(w.now.temp)}°F</div>
+    <div class="size-h4 text-center">Feels like ${Math.round(w.now.feels)}°F</div>
+    <div class="weather-columns weather-days flex margin-top-15 justify-center">${raw(columns.join(""))}</div>
+  </div>`;
+}
+
+// --- Air (the AirGradient, in Glance's key/value style) ---
+
+function renderAir(a) {
+  const box = $("air");
+  if (!a) return void (box.hidden = true);
+  box.hidden = false;
+  const co2Bad = a.co2 >= 1000;
+  const row = (label, value, unit, bad) => html`<li class="flex items-center">
+    <div class="size-h5">${label}</div><div class="value-separator"></div>
+    <div class="${bad ? "color-negative" : "color-highlight"} text-very-compact">${value} <span class="color-base size-h5">${unit}</span></div></li>`;
+  box.querySelector(".widget-content").innerHTML = `<ul class="list list-gap-10">${[
+    row("CO₂", Math.round(a.co2), "ppm", co2Bad),
+    row("TEMP", Math.round(a.temp), "°F", false),
+    row("HUMIDITY", Math.round(a.humidity), "%", a.humidity >= 65),
+    row("PM2.5", Math.round(a.pm25), "µg/m³", a.pm25 >= 35),
+  ].join("")}</ul>`;
+}
+
+// --- Calendar (the frame's events, as a Glance list) ---
+
+function renderEvents(events) {
+  const box = $("events");
+  if (!events) return void (box.hidden = true);
+  box.hidden = false;
+  if (!events.length) {
+    box.querySelector(".widget-content").innerHTML = `<p class="color-subdue">Nothing in the next week.</p>`;
+    return;
+  }
+  const today = new Date().toDateString();
+  const tomorrow = new Date(Date.now() + 86400000).toDateString();
+  const groups = new Map();
+  for (const e of events) {
+    const allDay = !e.start.includes("T");
+    const when = new Date(allDay ? e.start + "T00:00" : e.start);
+    const key = when.toDateString();
+    const label = key === today ? "Today" : key === tomorrow ? "Tomorrow" : `${WEEKDAYS[when.getDay()]} ${when.getDate()} ${MONTHS[when.getMonth()].slice(0, 3)}`;
+    if (!groups.has(key)) groups.set(key, { label, items: [] });
+    const time = allDay ? "All day" : when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    groups.get(key).items.push(html`<li class="flex gap-15"><div class="event-time color-subdue shrink-0">${time}</div>
+      <div class="min-width-0"><div class="color-highlight text-truncate">${e.summary}</div>${raw(e.location ? html`<div class="size-h6 text-truncate">${e.location}</div>` : "")}</div></li>`);
+  }
+  box.querySelector(".widget-content").innerHTML = [...groups.values()]
+    .map((g) => `<div class="event-day"><div class="size-h5 uppercase color-subdue">${esc(g.label)}</div><ul class="list list-gap-10 margin-top-5">${g.items.join("")}</ul></div>`)
+    .join("");
+}
+
+// --- Polling ---
+
+async function getJSON(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${url}: ${r.status}`);
+  return r.json();
+}
+
+async function status() {
+  try {
+    const s = await getJSON("/api/home");
+    renderServices(s.services);
+    renderServer(s.server);
+  } catch (e) {
+    console.warn(e);
+  }
+  setTimeout(status, STATUS_EVERY);
+}
+
+async function board() {
+  try {
+    const b = await getJSON("/api/board");
+    renderWeather(b.weather);
+    renderAir(b.air);
+    renderEvents(b.events);
+  } catch (e) {
+    console.warn(e);
+  }
+  setTimeout(board, BOARD_EVERY);
+}
+
+tick();
+setupSearch();
+status();
+board();
