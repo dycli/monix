@@ -221,8 +221,9 @@ in
     { lib, ... }:
     let
       # qwen3.8 is hybrid SSM/attention (full attention every 4th layer), so
-      # even long contexts fit a 24G card; q8 KV halves what remains. Q4 takes
-      # 144K, while Q5 trades some context for higher weight precision at 96K.
+      # even long contexts fit a 24G card; q8 KV halves what remains, so Q4
+      # takes 144K. Unsloth's UD-Q4_K_XL measured a hair better than plain Q4_K_M
+      # at the same size and speed.
       qwen38 = context: file: {
         inherit context file;
         output = 8192;
@@ -246,8 +247,7 @@ in
       imports = lib.lists.singleton self.nixosModules.inference;
 
       inference.models = {
-        "qwen3.8-27b-q4-k-m" = qwen38 147456 "Qwen3.8-27B-Q4_K_M.gguf";
-        "qwen3.8-27b-q5-k-s" = qwen38 98304 "Qwen3.8-27B-Q5_K_S.gguf";
+        "qwen3.8-27b-ud-q4-k-xl" = qwen38 147456 "Qwen3.8-27B-UD-Q4_K_XL.gguf";
         # orcarouter's uncensored fine-tune, pulled from Ollama's registry
         # (registry.ollama.ai/v2/orcarouter/qwen3.8-27b-uncensored/blobs/…),
         # which serves the same GGUF without Hugging Face's sign-in gate.
