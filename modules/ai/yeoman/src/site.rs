@@ -548,7 +548,7 @@ pub(crate) fn write_private(path: &Path, text: &str) -> Result<(), String> {
 /// Writes a file whole or not at all, by way of a temporary one named for
 /// this process, so two writers never share it.
 fn write_mode(path: &Path, text: &str, mode: u32) -> Result<(), String> {
-    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
     let mut f = fs::OpenOptions::new()
         .write(true)
@@ -556,6 +556,10 @@ fn write_mode(path: &Path, text: &str, mode: u32) -> Result<(), String> {
         .truncate(true)
         .mode(mode)
         .open(&tmp)
+        .map_err(|e| format!("{}: {e}", tmp.display()))?;
+    // The unit's umask (0077) strips the group bits `mode` gave at create,
+    // which would leave a shared sessions file unreadable to the others.
+    f.set_permissions(fs::Permissions::from_mode(mode))
         .map_err(|e| format!("{}: {e}", tmp.display()))?;
     std::io::Write::write_all(&mut f, text.as_bytes()).map_err(|e| e.to_string())?;
     fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
@@ -690,10 +694,16 @@ pub async fn serve(
         gate,
         stop: inbox.stop,
         sessions: Mutex::new(match std::env::var("YEOMAN_SESSIONS") {
-            Ok(file) => Sessions {
-                file: file.into(),
-                mode: 0o660,
-            },
+            Ok(file) => {
+                // A file written under the umask before the fix kept only
+                // the owner's bits; whichever assistant owns it opens it up.
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&file, fs::Permissions::from_mode(0o660));
+                Sessions {
+                    file: file.into(),
+                    mode: 0o660,
+                }
+            }
             Err(_) => Sessions {
                 file: dir.join("sessions"),
                 mode: 0o600,
