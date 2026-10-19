@@ -269,7 +269,8 @@ mod report {
             if second == "unknown" {
                 let why = line.split_once('(').map_or("", |(_, w)| w);
                 let kind = why.split_once(':').map_or(why, |(kind, _)| kind);
-                r.unknown.push((account.to_owned(), kind.trim_end_matches(')').to_owned()));
+                r.unknown
+                    .push((account.to_owned(), kind.trim_end_matches(')').to_owned()));
             } else if let (Some(pct), Some("resets")) = (words.next(), words.next())
                 && let Ok(pct) = pct.trim_end_matches('%').parse()
             {
@@ -308,7 +309,11 @@ mod report {
             assert_eq!(r.windows[0].resets, "Mon Oct 19 00:09");
             assert_eq!(
                 r.windows[0].shares,
-                [("korra".into(), 75), ("sokka".into(), 24), ("suki".into(), 1)]
+                [
+                    ("korra".into(), 75),
+                    ("sokka".into(), 24),
+                    ("suki".into(), 1)
+                ]
             );
             assert_eq!(r.windows[0].cost.as_deref(), Some("$10"));
             assert!(r.windows[1].shares.is_empty());
