@@ -172,12 +172,14 @@
           users = singleton "@dylan:chat.su.is";
           alerts = true;
           computer = true;
+          voice = "leo";
         };
         suki = {
           person = "Gab";
           users = singleton "@gab:chat.su.is";
           style = "Gab likes a slightly warmer tone.";
           computer = true;
+          voice = "ara";
         };
         azula = {
           person = "Dylan";

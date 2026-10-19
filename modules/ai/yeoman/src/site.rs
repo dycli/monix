@@ -52,6 +52,8 @@ const ASK_GAP: Duration = Duration::from_secs(60);
 /// Letters for the code, without look-alikes (0 O 1 I L).
 const CODE: &[u8] = b"23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const HISTORY: u64 = 200;
+/// How long a reply read aloud stays cached.
+const SPEECH_KEEP: Duration = Duration::from_secs(30 * 24 * 3600);
 const SEND_MAX: usize = 32 * 1024;
 /// The most files one message carries.
 const FILES_MAX: usize = 10;
@@ -427,6 +429,8 @@ struct Site {
     index: PathBuf,
     /// None when the site's address is unknown or the key would not load.
     push: Option<Arc<Push>>,
+    /// yeoman-x's socket, which reads replies aloud.
+    x: Option<PathBuf>,
 }
 
 /// Who answers here, and every assistant the proxy serves on this host,
@@ -439,6 +443,9 @@ struct Who {
     /// the name.
     app: String,
     personas: Vec<Persona>,
+    /// The xAI voice replies are read aloud in: YEOMAN_VOICE, none when
+    /// unset or without yeoman-x.
+    voice: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -455,6 +462,9 @@ impl Who {
             app: std::env::var("YEOMAN_APP").unwrap_or_else(|_| name.clone()),
             name,
             personas: personas(&var("YEOMAN_PERSONAS")),
+            voice: std::env::var("YEOMAN_VOICE")
+                .ok()
+                .filter(|_| std::env::var_os("YEOMAN_X").is_some()),
         }
     }
 }
@@ -692,6 +702,7 @@ pub async fn serve(
         push: push_from_env(&dir, &who.name).map(Arc::new),
         who,
         index: root.join("index.html"),
+        x: std::env::var_os("YEOMAN_X").map(PathBuf::from),
     });
     if let Some(push) = &site.push {
         tokio::spawn(ring(site.web.shown.subscribe(), push.clone()));
@@ -725,6 +736,7 @@ pub async fn serve(
         .route("/api/history", get(history))
         .route("/api/search", get(search))
         .route("/api/said/{i}", get(said))
+        .route("/api/speak", post(speak))
         .route("/api/events", get(events))
         .route(
             "/api/send",
@@ -938,6 +950,154 @@ async fn said(
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
+}
+
+#[derive(Deserialize)]
+struct Speak {
+    text: String,
+}
+
+/// A reply read aloud, as MP3 in this assistant's voice. Kept by voice and
+/// text rather than message id, since a live reply's id is the door's and
+/// changes once it is in the history.
+async fn speak(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    Json(Speak { text }): Json<Speak>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let (Some(sock), Some(voice)) = (site.x.clone(), site.who.voice.clone()) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let text = plain(&text);
+    if text.is_empty() || text.chars().count() > crate::x::SPEAK_MAX {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let dir = site.state.join("speech");
+    let file = dir.join(format!("{:016x}.mp3", speech_key(&voice, &text)));
+    let mp3 = |b: Vec<u8>| ([(header::CONTENT_TYPE, "audio/mpeg")], b).into_response();
+    if let Ok(b) = fs::read(&file) {
+        return mp3(b);
+    }
+    match tokio::task::spawn_blocking(move || crate::x::speak(&sock, &text, &voice)).await {
+        Ok(Ok(b)) => {
+            prune(&dir, SPEECH_KEEP);
+            if let Err(e) = fs::create_dir_all(&dir).and_then(|_| fs::write(&file, &b)) {
+                eprintln!("yeoman: site speak: {}: {e}", file.display());
+            }
+            mp3(b)
+        }
+        Ok(Err(e)) => {
+            eprintln!("yeoman: site speak: {e}");
+            (StatusCode::BAD_GATEWAY, e).into_response()
+        }
+        Err(e) => {
+            eprintln!("yeoman: site speak: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// Names a spoken text in the cache. std's SipHash keys are fixed, so the
+/// name holds across restarts; a Rust release that changed it would only
+/// cost a miss.
+fn speech_key(voice: &str, text: &str) -> u64 {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    (voice, text).hash(&mut h);
+    h.finish()
+}
+
+/// Drops the files in `dir` older than `keep`.
+fn prune(dir: &Path, keep: Duration) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let old = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .is_ok_and(|t| t.elapsed().is_ok_and(|age| age > keep));
+        if old {
+            let _ = fs::remove_file(e.path());
+        }
+    }
+}
+
+/// Markdown as it should be heard: code blocks, images, link targets,
+/// table rules and the marks themselves left out.
+fn plain(md: &str) -> String {
+    let mut out = Vec::new();
+    let mut code = false;
+    for line in md.lines() {
+        let t = line.trim();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            code = !code;
+            continue;
+        }
+        if code || t.is_empty() {
+            continue;
+        }
+        // A table's rule row says nothing; its other rows read as a list.
+        if t.starts_with('|') && t.chars().all(|c| "|-: ".contains(c)) {
+            continue;
+        }
+        let t = t.trim_start_matches(['#', '>']).trim_start();
+        let t = ["- ", "* ", "+ "]
+            .iter()
+            .find_map(|m| t.strip_prefix(m))
+            .unwrap_or(t);
+        let t = if t.starts_with('|') {
+            t.trim_matches('|')
+                .split('|')
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            t.to_owned()
+        };
+        let t = inline(&t);
+        if !t.is_empty() {
+            out.push(t);
+        }
+    }
+    out.join("\n")
+}
+
+/// `inline` markdown as plain words: links keep their text, images go.
+fn inline(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(i) = rest.find('[') {
+        let image = rest[..i].ends_with('!');
+        out.push_str(&rest[..if image { i - 1 } else { i }]);
+        let after = &rest[i + 1..];
+        match after
+            .find("](")
+            .and_then(|j| after[j + 2..].find(')').map(|k| (j, j + 2 + k + 1)))
+        {
+            Some((j, end)) => {
+                if !image {
+                    out.push_str(&after[..j]);
+                }
+                rest = &after[end..];
+            }
+            None => {
+                out.push('[');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out.replace("**", "")
+        .replace("__", "")
+        .replace("~~", "")
+        .replace(['`', '*'], "")
+        .trim()
+        .to_owned()
 }
 
 /// A message of the history, with the emoji the yeoman answered it by.
@@ -1237,6 +1397,27 @@ async fn wait(State(site): State<Arc<Site>>, Json(w): Json<Waiting>) -> Response
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn plain_reads_markdown_as_words() {
+        let md = "## Weather\n\n**Cold** today, see [the map](https://x.y/m) ![radar](r.png).\n\n- Wear a `coat`\n1. Bring tea\n\n```sh\nrm -rf /\n```\n> quoted\n\n| Day | High |\n|---|---:|\n| Mon | 45 |";
+        assert_eq!(
+            super::plain(md),
+            "Weather\nCold today, see the map .\nWear a coat\n1. Bring tea\nquoted\nDay, High\nMon, 45"
+        );
+    }
+
+    #[test]
+    fn speech_key_tells_voices_apart() {
+        assert_eq!(
+            super::speech_key("leo", "hi"),
+            super::speech_key("leo", "hi")
+        );
+        assert_ne!(
+            super::speech_key("leo", "hi"),
+            super::speech_key("ara", "hi")
+        );
+    }
 
     fn said(i: u64, kind: &str, text: &str) -> Said {
         Said {

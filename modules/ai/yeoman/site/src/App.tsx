@@ -127,18 +127,26 @@ function ThemeButton({ className = "" }: { className?: string }) {
 }
 
 type Persona = { unit: string; name: string };
+type Me = { personas: Persona[]; voice: string | null };
+
+// Who answers here, asked once for the switcher and the speak buttons.
+const ME: Promise<Me> = fetch("/api/me")
+  .then((r) => (r.ok ? r.json() : Promise.reject()))
+  .catch(() => ({ personas: [], voice: null }));
+
+function useMe() {
+  const [me, setMe] = useState<Me | null>(null);
+  useEffect(() => {
+    ME.then(setMe);
+  }, []);
+  return me;
+}
 
 /** The assistant's name; where others share the host, a press lists them
  * and picking one sets the cookie the proxy routes by and reloads. */
 function Switcher() {
-  const [personas, setPersonas] = useState<Persona[]>([]);
+  const personas = useMe()?.personas ?? [];
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    fetch("/api/me")
-      .then((r) => (r.ok ? r.json() : { personas: [] }))
-      .then((me: { personas: Persona[] }) => setPersonas(me.personas))
-      .catch(() => {});
-  }, []);
   const name = <span className="font-serif text-[22px] tracking-[-0.01em]">{NAME}</span>;
   if (personas.length < 2) return name;
   const pick = (p: Persona) => {
@@ -679,10 +687,89 @@ function AssistantMessage() {
       <Reaction />
       <div className="mt-1 flex items-center gap-2">
         <Copy />
+        <Speak />
         <Redraw />
         <Time />
       </div>
     </MessagePrimitive.Root>
+  );
+}
+
+// One player for the page, so starting a reply stops the last; `stopping`
+// resets the button that was playing. Audio already fetched is kept by text.
+const player = new Audio();
+const spoken = new Map<string, Promise<string>>();
+let stopping: (() => void) | null = null;
+
+function stop() {
+  player.pause();
+  stopping?.();
+}
+
+function speech(text: string) {
+  let url = spoken.get(text);
+  if (!url) {
+    url = fetch("/api/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(r.status)))
+      .then((b) => URL.createObjectURL(b));
+    spoken.set(text, url);
+    url.catch(() => spoken.delete(text));
+  }
+  return url;
+}
+
+/** Reads the answer aloud in the assistant's voice; pressed again, stops.
+ * Absent where the assistant has no voice. */
+function Speak() {
+  const { live } = useCustom();
+  const voice = useMe()?.voice;
+  const text = useAuiState((s) => s.message.content.map((p) => (p.type === "text" ? p.text : "")).join(""));
+  const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
+  if (live || !voice || !text.trim()) return null;
+  const press = async () => {
+    if (state !== "idle") return stop();
+    stop();
+    const done = () => {
+      setState("idle");
+      if (stopping === done) stopping = null;
+    };
+    stopping = done;
+    setState("loading");
+    try {
+      const src = await speech(text);
+      if (stopping !== done) return;
+      player.src = src;
+      player.onended = done;
+      await player.play();
+      setState("playing");
+    } catch {
+      done();
+    }
+  };
+  const label = state === "idle" ? "Read aloud" : "Stop reading";
+  return (
+    <button
+      type="button"
+      onClick={press}
+      aria-label={label}
+      title={label}
+      className={`grid size-7 place-items-center rounded-md transition-opacity hover:bg-hover hover:text-ink max-sm:opacity-100 ${state === "idle" ? "text-soft opacity-0 group-hover:opacity-100" : "text-ink opacity-100"}`}
+    >
+      <svg viewBox="0 0 24 24" className={`size-[15px] ${state === "loading" ? "animate-pulse" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        {state === "playing" ? (
+          <rect x="6" y="6" width="12" height="12" rx="1.5" />
+        ) : (
+          <>
+            <path d="M11 5 6 9H2v6h4l5 4V5z" />
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" />
+          </>
+        )}
+      </svg>
+    </button>
   );
 }
 

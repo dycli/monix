@@ -4,7 +4,9 @@
 //! Grok CLI login made once with `yeoman x login`; the tools reach only
 //! its socket. Grok runs the searches and answers with the posts it found
 //! and their links. It reads X and nothing else, so it acts on nothing.
+//! The same sign-in reads replies aloud through xAI's text to speech.
 
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -21,6 +23,9 @@ const AUTH: &str = "https://auth.x.ai/oauth2";
 const CLIENT: &str = "b1a00492-073a-47ea-816f-4c329264a828";
 const SCOPE: &str = "openid profile email offline_access grok-cli:access api:access";
 const API: &str = "https://api.x.ai/v1/responses";
+const TTS: &str = "https://api.x.ai/v1/tts";
+/// xAI's limit on one text to speak, in characters.
+pub const SPEAK_MAX: usize = 60_000;
 const MODEL: &str = "grok-4.7";
 const TIMEOUT: Duration = Duration::from_secs(300);
 /// Refresh the access token this long before it expires.
@@ -47,43 +52,71 @@ pub struct Ask {
     pub to: Option<String>,
 }
 
+/// What the socket carries: text to speak, or else a search.
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum Request {
+    Speak { speak: String, voice: String },
+    Search(Ask),
+}
+
 /// The tools' side: one search over the service's socket.
 pub fn ask(sock: &Path, ask: &Ask) -> Result<String, String> {
+    let reply = call(sock, &serde_json::to_vec(ask).map_err(|e| e.to_string())?)?;
+    reply["ok"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| "x: no answer".into())
+}
+
+/// The site's side: `text` spoken in `voice`, as MP3.
+pub fn speak(sock: &Path, text: &str, voice: &str) -> Result<Vec<u8>, String> {
+    let ask = Request::Speak {
+        speak: text.into(),
+        voice: voice.into(),
+    };
+    let reply = call(sock, &serde_json::to_vec(&ask).map_err(|e| e.to_string())?)?;
+    let audio = reply["audio"].as_str().ok_or("x: no audio")?;
+    BASE64.decode(audio).map_err(|e| format!("x: {e}"))
+}
+
+/// One request over the socket; its reply, unless it is an error.
+fn call(sock: &Path, body: &[u8]) -> Result<Value, String> {
     let mut s = UnixStream::connect(sock).map_err(|e| format!("x: {e}"))?;
     s.set_read_timeout(Some(TIMEOUT + Duration::from_secs(30)))
         .map_err(|e| e.to_string())?;
-    let body = serde_json::to_vec(ask).map_err(|e| e.to_string())?;
-    s.write_all(&body).map_err(|e| format!("x: {e}"))?;
+    s.write_all(body).map_err(|e| format!("x: {e}"))?;
     s.shutdown(std::net::Shutdown::Write)
         .map_err(|e| format!("x: {e}"))?;
     let mut reply = String::new();
     s.read_to_string(&mut reply)
         .map_err(|e| format!("x: {e}"))?;
     let reply: Value = serde_json::from_str(&reply).map_err(|e| format!("x: {e}"))?;
-    match (reply["ok"].as_str(), reply["err"].as_str()) {
-        (Some(text), _) => Ok(text.to_owned()),
-        (_, Some(err)) => Err(format!("x: {err}")),
-        _ => Err("x: no answer".into()),
+    match reply["err"].as_str() {
+        Some(err) => Err(format!("x: {err}")),
+        None => Ok(reply),
     }
 }
 
-/// The service's side: one search from stdin, its answer to stdout.
+/// The service's side: one request from stdin, its answer to stdout.
 pub fn serve() -> Result<(), String> {
     let mut body = Vec::new();
+    // A text at SPEAK_MAX characters may take four bytes each.
     std::io::stdin()
-        .take(64 * 1024)
+        .take((SPEAK_MAX * 4 + 4096) as u64)
         .read_to_end(&mut body)
         .map_err(|e| e.to_string())?;
-    let reply = match serde_json::from_slice::<Ask>(&body)
-        .map_err(|e| e.to_string())
-        .and_then(|a| search(&a))
-    {
-        Ok(text) => json!({ "ok": text }),
-        Err(e) => {
-            eprintln!("yeoman-x: {e}");
-            json!({ "err": e })
+    let reply = match serde_json::from_slice::<Request>(&body).map_err(|e| e.to_string()) {
+        Ok(Request::Search(a)) => search(&a).map(|text| json!({ "ok": text })),
+        Ok(Request::Speak { speak, voice }) => {
+            tts(&speak, &voice).map(|mp3| json!({ "audio": BASE64.encode(mp3) }))
         }
+        Err(e) => Err(e),
     };
+    let reply = reply.unwrap_or_else(|e| {
+        eprintln!("yeoman-x: {e}");
+        json!({ "err": e })
+    });
     std::io::stdout()
         .write_all(reply.to_string().as_bytes())
         .map_err(|e| e.to_string())
@@ -135,6 +168,46 @@ fn search(ask: &Ask) -> Result<String, String> {
         u["server_side_tool_usage_details"]
     );
     answer(&reply)
+}
+
+/// `text` spoken by xAI in `voice`. The reply is the MP3 itself, not the
+/// JSON the API reference shows.
+fn tts(text: &str, voice: &str) -> Result<Vec<u8>, String> {
+    if text.chars().count() > SPEAK_MAX {
+        return Err(format!("Too long to speak: over {SPEAK_MAX} characters."));
+    }
+    let token = token()?;
+    let mut resp = agent()
+        .post(TTS)
+        .header("Authorization", &format!("Bearer {token}"))
+        .send_json(json!({"text": text, "voice_id": voice, "language": "en"}))
+        .map_err(|e| format!("xai tts: {e}"))?;
+    let status = resp.status().as_u16();
+    if status >= 400 {
+        let body = resp.body_mut().read_to_string().unwrap_or_default();
+        let msg = serde_json::from_str::<Value>(&body)
+            .ok()
+            .and_then(|v| {
+                v["error"]["message"]
+                    .as_str()
+                    .or(v["error"].as_str())
+                    .map(str::to_owned)
+            })
+            .unwrap_or(body);
+        return Err(format!("xai tts: {status}: {msg}"));
+    }
+    let mp3 = resp
+        .body_mut()
+        .with_config()
+        .limit(64 * 1024 * 1024)
+        .read_to_vec()
+        .map_err(|e| format!("xai tts: {e}"))?;
+    eprintln!(
+        "yeoman-x: spoke chars={} voice={voice} bytes={}",
+        text.chars().count(),
+        mp3.len()
+    );
+    Ok(mp3)
 }
 
 /// The request as Grok reads it: the tool's filters bind the search, but

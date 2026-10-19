@@ -512,6 +512,7 @@
                 YEOMAN_MODEL = i.localModel;
               }
               // optionalAttrs (i.style != null) { YEOMAN_STYLE = i.style; }
+              // optionalAttrs (i.voice != null) { YEOMAN_VOICE = i.voice; }
               // optionalAttrs i.web {
                 YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
                 YEOMAN_SITE_ROOT = web;
@@ -669,6 +670,16 @@
                       A model of the local inference server (inference.mod.nix)
                       to answer with, without tools; null = Claude. Its memory
                       still condenses on Claude.
+                    '';
+                  };
+
+                  voice = mkOption {
+                    type = types.nullOr types.str;
+                    default = null;
+                    example = "eve";
+                    description = ''
+                      The xAI voice the site reads replies aloud in, through
+                      yeoman-x's sign-in; null = no read-aloud button.
                     '';
                   };
 
