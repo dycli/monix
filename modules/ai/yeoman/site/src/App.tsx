@@ -505,10 +505,11 @@ type ThreadProps = {
   shape?: number;
   browser: boolean;
   closeBrowser: () => Promise<void>;
+  openBrowser: () => Promise<void>;
   refresh: () => void;
 };
 
-function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, screen, shape, browser, closeBrowser, refresh }: ThreadProps) {
+function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh }: ThreadProps) {
   const [finding, setFinding] = useState(false);
   const [calling, setCalling] = useState(false);
   const voice = useMe()?.voice;
@@ -619,6 +620,12 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
               <circle cx="11" cy="11" r="7" />
               <path d="m20 20-3.5-3.5" />
             </HeaderButton>
+            {screen && (
+              <HeaderButton label="Open the computer" onClick={() => void openBrowser()}>
+                <rect x="3" y="4" width="18" height="12" rx="2" />
+                <path d="M8 20h8M12 16v4" />
+              </HeaderButton>
+            )}
             <Settings />
           </div>
         </header>

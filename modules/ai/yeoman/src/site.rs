@@ -749,6 +749,7 @@ pub async fn serve(
         .route("/api/stop", post(stop))
         .route("/api/task", get(task_now))
         .route("/api/task/stop", post(task_stop))
+        .route("/api/browser/open", post(browser_open))
         .route("/api/browser/close", post(browser_close))
         .route("/api/ask", post(ask))
         .route("/api/wait", post(wait))
@@ -1343,6 +1344,25 @@ async fn watch_browser(url: String, web: Web) {
             web.browser(open);
         }
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+/// Opens the computer's browser on the person's word, on the lease a reply
+/// would take, so it closes on its own once left alone.
+async fn browser_open(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Ok(url) = std::env::var("YEOMAN_KEEP") else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match tokio::task::spawn_blocking(move || keep::hold(&url, keep::LEASE)).await {
+        Ok(Ok(_)) => {
+            site.web.browser(true);
+            StatusCode::ACCEPTED.into_response()
+        }
+        Ok(Err(e)) => (StatusCode::BAD_GATEWAY, e).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
 

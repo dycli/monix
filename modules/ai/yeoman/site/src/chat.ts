@@ -78,9 +78,10 @@ export type Chat =
       screen?: string;
       /** Its width over its height. */
       shape?: number;
-      /** Whether the computer's browser is open, and closing it. */
+      /** Whether the computer's browser is open; opening and closing it. */
       browser: boolean;
       closeBrowser: () => Promise<void>;
+      openBrowser: () => Promise<void>;
       /** Reads the conversation afresh from hippo, as after a call. */
       refresh: () => void;
     };
@@ -273,6 +274,11 @@ export function useChat(): Chat {
   }, []);
 
   // The keeper lets the browser go; the screen leaves with the news of it.
+  const openBrowser = useCallback(async () => {
+    const r = await fetch("/api/browser/open", { method: "POST" });
+    if (r.status === 401) setStatus("signed-out");
+    else if (r.ok) setBrowser(true);
+  }, []);
   const closeBrowser = useCallback(async () => {
     const r = await fetch("/api/browser/close", { method: "POST" });
     if (r.status === 401) setStatus("signed-out");
@@ -297,7 +303,7 @@ export function useChat(): Chat {
 
   if (status === "loading" || status === "signed-out") return { state: status };
   if (status !== "ready") return { state: "error", error: status };
-  return { state: "ready", messages, typing, send, stop, cards, decide, task, stopTask, screen, shape, browser, closeBrowser, refresh };
+  return { state: "ready", messages, typing, send, stop, cards, decide, task, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh };
 }
 
 // A task's steps before the page heard it started still belong to it.
