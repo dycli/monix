@@ -676,12 +676,12 @@ mod tests {
     /// mark, served once its writer's answer has begun, and alive `TTL` past
     /// its last use. Claude Code marks the system prompt and the request's
     /// last block; `marked` marks the context. Time runs a thousand times
-    /// fast.
+    /// fast, the cache's lifetime with it.
     struct Anthropic {
         entries: Mutex<std::collections::HashMap<u64, (Instant, Instant)>>,
         /// Bytes of the calls' input read from the cache, written to it and
-        /// sent uncached; each request's last block, its own task (or the
-        /// retry note), is never in a cache and not counted.
+        /// sent uncached. Claude Code's mark on the last block writes each
+        /// call's own task (or retry note) too, as the live log counts it.
         used: Mutex<(u64, u64, u64)>,
         /// Calls that read none of the context, only the system prompt.
         cold: Mutex<u64>,
@@ -690,6 +690,8 @@ mod tests {
     }
     use crate::memory::compact::marked;
     use crate::memory::flight::{Flights, LOOK, TTL};
+    /// The cache's five minutes, at the replay's speed.
+    const SIM_TTL: Duration = Duration::from_millis(TTL.as_millis() as u64 / 1000);
     use std::time::Instant;
 
     /// When an answer begins, after its request.
@@ -731,17 +733,17 @@ mod tests {
                 }
             }
             if let Some(h) = hit {
-                entries.get_mut(&keys[h]).unwrap().1 = now + TTL;
+                entries.get_mut(&keys[h]).unwrap().1 = now + SIM_TTL;
             }
             for &m in marks.iter().filter(|&&m| hit.is_none_or(|h| m > h)) {
                 if !entries.get(&keys[m]).is_some_and(|&(_, until)| now < until) {
-                    entries.insert(keys[m], (now + FIRST, now + TTL));
+                    entries.insert(keys[m], (now + FIRST, now + SIM_TTL));
                 }
             }
             if hit.is_none_or(|h| h == 0) {
                 *self.cold.lock().unwrap() += 1;
             }
-            let counted = ends[last - 1];
+            let counted = ends[last];
             let read = hit.map_or(0, |h| ends[h]).min(counted);
             let written = ends[*marks.iter().max().unwrap()]
                 .min(counted)
@@ -827,7 +829,7 @@ mod tests {
             entries: Default::default(),
             used: Default::default(),
             cold: Default::default(),
-            flights: single_flight.then(Arc::default),
+            flights: single_flight.then(|| Arc::new(Flights::with_ttl(SIM_TTL))),
             seed: Mutex::new(1),
         });
         let shared = Arc::new(Shared {
@@ -888,16 +890,20 @@ mod tests {
         read as f64 / (read + written + input) as f64
     }
 
+    /// Each call writes its own task, so about 91% is the most it reads, as
+    /// live calls between rewrites do.
     #[test]
     fn compactions_read_most_of_their_input_from_the_cache() {
         let read = replay(1_200, true);
-        assert!(read >= 0.95, "read {:.1}% from the cache", 100.0 * read);
+        assert!(read >= 0.89, "read {:.1}% from the cache", 100.0 * read);
     }
 
     /// Single flight against none, by hand: `cargo test -- --ignored
     /// --nocapture single_flight`. On 2026-10-19 it was 97.1% against
     /// 96.5%; with UniiChat's view rules, 97.1% against 97.2%, 38 calls
-    /// rereading the whole context each.
+    /// rereading the whole context each. Those runs left out each call's
+    /// task and never let an entry lapse; counting both, 91.0% against
+    /// 91.3%.
     #[test]
     #[ignore]
     fn single_flight_against_none() {

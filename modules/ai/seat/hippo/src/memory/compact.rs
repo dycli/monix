@@ -265,20 +265,24 @@ pub fn run(
     let blocks = input(context, step);
     let keys = flight::keys(&blocks[0], BLOCK);
     let asked = std::time::Instant::now();
+    let probe = backend.flights().map(|f| f.probe(&keys));
     let flight = backend.flights().map(|f| f.wait(&keys));
-    if let Some(f) = &flight {
+    if let (Some(f), Some(p)) = (&flight, probe) {
         chat.on_begin(Box::new(f.begun()));
-        // Which context each call sent and how it met the cache, so a
-        // rewrite of the whole context can be traced to its cause.
+        // Which context each call sent and what the cache should hold of
+        // it, in blocks, so each rewrite of the context can be traced to its
+        // cause against the tokens read (`usage.jsonl`, by level and index).
         eprintln!(
-            "hippo: flight {} blocks={} first={:04x} last={:04x} {} waited={}ms",
+            "hippo: flight {} blocks={} hit={} beyond={} lapsed={} shared={} {} waited={}ms",
             match step {
                 Step::Compress { id, .. } => format!("0/{id}"),
                 Step::Merge { l, i, .. } => format!("{l}/{i}"),
             },
             keys.len(),
-            keys.first().map_or(0, |k| k & 0xffff),
-            keys.last().map_or(0, |k| k & 0xffff),
+            p.hit,
+            p.beyond,
+            p.lapsed,
+            p.shared,
             if f.leads() { "leads" } else { "reads" },
             asked.elapsed().as_millis()
         );
