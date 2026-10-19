@@ -1,13 +1,16 @@
 //! The house's homepage at home.<domain>, served beside the frame's page:
 //! a Glance-style board of the services, Water's health, and the frame's
-//! calendar, forecast and air. The look and much of the page's code come
-//! from Glance (github.com/glanceapp/glance), so this module and `home/`
-//! are AGPL-3.0; see `home/LICENSE`.
+//! calendar, forecast and air; an Agents tab with the assistants and how
+//! much of each subscription they used; and a Monitoring tab. The look and
+//! much of the page's code come from Glance (github.com/glanceapp/glance),
+//! so this module and `home/` are AGPL-3.0; see `home/LICENSE`.
 //!
 //! Environment:
 //! - `FRAME_SERVICES` (optional): a JSON list of `{"name", "url", "check",
-//!   "icon", "about"}`, where `check` is the service's loopback address.
+//!   "icon", "about", "agent"}`, where `check` is the service's loopback
+//!   address, `url` may be null, and `agent` puts it on the Agents tab.
 //! - `FRAME_DISKS` (optional): `label=/mountpoint` pairs, comma-separated.
+//! - `FRAME_USAGE` (optional): the usage service's socket.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -26,23 +29,31 @@ use crate::App;
 const FRESH: Duration = Duration::from_secs(20);
 /// A service slower than this counts as down.
 const PATIENCE: Duration = Duration::from_secs(4);
+/// Each usage report asks every provider afresh, so it is kept longer.
+const USAGE_FRESH: Duration = Duration::from_secs(300);
+/// The usage service reads three providers in turn.
+const USAGE_PATIENCE: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Service {
     name: String,
-    url: String,
+    url: Option<String>,
     check: String,
     #[serde(default)]
     icon: String,
     #[serde(default)]
     about: String,
+    #[serde(default)]
+    agent: bool,
 }
 
 pub struct Home {
     services: Vec<Service>,
     disks: Vec<(String, String)>,
+    usage: Option<String>,
     agent: ureq::Agent,
     last: Mutex<Option<(Instant, Value)>>,
+    used: Mutex<Option<(Instant, Value)>>,
 }
 
 impl Home {
@@ -60,6 +71,7 @@ impl Home {
         Self {
             services,
             disks,
+            usage: std::env::var("FRAME_USAGE").ok(),
             agent: ureq::Agent::config_builder()
                 .timeout_global(Some(PATIENCE))
                 // Any answer means the service is up; a login redirect is
@@ -69,6 +81,7 @@ impl Home {
                 .build()
                 .into(),
             last: Mutex::new(None),
+            used: Mutex::new(None),
         }
     }
 
@@ -141,7 +154,8 @@ pub async fn status(State(app): State<Arc<App>>) -> Response {
     for (s, check) in app.home.services.iter().zip(checks) {
         let state = check.await.unwrap_or(Value::Null);
         services.push(json!({
-            "name": s.name, "url": s.url, "icon": s.icon, "about": s.about, "state": state,
+            "name": s.name, "url": s.url, "icon": s.icon, "about": s.about, "agent": s.agent,
+            "state": state,
         }));
     }
     let a = app.clone();
@@ -156,6 +170,157 @@ pub async fn status(State(app): State<Arc<App>>) -> Response {
     let v = json!({ "services": services, "server": server });
     *last = Some((Instant::now(), v.clone()));
     ([(header::CACHE_CONTROL, "no-cache")], Json(v)).into_response()
+}
+
+/// How much of each subscription is used, and by whom, from the usage
+/// service. A failed read keeps the last good report.
+pub async fn usage(State(app): State<Arc<App>>) -> Response {
+    let Some(sock) = app.home.usage.clone() else {
+        return Json(Value::Null).into_response();
+    };
+    let mut used = app.home.used.lock().await;
+    if let Some((at, v)) = used.as_ref()
+        && at.elapsed() < USAGE_FRESH
+    {
+        return Json(v.clone()).into_response();
+    }
+    match tokio::task::spawn_blocking(move || report::read(&sock)).await {
+        Ok(Ok(text)) => {
+            let v = serde_json::to_value(report::parse(&text)).unwrap_or_default();
+            *used = Some((Instant::now(), v.clone()));
+            Json(v).into_response()
+        }
+        Ok(Err(e)) => {
+            eprintln!("usage: {e}");
+            Json(used.as_ref().map_or(Value::Null, |(_, v)| v.clone())).into_response()
+        }
+        Err(_) => Json(Value::Null).into_response(),
+    }
+}
+
+/// The usage service's report, which is written for people: a line per
+/// window, then who used it.
+///
+/// ```text
+/// claude  5h      3%  resets Mon Oct 19 00:09
+///         korra 75% (memory 17%) · sokka 24% (memory 2%) · $10 at API prices
+/// codex   unknown (RuntimeError: ...)
+/// ```
+mod report {
+    use std::io::Read;
+    use std::os::unix::net::UnixStream;
+
+    use serde::Serialize;
+
+    use super::USAGE_PATIENCE;
+
+    #[derive(Serialize, Debug, PartialEq)]
+    pub struct Report {
+        pub windows: Vec<Window>,
+        /// Accounts that couldn't be read, and the kind of error.
+        pub unknown: Vec<(String, String)>,
+    }
+
+    #[derive(Serialize, Debug, PartialEq)]
+    pub struct Window {
+        pub account: String,
+        pub window: String,
+        pub pct: u32,
+        pub resets: String,
+        /// Who used it, as shares of the whole, most first.
+        pub shares: Vec<(String, u32)>,
+        pub cost: Option<String>,
+    }
+
+    pub fn read(sock: &str) -> std::io::Result<String> {
+        let mut s = UnixStream::connect(sock)?;
+        s.set_read_timeout(Some(USAGE_PATIENCE))?;
+        s.shutdown(std::net::Shutdown::Write)?;
+        let mut text = String::new();
+        s.read_to_string(&mut text)?;
+        Ok(text)
+    }
+
+    pub fn parse(text: &str) -> Report {
+        let mut r = Report {
+            windows: Vec::new(),
+            unknown: Vec::new(),
+        };
+        for line in text.lines() {
+            if let Some(rest) = line.strip_prefix("        ") {
+                let Some(w) = r.windows.last_mut() else {
+                    continue;
+                };
+                for part in rest.split(" · ") {
+                    if part.ends_with("at API prices") {
+                        w.cost = part.split_whitespace().next().map(str::to_owned);
+                    } else if let Some((who, pct)) = part.split_once(' ')
+                        && let Some(Ok(pct)) = pct.split('%').next().map(str::parse)
+                    {
+                        w.shares.push((who.to_owned(), pct));
+                    }
+                }
+                continue;
+            }
+            let mut words = line.split_whitespace();
+            let (Some(account), Some(second)) = (words.next(), words.next()) else {
+                continue;
+            };
+            if second == "unknown" {
+                let why = line.split_once('(').map_or("", |(_, w)| w);
+                let kind = why.split_once(':').map_or(why, |(kind, _)| kind);
+                r.unknown.push((account.to_owned(), kind.trim_end_matches(')').to_owned()));
+            } else if let (Some(pct), Some("resets")) = (words.next(), words.next())
+                && let Ok(pct) = pct.trim_end_matches('%').parse()
+            {
+                r.windows.push(Window {
+                    account: account.to_owned(),
+                    window: second.to_owned(),
+                    pct,
+                    resets: words.collect::<Vec<_>>().join(" "),
+                    shares: Vec::new(),
+                    cost: None,
+                });
+            }
+        }
+        r
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn reads_windows_shares_and_failures() {
+            let r = parse(concat!(
+                "claude  5h      3%  resets Mon Oct 19 00:09\n",
+                "        korra 75% (memory 17%) · sokka 24% (memory 2%) · suki 1% (memory 0%) · $10 at API prices\n",
+                "claude  week    0%  resets Sun Oct 25 17:59\n",
+                "        no use logged here\n",
+                "codex   unknown (RuntimeError: failed to fetch: 401\n",
+                "  \"error\": {\n",
+                "})\n",
+                "go      unknown (HTTPError: HTTP Error 401: Unauthorized)\n",
+                "Shares count use logged on Water.\n",
+            ));
+            assert_eq!(r.windows.len(), 2);
+            assert_eq!(r.windows[0].pct, 3);
+            assert_eq!(r.windows[0].resets, "Mon Oct 19 00:09");
+            assert_eq!(
+                r.windows[0].shares,
+                [("korra".into(), 75), ("sokka".into(), 24), ("suki".into(), 1)]
+            );
+            assert_eq!(r.windows[0].cost.as_deref(), Some("$10"));
+            assert!(r.windows[1].shares.is_empty());
+            assert_eq!(
+                r.unknown,
+                [
+                    ("codex".into(), "RuntimeError".into()),
+                    ("go".into(), "HTTPError".into())
+                ]
+            );
+        }
+    }
 }
 
 /// Water's health, read from /proc and /sys as Glance's server-stats widget

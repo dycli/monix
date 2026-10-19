@@ -88,12 +88,21 @@
           about = "Dylan's assistant";
           icon = "";
           route = "sokka";
+          agent = true;
         }
         {
           name = "Suki";
           about = "Gab's assistant";
           icon = "";
           route = "suki";
+          agent = true;
+        }
+        {
+          name = "Paseo";
+          about = "Coding agents";
+          icon = "";
+          check = "http://127.0.0.1:6768/";
+          agent = true;
         }
         {
           name = "Plaid";

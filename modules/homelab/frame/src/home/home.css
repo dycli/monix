@@ -40,3 +40,16 @@
   color: var(--color-text-subdue);
   font-size: var(--font-size-h3);
 }
+
+/* One page of columns per tab; the others wait hidden. */
+.page-columns[hidden] {
+  display: none;
+}
+#pills {
+  display: contents;
+}
+
+/* Subscriptions: an account, then a bar per window. */
+.usage-account + .usage-account {
+  margin-top: 2rem;
+}

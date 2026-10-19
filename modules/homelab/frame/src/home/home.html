@@ -18,17 +18,23 @@
     <div class="header flex padding-inline-widget widget-content-frame">
       <div class="logo">home</div>
       <nav class="desktop-navigation flex grow hide-scrollbars">
-        <a href="/" class="nav-item nav-item-current" aria-current="page"><div class="nav-item-text">Home</div></a>
+        <a href="#" class="nav-item" data-tab="home"><div class="nav-item-text">Home</div></a>
+        <a href="#agents" class="nav-item" data-tab="agents"><div class="nav-item-text">Agents</div></a>
+        <a href="#monitoring" class="nav-item" data-tab="monitoring"><div class="nav-item-text">Monitoring</div></a>
       </nav>
     </div>
   </div>
 
   <div class="mobile-navigation">
     <div class="mobile-navigation-icons">
-      <a class="mobile-navigation-label" href="#top">↑</a>
-      <label class="mobile-navigation-label"><input type="radio" class="mobile-navigation-input" name="column" value="0" autocomplete="off"><div class="mobile-navigation-pill"></div></label>
-      <label class="mobile-navigation-label"><input type="radio" class="mobile-navigation-input" name="column" value="1" autocomplete="off" checked><div class="mobile-navigation-pill"></div></label>
-      <label class="mobile-navigation-label"><input type="radio" class="mobile-navigation-input" name="column" value="2" autocomplete="off"><div class="mobile-navigation-pill"></div></label>
+      <a class="mobile-navigation-label" href="#top" id="to-top">↑</a>
+      <span id="pills" class="contents"></span>
+      <label class="mobile-navigation-label"><input type="checkbox" class="mobile-navigation-page-links-input" autocomplete="off"><div class="hamburger-icon"></div></label>
+    </div>
+    <div class="mobile-navigation-page-links hide-scrollbars">
+      <a href="#" class="nav-item" data-tab="home"><div class="nav-item-text">Home</div></a>
+      <a href="#agents" class="nav-item" data-tab="agents"><div class="nav-item-text">Agents</div></a>
+      <a href="#monitoring" class="nav-item" data-tab="monitoring"><div class="nav-item-text">Monitoring</div></a>
     </div>
   </div>
 
@@ -36,7 +42,7 @@
     <main class="page content-ready" id="page">
       <h1 class="visually-hidden">Home</h1>
       <div class="page-content" id="page-content">
-        <div class="page-columns">
+        <div class="page-columns" data-tab="home">
 
           <div class="page-column page-column-small">
             <div class="widget widget-type-clock">
@@ -95,6 +101,38 @@
             </div>
           </div>
 
+        </div>
+
+        <div class="page-columns" data-tab="agents" hidden>
+          <div class="page-column page-column-full">
+            <div class="widget widget-type-monitor" id="agents">
+              <div class="widget-header"><h2 class="uppercase">Agents</h2></div>
+              <div class="widget-content"></div>
+            </div>
+            <div class="widget" id="usage">
+              <div class="widget-header"><h2 class="uppercase">Subscriptions</h2></div>
+              <div class="widget-content"><p class="color-subdue">Asking each provider…</p></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="page-columns" data-tab="monitoring" hidden>
+          <div class="page-column page-column-full">
+            <div class="widget widget-type-monitor" id="monitor">
+              <div class="widget-header"><h2 class="uppercase">Services</h2></div>
+              <div class="widget-content"></div>
+            </div>
+          </div>
+          <div class="page-column page-column-small">
+            <div class="widget widget-type-server-stats" id="server2" hidden>
+              <div class="widget-header"><h2 class="uppercase">Server</h2></div>
+              <div class="widget-content"></div>
+            </div>
+            <div class="widget" id="disks" hidden>
+              <div class="widget-header"><h2 class="uppercase">Disks</h2></div>
+              <div class="widget-content"></div>
+            </div>
+          </div>
         </div>
       </div>
     </main>

@@ -2,7 +2,8 @@
 # a slideshow with the time, the week's calendar, the forecast and the air
 # indoors, served by ./frame. The same server answers https://home.<domain>
 # with the house's homepage: the services, Water's health and the same
-# board. The frame (a rooted Frameo on the IoT VLAN) cannot join the
+# board, plus Agents (the assistants and subscription use) and Monitoring
+# tabs. The frame (a rooted Frameo on the IoT VLAN) cannot join the
 # tailnet, so the server also listens on the LAN port directly; the page
 # carries photos and the board only, never the Immich key or CalDAV login.
 { self, ... }:
@@ -28,6 +29,8 @@
       cfg = config.frame;
       port = 8970;
       frame = lib.ship.rustTool pkgs { src = ./frame; };
+      # The subscription-use socket (../ai/usage.mod.nix), where the host runs it.
+      usage = config.systemd.sockets ? usage;
     in
     {
       options.frame = {
@@ -96,6 +99,11 @@
                   type = types.nullOr types.str;
                   default = null;
                   description = "Loopback address to check; defaults to the route's port.";
+                };
+                agent = mkOption {
+                  type = types.bool;
+                  default = false;
+                  description = "An assistant: the homepage's Agents tab lists it too.";
                 };
               };
             }
@@ -175,7 +183,7 @@
                   route = config.shipProxy.routes.${s.route};
                 in
                 {
-                  inherit (s) name about icon;
+                  inherit (s) name about icon agent;
                   url = if s.route != null then "https://${route.subdomain}.${config.shipProxy.domain}" else s.url;
                   check = if s.check != null then s.check else "http://127.0.0.1:${toString route.port}/";
                 }
@@ -198,6 +206,9 @@
               |> toJSON;
             FRAME_GO2RTC = "http://127.0.0.1:1984";
             FRAME_FRIGATE = "ws://127.0.0.1:5000/ws";
+          }
+          // optionalAttrs usage {
+            FRAME_USAGE = "/run/usage.sock";
           };
           serviceConfig = lib.ship.hardened.tenant // {
             DynamicUser = true;
@@ -218,6 +229,18 @@
             # Allow is checked first, so the frame's subnet gets through.
             IPAddressAllow = fences.loopback ++ singleton cfg.lan.subnet;
             IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
+          }
+          // optionalAttrs usage {
+            # The Agents tab reads subscription use from the usage socket,
+            # which its group may open; a private user namespace would hide
+            # the group.
+            SupplementaryGroups = singleton "usage";
+            PrivateUsers = false;
+            RestrictAddressFamilies = [
+              "AF_UNIX"
+              "AF_INET"
+              "AF_INET6"
+            ];
           };
         };
       };

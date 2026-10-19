@@ -521,6 +521,7 @@ async fn main() {
         .route("/camera/{id}/{way}", axum::routing::post(turn))
         .route("/home/{name}", get(home::asset))
         .route("/api/home", get(home::status))
+        .route("/api/usage", get(home::usage))
         .with_state(app);
     let listen = env("FRAME_LISTEN");
     let socket = tokio::net::TcpListener::bind(&listen)

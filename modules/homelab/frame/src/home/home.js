@@ -1,11 +1,15 @@
 // The homepage's client. The clock, search, monitor and server-stats
 // widgets are ports of Glance's page.js and templates (AGPL-3.0) to
-// client-side rendering against this server's /api/home and /api/board.
+// client-side rendering against this server's /api/home, /api/board and
+// /api/usage. Glance gives each page its own address; here the three tabs
+// are one document, switched by the URL's hash.
 
 import { setupPopovers } from "./popover.js";
 
 const STATUS_EVERY = 30_000;
 const BOARD_EVERY = 300_000;
+// The server keeps a usage report five minutes; asking sooner gets the same.
+const USAGE_EVERY = 300_000;
 
 const $ = (id) => document.getElementById(id);
 
@@ -120,8 +124,7 @@ const BAD_ICON = `<svg fill="var(--color-negative)" xmlns="http://www.w3.org/200
 // Icons from the dashboard-icons set, as Glance's `di:` prefix loads them.
 const iconURL = (name) => `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/${name}.svg`;
 
-function renderServices(list) {
-  services = list;
+function renderServices(box, list) {
   const items = list.map((s) => {
     const st = s.state ?? {};
     const status = st.up
@@ -134,15 +137,15 @@ function renderServices(list) {
           : html`<div class="monitor-site-icon monogram" aria-hidden="true">${s.name[0]}</div>`,
       )}
       <div class="grow min-width-0">
-        <a class="size-h3 color-highlight text-truncate block" href="${s.url}" rel="noreferrer">${s.name}</a>
+        ${raw(s.url ? html`<a class="size-h3 color-highlight text-truncate block" href="${s.url}" rel="noreferrer">${s.name}</a>` : html`<div class="size-h3 color-highlight text-truncate">${s.name}</div>`)}
         <ul class="list-horizontal-text">${raw(status)}</ul>
       </div>
       <div class="monitor-site-status-icon">${raw(st.up ? OK_ICON : BAD_ICON)}</div>
     </li>`;
   });
-  $("services").querySelector(".widget-content").innerHTML =
+  box.querySelector(".widget-content").innerHTML =
     `<ul class="dynamic-columns list-gap-20 list-with-separator">${items.join("")}</ul>`;
-  showImages($("services"));
+  showImages(box);
 }
 
 // Glance's setupLazyImages: its CSS hides a lazy image until it is marked
@@ -177,8 +180,7 @@ function uptime(secs) {
 
 const SERVER_ICON = `<svg class="server-icon" stroke="var(--color-positive)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 17.25v-.228a4.5 4.5 0 0 0-.12-1.03l-2.268-9.64a3.375 3.375 0 0 0-3.285-2.602H7.923a3.375 3.375 0 0 0-3.285 2.602l-2.268 9.64a4.5 4.5 0 0 0-.12 1.03v.228m19.5 0a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3m19.5 0a3 3 0 0 0-3-3H5.25a3 3 0 0 0-3 3m16.5 0h.008v.008h-.008v-.008Zm-3 0h.008v.008h-.008v-.008Z" /></svg>`;
 
-function renderServer(s) {
-  const box = $("server");
+function renderServer(box, s) {
   if (!s) return void (box.hidden = true);
   box.hidden = false;
   const mem = pct(s.mem_used, s.mem_total);
@@ -233,6 +235,56 @@ function renderServer(s) {
     </div>
   </div>`;
   setupPopovers();
+}
+
+// Every disk with its own bar, for Monitoring.
+function renderDisks(s) {
+  const box = $("disks");
+  if (!s?.disks.length) return void (box.hidden = true);
+  box.hidden = false;
+  box.querySelector(".widget-content").innerHTML = `<ul class="list list-gap-14">${s.disks
+    .map((d) => {
+      const p = pct(d.used, d.total);
+      return html`<li>${raw(pair(d.name.toUpperCase(), d.used, d.total))}
+        <div class="progress-bar margin-top-5"><div class="progress-value${notice(p)}" style="--percent: ${p}"></div></div></li>`;
+    })
+    .join("")}</ul>`;
+}
+
+// --- Subscriptions (the usage service's report, as Glance-style bars) ---
+
+const ACCOUNTS = { claude: "Claude", codex: "ChatGPT / Codex", go: "OpenCode Go" };
+
+function renderUsage(u) {
+  const content = $("usage").querySelector(".widget-content");
+  if (!u) {
+    content.innerHTML = `<p class="color-subdue">The usage service didn't answer.</p>`;
+    return;
+  }
+  const accounts = new Map();
+  const account = (name) => {
+    if (!accounts.has(name)) accounts.set(name, []);
+    return accounts.get(name);
+  };
+  for (const w of u.windows) {
+    const shares = w.shares.filter(([, p]) => p > 0).map(([who, p]) => `${who} ${p}%`);
+    account(w.account).push(html`<li>
+      <div class="flex justify-between items-end size-h5"><div class="uppercase">${w.window}</div>
+        <div class="color-highlight text-very-compact">${w.pct} <span class="color-base">%</span></div></div>
+      <div class="progress-bar margin-top-5"><div class="progress-value${notice(w.pct)}" style="--percent: ${w.pct}"></div></div>
+      <ul class="list-horizontal-text size-h6 margin-top-5">
+        <li>resets ${w.resets}</li>
+        ${raw(shares.length ? html`<li>${shares.join(" · ")}</li>` : "")}
+        ${raw(w.cost ? html`<li>${w.cost} at API prices</li>` : "")}
+      </ul></li>`);
+  }
+  for (const [name, kind] of u.unknown) {
+    account(name).push(html`<li class="color-negative" title="${kind}">Couldn't read its use (${kind})</li>`);
+  }
+  content.innerHTML = [...accounts]
+    .map(([name, rows]) => html`<div class="usage-account"><div class="size-h3 color-highlight">${ACCOUNTS[name] ?? name}</div>
+      <ul class="list list-gap-14 margin-top-10">${raw(rows.join(""))}</ul></div>`)
+    .join("");
 }
 
 // --- Weather (after Glance's widget, by day: the forecast has no hours) ---
@@ -301,8 +353,9 @@ function renderEvents(events) {
   const tomorrow = new Date(Date.now() + 86400000).toDateString();
   const groups = new Map();
   for (const e of events) {
-    const allDay = !e.start.includes("T");
-    const when = new Date(allDay ? e.start + "T00:00" : e.start);
+    // An all-day event's start is a date; a timed one's "2026-10-21 16:00".
+    const allDay = e.start.length === 10;
+    const when = new Date(allDay ? e.start + "T00:00" : e.start.replace(" ", "T"));
     const key = when.toDateString();
     const label = key === today ? "Today" : key === tomorrow ? "Tomorrow" : `${WEEKDAYS[when.getDay()]} ${when.getDate()} ${MONTHS[when.getMonth()].slice(0, 3)}`;
     if (!groups.has(key)) groups.set(key, { label, items: [] });
@@ -326,8 +379,13 @@ async function getJSON(url) {
 async function status() {
   try {
     const s = await getJSON("/api/home");
-    renderServices(s.services);
-    renderServer(s.server);
+    services = s.services.filter((x) => x.url);
+    renderServices($("services"), services);
+    renderServices($("agents"), s.services.filter((x) => x.agent));
+    renderServices($("monitor"), s.services);
+    renderServer($("server"), s.server);
+    renderServer($("server2"), s.server);
+    renderDisks(s.server);
   } catch (e) {
     console.warn(e);
   }
@@ -346,6 +404,48 @@ async function board() {
   setTimeout(board, BOARD_EVERY);
 }
 
+let usageTimer = null;
+async function usage() {
+  clearTimeout(usageTimer);
+  try {
+    renderUsage(await getJSON("/api/usage"));
+  } catch (e) {
+    console.warn(e);
+  }
+  usageTimer = setTimeout(usage, USAGE_EVERY);
+}
+
+// --- Tabs ---
+// Each tab is a page of columns. On a phone, as in Glance, a pill per
+// column picks the one shown, starting on the widest.
+
+function showTab() {
+  const tab = location.hash.slice(1) || "home";
+  const page = document.querySelector(`.page-columns[data-tab="${tab}"]`) ?? document.querySelector(".page-columns");
+  const name = page.dataset.tab;
+  for (const p of document.querySelectorAll(".page-columns")) p.hidden = p !== page;
+  for (const a of document.querySelectorAll(".nav-item")) {
+    const current = a.dataset.tab === name;
+    a.classList.toggle("nav-item-current", current);
+    if (current) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  }
+  const columns = [...page.children];
+  const primary = Math.max(0, columns.findIndex((c) => c.classList.contains("page-column-full")));
+  // A lone column gets no pills, but is still the one chosen, so the
+  // phone's CSS shows it.
+  $("pills").innerHTML = columns.length < 2
+    ? `<input type="radio" class="mobile-navigation-input" name="column" value="0" checked hidden>`
+    : columns
+        .map((_, i) => `<label class="mobile-navigation-label"><input type="radio" class="mobile-navigation-input" name="column" value="${i}" autocomplete="off"${i === primary ? " checked" : ""}><div class="mobile-navigation-pill"></div></label>`)
+        .join("");
+  document.querySelector(".mobile-navigation-page-links-input").checked = false;
+  document.title = name === "home" ? "Home" : `${name[0].toUpperCase()}${name.slice(1)} · Home`;
+  if (name === "agents" && usageTimer === null) usage();
+}
+
+window.addEventListener("hashchange", showTab);
+showTab();
 tick();
 setupSearch();
 status();
