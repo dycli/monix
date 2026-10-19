@@ -20,6 +20,7 @@ import { math } from "@streamdown/math";
 import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, type Card, type Hit, type Msg, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
+import { Bars, Call } from "./call";
 
 type Args = ToolCallMessagePartProps["args"];
 
@@ -485,10 +486,13 @@ type ThreadProps = {
   shape?: number;
   browser: boolean;
   closeBrowser: () => Promise<void>;
+  refresh: () => void;
 };
 
-function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, screen, shape, browser, closeBrowser }: ThreadProps) {
+function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, screen, shape, browser, closeBrowser, refresh }: ThreadProps) {
   const [finding, setFinding] = useState(false);
+  const [calling, setCalling] = useState(false);
+  const voice = useMe()?.voice;
   // The deck on screen, by the card it opened at, and whether it is on its
   // way down so the talk fades back in rather than snapping.
   const [open, setOpen] = useState<string>();
@@ -638,7 +642,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
                   placeholder={`Message ${NAME}`}
                   className="max-h-[40vh] flex-1 resize-none bg-transparent py-[7px] text-base leading-normal outline-none placeholder:text-soft"
                 />
-                <Trailing typing={typing} stop={stop} cardOpen={!!deck.length && !leaving} close={close} />
+                <Trailing typing={typing} stop={stop} cardOpen={!!deck.length && !leaving} close={close} call={voice ? () => setCalling(true) : undefined} />
                 </div>
                 </ComposerPrimitive.AttachmentDropzone>
               </ComposerPrimitive.Root>
@@ -647,6 +651,15 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
         </ThreadPrimitive.Viewport>
         {screen && wide && <Screen url={screen} shape={shape} on={watching} driving={driving} close={closeBrowser} pane />}
         </div>
+        {calling && (
+          <Call
+            name={NAME}
+            ended={() => {
+              setCalling(false);
+              refresh();
+            }}
+          />
+        )}
         {deck.length > 0 && <Deck key={deck[0].key} faces={deck} start={open!} leaving={leaving} edge={edge} close={close} />}
       </ThreadPrimitive.Root>
      </CardCtx.Provider>
@@ -655,10 +668,11 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
 }
 
 // The one button after the composer: Stop while the yeoman is answering;
-// else, with a card up and nothing typed, a down arrow to close it; else
-// Send, which the primitive greys when there is nothing to send. One button,
-// never two half-lit ones.
-function Trailing({ typing, stop, cardOpen, close }: { typing: boolean; stop: () => Promise<void>; cardOpen: boolean; close: () => void }) {
+// else, with a card up and nothing typed, a down arrow to close it; else,
+// with nothing typed and a voice to call, a call; else Send, which the
+// primitive greys when there is nothing to send. One button, never two
+// half-lit ones.
+function Trailing({ typing, stop, cardOpen, close, call }: { typing: boolean; stop: () => Promise<void>; cardOpen: boolean; close: () => void; call?: () => void }) {
   const text = useAuiState((s) => s.composer.text);
   const round = "grid size-[38px] shrink-0 place-items-center rounded-full";
   if (typing)
@@ -671,6 +685,12 @@ function Trailing({ typing, stop, cardOpen, close }: { typing: boolean; stop: ()
     return (
       <button type="button" onClick={() => close()} aria-label="Close the card" title="Close the card" className={`${round} bg-ink text-paper hover:opacity-85`}>
         <Arrow down />
+      </button>
+    );
+  if (call && !text.trim())
+    return (
+      <button type="button" onClick={call} aria-label={`Call ${NAME}`} title={`Call ${NAME}`} className={`${round} bg-ink text-paper hover:opacity-85`}>
+        <Bars />
       </button>
     );
   return (

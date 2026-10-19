@@ -4,7 +4,8 @@
 //! Grok CLI login made once with `yeoman x login`; the tools reach only
 //! its socket. Grok runs the searches and answers with the posts it found
 //! and their links. It reads X and nothing else, so it acts on nothing.
-//! The same sign-in reads replies aloud through xAI's text to speech.
+//! The same sign-in reads replies aloud through xAI's text to speech, and
+//! mints the short-lived passes a page holds to talk with Grok Voice.
 
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use schemars::JsonSchema;
@@ -24,6 +25,7 @@ const CLIENT: &str = "b1a00492-073a-47ea-816f-4c329264a828";
 const SCOPE: &str = "openid profile email offline_access grok-cli:access api:access";
 const API: &str = "https://api.x.ai/v1/responses";
 const TTS: &str = "https://api.x.ai/v1/tts";
+const SECRETS: &str = "https://api.x.ai/v1/realtime/client_secrets";
 /// xAI's limit on one text to speak, in characters.
 pub const SPEAK_MAX: usize = 60_000;
 const MODEL: &str = "grok-4.7";
@@ -52,11 +54,18 @@ pub struct Ask {
     pub to: Option<String>,
 }
 
-/// What the socket carries: text to speak, or else a search.
+/// What the socket carries: text to speak, a voice pass, or else a search.
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 enum Request {
-    Speak { speak: String, voice: String },
+    Speak {
+        speak: String,
+        voice: String,
+    },
+    /// A pass to Grok Voice good for this many seconds.
+    Secret {
+        secret: u64,
+    },
     Search(Ask),
 }
 
@@ -78,6 +87,14 @@ pub fn speak(sock: &Path, text: &str, voice: &str) -> Result<Vec<u8>, String> {
     let reply = call(sock, &serde_json::to_vec(&ask).map_err(|e| e.to_string())?)?;
     let audio = reply["audio"].as_str().ok_or("x: no audio")?;
     BASE64.decode(audio).map_err(|e| format!("x: {e}"))
+}
+
+/// The site's side: a pass to Grok Voice for `seconds`, as xAI gives it,
+/// `{value, expires_at}`. The page opens the call with it, so the
+/// subscription's own sign-in never leaves this host.
+pub fn secret(sock: &Path, seconds: u64) -> Result<Value, String> {
+    let ask = Request::Secret { secret: seconds };
+    call(sock, &serde_json::to_vec(&ask).map_err(|e| e.to_string())?)
 }
 
 /// One request over the socket; its reply, unless it is an error.
@@ -111,6 +128,7 @@ pub fn serve() -> Result<(), String> {
         Ok(Request::Speak { speak, voice }) => {
             tts(&speak, &voice).map(|mp3| json!({ "audio": BASE64.encode(mp3) }))
         }
+        Ok(Request::Secret { secret }) => client_secret(secret),
         Err(e) => Err(e),
     };
     let reply = reply.unwrap_or_else(|e| {
@@ -208,6 +226,30 @@ fn tts(text: &str, voice: &str) -> Result<Vec<u8>, String> {
         mp3.len()
     );
     Ok(mp3)
+}
+
+/// A Grok Voice pass from xAI, at most an hour long.
+fn client_secret(seconds: u64) -> Result<Value, String> {
+    let token = token()?;
+    let mut resp = agent()
+        .post(SECRETS)
+        .header("Authorization", &format!("Bearer {token}"))
+        .send_json(json!({"expires_after": {"seconds": seconds.clamp(10, 3600)}}))
+        .map_err(|e| format!("xai secret: {e}"))?;
+    let status = resp.status().as_u16();
+    let reply: Value = resp
+        .body_mut()
+        .read_json()
+        .map_err(|e| format!("xai secret: {status}: {e}"))?;
+    if status >= 400 || !reply["value"].is_string() {
+        let msg = reply["error"]["message"]
+            .as_str()
+            .or(reply["error"].as_str())
+            .unwrap_or("no pass");
+        return Err(format!("xai secret: {status}: {msg}"));
+    }
+    eprintln!("yeoman-x: voice pass for {seconds}s");
+    Ok(json!({"value": reply["value"], "expires_at": reply["expires_at"]}))
 }
 
 /// The request as Grok reads it: the tool's filters bind the search, but

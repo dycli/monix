@@ -737,6 +737,8 @@ pub async fn serve(
         .route("/api/search", get(search))
         .route("/api/said/{i}", get(said))
         .route("/api/speak", post(speak))
+        .route("/api/call", post(call))
+        .route("/api/call/end", post(call_end))
         .route("/api/events", get(events))
         .route(
             "/api/send",
@@ -996,6 +998,83 @@ async fn speak(
         Err(e) => {
             eprintln!("yeoman: site speak: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// How long a call's pass to Grok Voice lasts. It only opens the call,
+/// which runs on once open.
+const CALL_PASS: u64 = 120;
+
+/// What the page needs to start a call: a pass to Grok Voice, the voice,
+/// and the instructions with the newest of the memory. Only where the
+/// assistant has a voice, so never for one kept off xAI.
+async fn call(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let (Some(sock), Some(voice)) = (site.x.clone(), site.who.voice.clone()) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let h = site.hippo.clone();
+    let name = site.who.name.clone();
+    let made = tokio::task::spawn_blocking(move || {
+        let view = h.view()?;
+        let pass = crate::x::secret(&sock, CALL_PASS)?;
+        let env = |k| std::env::var(k).unwrap_or_default();
+        let instructions =
+            crate::call::instructions(&name, &env("YEOMAN_PERSON"), &env("YEOMAN_STYLE"), &view);
+        Ok::<_, String>(serde_json::json!({
+            "secret": pass["value"],
+            "voice": voice,
+            "instructions": instructions,
+        }))
+    })
+    .await;
+    match made {
+        Ok(Ok(body)) => Json(body).into_response(),
+        Ok(Err(e)) => {
+            eprintln!("yeoman: site call: {e}");
+            (StatusCode::BAD_GATEWAY, e).into_response()
+        }
+        Err(e) => {
+            eprintln!("yeoman: site call: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct CallEnd {
+    lines: Vec<crate::call::Line>,
+    minutes: u64,
+}
+
+/// A finished call into hippo, so the chat and the memory hold it.
+async fn call_end(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    Json(CallEnd { lines, minutes }): Json<CallEnd>,
+) -> StatusCode {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED;
+    }
+    let h = site.hippo.clone();
+    let logged = tokio::task::spawn_blocking(move || {
+        crate::call::record(lines, minutes)
+            .into_iter()
+            .try_for_each(|(kind, text)| h.log(kind, &text))
+    })
+    .await;
+    match logged {
+        Ok(Ok(())) => StatusCode::NO_CONTENT,
+        Ok(Err(e)) => {
+            eprintln!("yeoman: site call end: {e}");
+            StatusCode::BAD_GATEWAY
+        }
+        Err(e) => {
+            eprintln!("yeoman: site call end: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
         }
     }
 }

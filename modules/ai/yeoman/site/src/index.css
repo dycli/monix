@@ -313,6 +313,16 @@
   vertical-align: 0.05em;
   animation: pulse 1.1s ease-in-out infinite;
 }
+/* The call's bars while the assistant speaks. */
+@keyframes talk {
+  0%,
+  100% {
+    height: 18px;
+  }
+  50% {
+    height: 72px;
+  }
+}
 @keyframes pulse {
   50% {
     opacity: 0.25;

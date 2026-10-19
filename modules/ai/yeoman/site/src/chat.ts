@@ -2,7 +2,7 @@
 // the server pushes over SSE, with history again whenever the stream may
 // have missed something. The server answers one message at a
 // time and says so with `typing`.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AttachmentAdapter } from "@assistant-ui/react";
 
 export type Msg = {
@@ -81,6 +81,8 @@ export type Chat =
       /** Whether the computer's browser is open, and closing it. */
       browser: boolean;
       closeBrowser: () => Promise<void>;
+      /** Reads the conversation afresh from hippo, as after a call. */
+      refresh: () => void;
     };
 
 export function useChat(): Chat {
@@ -92,6 +94,7 @@ export function useChat(): Chat {
   const [screen, setScreen] = useState<string>();
   const [shape, setShape] = useState<number>();
   const [browser, setBrowser] = useState(false);
+  const resync = useRef<() => void>(() => {});
 
   useEffect(() => {
     let events: EventSource | undefined;
@@ -225,6 +228,7 @@ export function useChat(): Chat {
       if (ready && document.visibilityState === "visible") sync().catch(() => {});
     };
     document.addEventListener("visibilitychange", shown);
+    resync.current = () => void sync().catch(() => {});
     sync().then(
       (ok) => ok && listen(),
       (e) => setStatus(String(e)),
@@ -289,9 +293,11 @@ export function useChat(): Chat {
     if (!r.ok) setCards((cs) => cs.map((c) => (c.id === id ? { ...c, busy: false, error: `That failed (${r.status}).` } : c)));
   }, []);
 
+  const refresh = useCallback(() => resync.current(), []);
+
   if (status === "loading" || status === "signed-out") return { state: status };
   if (status !== "ready") return { state: "error", error: status };
-  return { state: "ready", messages, typing, send, stop, cards, decide, task, stopTask, screen, shape, browser, closeBrowser };
+  return { state: "ready", messages, typing, send, stop, cards, decide, task, stopTask, screen, shape, browser, closeBrowser, refresh };
 }
 
 // A task's steps before the page heard it started still belong to it.

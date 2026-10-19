@@ -6,6 +6,7 @@
 
 mod book;
 mod calendar;
+mod call;
 mod door;
 mod finance;
 mod hippo;
