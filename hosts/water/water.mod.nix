@@ -87,6 +87,7 @@
             "hippo.service"
             "sokka.service"
             "suki.service"
+            "azula.service"
             "nginx.service"
             "tuwunel.service"
           ];

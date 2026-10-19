@@ -43,6 +43,7 @@ use tower_layer::Layer;
 use crate::push::{self, Push};
 
 const COOKIE: &str = "session";
+
 const SESSION: Duration = Duration::from_secs(30 * 24 * 3600);
 /// How long a request to sign in waits for its answer.
 const ASK: Duration = Duration::from_secs(5 * 60);
@@ -422,21 +423,62 @@ struct Site {
     gate: Arc<Gate>,
     stop: Arc<AtomicBool>,
     sessions: Mutex<Sessions>,
+    who: Who,
+    index: PathBuf,
     /// None when the site's address is unknown or the key would not load.
     push: Option<Arc<Push>>,
 }
 
-/// Sessions by token, with when each ends in Unix seconds; kept in a file
-/// so a restart signs nobody out.
+/// Who answers here, and every assistant the proxy serves on this host,
+/// picked by the page's `persona` cookie (yeoman.mod.nix): the name from
+/// YEOMAN_NAME, the others from YEOMAN_PERSONAS, `unit=Name,...`.
+#[derive(Serialize)]
+struct Who {
+    name: String,
+    personas: Vec<Persona>,
+}
+
+#[derive(Serialize)]
+struct Persona {
+    unit: String,
+    name: String,
+}
+
+impl Who {
+    fn from_env() -> Self {
+        let var = |k| std::env::var(k).unwrap_or_default();
+        Who {
+            name: std::env::var("YEOMAN_NAME").unwrap_or_else(|_| "Chat".into()),
+            personas: personas(&var("YEOMAN_PERSONAS")),
+        }
+    }
+}
+
+fn personas(list: &str) -> Vec<Persona> {
+    list.split(',')
+        .filter_map(|p| p.split_once('='))
+        .map(|(unit, name)| Persona {
+            unit: unit.into(),
+            name: name.into(),
+        })
+        .collect()
+}
+
+/// Sessions by token, with when each ends in Unix seconds, in a file so a
+/// restart signs nobody out. The assistants that share a host share the
+/// file (YEOMAN_SESSIONS, in a directory only their group reaches), so one
+/// sign-in lets the person into each; it is read afresh each time, since
+/// another may have added to it.
 struct Sessions {
     file: PathBuf,
-    live: HashMap<String, u64>,
+    /// Group-readable when shared, else the owner's alone.
+    mode: u32,
 }
 
 impl Sessions {
-    fn load(file: PathBuf) -> Self {
+    fn live(&self) -> HashMap<String, u64> {
         let now = unix();
-        let live = fs::read_to_string(&file)
+        fs::read_to_string(&self.file)
             .unwrap_or_default()
             .lines()
             .filter_map(|l| {
@@ -444,25 +486,19 @@ impl Sessions {
                 Some((token.to_owned(), end.parse().ok()?))
             })
             .filter(|(_, end)| *end > now)
-            .collect();
-        Self { file, live }
+            .collect()
     }
 
     fn valid(&self, token: &str) -> bool {
-        self.live.get(token).is_some_and(|end| *end > unix())
+        self.live().contains_key(token)
     }
 
     fn start(&mut self) -> Result<String, String> {
         let token = token()?;
-        let now = unix();
-        self.live.retain(|_, end| *end > now);
-        self.live.insert(token.clone(), now + SESSION.as_secs());
-        let text: String = self
-            .live
-            .iter()
-            .map(|(t, e)| format!("{t} {e}\n"))
-            .collect();
-        write_private(&self.file, &text)?;
+        let mut live = self.live();
+        live.insert(token.clone(), unix() + SESSION.as_secs());
+        let text: String = live.iter().map(|(t, e)| format!("{t} {e}\n")).collect();
+        write_mode(&self.file, &text, self.mode)?;
         Ok(token)
     }
 }
@@ -491,28 +527,57 @@ fn code() -> Result<String, String> {
 
 /// Writes a file only its owner reads, whole or not at all.
 pub(crate) fn write_private(path: &Path, text: &str) -> Result<(), String> {
+    write_mode(path, text, 0o600)
+}
+
+/// Writes a file whole or not at all, by way of a temporary one named for
+/// this process, so two writers never share it.
+fn write_mode(path: &Path, text: &str, mode: u32) -> Result<(), String> {
     use std::os::unix::fs::OpenOptionsExt;
-    let tmp = path.with_extension("tmp");
+    let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
     let mut f = fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .mode(0o600)
+        .mode(mode)
         .open(&tmp)
         .map_err(|e| format!("{}: {e}", tmp.display()))?;
     std::io::Write::write_all(&mut f, text.as_bytes()).map_err(|e| e.to_string())?;
     fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// What makes the page installable as an app. Its name is the
-/// assistant's, taken from the host as the page takes it: sokka.su.is is
-/// Sokka.
-async fn manifest(headers: HeaderMap) -> Response {
-    let host = headers
-        .get(header::HOST)
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or_default();
-    let name = name_of(host);
+/// The entry document, titled with the assistant's name, which the page
+/// takes from it: the host no longer names the assistant when several
+/// share one. Revalidated each load, as it carries no hash in its name, so
+/// a deploy's new asset hashes are picked up.
+async fn index(State(site): State<Arc<Site>>) -> Response {
+    match fs::read_to_string(&site.index) {
+        Ok(html) => (
+            [(header::CACHE_CONTROL, "no-cache")],
+            axum::response::Html(titled(&html, &site.who.name)),
+        )
+            .into_response(),
+        Err(e) => {
+            eprintln!("yeoman: {}: {e}", site.index.display());
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+fn titled(html: &str, name: &str) -> String {
+    let name: String = name.chars().filter(char::is_ascii_alphanumeric).collect();
+    html.replacen("<title>Chat</title>", &format!("<title>{name}</title>"), 1)
+}
+
+/// The assistant's name and the others on this host, for the switcher.
+async fn me(State(site): State<Arc<Site>>) -> Json<serde_json::Value> {
+    Json(serde_json::json!(site.who))
+}
+
+/// What makes the page installable as an app, under the name of the
+/// assistant that answers.
+async fn manifest(State(site): State<Arc<Site>>) -> Response {
+    let name = &site.who.name;
     let icon = |size: u32| {
         serde_json::json!({
             "src": format!("/_site/icon-{size}.png"),
@@ -549,17 +614,6 @@ async fn manifest(headers: HeaderMap) -> Response {
         body.to_string(),
     )
         .into_response()
-}
-
-pub(crate) fn name_of(host: &str) -> String {
-    let label = host.split('.').next().unwrap_or_default();
-    let mut chars = label.chars();
-    match chars.next() {
-        Some(first) if label.chars().all(|c| c.is_ascii_lowercase()) => {
-            first.to_ascii_uppercase().to_string() + chars.as_str()
-        }
-        _ => "Chat".into(),
-    }
 }
 
 fn session(headers: &HeaderMap) -> Option<&str> {
@@ -602,6 +656,7 @@ pub async fn serve(
     (notify, gate): (Notify, Arc<Gate>),
 ) -> Result<(), String> {
     let dir = state.join("site");
+    let who = Who::from_env();
     fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let site = Arc::new(Site {
         web,
@@ -612,8 +667,19 @@ pub async fn serve(
         notify,
         gate,
         stop: inbox.stop,
-        sessions: Mutex::new(Sessions::load(dir.join("sessions"))),
-        push: push_from_env(&dir).map(Arc::new),
+        sessions: Mutex::new(match std::env::var("YEOMAN_SESSIONS") {
+            Ok(file) => Sessions {
+                file: file.into(),
+                mode: 0o660,
+            },
+            Err(_) => Sessions {
+                file: dir.join("sessions"),
+                mode: 0o600,
+            },
+        }),
+        push: push_from_env(&dir, &who.name).map(Arc::new),
+        who,
+        index: root.join("index.html"),
     });
     if let Some(push) = &site.push {
         tokio::spawn(ring(site.web.shown.subscribe(), push.clone()));
@@ -635,10 +701,7 @@ pub async fn serve(
             .then(|| HeaderValue::from_static("public, max-age=31536000, immutable"))
     });
     let app = Router::new()
-        .route_service(
-            "/",
-            revalidate.layer(ServeFile::new(root.join("index.html"))),
-        )
+        .route("/", get(index))
         // At the root, so its scope is the whole site.
         .route_service(
             "/sw.js",
@@ -646,6 +709,7 @@ pub async fn serve(
         )
         .nest_service("/_site", forever.layer(ServeDir::new(root.join("_site"))))
         .route("/manifest.webmanifest", get(manifest))
+        .route("/api/me", get(me))
         .route("/api/history", get(history))
         .route("/api/search", get(search))
         .route("/api/said/{i}", get(said))
@@ -674,9 +738,9 @@ pub async fn serve(
         .map_err(|e| format!("site: {e}"))
 }
 
-fn push_from_env(dir: &Path) -> Option<Push> {
+fn push_from_env(dir: &Path, title: &str) -> Option<Push> {
     let url = std::env::var("YEOMAN_SITE_URL").ok()?;
-    Push::load(dir, &url)
+    Push::load(dir, &url, title)
         .inspect_err(|e| eprintln!("yeoman: push: {e}"))
         .ok()
 }
@@ -1189,10 +1253,13 @@ mod tests {
     }
 
     #[test]
-    fn name_from_host() {
-        assert_eq!(name_of("sokka.su.is"), "Sokka");
-        assert_eq!(name_of("127.0.0.1:8951"), "Chat");
-        assert_eq!(name_of(""), "Chat");
+    fn title_and_personas() {
+        let html = "<head><title>Chat</title></head>";
+        assert_eq!(titled(html, "Azula"), "<head><title>Azula</title></head>");
+        assert_eq!(titled(html, "<b>"), "<head><title>b</title></head>");
+        let p = personas("sokka=Sokka,azula=Azula");
+        assert_eq!((p[1].unit.as_str(), p[1].name.as_str()), ("azula", "Azula"));
+        assert!(personas("").is_empty());
     }
 
     use super::*;

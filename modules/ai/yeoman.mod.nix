@@ -36,6 +36,9 @@
 # outlives the message. Each has a site, `<n>.<domain>` on the tailnet
 # proxy: `show_page` writes a page of HTML there and hands back its link.
 # With `web` set the yeoman serves that host itself, its chat at the root.
+# Assistants in one of `sites` share a host instead: the page's `persona`
+# cookie picks which one nginx sends it to, one sign-in serves them all,
+# and each one's pages sit under /<unit>/.
 # With `homeTokenFile` set, both reach Home Assistant's own MCP server as
 # well, its tools withheld on quoted turns like the rest that act.
 #
@@ -63,6 +66,9 @@
         optional
         length
         head
+        elem
+        findFirst
+        concatMap
         ;
       inherit (lib.meta) getExe;
       inherit (lib.strings)
@@ -89,6 +95,10 @@
       house = topology.household;
       # The assistants' sites: a directory each, read by nginx as its group.
       pages = "/var/lib/yeoman-pages";
+      # Each shared site's sign-ins, in a directory its assistants' group owns.
+      sitesDir = "/var/lib/yeoman-sites";
+      siteOf = n: findFirst (s: elem n cfg.sites.${s}) null (attrNames cfg.sites);
+      host = sub: "https://${sub}.${config.shipProxy.domain}";
       households = {
         YEOMAN_HOUSE = house;
         YEOMAN_PEOPLE = concatStringsSep "," (mapAttrsToList (n: i: "${n}=${i.person}") cfg.instances);
@@ -278,9 +288,10 @@
             desk = "${computers.desks}/${n}";
           };
           # The assistant's site: pages it writes, served by the proxy.
+          shared' = siteOf n;
           site = {
             dir = "${pages}/${n}";
-            url = "https://${n}.${config.shipProxy.domain}";
+            url = if shared' == null then host n else "${host shared'}/${n}";
           };
           shared =
             households
@@ -494,13 +505,25 @@
                 YEOMAN_MCP = toString mcp;
                 YEOMAN_MATRIX = "${creds}/matrix";
               }
+              // optionalAttrs (i.localModel != null) {
+                # Local inference takes no MCP, so it answers without tools.
+                YEOMAN_BACKEND = "http";
+                YEOMAN_URL = "http://127.0.0.1:${toString config.inference.port}/v1";
+                YEOMAN_MODEL = i.localModel;
+              }
               // optionalAttrs (i.style != null) { YEOMAN_STYLE = i.style; }
               // optionalAttrs i.web {
                 YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
                 YEOMAN_SITE_ROOT = web;
                 # Names this server to push services, and the site to its
                 # notifications.
-                YEOMAN_SITE_URL = "https://${n}.${config.shipProxy.domain}";
+                YEOMAN_SITE_URL = host (if shared' == null then n else shared');
+              }
+              // optionalAttrs (shared' != null) {
+                YEOMAN_PERSONAS = concatStringsSep "," (
+                  map (m: "${m}=${cfg.instances.${m}.name}") cfg.sites.${shared'}
+                );
+                YEOMAN_SESSIONS = "${sitesDir}/${shared'}/sessions";
               }
               // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
               // optionalAttrs (i.mailCredentialsFile != null) {
@@ -531,18 +554,25 @@
                   site.dir
                 ]
                 ++ optional i.alerts config.alerts.spool
-                ++ optional i.computer pc.desk;
+                ++ optional i.computer pc.desk
+                ++ optional (shared' != null) "${sitesDir}/${shared'}";
               }
               // optionalAttrs i.web { SocketBindAllow = singleton "tcp:${toString (chatPort n)}"; }
+              // optionalAttrs (i.computer || shared' != null) {
+                SupplementaryGroups =
+                  sandbox.SupplementaryGroups
+                  ++ optional i.computer computers.deskGroup
+                  ++ optional (shared' != null) "yeoman-${shared'}";
+              }
               // optionalAttrs i.computer {
                 # Through the fence to its own computer, and into its desk.
                 IPAddressAllow = fence.IPAddressAllow ++ singleton pc.addr;
-                SupplementaryGroups = sandbox.SupplementaryGroups ++ singleton computers.deskGroup;
               };
           };
         };
 
       alerted = attrNames (filterAttrs (_: i: i.alerts) cfg.instances);
+      inSites = concatMap (s: cfg.sites.${s}) (attrNames cfg.sites);
     in
     {
       options.yeoman = {
@@ -630,6 +660,17 @@
                     '';
                   };
 
+                  localModel = mkOption {
+                    type = types.nullOr types.str;
+                    default = null;
+                    example = "qwen3.8-27b-q4-k-m";
+                    description = ''
+                      A model of the local inference server (inference.mod.nix)
+                      to answer with, without tools; null = Claude. Its memory
+                      still condenses on Claude.
+                    '';
+                  };
+
                   doorPassphraseFile = mkOption {
                     type = types.nullOr types.str;
                     default = null;
@@ -643,6 +684,22 @@
               }
             )
           );
+        };
+
+        sites = mkOption {
+          type = types.attrsOf (types.listOf types.str);
+          default = { };
+          example = {
+            si = [
+              "alice"
+              "bob"
+            ];
+          };
+          description = ''
+            Web chats shared by several assistants, by host label: each
+            listed assistant (web on) answers at <label>.<domain> when the
+            page picks it, the first by default.
+          '';
         };
 
         registrationEnvFile = mkOption {
@@ -743,10 +800,20 @@
       };
 
       config = {
-        assertions = singleton {
-          assertion = length alerted <= 1;
-          message = "yeoman: only one instance can take the alerts.";
-        };
+        assertions = [
+          {
+            assertion = length alerted <= 1;
+            message = "yeoman: only one instance can take the alerts.";
+          }
+          {
+            assertion = lib.lists.all (n: cfg.instances ? ${n} && cfg.instances.${n}.web) inSites;
+            message = "yeoman: a site lists only instances with web on.";
+          }
+          {
+            assertion = lib.lists.allUnique inSites;
+            message = "yeoman: an instance belongs to one site at most.";
+          }
+        ];
 
         # Sensors and the receiver write alerts in as root or the reader;
         # nobody else may, since what it posts its memory keeps.
@@ -778,11 +845,14 @@
             # The seat reads and writes the household's seat/ files as the group.
             ${topology.seat.user}.extraGroups = singleton "yeoman-household";
           };
-        users.groups = mapAttrs (_: _: { }) cfg.instances // {
-          yeoman-image = { };
-          yeoman-x = { };
-          yeoman-household = { };
-        };
+        users.groups =
+          mapAttrs (_: _: { }) cfg.instances
+          // lib.attrsets.mapAttrs' (s: _: nameValuePair "yeoman-${s}" { }) cfg.sites
+          // {
+            yeoman-image = { };
+            yeoman-x = { };
+            yeoman-household = { };
+          };
         environment.systemPackages = [
           tell
           inbox
@@ -791,17 +861,52 @@
         # Each assistant's pages at https://<n>.<domain>/<page>/, for the
         # tailnet like every other route. With a web chat the yeoman serves
         # the host itself: the chat at the root, the pages beside it.
-        shipProxy.routes = mapAttrs (
-          n: i:
-          if i.web then
-            {
-              port = chatPort n;
-              # Server-sent events stream as they come.
-              proxyExtra = "proxy_buffering off;";
+        shipProxy.routes =
+          (
+            cfg.instances
+            |> filterAttrs (n: _: !(elem n inSites))
+            |> mapAttrs (
+              n: i:
+              if i.web then
+                {
+                  port = chatPort n;
+                  # Server-sent events stream as they come.
+                  proxyExtra = "proxy_buffering off;";
+                }
+              else
+                { root = "${pages}/${n}"; }
+            )
+          )
+          // mapAttrs (s: members: {
+            port = chatPort (head members);
+            upstream = "http://$yeoman_${s}";
+            proxyExtra = "proxy_buffering off;";
+          }) cfg.sites;
+
+        # The persona cookie names a unit; anything else gets the first.
+        services.nginx.appendHttpConfig =
+          cfg.sites
+          |> mapAttrsToList (
+            s: members: ''
+              map $cookie_persona $yeoman_${s} {
+                default 127.0.0.1:${toString (chatPort (head members))};
+              ${concatStringsSep "\n" (map (m: "  ${m} 127.0.0.1:${toString (chatPort m)};") members)}
+              }
+            ''
+          )
+          |> concatStringsSep "\n";
+
+        services.nginx.virtualHosts =
+          cfg.sites
+          |> lib.attrsets.mapAttrs' (
+            s: members:
+            nameValuePair "${s}.${config.shipProxy.domain}" {
+              locations =
+                members
+                |> map (m: nameValuePair "/${m}/" { alias = "${pages}/${m}/"; })
+                |> lib.attrsets.listToAttrs;
             }
-          else
-            { root = "${pages}/${n}"; }
-        ) cfg.instances;
+          );
         systemd.tmpfiles.settings.yeoman-pages = {
           ${pages}.d = {
             user = "root";
@@ -817,6 +922,22 @@
             mode = "2750";
           };
         }) cfg.instances;
+
+        systemd.tmpfiles.settings.yeoman-sites = {
+          ${sitesDir}.d = {
+            user = "root";
+            group = "root";
+            mode = "0751";
+          };
+        }
+        // lib.attrsets.mapAttrs' (s: _: {
+          name = "${sitesDir}/${s}";
+          value.d = {
+            user = "root";
+            group = "yeoman-${s}";
+            mode = "2770";
+          };
+        }) cfg.sites;
 
         # Setgid, so what one assistant writes stays the group's.
         systemd.tmpfiles.settings.yeoman-household = {

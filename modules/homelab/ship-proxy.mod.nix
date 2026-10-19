@@ -22,7 +22,6 @@
         }
         // extra;
       };
-      proxy = port: proxyTo "http://127.0.0.1:${toString port}";
     in
     {
       options.shipProxy = {
@@ -56,6 +55,11 @@
                     type = lib.types.nullOr lib.types.port;
                     default = null;
                     description = "Upstream port on 127.0.0.1; or set root instead.";
+                  };
+                  upstream = mkOption {
+                    type = lib.types.nullOr lib.types.str;
+                    default = null;
+                    description = "proxy_pass target in place of the port, which then serves only health checks.";
                   };
                   root = mkOption {
                     type = lib.types.nullOr lib.types.str;
@@ -119,11 +123,13 @@
                       inherit (route) root;
                     }
                   else
-                    proxy route.port (
-                      optionalAttrs (route.proxyExtra != "") {
-                        extraConfig = route.proxyExtra;
-                      }
-                    )
+                    proxyTo
+                      (if route.upstream != null then route.upstream else "http://127.0.0.1:${toString route.port}")
+                      (
+                        optionalAttrs (route.proxyExtra != "") {
+                          extraConfig = route.proxyExtra;
+                        }
+                      )
                 )
               )
             )

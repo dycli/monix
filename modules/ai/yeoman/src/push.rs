@@ -55,7 +55,7 @@ pub struct Note<'a> {
 impl Push {
     /// Loads or makes the key in `dir`, and the devices subscribed so far,
     /// for the site at `url`.
-    pub fn load(dir: &Path, url: &str) -> Result<Self, String> {
+    pub fn load(dir: &Path, url: &str, title: &str) -> Result<Self, String> {
         let key_file = dir.join("vapid");
         let key = match fs::read_to_string(&key_file) {
             Ok(b64) => URL_SAFE_NO_PAD
@@ -81,7 +81,7 @@ impl Push {
         Ok(Self {
             key,
             contact: url.into(),
-            title: crate::site::name_of(url.trim_start_matches("https://")),
+            title: title.into(),
             file,
             devices: Mutex::new(devices),
             agent: Agent::new_with_config(config),
@@ -196,7 +196,7 @@ mod tests {
     fn key_survives_a_restart_and_devices_are_kept() {
         let dir = std::env::temp_dir().join(format!("yeoman-push-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
-        let a = Push::load(&dir, "https://sokka.example.com").unwrap();
+        let a = Push::load(&dir, "https://sokka.example.com", "Sokka").unwrap();
         a.subscribe(serde_json::json!({
             "endpoint": "https://push.example.com/abc",
             "keys": {
@@ -206,7 +206,7 @@ mod tests {
         }))
         .unwrap();
         assert!(a.subscribe(serde_json::json!({"endpoint": "x"})).is_err());
-        let b = Push::load(&dir, "https://sokka.example.com").unwrap();
+        let b = Push::load(&dir, "https://sokka.example.com", "Sokka").unwrap();
         assert_eq!(a.public(), b.public());
         assert_eq!(b.title, "Sokka");
         assert_eq!(b.devices.lock().unwrap().len(), 1);

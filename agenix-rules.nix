@@ -44,6 +44,7 @@ in
   "hosts/water/secrets/immich-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-sokka.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-suki.env.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/matrix-azula.env.age".publicKeys = singleton water ++ admin;
   # Sokka's CalDAV accounts: [{"name","url","username","password"}, ...].
   "hosts/water/secrets/yeoman-caldav.json.age".publicKeys = singleton water ++ admin;
   # Sokka's IMAP accounts: [{"name","username","password"}, ...].

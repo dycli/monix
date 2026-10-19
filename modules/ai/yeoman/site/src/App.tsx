@@ -78,11 +78,9 @@ const convert = (m: Msg): ThreadMessageLike => ({
   metadata: { custom: { plain: m.plain ?? false, reaction: m.reaction ?? null, live: m.live ?? false } },
 });
 
-// The page has no name of its own: it takes the assistant's from the host,
-// sokka.su.is → Sokka.
-const label = location.hostname.split(".")[0];
-const NAME = /^[a-z]+$/.test(label) ? label[0].toUpperCase() + label.slice(1) : "Chat";
-document.title = NAME;
+// The page has no name of its own: the server titles it with the
+// assistant's, since several may share one host.
+const NAME = document.title || "Chat";
 
 export function App() {
   const chat = useChat();
@@ -124,6 +122,55 @@ function ThemeButton({ className = "" }: { className?: string }) {
         )}
       </svg>
     </button>
+  );
+}
+
+type Persona = { unit: string; name: string };
+
+/** The assistant's name; where others share the host, a press lists them
+ * and picking one sets the cookie the proxy routes by and reloads. */
+function Switcher() {
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    fetch("/api/me")
+      .then((r) => (r.ok ? r.json() : { personas: [] }))
+      .then((me: { personas: Persona[] }) => setPersonas(me.personas))
+      .catch(() => {});
+  }, []);
+  const name = <span className="font-serif text-[22px] tracking-[-0.01em]">{NAME}</span>;
+  if (personas.length < 2) return name;
+  const pick = (p: Persona) => {
+    document.cookie = `persona=${p.unit}; Path=/; Max-Age=31536000; Secure; SameSite=Lax`;
+    location.reload();
+  };
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} className="-ml-2 flex items-center gap-1 rounded-full px-2 hover:bg-hover">
+        {name}
+        <svg viewBox="0 0 24 24" className="size-4 text-mid" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0" onClick={() => setOpen(false)} />
+          <div role="menu" className="absolute top-full left-0 mt-1 min-w-40 overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift py-1 shadow-lift">
+            {personas.map((p) => (
+              <button
+                key={p.unit}
+                type="button"
+                role="menuitem"
+                onClick={() => (p.name === NAME ? setOpen(false) : pick(p))}
+                className={`block w-full px-4 py-2 text-left font-serif text-[18px] hover:bg-hover ${p.name === NAME ? "text-ink" : "text-mid"}`}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -460,7 +507,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
      <CardCtx.Provider value={api}>
       <ThreadPrimitive.Root className="flex h-full flex-col">
         <header className="relative z-20 flex h-[57px] shrink-0 items-center justify-between border-b border-hair bg-paper px-[max(20px,env(safe-area-inset-left))] max-sm:h-[51px] max-sm:px-3.5">
-          <span className="font-serif text-[22px] tracking-[-0.01em]">{NAME}</span>
+          <Switcher />
           <div className="-mr-2 flex">
             <HeaderButton label="Search the conversation" onClick={() => setFinding(true)}>
               <circle cx="11" cy="11" r="7" />

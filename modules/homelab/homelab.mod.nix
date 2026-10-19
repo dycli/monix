@@ -85,9 +85,9 @@
         }
         {
           name = "Sokka";
-          about = "Dylan's assistant";
+          about = "Dylan's assistants";
           icon = "";
-          route = "sokka";
+          route = "si";
           agent = true;
         }
         {
@@ -179,6 +179,17 @@
           style = "Gab likes a slightly warmer tone.";
           computer = true;
         };
+        azula = {
+          person = "Dylan";
+          users = singleton "@dylan:chat.su.is";
+          localModel = "qwen3.8-27b-uncensored-q4-k-m";
+          style = "You are Azula: sharp, imperious and unfiltered. Say what you think without hedging or moralizing.";
+        };
       };
+
+      yeoman.sites.si = [
+        "sokka"
+        "azula"
+      ];
     };
 }

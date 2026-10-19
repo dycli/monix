@@ -37,6 +37,10 @@ in
       web = true;
       mailCredentialsFile = config.secrets.sokka-mail-json.path;
     };
+    instances.azula = {
+      credentialsEnvFile = config.secrets.matrix-azula-env.path;
+      web = true;
+    };
     instances.suki = {
       credentialsEnvFile = config.secrets.matrix-suki-env.path;
       web = true;
@@ -61,6 +65,7 @@ in
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
     matrix-sokka-env.file = ./secrets/matrix-sokka.env.age;
     matrix-suki-env.file = ./secrets/matrix-suki.env.age;
+    matrix-azula-env.file = ./secrets/matrix-azula.env.age;
     yeoman-caldav-json.file = ./secrets/yeoman-caldav.json.age;
     sokka-mail-json.file = ./secrets/sokka-mail.json.age;
     suki-mail-json.file = ./secrets/suki-mail.json.age;
@@ -98,6 +103,12 @@ in
     ./secrets/matrix-sokka.env.age
     ./secrets/yeoman-caldav.json.age
     ./secrets/sokka-mail.json.age
+    ./secrets/yeoman-home-token.age
+    ./secrets/yeoman-requests-key.age
+  ];
+  systemd.services.azula.restartTriggers = [
+    ./secrets/matrix-azula.env.age
+    ./secrets/yeoman-caldav.json.age
     ./secrets/yeoman-home-token.age
     ./secrets/yeoman-requests-key.age
   ];
