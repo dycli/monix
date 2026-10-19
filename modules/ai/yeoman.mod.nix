@@ -97,7 +97,7 @@
       pages = "/var/lib/yeoman-pages";
       # Each shared site's sign-ins, in a directory its assistants' group owns.
       sitesDir = "/var/lib/yeoman-sites";
-      siteOf = n: findFirst (s: elem n cfg.sites.${s}) null (attrNames cfg.sites);
+      siteOf = n: findFirst (s: elem n cfg.sites.${s}.members) null (attrNames cfg.sites);
       host = sub: "https://${sub}.${config.shipProxy.domain}";
       households = {
         YEOMAN_HOUSE = house;
@@ -521,8 +521,9 @@
               }
               // optionalAttrs (shared' != null) {
                 YEOMAN_PERSONAS = concatStringsSep "," (
-                  map (m: "${m}=${cfg.instances.${m}.name}") cfg.sites.${shared'}
+                  map (m: "${m}=${cfg.instances.${m}.name}") cfg.sites.${shared'}.members
                 );
+                YEOMAN_APP = cfg.sites.${shared'}.name;
                 YEOMAN_SESSIONS = "${sitesDir}/${shared'}/sessions";
               }
               // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
@@ -572,7 +573,7 @@
         };
 
       alerted = attrNames (filterAttrs (_: i: i.alerts) cfg.instances);
-      inSites = concatMap (s: cfg.sites.${s}) (attrNames cfg.sites);
+      inSites = concatMap (s: cfg.sites.${s}.members) (attrNames cfg.sites);
     in
     {
       options.yeoman = {
@@ -687,18 +688,39 @@
         };
 
         sites = mkOption {
-          type = types.attrsOf (types.listOf types.str);
+          type = types.attrsOf (
+            types.submodule (
+              { name, ... }:
+              {
+                options = {
+                  name = mkOption {
+                    type = types.str;
+                    default = toSentenceCase name;
+                    description = "What the site and its installed app are called.";
+                  };
+
+                  members = mkOption {
+                    type = types.listOf types.str;
+                    description = ''
+                      Its assistants, each with web on; the first answers by
+                      default and takes the sign-ins, in its Matrix room.
+                    '';
+                  };
+                };
+              }
+            )
+          );
           default = { };
-          example = {
-            si = [
+          example.si = {
+            name = "Home";
+            members = [
               "alice"
               "bob"
             ];
           };
           description = ''
             Web chats shared by several assistants, by host label: each
-            listed assistant (web on) answers at <label>.<domain> when the
-            page picks it, the first by default.
+            member answers at <label>.<domain> when the page picks it.
           '';
         };
 
@@ -877,8 +899,8 @@
                 { root = "${pages}/${n}"; }
             )
           )
-          // mapAttrs (s: members: {
-            port = chatPort (head members);
+          // mapAttrs (s: site: {
+            port = chatPort (head site.members);
             upstream = "http://$yeoman_${s}";
             proxyExtra = "proxy_buffering off;";
           }) cfg.sites;
@@ -887,10 +909,10 @@
         services.nginx.appendHttpConfig =
           cfg.sites
           |> mapAttrsToList (
-            s: members: ''
+            s: site: ''
               map $cookie_persona $yeoman_${s} {
-                default 127.0.0.1:${toString (chatPort (head members))};
-              ${concatStringsSep "\n" (map (m: "  ${m} 127.0.0.1:${toString (chatPort m)};") members)}
+                default 127.0.0.1:${toString (chatPort (head site.members))};
+              ${concatStringsSep "\n" (map (m: "  ${m} 127.0.0.1:${toString (chatPort m)};") site.members)}
               }
             ''
           )
@@ -899,12 +921,23 @@
         services.nginx.virtualHosts =
           cfg.sites
           |> lib.attrsets.mapAttrs' (
-            s: members:
+            s: site:
+            let
+              first = "http://127.0.0.1:${toString (chatPort (head site.members))}";
+            in
             nameValuePair "${s}.${config.shipProxy.domain}" {
               locations =
-                members
-                |> map (m: nameValuePair "/${m}/" { alias = "${pages}/${m}/"; })
-                |> lib.attrsets.listToAttrs;
+                (
+                  site.members
+                  |> map (m: nameValuePair "/${m}/" { alias = "${pages}/${m}/"; })
+                  |> lib.attrsets.listToAttrs
+                )
+                # Sign-in asks in the first one's Matrix room, whichever
+                # assistant the page shows; the session it grants is shared.
+                // {
+                  "= /api/ask".proxyPass = first;
+                  "= /api/wait".proxyPass = first;
+                };
             }
           );
         systemd.tmpfiles.settings.yeoman-pages = {

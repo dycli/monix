@@ -78,9 +78,10 @@ const convert = (m: Msg): ThreadMessageLike => ({
   metadata: { custom: { plain: m.plain ?? false, reaction: m.reaction ?? null, live: m.live ?? false } },
 });
 
-// The page has no name of its own: the server titles it with the
-// assistant's, since several may share one host.
-const NAME = document.title || "Chat";
+// Several assistants may share one host, so the server names the site
+// in the title and who answers in a meta tag.
+const APP = document.title || "Chat";
+const NAME = document.querySelector<HTMLMetaElement>('meta[name="persona"]')?.content || APP;
 
 export function App() {
   const chat = useChat();
@@ -312,7 +313,7 @@ function SignIn() {
   };
   return (
     <Solo>
-      <h1 className="font-serif text-[46px] leading-[1.05] tracking-[-0.015em]">{NAME}</h1>
+      <h1 className="font-serif text-[46px] leading-[1.05] tracking-[-0.015em]">{APP}</h1>
       <p className="mt-[18px] text-[14.5px] text-mid">
         {code ? "React 👍 in Matrix to the message showing this code." : "Sign in by approving a code in Matrix."}
       </p>

@@ -435,6 +435,9 @@ struct Site {
 #[derive(Serialize)]
 struct Who {
     name: String,
+    /// What the site and its installed app are called: YEOMAN_APP, else
+    /// the name.
+    app: String,
     personas: Vec<Persona>,
 }
 
@@ -447,8 +450,10 @@ struct Persona {
 impl Who {
     fn from_env() -> Self {
         let var = |k| std::env::var(k).unwrap_or_default();
+        let name = std::env::var("YEOMAN_NAME").unwrap_or_else(|_| "Chat".into());
         Who {
-            name: std::env::var("YEOMAN_NAME").unwrap_or_else(|_| "Chat".into()),
+            app: std::env::var("YEOMAN_APP").unwrap_or_else(|_| name.clone()),
+            name,
             personas: personas(&var("YEOMAN_PERSONAS")),
         }
     }
@@ -546,15 +551,15 @@ fn write_mode(path: &Path, text: &str, mode: u32) -> Result<(), String> {
     fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// The entry document, titled with the assistant's name, which the page
-/// takes from it: the host no longer names the assistant when several
-/// share one. Revalidated each load, as it carries no hash in its name, so
+/// The entry document, titled with the site's name and carrying the
+/// assistant's, which the page takes from it: the host no longer names the
+/// assistant when several share one. Revalidated each load, as it carries no hash in its name, so
 /// a deploy's new asset hashes are picked up.
 async fn index(State(site): State<Arc<Site>>) -> Response {
     match fs::read_to_string(&site.index) {
         Ok(html) => (
             [(header::CACHE_CONTROL, "no-cache")],
-            axum::response::Html(titled(&html, &site.who.name)),
+            axum::response::Html(titled(&html, &site.who.app, &site.who.name)),
         )
             .into_response(),
         Err(e) => {
@@ -564,9 +569,17 @@ async fn index(State(site): State<Arc<Site>>) -> Response {
     }
 }
 
-fn titled(html: &str, name: &str) -> String {
-    let name: String = name.chars().filter(char::is_ascii_alphanumeric).collect();
-    html.replacen("<title>Chat</title>", &format!("<title>{name}</title>"), 1)
+fn titled(html: &str, app: &str, name: &str) -> String {
+    let clean = |s: &str| -> String { s.chars().filter(char::is_ascii_alphanumeric).collect() };
+    html.replacen(
+        "<title>Chat</title>",
+        &format!(
+            "<title>{}</title><meta name=\"persona\" content=\"{}\" />",
+            clean(app),
+            clean(name)
+        ),
+        1,
+    )
 }
 
 /// The assistant's name and the others on this host, for the switcher.
@@ -574,10 +587,9 @@ async fn me(State(site): State<Arc<Site>>) -> Json<serde_json::Value> {
     Json(serde_json::json!(site.who))
 }
 
-/// What makes the page installable as an app, under the name of the
-/// assistant that answers.
+/// What makes the page installable as an app, under the site's name.
 async fn manifest(State(site): State<Arc<Site>>) -> Response {
-    let name = &site.who.name;
+    let name = &site.who.app;
     let icon = |size: u32| {
         serde_json::json!({
             "src": format!("/_site/icon-{size}.png"),
@@ -1255,8 +1267,14 @@ mod tests {
     #[test]
     fn title_and_personas() {
         let html = "<head><title>Chat</title></head>";
-        assert_eq!(titled(html, "Azula"), "<head><title>Azula</title></head>");
-        assert_eq!(titled(html, "<b>"), "<head><title>b</title></head>");
+        assert_eq!(
+            titled(html, "Hippo", "Azula"),
+            "<head><title>Hippo</title><meta name=\"persona\" content=\"Azula\" /></head>"
+        );
+        assert_eq!(
+            titled(html, "<b>", "\"x"),
+            "<head><title>b</title><meta name=\"persona\" content=\"x\" /></head>"
+        );
         let p = personas("sokka=Sokka,azula=Azula");
         assert_eq!((p[1].unit.as_str(), p[1].name.as_str()), ("azula", "Azula"));
         assert!(personas("").is_empty());

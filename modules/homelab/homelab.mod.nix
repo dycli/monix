@@ -84,7 +84,7 @@
           route = "calibre";
         }
         {
-          name = "Sokka";
+          name = "Hippo";
           about = "Dylan's assistants";
           icon = "";
           route = "si";
@@ -187,9 +187,12 @@
         };
       };
 
-      yeoman.sites.si = [
-        "sokka"
-        "azula"
-      ];
+      yeoman.sites.si = {
+        name = "Hippo";
+        members = [
+          "sokka"
+          "azula"
+        ];
+      };
     };
 }
