@@ -20,7 +20,7 @@ import { math } from "@streamdown/math";
 import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, type Card, type Hit, type Msg, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
-import { Bars, Call, useVoiceSpeed, voiceSpeed } from "./call";
+import { Bars, Call, SPEED, useVoiceSpeed, voiceSpeed } from "./call";
 
 type Args = ToolCallMessagePartProps["args"];
 
@@ -314,7 +314,7 @@ function Settings() {
   const [bell, toggleBell] = usePush();
   const update = useUpdate();
   const voice = useMe()?.voice;
-  const [speed, nextSpeed] = useVoiceSpeed();
+  const [speed, setSpeed] = useVoiceSpeed();
   const row = "flex w-full items-center justify-between gap-6 px-4 py-2.5 text-left text-[15px] hover:bg-hover disabled:opacity-40 disabled:hover:bg-transparent";
   const note = "text-[13px] text-mid";
   return (
@@ -356,10 +356,21 @@ function Settings() {
               </button>
             )}
             {voice && (
-              <button type="button" role="menuitem" onClick={nextSpeed} className={row}>
-                Voice speed
-                <span className={note}>{speed}×</span>
-              </button>
+              <label className="block px-4 py-2.5 text-[15px]">
+                <span className="flex justify-between gap-6">
+                  Voice speed
+                  <span className={note}>{speed.toFixed(1)}×</span>
+                </span>
+                <input
+                  type="range"
+                  min={SPEED.min}
+                  max={SPEED.max}
+                  step={SPEED.step}
+                  value={speed}
+                  onChange={(e) => setSpeed(Number(e.target.value))}
+                  className="mt-2 w-full accent-ink"
+                />
+              </label>
             )}
             <button type="button" role="menuitem" onClick={reload} className={row}>
               Reload
