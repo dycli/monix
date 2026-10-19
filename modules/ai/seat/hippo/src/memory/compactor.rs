@@ -673,4 +673,242 @@ mod tests {
         assert!(!apart(&c, 0, 4), "chat a on both sides");
         assert!(!apart(&c, 4, 2), "no known chat on one side");
     }
+
+    /// Anthropic's prompt cache, faked by its rules as UniiChat's
+    /// cache.test.ts fakes it: an entry is written only at a mark, keyed by
+    /// the prefix up to it, found walking back at most `LOOK` blocks from a
+    /// mark, served once its writer's answer has begun, and alive `TTL` past
+    /// its last use. Claude Code marks the system prompt and the request's
+    /// last block; `marked` marks the context. Time runs a thousand times
+    /// fast.
+    struct Anthropic {
+        entries: Mutex<std::collections::HashMap<u64, (Instant, Instant)>>,
+        /// Bytes of the calls' input read from the cache, written to it and
+        /// sent uncached; each request's last block, its own task (or the
+        /// retry note), is never in a cache and not counted.
+        used: Mutex<(u64, u64, u64)>,
+        /// Calls that read none of the context, only the system prompt.
+        cold: Mutex<u64>,
+        flights: Option<Arc<Flights>>,
+        seed: Mutex<u64>,
+    }
+    use crate::memory::compact::marked;
+    use crate::memory::flight::{Flights, LOOK, TTL};
+    use std::time::Instant;
+
+    /// When an answer begins, after its request.
+    const FIRST: Duration = Duration::from_millis(3);
+
+    impl Anthropic {
+        fn rand(&self, lo: u64, hi: u64) -> u64 {
+            let mut s = self.seed.lock().unwrap();
+            *s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            lo + (*s >> 33) % (hi - lo)
+        }
+
+        fn request(&self, blocks: &[(String, bool)]) {
+            use std::hash::{DefaultHasher, Hash, Hasher};
+            let now = Instant::now();
+            let last = blocks.len() - 1;
+            let (mut keys, mut ends, mut key, mut end) = (vec![], vec![], 0u64, 0u64);
+            for (text, _) in blocks {
+                let mut h = DefaultHasher::new();
+                (key, text).hash(&mut h);
+                key = h.finish();
+                end += text.len() as u64;
+                keys.push(key);
+                ends.push(end);
+            }
+            let marks: Vec<usize> = (0..=last).filter(|&k| blocks[k].1 || k == last).collect();
+            let mut entries = self.entries.lock().unwrap();
+            let live = |k: usize| {
+                entries
+                    .get(&keys[k])
+                    .is_some_and(|&(from, until)| from <= now && now < until)
+            };
+            let mut hit: Option<usize> = None;
+            for &m in &marks {
+                if let Some(k) = (m.saturating_sub(LOOK - 1)..=m).rev().find(|&k| live(k)) {
+                    hit = hit.max(Some(k));
+                }
+            }
+            if let Some(h) = hit {
+                entries.get_mut(&keys[h]).unwrap().1 = now + TTL;
+            }
+            for &m in marks.iter().filter(|&&m| hit.is_none_or(|h| m > h)) {
+                if !entries.get(&keys[m]).is_some_and(|&(_, until)| now < until) {
+                    entries.insert(keys[m], (now + FIRST, now + TTL));
+                }
+            }
+            if hit.is_none_or(|h| h == 0) {
+                *self.cold.lock().unwrap() += 1;
+            }
+            let counted = ends[last - 1];
+            let read = hit.map_or(0, |h| ends[h]).min(counted);
+            let written = ends[*marks.iter().max().unwrap()]
+                .min(counted)
+                .saturating_sub(read);
+            let mut used = self.used.lock().unwrap();
+            used.0 += read;
+            used.1 += written;
+            used.2 += counted - read - written;
+        }
+    }
+
+    struct Sim(Arc<Anthropic>);
+    struct SimChat {
+        api: Arc<Anthropic>,
+        blocks: Vec<(String, bool)>,
+        begun: Option<Box<dyn FnOnce() + Send>>,
+    }
+    impl Backend for Sim {
+        fn start(&self) -> Result<Box<dyn Chat>, Fail> {
+            Ok(Box::new(SimChat {
+                api: self.0.clone(),
+                blocks: vec![(crate::memory::compact::COMPACT.to_owned(), true)],
+                begun: None,
+            }))
+        }
+        fn flights(&self) -> Option<&Arc<Flights>> {
+            self.0.flights.as_ref()
+        }
+    }
+    impl Chat for SimChat {
+        fn say(&mut self, blocks: &[String]) -> Result<String, Fail> {
+            let first = self.blocks.len() == 1;
+            for b in marked(blocks) {
+                let text = b["text"].as_str().unwrap().to_owned();
+                self.blocks.push((text, b.get("cache_control").is_some()));
+            }
+            self.api.request(&self.blocks);
+            thread::sleep(FIRST);
+            if let Some(f) = self.begun.take() {
+                f();
+            }
+            thread::sleep(Duration::from_millis(self.api.rand(4, 12)));
+            // A compression answers in its message's kind; a fourth of the
+            // first answers run too long, as real ones do.
+            let step = blocks.last().unwrap();
+            let kind = step
+                .split("<input>\n")
+                .nth(1)
+                .and_then(|r| r.split(':').next())
+                .unwrap_or("talk");
+            let long = if first && self.api.rand(0, 4) == 0 {
+                400
+            } else {
+                0
+            };
+            let line = format!(
+                "{kind}: {}",
+                "x".repeat(self.api.rand(120, 450) as usize + long)
+            );
+            self.blocks.push((line.clone(), false));
+            Ok(line)
+        }
+        fn model(&self) -> String {
+            "sim".into()
+        }
+        fn on_begin(&mut self, f: Box<dyn FnOnce() + Send>) {
+            self.begun = Some(f);
+        }
+    }
+
+    /// Replays a synthetic chat of `n` messages, turns of tool steps, in
+    /// real time a thousand times fast; the share of the compactions'
+    /// input read from the cache.
+    fn replay(n: usize, single_flight: bool) -> f64 {
+        let dir = std::env::temp_dir().join(format!(
+            "hippo-cache-{}-{single_flight}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = crate::memory::store::Store::open(&dir, true).unwrap();
+        let tree = Tree::open(&dir).unwrap();
+        let api = Arc::new(Anthropic {
+            entries: Default::default(),
+            used: Default::default(),
+            cold: Default::default(),
+            flights: single_flight.then(Arc::default),
+            seed: Mutex::new(1),
+        });
+        let shared = Arc::new(Shared {
+            core: Mutex::new(Core::for_test(
+                store,
+                tree,
+                View::default(),
+                crate::memory::view::VIEW,
+            )),
+            cv: Condvar::new(),
+            backend: Some(Box::new(Sim(api.clone()))),
+        });
+        use crate::memory::store::Kind;
+        let sent = std::cell::Cell::new(0);
+        let say = |kind: Kind, lo: u64, hi: u64, gap: (u64, u64)| {
+            thread::sleep(Duration::from_micros(api.rand(gap.0 * 1000, gap.1 * 1000)));
+            let text = format!("{} ", sent.get()) + &"y".repeat(api.rand(lo, hi) as usize);
+            let mut c = shared.core.lock().unwrap();
+            c.store
+                .append(vec![crate::memory::store::Draft {
+                    kind,
+                    chat: Some("c".into()),
+                    text,
+                    date: chrono::Local::now(),
+                    src: None,
+                }])
+                .unwrap();
+            c.sync();
+            pump(&shared, &mut c);
+            sent.set(sent.get() + 1);
+        };
+        while sent.get() < n {
+            let steps = api.rand(0, 7);
+            say(Kind::User, 40, 1500, (20, 240));
+            for _ in 0..steps {
+                say(Kind::Tool, 80, 600, (2, 12));
+                say(Kind::Echo, 40, 8000, (1, 6));
+            }
+            say(Kind::Talk, 100, 2500, (2, 9));
+        }
+        let deadline = Instant::now() + Duration::from_secs(120);
+        let mut c = shared.core.lock().unwrap();
+        while (c.view.unbuilt(&c.tree) > 0 || !c.pump.busy.is_empty()) && Instant::now() < deadline
+        {
+            c = shared
+                .cv
+                .wait_timeout(c, Duration::from_millis(50))
+                .unwrap()
+                .0;
+        }
+        assert_eq!(c.view.unbuilt(&c.tree), 0, "the replay never caught up");
+        let (read, written, input) = *api.used.lock().unwrap();
+        eprintln!(
+            "single flight {single_flight}: {} cold calls",
+            api.cold.lock().unwrap()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        read as f64 / (read + written + input) as f64
+    }
+
+    #[test]
+    fn compactions_read_most_of_their_input_from_the_cache() {
+        let read = replay(1_200, true);
+        assert!(read >= 0.95, "read {:.1}% from the cache", 100.0 * read);
+    }
+
+    /// Single flight against none, by hand: `cargo test -- --ignored
+    /// --nocapture single_flight`. On 2026-10-19 it was 97.1% against
+    /// 96.5%, with 33 calls rereading the whole context against 49.
+    #[test]
+    #[ignore]
+    fn single_flight_against_none() {
+        let (with, without) = (replay(1_200, true), replay(1_200, false));
+        eprintln!(
+            "{:.1}% single flight, {:.1}% without",
+            100.0 * with,
+            100.0 * without
+        );
+    }
 }

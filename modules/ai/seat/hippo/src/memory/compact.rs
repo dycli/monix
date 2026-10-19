@@ -2,11 +2,13 @@
 //! to do, size enforcement, and the backends that run a call. Which model
 //! and backend is configuration (the Nix module), never code.
 
+use crate::memory::flight::{self, Flights};
 use crate::memory::tree::{NODE, addr, flat};
 use chrono::{DateTime, Local};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Version of the prompt below, stored on every node it builds.
@@ -180,6 +182,9 @@ impl Usage {
 pub trait Chat {
     fn say(&mut self, blocks: &[String]) -> Result<String, Fail>;
     fn model(&self) -> String;
+    /// Runs `f` once the next answer begins, when its prefix starts to
+    /// serve from the cache; backends with `flights` must.
+    fn on_begin(&mut self, _f: Box<dyn FnOnce() + Send>) {}
     /// Everything this conversation used so far.
     fn usage(&self) -> Usage {
         Usage::default()
@@ -190,6 +195,11 @@ pub trait Backend: Send + Sync {
     fn start(&self) -> Result<Box<dyn Chat>, Fail>;
     /// A different backend for steps at tree level `l`, if there is one.
     fn for_level(&self, _l: u8) -> Option<&dyn Backend> {
+        None
+    }
+    /// Single flight for a backend whose cache serves an entry only once
+    /// its writer's answer begins: Anthropic's.
+    fn flights(&self) -> Option<&Arc<Flights>> {
         None
     }
 }
@@ -209,6 +219,9 @@ impl Backend for Levels {
     fn for_level(&self, l: u8) -> Option<&dyn Backend> {
         let b = self.per.iter().find(|(at, _)| *at == l)?;
         Some(b.1.as_ref())
+    }
+    fn flights(&self) -> Option<&Arc<Flights>> {
+        self.base.flights()
     }
 }
 
@@ -249,7 +262,16 @@ pub fn run(
 ) -> Result<(String, String, Usage), Fail> {
     let kind = kind_of(step);
     let mut chat = backend.start()?;
-    let mut reply = chat.say(&input(context, step))?;
+    let blocks = input(context, step);
+    let flight = backend
+        .flights()
+        .map(|f| f.wait(&flight::keys(&blocks[0], BLOCK)));
+    if let Some(f) = &flight {
+        chat.on_begin(Box::new(f.begun()));
+    }
+    let reply = chat.say(&blocks);
+    drop(flight);
+    let mut reply = reply?;
     let mut tries = Vec::new();
     loop {
         let line = behead(reply.trim()).to_owned();
@@ -339,6 +361,7 @@ fn backend(
             command: var("HIPPO_CLAUDE").unwrap_or_else(|| "claude".into()),
             model: model.unwrap_or_else(|| "sonnet".into()),
             effort: effort.unwrap_or_else(|| "medium".into()),
+            flights: Arc::default(),
         })),
         "http" => Ok(Box::new(Http {
             prompt: prompt(),
@@ -369,6 +392,7 @@ pub struct ClaudeCli {
     pub command: String,
     pub model: String,
     pub effort: String,
+    pub flights: Arc<Flights>,
 }
 
 /// Lines per content block of the context. Anthropic looks back up to 20
@@ -410,6 +434,7 @@ struct ClaudeChat {
     errors: Option<std::thread::JoinHandle<String>>,
     model: String,
     used: Usage,
+    begun: Option<Box<dyn FnOnce() + Send>>,
 }
 
 /// Seconds a single answer may take before the call is abandoned.
@@ -425,6 +450,8 @@ impl Backend for ClaudeCli {
                 "--output-format",
                 "stream-json",
                 "--verbose",
+                // For message_start, when an answer begins (`on_begin`).
+                "--include-partial-messages",
                 "--no-session-persistence",
                 "--system-prompt",
                 &self.prompt,
@@ -457,7 +484,12 @@ impl Backend for ClaudeCli {
             errors,
             model: self.model.clone(),
             used: Usage::default(),
+            begun: None,
         }))
+    }
+
+    fn flights(&self) -> Option<&Arc<Flights>> {
+        Some(&self.flights)
     }
 }
 
@@ -521,6 +553,11 @@ impl Chat for ClaudeChat {
             let Ok(ev) = serde_json::from_str::<Value>(&buf) else {
                 continue;
             };
+            if ev.pointer("/event/type").and_then(Value::as_str) == Some("message_start")
+                && let Some(f) = self.begun.take()
+            {
+                f();
+            }
             if ev.get("type").and_then(Value::as_str) == Some("assistant")
                 && let Some(m) = ev.pointer("/message/model").and_then(Value::as_str)
             {
@@ -563,6 +600,10 @@ impl Chat for ClaudeChat {
 
     fn model(&self) -> String {
         self.model.clone()
+    }
+
+    fn on_begin(&mut self, f: Box<dyn FnOnce() + Send>) {
+        self.begun = Some(f);
     }
 
     fn usage(&self) -> Usage {

@@ -4,6 +4,7 @@
 
 pub mod compact;
 pub mod compactor;
+pub mod flight;
 pub mod mask;
 pub mod server;
 pub mod store;
