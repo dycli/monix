@@ -52,6 +52,12 @@ export function Call({ name, ended }: { name: string; ended: () => void }) {
     let ws: WebSocket | undefined;
     let ctx: AudioContext | undefined;
     let mic: MediaStream | undefined;
+    // Grok's voice plays through an audio element, not straight to the
+    // speakers: with the microphone open Android is in a call, and its
+    // volume keys move the call's volume, which only a media stream's
+    // playback follows.
+    let out: MediaStreamAudioDestinationNode | undefined;
+    const speaker = new Audio();
     let over = false;
     const began = Date.now();
     // What was said, in the order it was said: a line is placed when its
@@ -67,14 +73,14 @@ export function Call({ name, ended }: { name: string; ended: () => void }) {
       next = 0;
     };
     const play = (data: ArrayBuffer) => {
-      if (!ctx) return;
+      if (!ctx || !out) return;
       const pcm = new Int16Array(data);
       const buf = ctx.createBuffer(1, pcm.length, RATE);
       const ch = buf.getChannelData(0);
       for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 0x8000;
       const src = ctx.createBufferSource();
       src.buffer = buf;
-      src.connect(ctx.destination);
+      src.connect(out);
       next = Math.max(next, ctx.currentTime + 0.05);
       src.start(next);
       next += buf.duration;
@@ -95,6 +101,8 @@ export function Call({ name, ended }: { name: string; ended: () => void }) {
       ws?.close();
       mic?.getTracks().forEach((t) => t.stop());
       ctx?.close();
+      speaker.pause();
+      speaker.srcObject = null;
       const said = [...lines.values()].filter((l) => l.text.trim());
       setState(why ? { error: why } : "ended");
       const done = () => (why || quiet ? undefined : ended());
@@ -115,6 +123,10 @@ export function Call({ name, ended }: { name: string; ended: () => void }) {
       // The microphone and the pass together, as xAI advises; the
       // microphone's first words wait for the line to open.
       ctx = new AudioContext({ sampleRate: RATE });
+      out = ctx.createMediaStreamDestination();
+      speaker.srcObject = out.stream;
+      // Within the tap that opened the call, so autoplay allows it.
+      speaker.play().catch((e) => console.warn("call speaker:", e));
       const [stream, pass] = await Promise.all([
         navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }),
         fetch("/api/call", { method: "POST" }).then(async (r) => {
