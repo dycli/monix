@@ -8,6 +8,27 @@ import { useEffect, useRef, useState } from "react";
 const URL = "wss://api.x.ai/v1/realtime?model=grok-voice-latest";
 const RATE = 24000;
 
+// How fast the assistant speaks, on calls and read aloud; kept on this
+// device. xAI takes 0.7 to 1.5 on a call.
+const SPEEDS = [0.85, 1, 1.15, 1.3];
+
+export function voiceSpeed(): number {
+  const s = Number(localStorage.getItem("voiceSpeed"));
+  return SPEEDS.includes(s) ? s : 1;
+}
+
+/** The voice speed and a step to the next, wrapping round. */
+export function useVoiceSpeed(): [number, () => void] {
+  const [speed, setSpeed] = useState(voiceSpeed);
+  const next = () => {
+    const s = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
+    if (s === 1) localStorage.removeItem("voiceSpeed");
+    else localStorage.setItem("voiceSpeed", String(s));
+    setSpeed(s);
+  };
+  return [speed, next];
+}
+
 type State = "connecting" | "listening" | "speaking" | "ended" | { error: string };
 type Line = { kind: "user" | "talk"; text: string };
 
@@ -158,7 +179,7 @@ export function Call({ name, ended }: { name: string; ended: () => void }) {
               voice: pass.voice,
               instructions: pass.instructions,
               turn_detection: { type: "server_vad" },
-              audio: { input: { ...audio, transcription: { model: "grok-transcribe" } }, output: audio },
+              audio: { input: { ...audio, transcription: { model: "grok-transcribe" } }, output: { ...audio, speed: voiceSpeed() } },
             },
           }),
         );

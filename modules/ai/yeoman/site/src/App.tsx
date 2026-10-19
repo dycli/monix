@@ -20,7 +20,7 @@ import { math } from "@streamdown/math";
 import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, type Card, type Hit, type Msg, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
-import { Bars, Call } from "./call";
+import { Bars, Call, useVoiceSpeed, voiceSpeed } from "./call";
 
 type Args = ToolCallMessagePartProps["args"];
 
@@ -313,6 +313,8 @@ function Settings() {
   // the bell's state is known before the menu first opens.
   const [bell, toggleBell] = usePush();
   const update = useUpdate();
+  const voice = useMe()?.voice;
+  const [speed, nextSpeed] = useVoiceSpeed();
   const row = "flex w-full items-center justify-between gap-6 px-4 py-2.5 text-left text-[15px] hover:bg-hover disabled:opacity-40 disabled:hover:bg-transparent";
   const note = "text-[13px] text-mid";
   return (
@@ -351,6 +353,12 @@ function Settings() {
               >
                 Notifications
                 <span className={note}>{{ on: "On", off: "Off", denied: "Blocked" }[bell]}</span>
+              </button>
+            )}
+            {voice && (
+              <button type="button" role="menuitem" onClick={nextSpeed} className={row}>
+                Voice speed
+                <span className={note}>{speed}×</span>
               </button>
             )}
             <button type="button" role="menuitem" onClick={reload} className={row}>
@@ -836,6 +844,7 @@ function Speak() {
       const src = await speech(text);
       if (stopping !== done) return;
       player.src = src;
+      player.playbackRate = voiceSpeed();
       player.onended = done;
       await player.play();
       setState("playing");
