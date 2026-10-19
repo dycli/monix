@@ -49,8 +49,13 @@ in
       inherit (lib.ship) guide opencode topology;
       inherit (lib.attrsets) genAttrs mapAttrs;
       inherit (lib.lists) concatMap map singleton;
-      inherit (lib.modules) mkForce;
       inherit (lib.strings) removePrefix toJSON;
+
+      # Existing hand-written files are adopted on the first switch.
+      instructions = {
+        force = true;
+        text = guide.system + guide.engineer;
+      };
 
       userHome = config.home.homeDirectory;
       monixDir = "${userHome}/ark/monix";
@@ -178,7 +183,13 @@ in
     {
       home.sessionVariables = opencode.environment;
 
-      home.file.".config/agents/AGENTS.md".text = mkForce (guide.system + guide.engineer);
+      # The ship guide, as each harness's global instructions. Claude's
+      # AGENTS.md discovery is project-scoped, so it gets a user rule.
+      home.file.".config/agents/AGENTS.md" = instructions;
+      home.file.".codex/AGENTS.md" = instructions;
+      home.file.".config/opencode/AGENTS.md" = instructions;
+      home.file.".config/muse/AGENTS.md" = instructions;
+      home.file.".claude/rules/AGENTS.md" = instructions;
 
       # The baseURL uses the seat-plane address because the slice fence
       # admits that /32, not 127.0.0.1.

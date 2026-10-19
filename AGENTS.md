@@ -4,10 +4,8 @@ All harnesses use this file for repository instructions. Do not add a
 `CLAUDE.md` wrapper. Claude Code 2.1.281 or later reads `AGENTS.md` natively,
 including sessions with telemetry disabled.
 
-Global instructions come from `~/.config/agents/AGENTS.md`, managed by
-`modules/cli/agent-instructions.mod.nix`. Codex, OpenCode and Claude's user
-rules all load that same source. The AI seat (`modules/ai/seat/`) replaces
-its content with the ship guide.
+Global instructions exist only on the AI seat: `modules/ai/seat/seat.mod.nix`
+writes the ship guide (`lib/guide.nix`) where each harness looks for them.
 
 This repository follows the **Dendritic Pattern**: every `*.mod.nix` file in the
 tree is a flake-parts module and is discovered automatically by `flake.nix`.
