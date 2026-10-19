@@ -107,6 +107,11 @@ impl Flights {
 }
 
 impl Flight {
+    /// Whether this call writes its prefix, rather than reading it whole.
+    pub fn leads(&self) -> bool {
+        self.lead.is_some()
+    }
+
     /// What to call once the response begins: the prefix then serves.
     pub fn begun(&self) -> impl FnOnce() + Send + 'static {
         let (flights, lead) = (self.flights.clone(), self.lead);

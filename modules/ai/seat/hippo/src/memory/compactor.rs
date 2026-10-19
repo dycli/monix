@@ -1,13 +1,14 @@
-//! The pump: builds tree nodes in Taelin's strict order. A node starts when
-//! it is not built or running, its sources exist, and every view line
-//! before its end is a summary; so messages are compressed one at a time,
-//! in order, while merges of finished parts run beside them.
+//! The pump: builds tree nodes as UniiChat's `Memory.starts` does. A node
+//! starts when it is not built or running and its sources exist, up to the
+//! JOBS-th message not built, in the order the messages came; each call's
+//! context is the compactions' view up to the node and the first message
+//! not built. Departure: JOBS is 8, not Unii's 64, since each call here is
+//! a `claude` process on Water rather than a request.
 
 use crate::memory::compact::{self, Fail, PROMPT_VERSION, Step, Usage, cut};
 use crate::memory::server::{Core, Shared};
 use crate::memory::store::Msg;
 use crate::memory::tree::{NODE, Node, addr, flat};
-use crate::memory::view::head;
 use chrono::{DateTime, Local};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -119,31 +120,28 @@ fn message(c: &Core, i: u64) -> Result<Msg, String> {
     c.store.get(i)
 }
 
-/// The compactions' view up to `end` (exclusive), as `id+n|text` lines,
-/// never over the context budget. None until all of it is built.
-fn context(c: &mut Core, end: u64) -> Result<Option<Vec<String>>, String> {
-    // Calls work at the frontier of what is summarized, behind any backlog,
-    // so the cut is measured up to it, not to the newest message.
-    let frontier = c.view.first(&c.tree).max(end);
-    c.context_cut = c
-        .context
-        .cut(&c.tree, c.context_budget(), c.context_cut, frontier);
-    let cut = c.context_cut;
-    let mut out = head(&c.tree, cut.min(end))?;
+/// UniiChat's compactions' view of node `(l, i)`: its built lines before
+/// `ctx`, the node's place, and before the first message not built, so
+/// calls share the lines no node still to come changes.
+fn context(c: &mut Core, ctx: u64) -> Result<Vec<String>, String> {
+    let upto = ctx.min(c.first(0));
+    let mut out = Vec::new();
     for &(l, i) in &c.context.parts {
         let (s, n) = addr(l, i);
-        if s + n > end {
+        if s + n > upto {
             break;
         }
-        if s < cut {
-            continue;
-        }
-        match c.tree.text(l, i)? {
-            Some(t) => out.push(format!("{s}+{n}|{}", flat(&t))),
-            None => return Ok(None),
+        if let Some(t) = c.tree.text(l, i)? {
+            out.push(format!("{s}+{n}|{}", flat(&t)));
         }
     }
-    Ok(Some(out))
+    Ok(out)
+}
+
+/// UniiChat's `Memory.ctx`: where node `(l, i)` stands in the chat, the
+/// message its context ends before: a leaf's own, a merge's end.
+fn ctx(l: u8, i: u64) -> u64 {
+    if l == 0 { i } else { (i + 1) << l }
 }
 
 enum Job {
@@ -172,8 +170,8 @@ fn prepare(c: &mut Core, l: u8, i: u64) -> Result<Option<Job>, String> {
         if src.len() <= NODE {
             return Ok(Some(Job::Free(src)));
         }
-        return Ok(context(c, i)?.map(|context| Job::Call {
-            context,
+        return Ok(Some(Job::Call {
+            context: context(c, ctx(l, i))?,
             a: src,
             b: None,
         }));
@@ -187,8 +185,8 @@ fn prepare(c: &mut Core, l: u8, i: u64) -> Result<Option<Job>, String> {
     }
     let (s, n) = addr(l, i);
     let apart = apart(c, s, n / 2);
-    Ok(context(c, s + n)?.map(|context| Job::Call {
-        context,
+    Ok(Some(Job::Call {
+        context: context(c, ctx(l, i))?,
         a,
         b: Some((b, apart)),
     }))
@@ -210,9 +208,7 @@ fn save(
         model: model.to_owned(),
         prompt: prompt.to_owned(),
     })?;
-    c.view.fit(&c.tree, c.budget);
-    let budget = c.context_budget();
-    c.context.fit(&c.tree, budget);
+    c.fit(false);
     c.stale = true;
     Ok(())
 }
@@ -233,13 +229,15 @@ pub fn pump(shared: &Arc<Shared>, c: &mut Core) {
         }
         c.pump.limit = None;
     }
+    // UniiChat's `Memory.starts`: the nodes ready up to the JOBS-th leaf
+    // not built, in the order the messages came (at a tie, a merge first),
+    // while JOBS run.
     loop {
         let mut progressed = false;
-        let t = c.view.t;
-        let first = c.view.first(&c.tree);
+        let (t, end) = (c.view.t, c.first(JOBS - 1));
+        let mut next = Vec::new();
         let mut l = 0u8;
         while (1u64 << l) <= t {
-            let n = 1u64 << l;
             if c.pump.lo.len() <= l as usize {
                 c.pump.lo.push(0);
             }
@@ -247,40 +245,39 @@ pub fn pump(shared: &Arc<Shared>, c: &mut Core) {
                 c.pump.lo[l as usize] += 1;
             }
             let mut i = c.pump.lo[l as usize];
-            while (i + 1) * n <= t {
-                if c.pump.busy.len() >= JOBS {
-                    return;
-                }
-                let end = if l == 0 { i } else { (i + 1) * n };
-                if end > first {
-                    break;
-                }
+            while (i + 1) << l <= t && ctx(l, i) <= end {
                 let ready =
                     l == 0 || (c.tree.built(l - 1, 2 * i) && c.tree.built(l - 1, 2 * i + 1));
-                if !c.tree.built(l, i)
-                    && !c.pump.busy.contains(&(l, i))
-                    && !c.pump.parked.contains(&(l, i))
-                    && ready
-                {
-                    match prepare(c, l, i) {
-                        Ok(Some(Job::Free(text))) => {
-                            if let Err(e) = save(c, l, i, text, "", "") {
-                                eprintln!("hippo: saving node {l}/{i}: {e}");
-                                return;
-                            }
-                            progressed = true;
-                        }
-                        Ok(Some(Job::Call { context, a, b })) => {
-                            c.pump.busy.insert((l, i));
-                            spawn(shared.clone(), l, i, context, a, b);
-                        }
-                        Ok(None) => {}
-                        Err(e) => eprintln!("hippo: preparing node {l}/{i}: {e}"),
-                    }
+                if ready && !c.tree.built(l, i) {
+                    next.push((ctx(l, i), std::cmp::Reverse(l), i));
                 }
                 i += 1;
             }
             l += 1;
+        }
+        next.sort_unstable();
+        for (_, std::cmp::Reverse(l), i) in next {
+            if c.pump.busy.len() >= JOBS {
+                break;
+            }
+            if c.pump.busy.contains(&(l, i)) || c.pump.parked.contains(&(l, i)) {
+                continue;
+            }
+            match prepare(c, l, i) {
+                Ok(Some(Job::Free(text))) => {
+                    if let Err(e) = save(c, l, i, text, "", "") {
+                        eprintln!("hippo: saving node {l}/{i}: {e}");
+                        return;
+                    }
+                    progressed = true;
+                }
+                Ok(Some(Job::Call { context, a, b })) => {
+                    c.pump.busy.insert((l, i));
+                    spawn(shared.clone(), l, i, context, a, b);
+                }
+                Ok(None) => {}
+                Err(e) => eprintln!("hippo: preparing node {l}/{i}: {e}"),
+            }
         }
         shared.cv.notify_all();
         if !progressed {
@@ -416,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn a_stalled_context_stays_within_its_budget() {
+    fn a_context_ends_at_the_first_message_not_built() {
         let dir = std::env::temp_dir().join(format!("hippo-ctx-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let mut store = crate::memory::store::Store::open(&dir, true).unwrap();
@@ -455,21 +452,20 @@ mod tests {
             })
             .collect();
         store.append(backlog).unwrap();
-        // No level-1 node is built, so the context view cannot fold.
         let mut c = Core::for_test(store, tree, View::default(), crate::memory::view::VIEW);
         c.sync();
-        assert!(c.context.size() > 5 * c.context_budget());
-        let budget = c.context_budget();
-        let size = |lines: &[String]| lines.iter().map(|l| l.len() as u64 + 1).sum::<u64>();
-        // The next message's call sees the history right before it: just
-        // under half the budget of it after a cut, never over the budget.
-        let lines = context(&mut c, n).unwrap().unwrap();
-        assert!(size(&lines) <= budget, "context {} bytes", size(&lines));
-        assert!(size(&lines) > budget / 3, "context {} bytes", size(&lines));
-        assert!(lines.last().unwrap().starts_with(&format!("{}+1|", n - 1)));
-        // A call a little further back shares its head, so reads it cached.
-        let earlier = context(&mut c, n - 20).unwrap().unwrap();
-        assert_eq!(earlier[..10], lines[..10]);
+        // The compactions' view stops at the first message not built, so
+        // every call in the backlog shares it whole.
+        assert_eq!(c.context.t, n);
+        assert_eq!(c.first(0), n);
+        assert_eq!(c.first(7), n + 7);
+        let last = format!("{}+1|", n - 1);
+        let a = context(&mut c, n).unwrap();
+        assert!(a.last().unwrap().starts_with(&last));
+        assert_eq!(context(&mut c, n + 300).unwrap(), a);
+        // A node further back sees the history before it only.
+        let earlier = context(&mut c, n - 20).unwrap();
+        assert!(earlier.len() < a.len() && a.starts_with(&earlier));
     }
 
     #[test]
@@ -900,7 +896,8 @@ mod tests {
 
     /// Single flight against none, by hand: `cargo test -- --ignored
     /// --nocapture single_flight`. On 2026-10-19 it was 97.1% against
-    /// 96.5%, with 33 calls rereading the whole context against 49.
+    /// 96.5%; with UniiChat's view rules, 97.1% against 97.2%, 38 calls
+    /// rereading the whole context each.
     #[test]
     #[ignore]
     fn single_flight_against_none() {

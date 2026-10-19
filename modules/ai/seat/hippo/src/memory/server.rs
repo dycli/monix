@@ -39,10 +39,9 @@ pub struct Core {
     pub tree: Tree,
     pub view: View,
     pub budget: u64,
-    /// The compactions' own view, under `CONTEXT`.
+    /// The compactions' own view, under `CONTEXT`, to the first message
+    /// not built.
     pub context: View,
-    /// Where `bound` last cut the compactions' view, so calls share a head.
-    pub context_cut: u64,
     pub pump: Pump,
     /// Code mode's transcript follower; chat mode has none.
     pub follow: Option<Follow>,
@@ -62,7 +61,6 @@ impl Core {
             view,
             budget,
             context: View::default(),
-            context_cut: 0,
             pump: Pump::default(),
             follow: None,
             started: Local::now(),
@@ -85,10 +83,37 @@ impl Core {
     /// Brings the view up to the log after messages were appended.
     pub fn sync(&mut self) {
         while self.view.t < self.store.len() {
-            self.view.append(&self.tree, self.budget);
-            self.context.append(&self.tree, self.context_budget());
+            self.view.push();
+            self.fit(true);
             self.stale = true;
         }
+    }
+
+    /// UniiChat's `Memory.fit`: the view to the log's end and the
+    /// compactions' to the first message not built, each merged as `fit`
+    /// allows; `next` at a new message.
+    pub fn fit(&mut self, next: bool) {
+        let first = self.first(0);
+        self.context.reach(first);
+        self.view.fit(&self.tree, self.budget, next);
+        let budget = self.context_budget();
+        self.context.fit(&self.tree, budget, next);
+    }
+
+    /// UniiChat's `Memory.first`: the message of the (k+1)th leaf not
+    /// built, else the view's end.
+    pub fn first(&mut self, k: usize) -> u64 {
+        let lo = &mut self.pump.lo;
+        if lo.is_empty() {
+            lo.push(0);
+        }
+        while lo[0] < self.view.t && self.tree.built(0, lo[0]) {
+            lo[0] += 1;
+        }
+        (lo[0]..self.view.t)
+            .filter(|&i| !self.tree.built(0, i))
+            .nth(k)
+            .unwrap_or(self.view.t)
     }
 }
 
@@ -139,7 +164,6 @@ pub fn serve(
             view,
             budget,
             context,
-            context_cut: 0,
             pump: Pump {
                 spent: Spent::load(dir)?,
                 ..Pump::default()
@@ -152,6 +176,8 @@ pub fn serve(
         cv: Condvar::new(),
         backend,
     });
+    // A saved compactions' view may reach past what is built.
+    shared.core.lock().unwrap().fit(false);
     let sock = dir.join("hippo.sock");
     let _ = fs::remove_file(&sock);
     let listener = UnixListener::bind(&sock).map_err(|e| format!("{}: {e}", sock.display()))?;
@@ -467,9 +493,7 @@ fn render(c: &Core) -> Result<(String, Vec<String>), String> {
     // A session loads the view once, so unlike the compactions' view it
     // need not keep its head between renders.
     let wrap = ("<chat>\n\n</chat>\n".len() + note.len()) as u64;
-    let cut = c
-        .view
-        .cut(&c.tree, c.budget.saturating_sub(wrap), 0, c.view.t);
+    let cut = c.view.cut(&c.tree, c.budget.saturating_sub(wrap), c.view.t);
     let mut lines = head(&c.tree, cut)?;
     // A run of unbuilt parts shows as one line: one placeholder per part
     // once grew the view past what it was meant to hold whenever the

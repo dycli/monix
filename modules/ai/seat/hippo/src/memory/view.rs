@@ -35,16 +35,18 @@ pub struct View {
     pub parts: Vec<(u8, u64)>,
     /// Messages covered: the log's length when last appended to.
     pub t: u64,
-    /// A batch of merges is under way: it went past the budget and has not
-    /// yet come down to half of it, held back by unbuilt parents.
+    /// A batch is under way: the view went past the budget and has not yet
+    /// come down to half of it, held back by unbuilt parents.
     #[serde(default)]
     shrinking: bool,
     #[serde(skip)]
     size: u64,
 }
 
+/// Bytes of a part's line as calls get it, as UniiChat counts: none until
+/// built, since a run of unbuilt parts renders as one line, or none.
 fn part_size(tree: &Tree, (l, i): (u8, u64)) -> u64 {
-    label(l, i) + tree.size(l, i).unwrap_or(PLACEHOLDER.len() as u64)
+    tree.size(l, i).map_or(0, |n| label(l, i) + n)
 }
 
 /// Lines for the nodes tiling messages `[0, at)`: each one's summary if
@@ -103,61 +105,87 @@ impl View {
 
     /// The next message enters as its own part.
     pub fn append(&mut self, tree: &Tree, budget: u64) {
-        let part = (0, self.t);
-        self.t += 1;
-        self.size += part_size(tree, part);
-        self.parts.push(part);
-        self.fit(tree, budget);
+        self.push();
+        self.fit(tree, budget, true);
     }
 
-    /// Once over budget, merges the most due built pairs until the view is
-    /// at most half the budget; if unbuilt parents stop it short, it goes on
-    /// at each later call. A pair waits for its parent to be built.
-    pub fn fit(&mut self, tree: &Tree, budget: u64) {
-        // Sizes change when placeholders turn into summaries.
-        self.size = self.parts.iter().map(|&p| part_size(tree, p)).sum();
-        if self.size > budget {
-            self.shrinking = true;
+    /// The next message enters as its own part, with no merging.
+    pub fn push(&mut self) {
+        self.parts.push((0, self.t));
+        self.t += 1;
+    }
+
+    /// UniiChat's `Memory.reach`: the view to message `end`, its parts from
+    /// the one holding `end` dropped, the messages up to it appended.
+    pub fn reach(&mut self, end: u64) {
+        self.truncate(end);
+        while self.t < end {
+            self.push();
         }
-        while self.shrinking {
-            if self.size <= budget / 2 {
-                self.shrinking = false;
+    }
+
+    /// Drops the parts from the one holding message `end` on, so the view
+    /// ends before it.
+    pub fn truncate(&mut self, end: u64) {
+        while let Some(&(l, i)) = self.parts.last() {
+            let (s, n) = addr(l, i);
+            if s + n <= end {
                 break;
             }
-            // Due: messages since the pair's last one, per message it
-            // covers. Ties go to the oldest pair. The most due pair is the
-            // one to merge; if its parent is not built yet, the batch waits
-            // for it rather than merging a readier pair out of turn, which
-            // would fold old history away while the new stays raw.
+            self.parts.pop();
+            self.t = s;
+        }
+    }
+
+    /// UniiChat's `Memory.fit`. A batch starts as the view passes `budget`
+    /// and merges the most due pairs whose parent is built down to half of
+    /// it. Between messages it lands only whole, at half or, as unbuilt
+    /// parents keep it over, smaller by `budget`: each change makes every
+    /// call after write the view anew. At a message (`next`) a batch held
+    /// back lands as far as it got.
+    pub fn fit(&mut self, tree: &Tree, budget: u64, next: bool) {
+        // Sizes change when placeholders turn into summaries.
+        self.size = self.parts.iter().map(|&p| part_size(tree, p)).sum();
+        if self.size > budget || (next && self.shrinking) {
+            let (parts, size) = self.merged(tree, budget / 2);
+            if next || size <= (budget / 2).max(self.size.saturating_sub(budget)) {
+                (self.parts, self.size) = (parts, size);
+            }
+            self.shrinking = self.size > budget / 2;
+        }
+    }
+
+    /// UniiChat's `Memory.merge`: the most due pairs whose parent is built
+    /// merged until the view is at most `low`. Due: (t + 1) / 2^l - i, its
+    /// age since its last message, in halves; the oldest of equals.
+    fn merged(&self, tree: &Tree, low: u64) -> (Vec<(u8, u64)>, u64) {
+        let mut parts = self.parts.clone();
+        let mut size = self.size;
+        while size > low {
             let mut best: Option<(f64, usize)> = None;
-            for k in 0..self.parts.len().saturating_sub(1) {
-                let (a, b) = (self.parts[k], self.parts[k + 1]);
-                if a.0 == b.0 && a.1 % 2 == 0 && b.1 == a.1 + 1 {
-                    let (start, len) = addr(b.0, b.1);
-                    let last = start + len - 1;
-                    let due = (self.t - 1 - last) as f64 / (1u64 << a.0) as f64;
+            for k in 0..parts.len().saturating_sub(1) {
+                let (a, b) = (parts[k], parts[k + 1]);
+                if a.0 == b.0 && a.1 % 2 == 0 && b.1 == a.1 + 1 && tree.built(a.0 + 1, a.1 / 2) {
+                    let due = (self.t + 1) as f64 / (1u64 << a.0) as f64 - a.1 as f64;
                     if best.is_none_or(|(d, _)| due > d) {
                         best = Some((due, k));
                     }
                 }
             }
             let Some((_, k)) = best else { break };
-            let (a, b) = (self.parts[k], self.parts[k + 1]);
+            let (a, b) = (parts[k], parts[k + 1]);
             let parent = (a.0 + 1, a.1 / 2);
-            if !tree.built(parent.0, parent.1) {
-                break;
-            }
-            self.size =
-                self.size - part_size(tree, a) - part_size(tree, b) + part_size(tree, parent);
-            self.parts.splice(k..k + 2, [parent]);
+            size = size - part_size(tree, a) - part_size(tree, b) + part_size(tree, parent);
+            parts.splice(k..k + 2, [parent]);
         }
+        (parts, size)
     }
 
     /// A batch now, whatever the size: merges down to half the budget as
-    /// far as built parents allow, the rest at later appends.
+    /// far as built parents allow, the rest at later messages.
     pub fn batch(&mut self, tree: &Tree, budget: u64) {
         self.shrinking = true;
-        self.fit(tree, budget);
+        self.fit(tree, budget, true);
     }
 
     /// First message whose view line is not built, or `t` if all are.
@@ -179,10 +207,9 @@ impl View {
     /// give way to `head`, so that they stay within `budget`; 0 when they fit
     /// whole. `fit` keeps a view under budget only as far as built parents
     /// allow, so while merges wait (a backlog, a pause) it can grow without
-    /// limit. Past the budget the cut moves on until the rest is at most half
-    /// of it, then holds at `last` while the view grows back, so successive
-    /// renders share their head and read it from the cache.
-    pub fn cut(&self, tree: &Tree, budget: u64, last: u64, end: u64) -> u64 {
+    /// limit; past the budget the cut moves on until the rest is at most half
+    /// of it.
+    pub fn cut(&self, tree: &Tree, budget: u64, end: u64) -> u64 {
         // (start, bytes, bytes if it opens the rendered lines): a run of
         // unbuilt parts renders as one line, held by the run's first part.
         let run = |s: u64| label_of(s, self.t) + UNBUILT.len() as u64;
@@ -208,17 +235,11 @@ impl View {
         let at = |k: usize| sizes.get(k).map_or(covered, |p| p.0);
         // The lines from part k on, with what precedes them cut.
         let lines = |k: usize, rest: u64| sizes.get(k).map_or(0, |p| p.2 - p.1) + rest;
-        // A part merged across the last cut goes whole into the head.
-        let mut k = sizes
-            .iter()
-            .position(|p| p.0 >= last)
-            .unwrap_or(sizes.len());
-        let mut rest: u64 = sizes[k..].iter().map(|p| p.1).sum();
-        if lines(k, rest) + heads(at(k)) > budget {
-            while k < sizes.len() && lines(k, rest) + heads(at(k)) > budget / 2 {
-                rest -= sizes[k].1;
-                k += 1;
-            }
+        let mut k = 0;
+        let mut rest: u64 = sizes.iter().map(|p| p.1).sum();
+        while k < sizes.len() && lines(k, rest) + heads(at(k)) > budget / 2 {
+            rest -= sizes[k].1;
+            k += 1;
         }
         at(k)
     }
@@ -237,7 +258,7 @@ impl View {
         let Some(mut v) = saved else {
             return View::fold(tree, len, budget);
         };
-        v.fit(tree, budget);
+        v.fit(tree, budget, false);
         v
     }
 
@@ -309,8 +330,8 @@ mod tests {
     #[test]
     fn a_cut_view_fits_and_its_head_zooms() {
         let (mut t, v) = unmerged("cut", 1000, 90);
-        assert_eq!(v.cut(&t, 1_000_000, 0, v.t), 0);
-        let cut = v.cut(&t, 10_000, 0, v.t);
+        assert_eq!(v.cut(&t, 1_000_000, v.t), 0);
+        let cut = v.cut(&t, 10_000, v.t);
         let lines = rendered(&t, &v, cut);
         let size: usize = lines.iter().map(|l| l.len() + 1).sum();
         assert!(size <= 10_000, "{size} bytes");
@@ -330,7 +351,7 @@ mod tests {
             head(&t, cut).unwrap()[0],
             format!("0+512|{}", "x".repeat(300))
         );
-        let size: usize = rendered(&t, &v, v.cut(&t, 10_000, 0, v.t))
+        let size: usize = rendered(&t, &v, v.cut(&t, 10_000, v.t))
             .iter()
             .map(|l| l.len() + 1)
             .sum();
@@ -344,42 +365,14 @@ mod tests {
         for _ in 0..4_000 {
             v.append(&t, u64::MAX);
         }
-        let cut = v.cut(&t, 128_000, 0, v.t);
+        let cut = v.cut(&t, 128_000, v.t);
         assert_eq!(cut, 0, "the built lines fit beside one placeholder line");
-        let cut = v.cut(&t, 32_000, 0, v.t);
+        let cut = v.cut(&t, 32_000, v.t);
         assert!(cut > 0 && cut < 300, "cut at {cut}");
     }
 
     #[test]
-    fn a_cut_holds_while_the_view_grows() {
-        let (t, all) = unmerged("hold", 2_000, 220);
-        let (budget, mut cut, mut cuts) = (32_000, 0, Vec::new());
-        let mut v = View::default();
-        for _ in 0..2_000 {
-            v.append(&t, u64::MAX);
-            let next = v.cut(&t, budget, cut, v.t);
-            let size: usize = rendered(&t, &v, next).iter().map(|l| l.len() + 1).sum();
-            assert!(size as u64 <= budget, "{size} bytes");
-            if next != cut {
-                cuts.push(next);
-            }
-            cut = next;
-        }
-        // Each cut sheds half the budget: one per ~70 messages, not one each.
-        assert!(
-            cuts.len() <= 2_000 * 230 / 16_000 + 1,
-            "{} cuts",
-            cuts.len()
-        );
-        assert!(cuts.windows(2).all(|w| w[0] < w[1]));
-        assert_eq!(all.parts, v.parts);
-        // A view that fits again is not cut.
-        let small = View::fold(&t, 10, u64::MAX);
-        assert_eq!(small.cut(&t, budget, cut, small.t), 0);
-    }
-
-    #[test]
-    fn a_batch_waits_for_the_due_pair_instead_of_folding_old_history() {
+    fn a_batch_skips_pairs_whose_parent_is_not_built() {
         // A bulk run: the whole log is there before any folding, and the
         // compactor has built the old half's nodes but none of the new.
         let dir = std::env::temp_dir().join(format!("hippo-view-bulk-{}", std::process::id()));
@@ -398,15 +391,12 @@ mod tests {
         for _ in 0..n {
             v.append(&t, u64::MAX);
         }
-        v.fit(&t, 1000);
-        // Merges go by due: the old half's raw pairs, then its first
-        // level-1 pair, which ties with the new half's oldest raw pair
-        // and wins as the older. The next old pair is less due than that
-        // raw one, whose parent is unbuilt, so the batch stops and waits
-        // instead of folding the old half to one line.
+        v.fit(&t, 1000, false);
+        // As UniiChat's merge: the most due pairs whose parent is built,
+        // the rest skipped, so the old half folds while the new half's
+        // raw pairs wait for their parents, and the batch goes on.
         assert!(v.shrinking);
-        let mut want = vec![(2, 0)];
-        want.extend((2..16).map(|i| (1, i)));
+        let mut want = vec![(5, 0)];
         want.extend((32..64).map(|i| (0, i)));
         assert_eq!(v.parts, want);
         // Once the rest is built the batch goes on and ends under half.
@@ -417,7 +407,7 @@ mod tests {
                 }
             }
         }
-        v.fit(&t, 1000);
+        v.fit(&t, 1000, false);
         assert!(
             !v.shrinking && v.size() <= 500 && v.tiles(),
             "{:?}",

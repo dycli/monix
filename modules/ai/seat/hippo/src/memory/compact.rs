@@ -263,11 +263,25 @@ pub fn run(
     let kind = kind_of(step);
     let mut chat = backend.start()?;
     let blocks = input(context, step);
-    let flight = backend
-        .flights()
-        .map(|f| f.wait(&flight::keys(&blocks[0], BLOCK)));
+    let keys = flight::keys(&blocks[0], BLOCK);
+    let asked = std::time::Instant::now();
+    let flight = backend.flights().map(|f| f.wait(&keys));
     if let Some(f) = &flight {
         chat.on_begin(Box::new(f.begun()));
+        // Which context each call sent and how it met the cache, so a
+        // rewrite of the whole context can be traced to its cause.
+        eprintln!(
+            "hippo: flight {} blocks={} first={:04x} last={:04x} {} waited={}ms",
+            match step {
+                Step::Compress { id, .. } => format!("0/{id}"),
+                Step::Merge { l, i, .. } => format!("{l}/{i}"),
+            },
+            keys.len(),
+            keys.first().map_or(0, |k| k & 0xffff),
+            keys.last().map_or(0, |k| k & 0xffff),
+            if f.leads() { "leads" } else { "reads" },
+            asked.elapsed().as_millis()
+        );
     }
     let reply = chat.say(&blocks);
     drop(flight);

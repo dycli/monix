@@ -172,7 +172,7 @@
           users = singleton "@dylan:chat.su.is";
           alerts = true;
           computer = true;
-          voice = "leo";
+          voice = "rex";
         };
         suki = {
           person = "Gab";
