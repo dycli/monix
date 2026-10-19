@@ -183,7 +183,12 @@
                   route = config.shipProxy.routes.${s.route};
                 in
                 {
-                  inherit (s) name about icon agent;
+                  inherit (s)
+                    name
+                    about
+                    icon
+                    agent
+                    ;
                   url = if s.route != null then "https://${route.subdomain}.${config.shipProxy.domain}" else s.url;
                   check = if s.check != null then s.check else "http://127.0.0.1:${toString route.port}/";
                 }
@@ -210,38 +215,40 @@
           // optionalAttrs usage {
             FRAME_USAGE = "/run/usage.sock";
           };
-          serviceConfig = lib.ship.hardened.tenant // {
-            DynamicUser = true;
-            # Photos shrunk to the screen, kept across restarts.
-            CacheDirectory = "frame";
-            # The homepage reads Water's load, memory and uptime from /proc.
-            ProcSubset = "all";
-            ExecStart = getExe frame;
-            LoadCredential = [
-              "immich-key:${cfg.immichKeyFile}"
-            ]
-            ++ optional (cfg.calendarCredentialsFile != null) "caldav:${cfg.calendarCredentialsFile}";
-            Restart = "on-failure";
-            SocketBindDeny = "any";
-            SocketBindAllow = singleton "tcp:${toString port}";
-            # Immich, go2rtc and Frigate on loopback, the frame on its subnet, and the internet
-            # for CalDAV and Open-Meteo; the rest of the LAN stays shut.
-            # Allow is checked first, so the frame's subnet gets through.
-            IPAddressAllow = fences.loopback ++ singleton cfg.lan.subnet;
-            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
-          }
-          // optionalAttrs usage {
-            # The Agents tab reads subscription use from the usage socket,
-            # which its group may open; a private user namespace would hide
-            # the group.
-            SupplementaryGroups = singleton "usage";
-            PrivateUsers = false;
-            RestrictAddressFamilies = [
-              "AF_UNIX"
-              "AF_INET"
-              "AF_INET6"
-            ];
-          };
+          serviceConfig =
+            lib.ship.hardened.tenant
+            // {
+              DynamicUser = true;
+              # Photos shrunk to the screen, kept across restarts.
+              CacheDirectory = "frame";
+              # The homepage reads Water's load, memory and uptime from /proc.
+              ProcSubset = "all";
+              ExecStart = getExe frame;
+              LoadCredential = [
+                "immich-key:${cfg.immichKeyFile}"
+              ]
+              ++ optional (cfg.calendarCredentialsFile != null) "caldav:${cfg.calendarCredentialsFile}";
+              Restart = "on-failure";
+              SocketBindDeny = "any";
+              SocketBindAllow = singleton "tcp:${toString port}";
+              # Immich, go2rtc and Frigate on loopback, the frame on its subnet, and the internet
+              # for CalDAV and Open-Meteo; the rest of the LAN stays shut.
+              # Allow is checked first, so the frame's subnet gets through.
+              IPAddressAllow = fences.loopback ++ singleton cfg.lan.subnet;
+              IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
+            }
+            // optionalAttrs usage {
+              # The Agents tab reads subscription use from the usage socket,
+              # which its group may open; a private user namespace would hide
+              # the group.
+              SupplementaryGroups = singleton "usage";
+              PrivateUsers = false;
+              RestrictAddressFamilies = [
+                "AF_UNIX"
+                "AF_INET"
+                "AF_INET6"
+              ];
+            };
         };
       };
     };

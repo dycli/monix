@@ -19,6 +19,8 @@
       <div class="logo">home</div>
       <nav class="desktop-navigation flex grow hide-scrollbars">
         <a href="#" class="nav-item" data-tab="home"><div class="nav-item-text">Home</div></a>
+        <a href="#calendar" class="nav-item" data-tab="calendar"><div class="nav-item-text">Calendar</div></a>
+        <a href="#weather" class="nav-item" data-tab="weather"><div class="nav-item-text">Weather</div></a>
         <a href="#agents" class="nav-item" data-tab="agents"><div class="nav-item-text">Agents</div></a>
         <a href="#monitoring" class="nav-item" data-tab="monitoring"><div class="nav-item-text">Monitoring</div></a>
       </nav>
@@ -33,6 +35,8 @@
     </div>
     <div class="mobile-navigation-page-links hide-scrollbars">
       <a href="#" class="nav-item" data-tab="home"><div class="nav-item-text">Home</div></a>
+      <a href="#calendar" class="nav-item" data-tab="calendar"><div class="nav-item-text">Calendar</div></a>
+      <a href="#weather" class="nav-item" data-tab="weather"><div class="nav-item-text">Weather</div></a>
       <a href="#agents" class="nav-item" data-tab="agents"><div class="nav-item-text">Agents</div></a>
       <a href="#monitoring" class="nav-item" data-tab="monitoring"><div class="nav-item-text">Monitoring</div></a>
     </div>
@@ -101,6 +105,44 @@
             </div>
           </div>
 
+        </div>
+
+        <div class="page-columns" data-tab="calendar" hidden>
+          <div class="page-column page-column-full">
+            <div class="widget" id="week">
+              <div class="widget-header"><h2 class="uppercase">This week</h2></div>
+              <div class="widget-content"></div>
+            </div>
+          </div>
+          <div class="page-column page-column-small">
+            <div class="widget" id="month">
+              <div class="widget-header"><h2 class="uppercase" id="month-name"></h2></div>
+              <div class="widget-content"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="page-columns" data-tab="weather" hidden>
+          <div class="page-column page-column-small">
+            <div class="widget" id="now">
+              <div class="widget-header"><h2 class="uppercase">Now</h2></div>
+              <div class="widget-content"></div>
+            </div>
+            <div class="widget" id="air2">
+              <div class="widget-header"><h2 class="uppercase">Indoors</h2></div>
+              <div class="widget-content"></div>
+            </div>
+          </div>
+          <div class="page-column page-column-full">
+            <div class="widget widget-type-weather" id="hours">
+              <div class="widget-header"><h2 class="uppercase">Next 24 hours</h2></div>
+              <div class="widget-content"></div>
+            </div>
+            <div class="widget" id="days">
+              <div class="widget-header"><h2 class="uppercase">Next 7 days</h2></div>
+              <div class="widget-content"></div>
+            </div>
+          </div>
         </div>
 
         <div class="page-columns" data-tab="agents" hidden>

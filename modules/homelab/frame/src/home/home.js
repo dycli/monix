@@ -323,23 +323,113 @@ function renderWeather(w) {
 
 // --- Air (the AirGradient, in Glance's key/value style) ---
 
-function renderAir(a) {
-  const box = $("air");
+function renderAir(box, a, every) {
   if (!a) return void (box.hidden = true);
   box.hidden = false;
-  const co2Bad = a.co2 >= 1000;
   const row = (label, value, unit, bad) => html`<li class="flex items-center">
     <div class="size-h5">${label}</div><div class="value-separator"></div>
     <div class="${bad ? "color-negative" : "color-highlight"} text-very-compact">${value} <span class="color-base size-h5">${unit}</span></div></li>`;
-  box.querySelector(".widget-content").innerHTML = `<ul class="list list-gap-10">${[
-    row("CO₂", Math.round(a.co2), "ppm", co2Bad),
+  const rows = [
+    row("CO₂", Math.round(a.co2), "ppm", a.co2 >= 1000),
     row("TEMP", Math.round(a.temp), "°F", false),
     row("HUMIDITY", Math.round(a.humidity), "%", a.humidity >= 65),
     row("PM2.5", Math.round(a.pm25), "µg/m³", a.pm25 >= 35),
-  ].join("")}</ul>`;
+  ];
+  if (every) {
+    rows.push(
+      row("PM1", Math.round(a.pm1), "µg/m³", false),
+      row("PM10", Math.round(a.pm10), "µg/m³", a.pm10 >= 150),
+      // AirGradient's indices: 100 is the room's usual, higher is worse.
+      row("VOC", Math.round(a.voc), "index", a.voc >= 250),
+      row("NOx", Math.round(a.nox), "index", a.nox >= 20),
+    );
+  }
+  box.querySelector(".widget-content").innerHTML = `<ul class="list list-gap-10">${rows.join("")}</ul>`;
+}
+
+// --- Weather tab: now, by the hour (Glance's columns), and the week ---
+
+const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+const hour = (iso) => new Date(iso).getHours();
+const hourLabel = (h) => `${h % 12 || 12}${h < 12 ? "am" : "pm"}`;
+const clockOf = (iso) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+function renderNow(w) {
+  const n = w.now;
+  const today = w.days[0];
+  const row = (label, value, unit) => html`<li class="flex items-center">
+    <div class="size-h5">${label}</div><div class="value-separator"></div>
+    <div class="color-highlight text-very-compact">${value} <span class="color-base size-h5">${unit}</span></div></li>`;
+  $("now").querySelector(".widget-content").innerHTML = html`
+    <div class="size-h2 color-highlight">${WEATHER[n.code] ?? ""}, ${Math.round(n.temp)}°F</div>
+    <div class="size-h4">Feels like ${Math.round(n.feels)}°F</div>
+    <ul class="list list-gap-10 margin-top-15">${raw([
+      row("WIND", `${COMPASS[Math.round(n.from / 45) % 8]} ${Math.round(n.wind)}`, "mph"),
+      row("GUSTS", Math.round(n.gust), "mph"),
+      row("HUMIDITY", Math.round(n.humidity), "%"),
+      row("DEW POINT", Math.round(n.dew), "°F"),
+      row("UV", Math.round(today.uv), "max"),
+      row("SUNRISE", clockOf(today.sunrise), ""),
+      row("SUNSET", clockOf(today.sunset), ""),
+    ].join(""))}</ul>`;
+}
+
+function renderHours(w) {
+  const hours = w.hours.slice(0, 24);
+  const temps = hours.map((h) => h.temp);
+  const lo = Math.min(...temps);
+  const span = Math.max(...temps) - lo || 1;
+  const columns = hours.map((h, i) => {
+    const light = !h.day ? "" : !hours[i - 1]?.day ? " weather-column-daylight-sunrise" : !hours[i + 1]?.day ? " weather-column-daylight-sunset" : "";
+    return html`<div class="weather-column${i === 0 ? " weather-column-current" : ""}" title="${WEATHER[h.code] ?? ""}${h.rain ? `, ${h.rain}% rain` : ""}">
+      ${raw(h.rain >= 40 ? '<div class="weather-column-rain"></div>' : "")}
+      ${raw(h.day ? `<div class="weather-column-daylight${light}"></div>` : "")}
+      <div class="weather-column-value">${Math.round(h.temp)}</div>
+      <div class="weather-bar" style="--weather-bar-height: ${((h.temp - lo) / span).toFixed(2)}"></div>
+      <div class="weather-column-time">${i === 0 ? "Now" : hourLabel(hour(h.time))}</div>
+    </div>`;
+  });
+  $("hours").querySelector(".widget-content").innerHTML =
+    `<div class="weather-columns flex hide-scrollbars">${columns.join("")}</div>`;
+}
+
+function renderDays(w) {
+  const lo = Math.min(...w.days.map((d) => d.low));
+  const span = Math.max(...w.days.map((d) => d.high)) - lo || 1;
+  const rows = w.days.map((d, i) => {
+    const day = i === 0 ? "Today" : DAY[new Date(d.date + "T12:00").getDay()];
+    return html`<li class="day-row flex items-center gap-15">
+      <div class="day-name color-highlight">${day}</div>
+      <div class="grow min-width-0 text-truncate">${WEATHER[d.code] ?? ""}</div>
+      <div class="day-rain size-h6 color-subdue text-right">${d.rain ? `${d.rain}%` : ""}</div>
+      <div class="day-temp text-right color-subdue">${Math.round(d.low)}°</div>
+      <div class="day-range"><div style="left: ${((d.low - lo) / span) * 100}%; right: ${100 - ((d.high - lo) / span) * 100}%"></div></div>
+      <div class="day-temp color-highlight">${Math.round(d.high)}°</div>
+    </li>`;
+  });
+  $("days").querySelector(".widget-content").innerHTML =
+    `<ul class="list list-gap-14 list-with-separator">${rows.join("")}</ul>`;
 }
 
 // --- Calendar (the frame's events, as a Glance list) ---
+
+// An all-day event's start is a date; a timed one's "2026-10-21 16:00".
+function parseEvent(e) {
+  const allDay = e.start.length === 10;
+  const when = new Date(allDay ? e.start + "T00:00" : e.start.replace(" ", "T"));
+  const time = allDay ? "All day" : when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return { ...e, when, time };
+}
+
+const dayLabel = (d) => {
+  const key = d.toDateString();
+  if (key === new Date().toDateString()) return "Today";
+  if (key === new Date(Date.now() + 86400000).toDateString()) return "Tomorrow";
+  return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`;
+};
+
+const eventItem = (e) => html`<li class="flex gap-15"><div class="event-time color-subdue shrink-0">${e.time}</div>
+  <div class="min-width-0"><div class="color-highlight text-truncate">${e.summary}</div>${raw(e.location ? html`<div class="size-h6 text-truncate">${e.location}</div>` : "")}</div></li>`;
 
 function renderEvents(events) {
   const box = $("events");
@@ -349,23 +439,60 @@ function renderEvents(events) {
     box.querySelector(".widget-content").innerHTML = `<p class="color-subdue">Nothing in the next week.</p>`;
     return;
   }
-  const today = new Date().toDateString();
-  const tomorrow = new Date(Date.now() + 86400000).toDateString();
   const groups = new Map();
-  for (const e of events) {
-    // An all-day event's start is a date; a timed one's "2026-10-21 16:00".
-    const allDay = e.start.length === 10;
-    const when = new Date(allDay ? e.start + "T00:00" : e.start.replace(" ", "T"));
-    const key = when.toDateString();
-    const label = key === today ? "Today" : key === tomorrow ? "Tomorrow" : `${WEEKDAYS[when.getDay()]} ${when.getDate()} ${MONTHS[when.getMonth()].slice(0, 3)}`;
-    if (!groups.has(key)) groups.set(key, { label, items: [] });
-    const time = allDay ? "All day" : when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    groups.get(key).items.push(html`<li class="flex gap-15"><div class="event-time color-subdue shrink-0">${time}</div>
-      <div class="min-width-0"><div class="color-highlight text-truncate">${e.summary}</div>${raw(e.location ? html`<div class="size-h6 text-truncate">${e.location}</div>` : "")}</div></li>`);
+  for (const e of events.map(parseEvent)) {
+    const key = e.when.toDateString();
+    if (!groups.has(key)) groups.set(key, { label: dayLabel(e.when), items: [] });
+    groups.get(key).items.push(eventItem(e));
   }
   box.querySelector(".widget-content").innerHTML = [...groups.values()]
     .map((g) => `<div class="event-day"><div class="size-h5 uppercase color-subdue">${esc(g.label)}</div><ul class="list list-gap-10 margin-top-5">${g.items.join("")}</ul></div>`)
     .join("");
+}
+
+// The Calendar tab's week: a column a day from today, every day shown.
+function renderWeek(events) {
+  const list = (events ?? []).map(parseEvent);
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const days = Array.from({ length: 7 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
+  $("week").querySelector(".widget-content").innerHTML = `<div class="week-grid">${days
+    .map((d) => {
+      const mine = list.filter((e) => e.when.toDateString() === d.toDateString());
+      return html`<div class="week-day${d.getTime() === start.getTime() ? " week-today" : ""}">
+        <div class="size-h5 uppercase color-subdue">${dayLabel(d)}</div>
+        ${raw(mine.length
+          ? html`<ul class="list list-gap-10 margin-top-5">${raw(mine.map((e) => html`<li><div class="size-h6 color-subdue">${e.time}</div>
+              <div class="color-highlight">${e.summary}</div>${raw(e.location ? html`<div class="size-h6">${e.location}</div>` : "")}</li>`).join(""))}</ul>`
+          : '<div class="size-h6 color-subdue margin-top-5">Nothing</div>')}
+      </div>`;
+    })
+    .join("")}</div>`;
+}
+
+// Glance's calendar widget: this month, Monday first, today marked, and a
+// dot on the days the week's events fall.
+function renderMonth(events) {
+  const now = new Date();
+  const busy = new Set((events ?? []).map((e) => parseEvent(e).when.toDateString()));
+  $("month-name").textContent = `${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lead = (first.getDay() + 6) % 7;
+  const cells = Array.from({ length: 42 }, (_, i) => new Date(now.getFullYear(), now.getMonth(), 1 - lead + i));
+  const weeks = cells[35].getMonth() === now.getMonth() ? cells : cells.slice(0, 35);
+  $("month").querySelector(".widget-content").innerHTML = `<div class="calendar-dates">${["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+    .map((d) => `<div class="calendar-date color-subdue size-h6">${d}</div>`)
+    .join("")}${weeks
+    .map((d) => {
+      const cls = [
+        "calendar-date",
+        d.toDateString() === now.toDateString() ? "calendar-current-date" : "",
+        d.getMonth() !== now.getMonth() ? "calendar-spillover-date" : "",
+        busy.has(d.toDateString()) ? "calendar-busy-date" : "",
+      ].filter(Boolean).join(" ");
+      return `<div class="${cls}">${d.getDate()}</div>`;
+    })
+    .join("")}</div>`;
 }
 
 // --- Polling ---
@@ -396,8 +523,16 @@ async function board() {
   try {
     const b = await getJSON("/api/board");
     renderWeather(b.weather);
-    renderAir(b.air);
+    renderAir($("air"), b.air, false);
+    renderAir($("air2"), b.air, true);
     renderEvents(b.events);
+    renderWeek(b.events);
+    renderMonth(b.events);
+    if (b.weather) {
+      renderNow(b.weather);
+      renderHours(b.weather);
+      renderDays(b.weather);
+    }
   } catch (e) {
     console.warn(e);
   }

@@ -53,3 +53,92 @@
 .usage-account + .usage-account {
   margin-top: 2rem;
 }
+
+/* Weather tab: every hour's temperature shown, a time every third hour,
+   and the hours scroll sideways where they don't fit. */
+#hours .weather-columns {
+  overflow-x: auto;
+}
+#hours .weather-column {
+  flex: 1;
+  min-width: 3.4rem;
+}
+#hours .weather-column-value {
+  opacity: 1;
+  transform: none;
+}
+#hours .weather-column:nth-child(3n + 1) .weather-column-time {
+  opacity: 1;
+  transform: none;
+}
+#hours .weather-column:not(:nth-child(3n + 1)):not(:hover) .weather-column-time {
+  opacity: 0;
+}
+
+/* The week: each day's low to high on one scale for the whole week. */
+.day-row > :not(.grow) {
+  flex-shrink: 0;
+}
+.day-name {
+  width: 5.5rem;
+}
+.day-rain {
+  width: 3rem;
+}
+.day-temp {
+  width: 3rem;
+}
+.day-range {
+  position: relative;
+  flex-basis: 30%;
+  height: 6px;
+  border-radius: 6px;
+  background: var(--color-widget-background-highlight);
+}
+.day-range > div {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 6px;
+  background: var(--color-primary);
+  opacity: 0.6;
+}
+
+/* Calendar tab: seven columns, one under the other on a phone. */
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+.week-day {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.week-today > :first-child {
+  color: var(--color-primary);
+}
+@media (max-width: 550px) {
+  .day-name {
+    width: 4rem;
+  }
+  .day-rain,
+  .day-temp {
+    width: 2.6rem;
+  }
+}
+@media (max-width: 1190px) {
+  .week-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.calendar-busy-date::after {
+  content: "";
+  position: absolute;
+  bottom: 0.2rem;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
