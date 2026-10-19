@@ -263,29 +263,103 @@ function Search({ close }: { close: () => void }) {
   );
 }
 
-function BellButton() {
-  const [bell, toggle] = usePush();
-  if (bell === "unsupported") return null;
-  const label = {
-    on: "Notifications on",
-    off: "Turn on notifications",
-    denied: "Notifications blocked in the browser's settings",
-  }[bell];
+// The build the page runs, named by its hashed script; a deploy changes it.
+const BUILD = document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.getAttribute("src");
+
+/** True once the server has a newer build than this page: checked when the
+ * app comes back to the front, at most once a minute. An installed app
+ * lives on in the background, so it would otherwise run an old build until
+ * its process died. */
+function useUpdate() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let last = 0;
+    const check = async () => {
+      if (document.visibilityState !== "visible" || Date.now() - last < 60_000) return;
+      last = Date.now();
+      try {
+        const html = await (await fetch("/", { cache: "no-store" })).text();
+        const now = /<script type="module"[^>]*src="([^"]+)"/.exec(html)?.[1];
+        if (BUILD && now && now !== BUILD) setReady(true);
+      } catch {
+        // Offline: try again next time.
+      }
+    };
+    check();
+    document.addEventListener("visibilitychange", check);
+    return () => document.removeEventListener("visibilitychange", check);
+  }, []);
+  return ready;
+}
+
+/** Reloads the app on the newest build: the worker first, so notifications
+ * run the new sw.js too. */
+async function reload() {
+  try {
+    await (await navigator.serviceWorker?.getRegistration())?.update();
+  } catch {
+    // An old worker only delays its own update; the page still reloads.
+  }
+  location.reload();
+}
+
+/** The gear in the header: theme, notifications and reload in one menu. A
+ * dot on it says a newer build is waiting. */
+function Settings() {
+  const [open, setOpen] = useState(false);
+  const [theme, toggleTheme] = useTheme();
+  // Mounted with the header, not the menu, so the worker registers and
+  // the bell's state is known before the menu first opens.
+  const [bell, toggleBell] = usePush();
+  const update = useUpdate();
+  const row = "flex w-full items-center justify-between gap-6 px-4 py-2.5 text-left text-[15px] hover:bg-hover disabled:opacity-40 disabled:hover:bg-transparent";
+  const note = "text-[13px] text-mid";
   return (
-    <button
-      onClick={toggle}
-      disabled={bell === "denied"}
-      aria-label={label}
-      title={label}
-      aria-pressed={bell === "on"}
-      className={`grid size-9 place-items-center rounded-full hover:bg-hover hover:text-ink disabled:opacity-40 ${bell === "on" ? "text-ink" : "text-mid"}`}
-    >
-      <svg viewBox="0 0 24 24" className="size-[18px]" fill={bell === "on" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-        <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-        <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-        {bell !== "on" && bell !== "off" && <path d="M3 3l18 18" />}
-      </svg>
-    </button>
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-label="Settings"
+        title="Settings"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="relative grid size-9 place-items-center rounded-full text-mid hover:bg-hover hover:text-ink"
+      >
+        <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+        {update && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-accent" />}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0" onClick={() => setOpen(false)} />
+          <div role="menu" className="absolute top-full right-0 mt-1 min-w-60 overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift py-1 shadow-lift">
+            <button type="button" role="menuitem" onClick={toggleTheme} className={row}>
+              Theme
+              <span className={note}>{theme === "dark" ? "Dark" : "Light"}</span>
+            </button>
+            {bell !== "unsupported" && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={toggleBell}
+                disabled={bell === "denied"}
+                title={bell === "denied" ? "Blocked in the browser's settings" : undefined}
+                className={row}
+              >
+                Notifications
+                <span className={note}>{{ on: "On", off: "Off", denied: "Blocked" }[bell]}</span>
+              </button>
+            )}
+            <button type="button" role="menuitem" onClick={reload} className={row}>
+              Reload
+              <span className={update ? "text-[13px] text-accent" : note}>{update ? "Update ready" : "Up to date"}</span>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -522,8 +596,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
               <circle cx="11" cy="11" r="7" />
               <path d="m20 20-3.5-3.5" />
             </HeaderButton>
-            <BellButton />
-            <ThemeButton />
+            <Settings />
           </div>
         </header>
         {finding && <Search close={() => setFinding(false)} />}
