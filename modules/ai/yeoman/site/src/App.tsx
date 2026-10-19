@@ -294,9 +294,9 @@ const Arrow = ({ down = false }: { down?: boolean }) => (
   </svg>
 );
 
-const Clip = () => (
-  <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-    <path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+const Plus = () => (
+  <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
+    <path d="M12 5v14M5 12h14" />
   </svg>
 );
 
@@ -502,7 +502,7 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
                   aria-label="Attach files"
                   className="grid size-[38px] shrink-0 place-items-center rounded-full text-mid hover:text-ink disabled:invisible"
                 >
-                  <Clip />
+                  <Plus />
                 </ComposerPrimitive.AddAttachment>
                 <ComposerPrimitive.Input
                   autoFocus
