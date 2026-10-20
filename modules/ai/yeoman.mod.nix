@@ -456,14 +456,29 @@
           "${n}-hippo" = {
             description = "${i.name}'s memory";
             wantedBy = singleton "multi-user.target";
-            environment = env // {
-              HIPPO_AGENT = i.name;
-              HIPPO_VIEW = toString cfg.viewBytes;
-              HIPPO_BACKEND = "claude";
-              HIPPO_CLAUDE = getExe claude;
-              HIPPO_MODEL = "sonnet";
-              HIPPO_EFFORT = "medium";
-            };
+            environment =
+              env
+              // {
+                HIPPO_AGENT = i.name;
+                HIPPO_VIEW = toString cfg.viewBytes;
+              }
+              // (
+                if i.localModel != null then
+                  {
+                    # A local agent's memory stays local too: what it is told
+                    # never leaves the host, and its compactor never refuses.
+                    HIPPO_BACKEND = "http";
+                    HIPPO_URL = "http://127.0.0.1:${toString config.inference.port}/v1";
+                    HIPPO_MODEL = i.localModel;
+                  }
+                else
+                  {
+                    HIPPO_BACKEND = "claude";
+                    HIPPO_CLAUDE = getExe claude;
+                    HIPPO_MODEL = "sonnet";
+                    HIPPO_EFFORT = "medium";
+                  }
+              );
             serviceConfig =
               sandbox
               // fence
@@ -669,8 +684,8 @@
                     example = "qwen3.8-27b-q4-k-m";
                     description = ''
                       A model of the local inference server (inference.mod.nix)
-                      to answer with, without tools; null = Claude. Its memory
-                      still condenses on Claude.
+                      to answer and condense its memory with, without tools;
+                      null = Claude.
                     '';
                   };
 
