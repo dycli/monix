@@ -299,16 +299,14 @@ async fn money_page(State(app): State<Arc<App>>, Query(q): Query<Month>) -> Resp
 struct Filing {
     transaction: String,
     category: String,
-    /// Every transaction from this merchant, now and later.
-    #[serde(default)]
-    every: bool,
+    scope: money::Scope,
 }
 
 async fn categorize(State(app): State<Arc<App>>, Json(f): Json<Filing>) -> Response {
     let a = app.clone();
     match tokio::task::spawn_blocking(move || {
         let store = Store::open(&a.state)?;
-        money::categorize(&store.finance, &f.transaction, &f.category, f.every)
+        money::categorize(&store.finance, &f.transaction, &f.category, f.scope)
     })
     .await
     {

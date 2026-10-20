@@ -3,7 +3,9 @@
 //! (Plaid only ever gives today's), and the reads the page draws from.
 //!
 //! A transaction's category is, in order: the one picked for it on the
-//! page, the rule for its merchant, then Plaid's guess mapped onto our list.
+//! page, the rule for its merchant at that exact amount, the rule for its
+//! merchant, a card payment matched from the other side, then Plaid's guess
+//! mapped onto our list.
 //! The `ledger` view does that once, so the page and the yeomen (who read
 //! `finance.db` directly) always agree.
 
@@ -90,6 +92,15 @@ CREATE TABLE IF NOT EXISTS rules (
     merchant TEXT PRIMARY KEY,
     category TEXT NOT NULL
 );
+-- Banks name every transfer alike ('Online Transfer / Payment'), so the
+-- mortgage and a paycheck differ only in amount; these rules key on both.
+CREATE TABLE IF NOT EXISTS amount_rules (
+    merchant TEXT NOT NULL,
+    cents INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    PRIMARY KEY (merchant, cents)
+);
+CREATE INDEX IF NOT EXISTS transactions_amount ON transactions(amount);
 CREATE TABLE IF NOT EXISTS balances (
     account_id TEXT NOT NULL,
     date TEXT NOT NULL,
@@ -112,15 +123,30 @@ SELECT t.transaction_id, t.account_id, t.date, t.name,
        coalesce(t.merchant, t.name) AS merchant, t.amount, t.pending,
        coalesce(c.name, 'Other') AS category, coalesce(c.kind, 'spend') AS kind,
        CASE WHEN o.category IS NOT NULL THEN 'picked'
-            WHEN r.category IS NOT NULL THEN 'rule'
+            WHEN a.category IS NOT NULL OR r.category IS NOT NULL THEN 'rule'
+            WHEN m.paid IS NOT NULL THEN 'match'
             ELSE 'plaid' END AS source
 FROM transactions t
 LEFT JOIN overrides o ON o.transaction_id = t.transaction_id
+LEFT JOIN amount_rules a ON a.merchant = coalesce(t.merchant, t.name)
+    AND a.cents = CAST(round(t.amount * 100) AS INTEGER)
 LEFT JOIN rules r ON r.merchant = coalesce(t.merchant, t.name)
+-- Money leaving a bank account that a linked card received within five
+-- days, to the cent, is that card's payment whatever the bank called it.
+LEFT JOIN (
+    SELECT DISTINCT t2.transaction_id, 'Card payments' AS paid
+    FROM transactions t2
+    JOIN accounts ta ON ta.account_id = t2.account_id AND ta.type = 'depository'
+    JOIN transactions x ON x.amount BETWEEN -t2.amount - 0.005 AND -t2.amount + 0.005
+        AND abs(julianday(x.date) - julianday(t2.date)) <= 5
+    JOIN accounts xa ON xa.account_id = x.account_id AND xa.type = 'credit'
+    WHERE t2.amount > 0
+) m ON m.transaction_id = t.transaction_id
 LEFT JOIN category_map d ON d.code = t.detail
 LEFT JOIN category_map p ON p.code = t.category
 -- A rule naming a category this build no longer has falls to Other.
-LEFT JOIN categories c ON c.name = coalesce(o.category, r.category, d.category, p.category);
+LEFT JOIN categories c
+    ON c.name = coalesce(o.category, a.category, r.category, m.paid, d.category, p.category);
 ";
 
 /// Writes the category list and Plaid's mapping as this build has them.
@@ -161,13 +187,24 @@ pub fn snapshot(c: &Connection) -> Result<(), String> {
 /// Debts are the balances we owe; everything else is an asset.
 const DEBT: &str = "type IN ('credit', 'loan')";
 
-/// Files a transaction under a category: just this one, or every one from
-/// its merchant, now and later.
+/// How far a category choice reaches.
+#[derive(serde::Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum Scope {
+    /// Just this transaction.
+    One,
+    /// Every transaction from its merchant, now and later.
+    Merchant,
+    /// Every one from its merchant at exactly this amount, now and later.
+    Amount,
+}
+
+/// Files a transaction under a category, as far as `scope` reaches.
 pub fn categorize(
     c: &Connection,
     transaction: &str,
     category: &str,
-    every: bool,
+    scope: Scope,
 ) -> Result<(), String> {
     let known: bool = c
         .query_row(
@@ -181,35 +218,56 @@ pub fn categorize(
     if !known {
         return Err(format!("no category {category}"));
     }
-    let merchant: String = c
+    let (merchant, amount): (String, f64) = c
         .query_row(
-            "SELECT merchant FROM ledger WHERE transaction_id = ?1",
+            "SELECT merchant, amount FROM ledger WHERE transaction_id = ?1",
             params![transaction],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("no transaction {transaction}"))?;
     let t = c.unchecked_transaction().map_err(|e| e.to_string())?;
-    if every {
-        // The rule decides from now on; a single pick for this merchant
-        // would hide it.
-        t.execute(
-            "INSERT OR REPLACE INTO rules (merchant, category) VALUES (?1, ?2)",
-            params![merchant, category],
-        )
-        .and_then(|_| {
-            t.execute(
-                "DELETE FROM overrides WHERE transaction_id IN
-                 (SELECT transaction_id FROM ledger WHERE merchant = ?1)",
-                params![merchant],
+    let cents = (amount * 100.0).round() as i64;
+    // A rule decides from now on, so single picks it covers would hide it;
+    // a merchant rule likewise clears that merchant's amount rules.
+    match scope {
+        Scope::Merchant => t
+            .execute(
+                "INSERT OR REPLACE INTO rules (merchant, category) VALUES (?1, ?2)",
+                params![merchant, category],
             )
-        })
-    } else {
-        t.execute(
+            .and_then(|_| {
+                t.execute(
+                    "DELETE FROM amount_rules WHERE merchant = ?1",
+                    params![merchant],
+                )
+            })
+            .and_then(|_| {
+                t.execute(
+                    "DELETE FROM overrides WHERE transaction_id IN
+                     (SELECT transaction_id FROM ledger WHERE merchant = ?1)",
+                    params![merchant],
+                )
+            }),
+        Scope::Amount => t
+            .execute(
+                "INSERT OR REPLACE INTO amount_rules (merchant, cents, category)
+                 VALUES (?1, ?2, ?3)",
+                params![merchant, cents, category],
+            )
+            .and_then(|_| {
+                t.execute(
+                    "DELETE FROM overrides WHERE transaction_id IN
+                     (SELECT transaction_id FROM ledger WHERE merchant = ?1
+                      AND CAST(round(amount * 100) AS INTEGER) = ?2)",
+                    params![merchant, cents],
+                )
+            }),
+        Scope::One => t.execute(
             "INSERT OR REPLACE INTO overrides (transaction_id, category) VALUES (?1, ?2)",
             params![transaction, category],
-        )
+        ),
     }
     .map_err(|e| e.to_string())?;
     t.commit().map_err(|e| e.to_string())
@@ -415,6 +473,52 @@ pub fn page(c: &Connection, month: &str) -> Result<Value, String> {
         },
     )?;
 
+    // Each card's and loan's month: what went on it and what paid it down.
+    // `net` is every posted change, so the page can walk today's balance
+    // back to each month's end.
+    let debt = rows(
+        c,
+        &format!(
+            "SELECT l.account_id, substr(l.date, 1, 7) AS m,
+             coalesce(sum(CASE WHEN l.kind != 'move' THEN l.amount END), 0),
+             coalesce(sum(CASE WHEN l.kind = 'move' AND l.amount < 0 THEN -l.amount END), 0),
+             coalesce(sum(l.amount), 0)
+             FROM ledger l JOIN accounts a ON a.account_id = l.account_id
+             WHERE a.{DEBT} AND NOT l.pending
+             GROUP BY l.account_id, m ORDER BY m"
+        ),
+        &[],
+        |r| {
+            Ok(json!({
+                "account": r.get::<_, String>(0)?,
+                "month": r.get::<_, String>(1)?,
+                "charges": r.get::<_, f64>(2)?,
+                "payments": r.get::<_, f64>(3)?,
+                "net": r.get::<_, f64>(4)?,
+            }))
+        },
+    )?;
+
+    // A year of fees on cards and loans: late fees are the ones to catch.
+    let fees = rows(
+        c,
+        &format!(
+            "SELECT l.account_id, l.date, l.name, l.amount
+             FROM ledger l JOIN accounts a ON a.account_id = l.account_id
+             WHERE a.{DEBT} AND l.category = 'Card Fees' AND l.date >= date('now', '-1 year')
+             ORDER BY l.date DESC"
+        ),
+        &[],
+        |r| {
+            Ok(json!({
+                "account": r.get::<_, String>(0)?,
+                "date": r.get::<_, String>(1)?,
+                "name": r.get::<_, Option<String>>(2)?,
+                "amount": r.get::<_, f64>(3)?,
+            }))
+        },
+    )?;
+
     let synced: Option<String> = c
         .query_row("SELECT max(synced) FROM items", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
@@ -429,6 +533,8 @@ pub fn page(c: &Connection, month: &str) -> Result<Value, String> {
         "transactions": transactions,
         "holdings": holdings,
         "budget": budget,
+        "debt": debt,
+        "fees": fees,
     }))
 }
 
@@ -463,6 +569,11 @@ mod tests {
                 "merchant_name": merchant, "amount": amount, "pending": false,
                 "personal_finance_category": {"primary": primary, "detailed": detail}})
         };
+        let bank = |id: &str, date: &str, amount: f64| {
+            json!({"transaction_id": id, "account_id": "a2", "date": date,
+                "name": "Online Transfer / Payment", "amount": amount, "pending": false,
+                "personal_finance_category": {"primary": "TRANSFER_OUT", "detailed": "TRANSFER_OUT_ACCOUNT_TRANSFER"}})
+        };
         let list = [
             t(
                 "t1",
@@ -488,12 +599,20 @@ mod tests {
             ),
             t("t5", "Employer", -2000.0, "INCOME", "INCOME_WAGES"),
             t("t6", "Odd", 5.0, "SOMETHING_NEW", "SOMETHING_NEW_X"),
+            // The checking side: the card payment, then two mortgage
+            // payments and a transfer the bank names the same.
+            bank("t7", "2026-10-08", 500.0),
+            bank("t8", "2026-10-01", 3373.94),
+            bank("t9", "2026-10-28", 3373.94),
+            bank("t10", "2026-10-12", 100.0),
         ];
         s.transactions("i1", &list, &[], "c1").unwrap();
         let c = &s.finance;
 
-        super::categorize(c, "t3", "Travel", false).unwrap();
-        super::categorize(c, "t1", "Discretionary", true).unwrap();
+        use super::Scope;
+        super::categorize(c, "t3", "Travel", Scope::One).unwrap();
+        super::categorize(c, "t1", "Discretionary", Scope::Merchant).unwrap();
+        super::categorize(c, "t8", "Home", Scope::Amount).unwrap();
         let line = |category: &str, item: &str, monthly: f64, annual: f64| super::Line {
             category: category.into(),
             item: item.into(),
@@ -510,7 +629,7 @@ mod tests {
         )
         .unwrap();
         assert!(super::set_budget(c, &[line("Nope", "x", 1.0, 0.0)]).is_err());
-        assert!(super::categorize(c, "t1", "Nope", false).is_err());
+        assert!(super::categorize(c, "t1", "Nope", Scope::One).is_err());
 
         let p = super::page(c, "2026-10").unwrap();
         let of = |id: &str| {
@@ -528,12 +647,21 @@ mod tests {
         assert_eq!(of("t3")["source"], "picked");
         assert_eq!(of("t4")["category"], "Card payments");
         assert_eq!(of("t6")["category"], "Other");
+        assert_eq!(of("t7")["category"], "Card payments");
+        assert_eq!(of("t7")["source"], "match");
+        assert_eq!(of("t9")["category"], "Home");
+        assert_eq!(of("t10")["category"], "Transfers");
+        let d = &p["debt"][0];
+        assert_eq!(
+            (d["account"].as_str(), d["payments"].as_f64()),
+            (Some("a1"), Some(500.0))
+        );
         // A failed load leaves the old budget alone.
         assert_eq!(p["budget"].as_array().unwrap().len(), 2);
         assert_eq!(p["budget"][1]["annual"], 150.0);
         let m = &p["months"][0];
         assert_eq!(m["income"], 2000.0);
-        assert_eq!(m["spending"], 145.0);
+        assert_eq!(m["spending"], 145.0 + 2.0 * 3373.94);
         let w = &p["worth"][0];
         assert_eq!(
             (w["assets"].as_f64(), w["debts"].as_f64()),

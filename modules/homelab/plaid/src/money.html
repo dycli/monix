@@ -54,6 +54,7 @@
   .bars .track { height: 10px; }
   .bars .fill { height: 10px; background: var(--spend); border-radius: 0 4px 4px 0; min-width: 2px; }
   .bars .amt { text-align: right; }
+  .bars .amt.warn { font-size: inherit; }
   .budget .bar, #unplanned .bar { grid-template-columns: 130px 1fr 160px; }
   .budget .track { position: relative; background: var(--paper); border-radius: 0 4px 4px 0; }
   .budget .fill.in { background: var(--income); }
@@ -100,6 +101,7 @@
       <a href="#overview">Overview</a>
       <a href="#budget">Budget</a>
       <a href="#spending">Spending</a>
+      <a href="#debt">Debt</a>
       <a href="#investments">Investments</a>
       <a href="#banks">Banks</a>
     </nav>
@@ -142,6 +144,17 @@
     </div>
     <div class="card"><h2>By category</h2><div class="bars" id="cats"></div></div>
     <div class="card"><h2 id="txtitle">Transactions</h2><div id="txs"></div></div>
+  </section>
+
+  <section id="debt" data-tab hidden>
+    <div class="card"><div class="tiles" id="debttiles"></div></div>
+    <div class="card"><h2>Owed at each month's end</h2><div id="owedchart"></div></div>
+    <div class="card">
+      <h2>Payments and charges</h2>
+      <div class="legend"><span><i style="background:var(--income)"></i>Paid</span><span><i style="background:var(--spend)"></i>Charged</span></div>
+      <div id="debtflow"></div>
+    </div>
+    <div id="debtcards"></div>
   </section>
 
   <section id="investments" data-tab hidden>
@@ -268,11 +281,14 @@ function details(a) {
 
 // One series, so no legend: the card's title names it. Crosshair on hover.
 function worthChart() {
-  const box = $("#worthchart");
-  const pts = data.worth.map((w) => ({ date: w.date, v: w.assets - w.debts }));
+  lineChart($("#worthchart"), data.worth.map((w) => ({ label: day(w.date), v: w.assets - w.debts })),
+    "Net worth by day", "History builds from here: a point each day.");
+}
+
+// One series over time with a crosshair; `pts` are { label, v }.
+function lineChart(box, pts, aria, empty) {
   if (pts.length < 2) {
-    box.replaceChildren(el("p", { className: "soft small", style: "margin:0",
-      textContent: "History builds from here: a point each day." }));
+    box.replaceChildren(el("p", { className: "soft small", style: "margin:0", textContent: empty }));
     return;
   }
   const W = 840, H = 160, L = 8, R = 56, T = 8, B = 22;
@@ -282,13 +298,13 @@ function worthChart() {
   const pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
   const x = (i) => L + (W - L - R) * i / (pts.length - 1);
   const y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
-  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Net worth by day" });
+  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": aria });
   for (const v of [lo + pad, hi - pad]) {
     s.append(svg("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "#d6cab6", "stroke-width": 1 }),
       svg("text", { x: W - R + 6, y: y(v) + 4 }, short(v)));
   }
-  s.append(svg("text", { x: L, y: H - 4 }, day(pts[0].date)),
-    svg("text", { x: W - R, y: H - 4, "text-anchor": "end" }, day(pts.at(-1).date)));
+  s.append(svg("text", { x: L, y: H - 4 }, pts[0].label),
+    svg("text", { x: W - R, y: H - 4, "text-anchor": "end" }, pts.at(-1).label));
   s.append(svg("path", { d: pts.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(p.v)}`).join(""),
     fill: "none", stroke: "#2b2620", "stroke-width": 2, "stroke-linejoin": "round" }));
   const cross = svg("line", { y1: T, y2: H - B, stroke: "#978b7d", "stroke-width": 1, visibility: "hidden" });
@@ -301,7 +317,7 @@ function worthChart() {
     const p = pts[i];
     cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
     dot.setAttribute("cx", x(i)); dot.setAttribute("cy", y(p.v)); dot.setAttribute("visibility", "visible");
-    tip.textContent = `${day(p.date)}: ${usd(p.v, false)}`; tip.style.display = "block";
+    tip.textContent = `${p.label}: ${usd(p.v, false)}`; tip.style.display = "block";
     tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + "px"; tip.style.top = (e.clientY - 36) + "px";
   });
   hit.addEventListener("mouseleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
@@ -338,7 +354,7 @@ function spending() {
 const names = () => data.categories.map((c) => c.name);
 
 function txRow(x) {
-  const pick = el("select", { title: x.source === "plaid" ? "Plaid's guess" : x.source === "rule" ? "Your rule for this merchant" : "Picked by you" },
+  const pick = el("select", { title: { plaid: "Plaid's guess", rule: "Your rule", match: "Matches a payment on a linked card", picked: "Picked by you" }[x.source] },
     ...names().map((n) => el("option", { value: n, textContent: n, selected: n === x.category })));
   const wrap = el("div", {});
   const row = el("div", { className: "row tx" },
@@ -351,14 +367,16 @@ function txRow(x) {
   wrap.append(row);
   pick.onchange = () => {
     const to = pick.value;
-    const file = async (every) => {
-      try { await api("/api/category", { transaction: x.id, category: to, every }); await load(); }
+    const file = async (scope) => {
+      try { await api("/api/category", { transaction: x.id, category: to, scope }); await load(); }
       catch (e) { $("#error").textContent = e.message; }
     };
     wrap.querySelector(".ask")?.remove();
     wrap.append(el("div", { className: "ask" }, `${to}:`,
-      el("button", { textContent: "Just this one", onclick: () => file(false) }),
-      el("button", { className: "main", textContent: `Every ${x.merchant || x.name}`, onclick: () => file(true) }),
+      el("button", { textContent: "Just this one", onclick: () => file("one") }),
+      // Banks name transfers alike, so the mortgage is told apart by amount.
+      el("button", { textContent: `Every ${usd(Math.abs(x.amount))} one`, onclick: () => file("amount") }),
+      el("button", { className: "main", textContent: `Every ${x.merchant || x.name}`, onclick: () => file("merchant") }),
       el("button", { textContent: "Cancel", onclick: () => { pick.value = x.category; wrap.querySelector(".ask").remove(); } })));
   };
   return wrap;
@@ -367,15 +385,22 @@ function txRow(x) {
 // Income and spending side by side per month, oldest on the left; one
 // y-axis, both in dollars. The chosen month is the darker pair.
 function flowChart() {
-  const ms = [...data.months].reverse();
-  const box = $("#flow");
-  if (!ms.length) { box.replaceChildren(el("p", { className: "soft small", style: "margin:0", textContent: "No transactions yet." })); return; }
+  pairChart($("#flow"), [...data.months].reverse().map((m) => ({ key: m.month, a: m.income, b: m.spending })),
+    "Income and spending by month", "No transactions yet.",
+    (m) => `${monthName(m.key)}: income ${usd(m.a, false)}, spending ${usd(m.b, false)}, net ${usd(m.a - m.b, false)}`,
+    month, go);
+}
+
+// Two measures side by side per month, blue then rust, oldest on the left;
+// the chosen month is the darker pair. `rows` are { key: "YYYY-MM", a, b }.
+function pairChart(box, ms, aria, empty, say, chosen, pick) {
+  if (!ms.length) { box.replaceChildren(el("p", { className: "soft small", style: "margin:0", textContent: empty })); return; }
   const W = 840, H = 180, L = 8, R = 56, T = 8, B = 22;
-  const hi = Math.max(1, ...ms.flatMap((m) => [m.income, m.spending])) * 1.08;
+  const hi = Math.max(1, ...ms.flatMap((m) => [m.a, m.b])) * 1.08;
   const slot = (W - L - R) / Math.max(ms.length, 6);
   const bw = Math.min(18, (slot - 10) / 2);
   const y = (v) => T + (H - T - B) * (1 - v / hi);
-  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Income and spending by month" });
+  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": aria });
   for (const v of [hi / 1.08 / 2, hi / 1.08]) {
     s.append(svg("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "#d6cab6", "stroke-width": 1 }),
       svg("text", { x: W - R + 6, y: y(v) + 4 }, short(v)));
@@ -388,13 +413,13 @@ function flowChart() {
       d: `M${x0},${y(0)}V${y(0) - h + r}Q${x0},${y(0) - h} ${x0 + r},${y(0) - h}H${x0 + bw - r}Q${x0 + bw},${y(0) - h} ${x0 + bw},${y(0) - h + r}V${y(0)}Z` });
   };
   ms.forEach((m, i) => {
-    const cx = L + slot * i + slot / 2, faded = m.month !== month;
+    const cx = L + slot * i + slot / 2, faded = m.key !== chosen;
     const g = svg("g", { style: "cursor:pointer" },
       svg("rect", { x: cx - slot / 2, y: 0, width: slot, height: H, fill: "transparent" }),
-      bar(cx - bw - 1, m.income, "#2f6db5", faded), bar(cx + 1, m.spending, "#b0482a", faded),
-      svg("text", { x: cx, y: H - 4, "text-anchor": "middle", style: m.month === month ? "fill:#2b2620" : "" }, monthName(m.month, false)));
-    hover(g, `${monthName(m.month)}: income ${usd(m.income, false)}, spending ${usd(m.spending, false)}, net ${usd(m.income - m.spending, false)}`);
-    g.addEventListener("click", () => go(m.month));
+      bar(cx - bw - 1, m.a, "#2f6db5", faded), bar(cx + 1, m.b, "#b0482a", faded),
+      svg("text", { x: cx, y: H - 4, "text-anchor": "middle", style: m.key === chosen ? "fill:#2b2620" : "" }, monthName(m.key, false)));
+    hover(g, say(m));
+    g.addEventListener("click", () => pick(m.key));
     s.append(g);
   });
   box.replaceChildren(s);
@@ -495,6 +520,42 @@ function budget() {
     hover(bar, `${c.name}: ${usd(c.amount)} over ${c.count} transaction${c.count === 1 ? "" : "s"}; click to list them`);
     return bar;
   }) : [el("p", { className: "soft", style: "margin:0", textContent: "Nothing this month." })]));
+}
+
+// --- Debt -------------------------------------------------------------
+
+function debt() {
+  const cards = data.accounts.filter((a) => a.debt);
+  const months = [...new Set(data.debt.map((d) => d.month))].sort().slice(-12);
+  const of = (id, m) => data.debt.find((d) => d.account === id && d.month === m) || { charges: 0, payments: 0, net: 0 };
+  // A month's closing balance is today's less everything posted since.
+  const owed = (m) => cards.reduce((n, a) => n + (a.balance || 0) -
+    data.debt.filter((d) => d.account === a.id && d.month > m).reduce((k, d) => k + d.net, 0), 0);
+  const sum = (m, k) => cards.reduce((n, a) => n + of(a.id, m)[k], 0);
+  const now = cards.reduce((n, a) => n + (a.balance || 0), 0);
+  const back = months.length > 3 ? owed(months.at(-4)) : null;
+  tiles($("#debttiles"), [["Owed", usd(now, false)], [`Paid in ${monthName(current, false)}`, usd(sum(current, "payments"), false)],
+    [back == null ? "Charged" : "Since " + monthName(months.at(-4), false), back == null ? usd(sum(current, "charges"), false) :
+      (now <= back ? "−" : "+") + usd(Math.abs(now - back), false)]]);
+  lineChart($("#owedchart"), months.map((m) => ({ label: monthName(m, false), v: owed(m) })),
+    "Total owed at each month's end", "Not enough history yet.");
+  pairChart($("#debtflow"), months.map((m) => ({ key: m, a: sum(m, "payments"), b: sum(m, "charges") })),
+    "Payments and charges by month", "No card activity yet.",
+    (m) => `${monthName(m.key)}: paid ${usd(m.a, false)}, charged ${usd(m.b, false)}, ${m.a >= m.b ? "down" : "up"} ${usd(Math.abs(m.a - m.b), false)}`,
+    current, () => {});
+  $("#debtcards").replaceChildren(...cards.map((a) => {
+    const t = of(a.id, current);
+    const fees = data.fees.filter((f) => f.account === a.id);
+    return el("div", { className: "card" },
+      el("div", { style: "display:flex;align-items:baseline;gap:10px" },
+        el("h2", { style: "flex:1;margin:0", textContent: `${a.name || "Account"}${a.mask ? " ··" + a.mask : ""}` }),
+        el("span", { className: "money", style: "font:400 22px Georgia,serif", textContent: usd(a.balance) })),
+      el("div", { className: "mid small", textContent: details(a) }),
+      el("div", { className: "small", style: "margin-top:6px", textContent:
+        `This month: charged ${usd(t.charges, false)}, paid ${usd(t.payments, false)}` }),
+      ...fees.map((f) => el("div", { className: /late/i.test(f.name || "") ? "warn" : "soft small",
+        textContent: `${day(f.date)}: ${f.name} ${usd(f.amount)}` })));
+  }));
 }
 
 // --- Investments ------------------------------------------------------
@@ -602,6 +663,7 @@ async function load() {
   overview();
   budget();
   spending();
+  debt();
   investments();
 }
 
