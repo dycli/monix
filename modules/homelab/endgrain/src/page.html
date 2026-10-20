@@ -54,9 +54,9 @@
   .grid th { font: 600 12px system-ui; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); text-align: left; padding: 4px 6px 8px; }
   .grid th .date { display: block; font: 400 18px Georgia, serif; letter-spacing: 0; text-transform: none; color: var(--ink); }
   .grid th:first-child, .grid td:first-child { width: 132px; }
-  .grid td { vertical-align: top; padding: 4px; border-top: 1px solid var(--edge); height: 58px; }
+  .grid td { vertical-align: middle; padding: 4px; border-top: 1px solid var(--edge); height: 58px; }
   .grid td:first-child, .grid th:first-child { position: sticky; left: 0; background: var(--lift); z-index: 1; }
-  .grid .who { display: flex; align-items: center; gap: 8px; padding-top: 6px; font-weight: 500; }
+  .grid .who { display: flex; align-items: center; gap: 8px; font-weight: 500; }
   .grid .who.gone { color: var(--soft); }
   /* Days with fewer people on than the rules ask. */
   .grid th.short, .grid th.short .date { color: var(--accent); }
@@ -67,7 +67,7 @@
   .grid tfoot button { font-size: 12px; padding: 2px 7px; margin-top: 4px; }
   .rules input { width: 64px; }
   .grid tfoot td { color: var(--mid); font-size: 13px; height: auto; padding-top: 8px; font-variant-numeric: tabular-nums; }
-  .cell { position: relative; min-height: 50px; display: flex; flex-direction: column; gap: 4px; border-radius: 8px; }
+  .cell { position: relative; min-height: 50px; display: flex; flex-direction: column; justify-content: center; gap: 4px; border-radius: 8px; }
   .edit .cell { cursor: pointer; }
   .edit .cell:hover { background: var(--paper); }
   .edit .cell:empty:hover::after { content: "+"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--soft); font-size: 20px; }
@@ -108,7 +108,7 @@
     .grid th { padding: 2px 2px 6px; font-size: 10px; letter-spacing: .02em; text-align: center; }
     .grid th .date { font-size: 16px; }
     .grid td { padding: 2px 1px; height: 46px; }
-    .grid .who { gap: 4px; padding-top: 4px; font-size: 12px; overflow: hidden; }
+    .grid .who { gap: 4px; font-size: 12px; overflow: hidden; }
     .grid .who .dot { width: 7px; height: 7px; }
     .shift { overflow: hidden; border-left-width: 3px; padding: 3px 2px 3px 3px; font-size: 11px; line-height: 1.2; letter-spacing: -.02em; }
     .shift.asked, .shift.want { border-left-width: 3px; }
