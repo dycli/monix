@@ -58,7 +58,6 @@
   .budget .bar, #unplanned .bar { grid-template-columns: 130px 1fr 160px; }
   .budget .track { position: relative; background: var(--paper); border-radius: 0 4px 4px 0; }
   .budget .fill.in { background: var(--income); }
-  .budget .today { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); border-radius: 1px; }
   .items { padding: 2px 0 10px 140px; font-size: 13px; }
   .items .row { padding: 4px 0; }
   .tile .of { color: var(--soft); font-size: 13px; }
@@ -101,6 +100,7 @@
       <a href="#overview">Overview</a>
       <a href="#budget">Budget</a>
       <a href="#spending">Spending</a>
+      <a href="#networth">Net worth</a>
       <a href="#debt">Debt</a>
       <a href="#investments">Investments</a>
       <a href="#banks">Banks</a>
@@ -113,7 +113,6 @@
       <div class="mid small">Net worth</div>
       <div class="hero money" id="worth"></div>
       <div class="mid small" id="split"></div>
-      <div id="worthchart" style="margin-top:14px"></div>
     </div>
     <div class="card"><h2 id="thismonth">This month</h2><div class="tiles" id="monthtiles"></div></div>
     <div class="card"><h2>Accounts</h2><div id="accounts"></div></div>
@@ -126,7 +125,6 @@
     <div class="card"><div class="tiles" id="budgettiles"></div></div>
     <div class="card">
       <h2>Plan</h2>
-      <p class="soft small" id="todaynote" style="margin:-4px 0 8px"></p>
       <div class="bars budget" id="plan"></div>
     </div>
     <div class="card"><h2>Outside the budget</h2><div class="bars" id="unplanned"></div></div>
@@ -144,6 +142,16 @@
     </div>
     <div class="card"><h2>By category</h2><div class="bars" id="cats"></div></div>
     <div class="card"><h2 id="txtitle">Transactions</h2><div id="txs"></div></div>
+  </section>
+
+  <section id="networth" data-tab hidden>
+    <div class="card"><div class="tiles" id="worthtiles"></div></div>
+    <div class="card">
+      <h2>Net worth at each month's end</h2>
+      <div id="worthline"></div>
+      <p class="soft small" style="margin:8px 0 0">Bank and card balances are walked back through their transactions; investments count at today's value.</p>
+    </div>
+    <div class="card"><h2>What it's made of</h2><div id="worthparts"></div></div>
   </section>
 
   <section id="debt" data-tab hidden>
@@ -215,8 +223,15 @@ function hover(target, text) {
     const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
     tip.style.left = x + "px"; tip.style.top = (e.clientY - 36) + "px";
   });
-  target.addEventListener("mouseleave", () => tip.style.display = "none");
+  target.addEventListener("mouseleave", hideTip);
 }
+// A tap fires mousemove but never mouseleave, so on touch the tip would
+// stay up for good: any later tap, scroll or a few seconds put it away.
+function hideTip() { tip.style.display = "none"; document.dispatchEvent(new Event("tiphide")); }
+let tipTimer;
+addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse") hideTip(); }, true);
+addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") { clearTimeout(tipTimer); tipTimer = setTimeout(hideTip, 2500); } });
+addEventListener("scroll", hideTip, { passive: true });
 
 let data = null;
 let month = null;
@@ -241,7 +256,6 @@ function overview() {
   $("#worth").textContent = usd(assets - debts, false);
   $("#split").textContent = `${usd(assets, false)} assets · ${usd(debts, false)} debts` +
     (data.synced ? ` · synced ${day(data.synced.slice(0, 10))}` : "");
-  worthChart();
 
   const t = totals(current);
   $("#thismonth").textContent = monthName(current);
@@ -279,12 +293,6 @@ function details(a) {
   return bits.filter(Boolean).join(" · ");
 }
 
-// One series, so no legend: the card's title names it. Crosshair on hover.
-function worthChart() {
-  lineChart($("#worthchart"), data.worth.map((w) => ({ label: day(w.date), v: w.assets - w.debts })),
-    "Net worth by day", "History builds from here: a point each day.");
-}
-
 // One series over time with a crosshair; `pts` are { label, v }.
 function lineChart(box, pts, aria, empty) {
   if (pts.length < 2) {
@@ -320,7 +328,9 @@ function lineChart(box, pts, aria, empty) {
     tip.textContent = `${p.label}: ${usd(p.v, false)}`; tip.style.display = "block";
     tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + "px"; tip.style.top = (e.clientY - 36) + "px";
   });
-  hit.addEventListener("mouseleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
+  const away = () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); };
+  hit.addEventListener("mouseleave", away);
+  document.addEventListener("tiphide", away);
   box.replaceChildren(s);
 }
 
@@ -474,14 +484,8 @@ function budget() {
       `plan leaves ${usd(income.plan - plan, false)}`));
 
   if (!data.budget.length) {
-    $("#todaynote").textContent = "";
     $("#plan").replaceChildren(el("p", { className: "soft", style: "margin:0", textContent: "No budget yet." }));
   } else {
-    // How far through the month we are, for this month only.
-    const now = new Date();
-    const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const through = month === current ? now.getDate() / days : null;
-    $("#todaynote").textContent = through == null ? "" : `The line marks today, day ${now.getDate()} of ${days}.`;
     const groups = [["Income", "income"], ...planned.map((c) => [c.name, "spend"])].filter(([n]) => by.has(n));
     $("#plan").replaceChildren(...groups.flatMap(([name, kind]) => {
       const g = by.get(name), got = actual.get(name) || 0;
@@ -490,8 +494,7 @@ function budget() {
         onclick: () => { opened.has(name) ? opened.delete(name) : opened.add(name); budget(); } },
         el("span", { textContent: name }),
         el("div", { className: "track" },
-          el("div", { className: "fill" + (kind === "income" ? " in" : ""), style: `width:${Math.min(100, g.plan ? 100 * Math.max(0, got) / g.plan : 100)}%` }),
-          through == null ? null : el("div", { className: "today", style: `left:calc(${100 * through}% - 1px)` })),
+          el("div", { className: "fill" + (kind === "income" ? " in" : ""), style: `width:${Math.min(100, g.plan ? 100 * Math.max(0, got) / g.plan : 100)}%` })),
         el("span", { className: "amt money" + (over ? " warn" : ""),
           textContent: over ? `${usd(got - g.plan, false)} over` : `${usd(got, false)} of ${usd(g.plan, false)}` }));
       hover(bar, `${name}: ${usd(got)} of ${usd(g.plan)} planned` +
@@ -524,13 +527,18 @@ function budget() {
 
 // --- Debt -------------------------------------------------------------
 
+// An account's balance at a month's end: today's, less everything posted
+// since. Plaid's amounts are money out, so a card owed less and a bank held
+// more back then. Investments have no transactions here and stay flat.
+const flowOf = (id, m) => data.flows.find((d) => d.account === id && d.month === m) || { charges: 0, payments: 0, net: 0 };
+const balanceAt = (a, m) => (a.balance || 0) + (a.debt ? -1 : 1) *
+  data.flows.filter((d) => d.account === a.id && d.month > m).reduce((k, d) => k + d.net, 0);
+
 function debt() {
   const cards = data.accounts.filter((a) => a.debt);
-  const months = [...new Set(data.debt.map((d) => d.month))].sort().slice(-12);
-  const of = (id, m) => data.debt.find((d) => d.account === id && d.month === m) || { charges: 0, payments: 0, net: 0 };
-  // A month's closing balance is today's less everything posted since.
-  const owed = (m) => cards.reduce((n, a) => n + (a.balance || 0) -
-    data.debt.filter((d) => d.account === a.id && d.month > m).reduce((k, d) => k + d.net, 0), 0);
+  const months = [...new Set(data.flows.filter((d) => cards.some((a) => a.id === d.account)).map((d) => d.month))].sort().slice(-12);
+  const of = flowOf;
+  const owed = (m) => cards.reduce((n, a) => n + balanceAt(a, m), 0);
   const sum = (m, k) => cards.reduce((n, a) => n + of(a.id, m)[k], 0);
   const now = cards.reduce((n, a) => n + (a.balance || 0), 0);
   const back = months.length > 3 ? owed(months.at(-4)) : null;
@@ -556,6 +564,41 @@ function debt() {
       ...fees.map((f) => el("div", { className: /late/i.test(f.name || "") ? "warn" : "soft small",
         textContent: `${day(f.date)}: ${f.name} ${usd(f.amount)}` })));
   }));
+}
+
+// --- Net worth --------------------------------------------------------
+
+function networth() {
+  const months = Array.from({ length: 12 }, (_, i) => shift(current, i - 11));
+  const worthAt = (list, m) => list.reduce((n, a) => n + (a.debt ? -1 : 1) * balanceAt(a, m), 0);
+  const all = data.accounts, now = worthAt(all, current);
+  const change = (from) => { const d = now - worthAt(all, from); return (d < 0 ? "−" : "+") + usd(Math.abs(d), false); };
+  tiles($("#worthtiles"), [["Net worth", usd(now, false)],
+    [`Since ${monthName(shift(current, -1), false)}`, change(shift(current, -1))],
+    [`Since ${monthName(months[0], false)}`, change(months[0])]]);
+  lineChart($("#worthline"), months.map((m) => ({ label: monthName(m, false), v: worthAt(all, m) })),
+    "Net worth at each month's end", "Not enough history yet.");
+  const groups = [
+    ["Cash", (a) => a.type === "depository"],
+    ["Investments", (a) => a.type === "investment" || a.type === "brokerage"],
+    ["Cards and loans", (a) => a.debt],
+    ["Other", (a) => !a.debt && !["depository", "investment", "brokerage"].includes(a.type)],
+  ];
+  const delta = (v) => (v < 0 ? "−" : "+") + usd(Math.abs(v), false);
+  $("#worthparts").replaceChildren(...groups.map(([name, test]) => {
+    const list = all.filter(test);
+    if (!list.length) return null;
+    const sign = (a) => a.debt ? -1 : 1;
+    const today = list.reduce((n, a) => n + sign(a) * (a.balance || 0), 0);
+    return el("div", { className: "group" },
+      el("h3", {}, el("span", { textContent: name }),
+        el("span", { className: "money", textContent: `${usd(today, false)} · ${delta(today - worthAt(list, months[0]))} in a year` })),
+      ...list.map((a) => el("div", { className: "row" },
+        el("div", { className: "grow" },
+          el("div", { textContent: `${a.name || "Account"}${a.mask ? " ··" + a.mask : ""}` }),
+          el("div", { className: "sub", textContent: `${a.institution || ""} · ${delta(sign(a) * ((a.balance || 0) - balanceAt(a, months[0])))} in a year` })),
+        el("span", { className: "money", textContent: usd(sign(a) * (a.balance || 0)) }))));
+  }).filter(Boolean));
 }
 
 // --- Investments ------------------------------------------------------
@@ -663,6 +706,7 @@ async function load() {
   overview();
   budget();
   spending();
+  networth();
   debt();
   investments();
 }

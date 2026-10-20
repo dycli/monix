@@ -491,20 +491,17 @@ pub fn page(c: &Connection, month: &str) -> Result<Value, String> {
         },
     )?;
 
-    // Each card's and loan's month: what went on it and what paid it down.
-    // `net` is every posted change, so the page can walk today's balance
-    // back to each month's end.
-    let debt = rows(
+    // Each account's month: what went on it, what paid it down (for cards
+    // and loans), and `net`, every posted change, so the page can walk
+    // today's balance back to each month's end.
+    let flows = rows(
         c,
-        &format!(
-            "SELECT l.account_id, substr(l.date, 1, 7) AS m,
+        "SELECT l.account_id, substr(l.date, 1, 7) AS m,
              coalesce(sum(CASE WHEN l.kind != 'move' THEN l.amount END), 0),
              coalesce(sum(CASE WHEN l.kind = 'move' AND l.amount < 0 THEN -l.amount END), 0),
              coalesce(sum(l.amount), 0)
-             FROM ledger l JOIN accounts a ON a.account_id = l.account_id
-             WHERE a.{DEBT} AND NOT l.pending
-             GROUP BY l.account_id, m ORDER BY m"
-        ),
+             FROM ledger l WHERE NOT l.pending
+             GROUP BY l.account_id, m ORDER BY m, l.account_id",
         &[],
         |r| {
             Ok(json!({
@@ -551,7 +548,7 @@ pub fn page(c: &Connection, month: &str) -> Result<Value, String> {
         "transactions": transactions,
         "holdings": holdings,
         "budget": budget,
-        "debt": debt,
+        "flows": flows,
         "fees": fees,
     }))
 }
@@ -675,7 +672,7 @@ mod tests {
         assert_eq!(of("t11")["category"], "Income");
         assert_eq!(of("t11")["source"], "deposit");
         assert_eq!(of("t12")["category"], "Transfers");
-        let d = &p["debt"][0];
+        let d = &p["flows"][0];
         assert_eq!(
             (d["account"].as_str(), d["payments"].as_f64()),
             (Some("a1"), Some(500.0))
