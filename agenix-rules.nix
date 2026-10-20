@@ -42,6 +42,7 @@ in
   "hosts/water/secrets/matrix-registration.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/immich-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/endgrain-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-sokka.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-suki.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-azula.env.age".publicKeys = singleton water ++ admin;
