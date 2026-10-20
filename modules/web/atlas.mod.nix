@@ -56,17 +56,17 @@ in
         extraGroups = singleton "git-mirror";
       };
       users.groups.atlas = { };
-      # nginx reads the data through the group.
+      # nginx reads the data through the group; setgid passes it to new files.
       systemd.tmpfiles.settings.atlas = {
         ${dir}.d = {
           user = "atlas";
           group = "nginx";
-          mode = "0750";
+          mode = "2750";
         };
         "${dir}/data".d = {
           user = "atlas";
           group = "nginx";
-          mode = "0750";
+          mode = "2750";
         };
       };
 
