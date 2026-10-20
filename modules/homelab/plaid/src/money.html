@@ -9,7 +9,7 @@
   /* The paper theme the frame and the chat use. Income and spending were
      checked as a pair for colour-blind readers against --lift. */
   :root { --paper: #ece3d4; --lift: #f4ede1; --ink: #2b2620; --mid: #6b6156; --soft: #978b7d; --edge: #d6cab6; --accent: #b0482a;
-          --income: #2f6db5; --spend: #b0482a; }
+          --income: #2b2620; --spend: #b0482a; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; }
   main { max-width: 880px; margin: 0 auto; padding: 24px 18px 60px; }
@@ -47,6 +47,8 @@
   .tx .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tx .date { color: var(--soft); font-size: 13px; width: 50px; flex: none; }
   .tx .in { color: var(--income); }
+  /* Money in and what we own read in ink; spending and debt in red. */
+  .out { color: var(--spend); }
   .ask { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 0 10px 62px; font-size: 13px; color: var(--mid); }
   .ask button { padding: 3px 10px; font-size: 13px; }
   .bars .bar { display: grid; grid-template-columns: 130px 1fr 90px; gap: 10px; align-items: center; padding: 4px 0; cursor: pointer; border-radius: 6px; }
@@ -238,11 +240,16 @@ let month = null;
 let current = null; // this month, the newest the page will step to
 let only = null;    // a category picked from the bars
 
+// Spending and debt figures, and anything gone negative, read in red.
+const RED = new Set(["Spending", "Spent", "Owed", "Charged", "Over"]);
+const tone = (label, value) => RED.has(label) || /^[−-]/.test(value) ? " out" : "";
 function tiles(box, list) {
-  box.replaceChildren(...list.map(([label, value]) =>
+  box.replaceChildren(...list.map(([label, value, red]) =>
     el("div", { className: "tile" }, el("div", { className: "label", textContent: label }),
-      el("div", { className: "value money", textContent: value }))));
+      el("div", { className: "value money" + (red == null ? tone(label, value) : red ? " out" : ""), textContent: value }))));
 }
+
+const kindOf = (name) => (data.categories.find((c) => c.name === name) || {}).kind;
 
 function totals(m) {
   return data.months.find((x) => x.month === m) || { income: 0, spending: 0 };
@@ -273,12 +280,12 @@ function overview() {
     if (!list.length) return null;
     const sum = list.reduce((n, a) => n + (a.balance || 0), 0);
     return el("div", { className: "group" },
-      el("h3", {}, el("span", { textContent: name }), el("span", { className: "money", textContent: usd(sum, false) })),
+      el("h3", {}, el("span", { textContent: name }), el("span", { className: "money" + (name === "Cards and loans" ? " out" : ""), textContent: usd(sum, false) })),
       ...list.map((a) => el("div", { className: "row" },
         el("div", { className: "grow" },
           el("div", { textContent: `${a.name || "Account"}${a.mask ? " ··" + a.mask : ""}` }),
           el("div", { className: "sub", textContent: details(a) })),
-        el("span", { className: "money", textContent: usd(a.balance) }))));
+        el("span", { className: "money" + (a.debt && a.balance ? " out" : ""), textContent: usd(a.balance) }))));
   }).filter(Boolean));
 }
 
@@ -294,7 +301,7 @@ function details(a) {
 }
 
 // One series over time with a crosshair; `pts` are { label, v }.
-function lineChart(box, pts, aria, empty) {
+function lineChart(box, pts, aria, empty, color = "#2b2620") {
   if (pts.length < 2) {
     box.replaceChildren(el("p", { className: "soft small", style: "margin:0", textContent: empty }));
     return;
@@ -314,9 +321,9 @@ function lineChart(box, pts, aria, empty) {
   s.append(svg("text", { x: L, y: H - 4 }, pts[0].label),
     svg("text", { x: W - R, y: H - 4, "text-anchor": "end" }, pts.at(-1).label));
   s.append(svg("path", { d: pts.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(p.v)}`).join(""),
-    fill: "none", stroke: "#2b2620", "stroke-width": 2, "stroke-linejoin": "round" }));
+    fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round" }));
   const cross = svg("line", { y1: T, y2: H - B, stroke: "#978b7d", "stroke-width": 1, visibility: "hidden" });
-  const dot = svg("circle", { r: 4, fill: "#2b2620", stroke: "#f4ede1", "stroke-width": 2, visibility: "hidden" });
+  const dot = svg("circle", { r: 4, fill: color, stroke: "#f4ede1", "stroke-width": 2, visibility: "hidden" });
   const hit = svg("rect", { x: L, y: 0, width: W - L - R, height: H, fill: "transparent" });
   s.append(cross, dot, hit);
   hit.addEventListener("mousemove", (e) => {
@@ -373,7 +380,7 @@ function txRow(x) {
       el("span", { textContent: x.merchant || x.name }),
       el("span", { className: "sub hide-phone", textContent: `  ${x.account || ""}${x.pending ? " · pending" : ""}` })),
     pick,
-    el("span", { className: "money" + (x.amount < 0 ? " in" : ""), textContent: (x.amount < 0 ? "+" : "") + usd(Math.abs(x.amount)) }));
+    el("span", { className: "money" + (x.amount < 0 ? " in" : kindOf(x.category) === "spend" ? " out" : ""), textContent: (x.amount < 0 ? "+" : "") + usd(Math.abs(x.amount)) }));
   wrap.append(row);
   pick.onchange = () => {
     const to = pick.value;
@@ -401,7 +408,7 @@ function flowChart() {
     month, go);
 }
 
-// Two measures side by side per month, blue then rust, oldest on the left;
+// Two measures side by side per month, ink then rust, oldest on the left;
 // the chosen month is the darker pair. `rows` are { key: "YYYY-MM", a, b }.
 function pairChart(box, ms, aria, empty, say, chosen, pick) {
   if (!ms.length) { box.replaceChildren(el("p", { className: "soft small", style: "margin:0", textContent: empty })); return; }
@@ -426,7 +433,7 @@ function pairChart(box, ms, aria, empty, say, chosen, pick) {
     const cx = L + slot * i + slot / 2, faded = m.key !== chosen;
     const g = svg("g", { style: "cursor:pointer" },
       svg("rect", { x: cx - slot / 2, y: 0, width: slot, height: H, fill: "transparent" }),
-      bar(cx - bw - 1, m.a, "#2f6db5", faded), bar(cx + 1, m.b, "#b0482a", faded),
+      bar(cx - bw - 1, m.a, "#2b2620", faded), bar(cx + 1, m.b, "#b0482a", faded),
       svg("text", { x: cx, y: H - 4, "text-anchor": "middle", style: m.key === chosen ? "fill:#2b2620" : "" }, monthName(m.key, false)));
     hover(g, say(m));
     g.addEventListener("click", () => pick(m.key));
@@ -476,7 +483,7 @@ function budget() {
   const plan = sum(planned, (c) => by.get(c.name).plan);
 
   const tile = (label, value, of) => el("div", { className: "tile" }, el("div", { className: "label", textContent: label }),
-    el("div", { className: "value money", textContent: value }), el("div", { className: "of money", textContent: of }));
+    el("div", { className: "value money" + tone(label, value), textContent: value }), el("div", { className: "of money", textContent: of }));
   $("#budgettiles").replaceChildren(
     tile("Income", usd(income.actual, false), `of ${usd(income.plan, false)}`),
     tile("Spent", usd(spent, false), `of ${usd(plan, false)}`),
@@ -544,9 +551,9 @@ function debt() {
   const back = months.length > 3 ? owed(months.at(-4)) : null;
   tiles($("#debttiles"), [["Owed", usd(now, false)], [`Paid in ${monthName(current, false)}`, usd(sum(current, "payments"), false)],
     [back == null ? "Charged" : "Since " + monthName(months.at(-4), false), back == null ? usd(sum(current, "charges"), false) :
-      (now <= back ? "−" : "+") + usd(Math.abs(now - back), false)]]);
+      (now <= back ? "−" : "+") + usd(Math.abs(now - back), false), back == null || now > back]]);
   lineChart($("#owedchart"), months.map((m) => ({ label: monthName(m, false), v: owed(m) })),
-    "Total owed at each month's end", "Not enough history yet.");
+    "Total owed at each month's end", "Not enough history yet.", "#b0482a");
   pairChart($("#debtflow"), months.map((m) => ({ key: m, a: sum(m, "payments"), b: sum(m, "charges") })),
     "Payments and charges by month", "No card activity yet.",
     (m) => `${monthName(m.key)}: paid ${usd(m.a, false)}, charged ${usd(m.b, false)}, ${m.a >= m.b ? "down" : "up"} ${usd(Math.abs(m.a - m.b), false)}`,
@@ -557,7 +564,7 @@ function debt() {
     return el("div", { className: "card" },
       el("div", { style: "display:flex;align-items:baseline;gap:10px" },
         el("h2", { style: "flex:1;margin:0", textContent: `${a.name || "Account"}${a.mask ? " ··" + a.mask : ""}` }),
-        el("span", { className: "money", style: "font:400 22px Georgia,serif", textContent: usd(a.balance) })),
+        el("span", { className: "money" + (a.balance ? " out" : ""), style: "font:400 22px Georgia,serif", textContent: usd(a.balance) })),
       el("div", { className: "mid small", textContent: details(a) }),
       el("div", { className: "small", style: "margin-top:6px", textContent:
         `This month: charged ${usd(t.charges, false)}, paid ${usd(t.payments, false)}` }),
@@ -592,12 +599,12 @@ function networth() {
     const today = list.reduce((n, a) => n + sign(a) * (a.balance || 0), 0);
     return el("div", { className: "group" },
       el("h3", {}, el("span", { textContent: name }),
-        el("span", { className: "money", textContent: `${usd(today, false)} · ${delta(today - worthAt(list, months[0]))} in a year` })),
+        el("span", { className: "money" + (today < 0 ? " out" : ""), textContent: `${usd(today, false)} · ${delta(today - worthAt(list, months[0]))} in a year` })),
       ...list.map((a) => el("div", { className: "row" },
         el("div", { className: "grow" },
           el("div", { textContent: `${a.name || "Account"}${a.mask ? " ··" + a.mask : ""}` }),
           el("div", { className: "sub", textContent: `${a.institution || ""} · ${delta(sign(a) * ((a.balance || 0) - balanceAt(a, months[0])))} in a year` })),
-        el("span", { className: "money", textContent: usd(sign(a) * (a.balance || 0) || 0) }))));
+        el("span", { className: "money" + (a.debt && a.balance ? " out" : ""), textContent: usd(sign(a) * (a.balance || 0) || 0) }))));
   }).filter(Boolean));
 }
 
