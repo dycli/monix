@@ -38,7 +38,10 @@
         mapAttrs (
           _: crate:
           lib.ship.rustTool pkgs {
-            src = "${self}/${crate.path}";
+            # A path, not "${self}/…": it copies the crate on its own, so the
+            # check is cached by the crate's content and a commit elsewhere
+            # doesn't rebuild every crate.
+            src = ../. + "/${crate.path}";
             check = true;
             nativeCheckInputs = crate.tools or [ ];
           }
