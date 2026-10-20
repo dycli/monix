@@ -39,6 +39,7 @@
         "var/lib/suki"
         "var/lib/yeoman-pages"
         "var/lib/bridge"
+        "var/lib/endgrain"
         "srv/minecraft"
       ];
 

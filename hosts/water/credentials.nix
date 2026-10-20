@@ -17,6 +17,7 @@ in
   matrix.registrationTokenEnvFile = config.secrets.matrix-registration-env.path;
   matrix.tunnelTokenFile = config.secrets.matrix-cloudflare-tunnel-token.path;
   immich.tunnelTokenFile = config.secrets.immich-cloudflare-tunnel-token.path;
+  endgrain.tunnelTokenFile = config.secrets.endgrain-cloudflare-tunnel-token.path;
 
   gitMirror.tokenFile = config.secrets.git-mirror-token.path;
 
@@ -74,6 +75,7 @@ in
     yeoman-requests-key.file = ./secrets/yeoman-requests-key.age;
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     immich-cloudflare-tunnel-token.file = ./secrets/immich-cloudflare-tunnel-token.age;
+    endgrain-cloudflare-tunnel-token.file = ./secrets/endgrain-cloudflare-tunnel-token.age;
     cloudflare-dns-token = {
       file = ./secrets/cloudflare-dns-token.env.age;
       owner = "acme";
@@ -92,6 +94,7 @@ in
   # explicit trigger on its long-running consumer; oneshots need none.
   systemd.services.matrix-tunnel.restartTriggers = singleton ./secrets/matrix-cloudflare-tunnel-token.age;
   systemd.services.immich-tunnel.restartTriggers = singleton ./secrets/immich-cloudflare-tunnel-token.age;
+  systemd.services.endgrain-tunnel.restartTriggers = singleton ./secrets/endgrain-cloudflare-tunnel-token.age;
   systemd.services.frame.restartTriggers = [
     ./secrets/frame-immich-key.age
     ./secrets/yeoman-caldav.json.age
