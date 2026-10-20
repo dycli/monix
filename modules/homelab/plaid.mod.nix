@@ -1,8 +1,8 @@
-# The household's bank link at https://plaid.<domain> (tailnet only): ./plaid
+# The household's money page at https://money.<domain> (tailnet only): ./plaid
 # holds the Plaid keys and each bank login's access token, pulls accounts,
 # transactions, holdings and card statements into finance.db every six hours
-# (under /var/lib/plaid/<environment>),
-# and serves the page where we link a bank. Its own user is the wall: nothing
+# (under /var/lib/plaid/<environment>), and serves the page: net worth,
+# spending by category, holdings, and a Banks tab where we link a bank. Its own user is the wall: nothing
 # else, Sokka included, can read the keys or the tokens. The `finance` group
 # reads finance.db and nothing more.
 { self, ... }:
@@ -48,7 +48,7 @@
       };
 
       config = mkIf (cfg.keysFile != null) {
-        shipProxy.routes.plaid.port = port;
+        shipProxy.routes.money.port = port;
 
         users.users.plaid = {
           isSystemUser = true;

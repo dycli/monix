@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Money</title>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<style>
+  /* The paper theme the frame and the chat use. Income and spending were
+     checked as a pair for colour-blind readers against --lift. */
+  :root { --paper: #ece3d4; --lift: #f4ede1; --ink: #2b2620; --mid: #6b6156; --soft: #978b7d; --edge: #d6cab6; --accent: #b0482a;
+          --income: #2f6db5; --spend: #b0482a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 24px 18px 60px; }
+  header.top { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font: 400 30px/1.1 Georgia, serif; margin: 0; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav a { color: var(--mid); text-decoration: none; padding: 5px 12px; border-radius: 99px; }
+  nav a.on { background: var(--ink); color: var(--lift); }
+  h2 { font: 400 20px Georgia, serif; margin: 0 0 10px; }
+  .card { background: var(--lift); border: 1px solid var(--edge); border-radius: 14px; padding: 16px 18px; margin-bottom: 16px; }
+  .money { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .soft { color: var(--soft); }
+  .mid { color: var(--mid); }
+  .small { font-size: 13px; }
+  .hero { font: 400 40px/1.1 Georgia, serif; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .tile .label { color: var(--mid); font-size: 13px; }
+  .tile .value { font: 400 24px Georgia, serif; }
+  .row { display: flex; gap: 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--edge); }
+  .row:first-of-type { border-top: 0; }
+  .row .grow { flex: 1; min-width: 0; }
+  .row .sub { color: var(--soft); font-size: 13px; }
+  .group + .group { margin-top: 14px; }
+  .group h3 { font: 600 12px system-ui; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); margin: 0 0 2px; display: flex; }
+  .group h3 span:first-child { flex: 1; }
+  .monthnav { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .monthnav b { font: 400 22px Georgia, serif; min-width: 180px; text-align: center; }
+  button { font: inherit; border: 1px solid var(--edge); background: var(--lift); color: var(--ink); border-radius: 10px; padding: 7px 13px; cursor: pointer; }
+  button:hover { border-color: var(--soft); }
+  button.main { background: var(--ink); color: var(--lift); border-color: var(--ink); }
+  button:disabled { opacity: .4; cursor: default; }
+  select { font: inherit; font-size: 13px; color: var(--mid); background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 2px 4px; width: 128px; flex: none; }
+  .tx .money { width: 96px; flex: none; text-align: right; }
+  select:hover, select:focus { border-color: var(--edge); background: var(--paper); }
+  .tx .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tx .date { color: var(--soft); font-size: 13px; width: 50px; flex: none; }
+  .tx .in { color: var(--income); }
+  .ask { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 0 10px 62px; font-size: 13px; color: var(--mid); }
+  .ask button { padding: 3px 10px; font-size: 13px; }
+  .bars .bar { display: grid; grid-template-columns: 130px 1fr 90px; gap: 10px; align-items: center; padding: 4px 0; cursor: pointer; border-radius: 6px; }
+  .bars .bar:hover, .bars .bar.on { background: var(--paper); }
+  .bars .track { height: 10px; }
+  .bars .fill { height: 10px; background: var(--spend); border-radius: 0 4px 4px 0; min-width: 2px; }
+  .bars .amt { text-align: right; }
+  .legend { display: flex; gap: 16px; font-size: 13px; color: var(--mid); margin-bottom: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  svg { display: block; width: 100%; overflow: visible; }
+  svg text { fill: var(--soft); font: 12px system-ui; }
+  #tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--lift); font-size: 13px; padding: 6px 9px; border-radius: 8px; display: none; z-index: 9; white-space: nowrap; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font: 600 12px system-ui; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); padding: 4px 6px; }
+  td { padding: 8px 6px; border-top: 1px solid var(--edge); }
+  td.num, th.num { text-align: right; }
+  .warn { color: var(--accent); font-size: 13px; }
+  .tag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 99px; background: var(--accent); color: var(--lift); font-size: 12px; vertical-align: 4px; letter-spacing: .04em; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  #error { color: var(--accent); min-height: 1.4em; margin: 0; }
+  [hidden] { display: none !important; }
+  @media (max-width: 600px) {
+    .tiles { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    .tile .value { font-size: 18px; }
+    .hero { font-size: 32px; }
+    .bars .bar { grid-template-columns: 112px 1fr 76px; }
+    /* Too narrow for one line: merchant and amount, then date and category beneath. */
+    .tx { flex-wrap: wrap; row-gap: 0; }
+    .tx .what { flex-basis: calc(100% - 108px); }
+    .tx .date { order: 1; align-self: center; }
+    .tx select { order: 2; margin-left: -4px; }
+    .hide-phone { display: none; }
+    .ask { padding-left: 0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <h1>Money<span id="env"></span></h1>
+    <nav>
+      <a href="#overview">Overview</a>
+      <a href="#spending">Spending</a>
+      <a href="#investments">Investments</a>
+      <a href="#banks">Banks</a>
+    </nav>
+  </header>
+  <p id="error"></p>
+
+  <section id="overview" data-tab>
+    <div class="card">
+      <div class="mid small">Net worth</div>
+      <div class="hero money" id="worth"></div>
+      <div class="mid small" id="split"></div>
+      <div id="worthchart" style="margin-top:14px"></div>
+    </div>
+    <div class="card"><h2 id="thismonth">This month</h2><div class="tiles" id="monthtiles"></div></div>
+    <div class="card"><h2>Accounts</h2><div id="accounts"></div></div>
+  </section>
+
+  <section id="spending" data-tab hidden>
+    <div class="monthnav">
+      <button id="prev" aria-label="Earlier month">‹</button><b id="monthname"></b><button id="next" aria-label="Later month">›</button>
+    </div>
+    <div class="card"><div class="tiles" id="spendtiles"></div></div>
+    <div class="card">
+      <h2>Cash flow</h2>
+      <div class="legend"><span><i style="background:var(--income)"></i>Income</span><span><i style="background:var(--spend)"></i>Spending</span></div>
+      <div id="flow"></div>
+    </div>
+    <div class="card"><h2>By category</h2><div class="bars" id="cats"></div></div>
+    <div class="card"><h2 id="txtitle">Transactions</h2><div id="txs"></div></div>
+  </section>
+
+  <section id="investments" data-tab hidden>
+    <div class="card"><div class="tiles" id="invtiles"></div></div>
+    <div class="card"><h2>Holdings</h2><div id="holdings"></div></div>
+  </section>
+
+  <section id="banks" data-tab hidden>
+    <p class="mid" id="slots"></p>
+    <div class="actions">
+      <button class="main" data-kind="bank">Add a bank or card</button>
+      <button class="main" data-kind="brokerage">Add a brokerage</button>
+      <button id="sync">Sync now</button>
+    </div>
+    <div id="items"></div>
+  </section>
+</main>
+<div id="tip"></div>
+<script>
+const $ = (s) => document.querySelector(s);
+const SVG = "http://www.w3.org/2000/svg";
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+  const text = await r.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  Object.assign(e, attrs);
+  e.append(...kids.filter((k) => k != null && k !== false));
+  return e;
+}
+function svg(tag, attrs, ...kids) {
+  const e = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  e.append(...kids);
+  return e;
+}
+
+const usd = (n, cents = true) => n == null ? "–" : n.toLocaleString(undefined,
+  { style: "currency", currency: "USD", maximumFractionDigits: cents ? 2 : 0, minimumFractionDigits: cents ? 2 : 0 });
+const short = (n) => Math.abs(n) >= 1000 ? `$${(n / 1000).toFixed(Math.abs(n) >= 10000 ? 0 : 1)}k` : `$${Math.round(n)}`;
+const day = (d) => new Date(d + "T12:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+const monthName = (m, long = true) => new Date(m + "-15T12:00").toLocaleDateString(undefined,
+  long ? { month: "long", year: "numeric" } : { month: "short" });
+const shift = (m, by) => { const d = new Date(m + "-15T12:00"); d.setMonth(d.getMonth() + by); return d.toISOString().slice(0, 7); };
+
+const tip = $("#tip");
+function hover(target, text) {
+  target.addEventListener("mousemove", (e) => {
+    tip.textContent = text; tip.style.display = "block";
+    const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+    tip.style.left = x + "px"; tip.style.top = (e.clientY - 36) + "px";
+  });
+  target.addEventListener("mouseleave", () => tip.style.display = "none");
+}
+
+let data = null;
+let month = null;
+let current = null; // this month, the newest the page will step to
+let only = null;    // a category picked from the bars
+
+function tiles(box, list) {
+  box.replaceChildren(...list.map(([label, value]) =>
+    el("div", { className: "tile" }, el("div", { className: "label", textContent: label }),
+      el("div", { className: "value money", textContent: value }))));
+}
+
+function totals(m) {
+  return data.months.find((x) => x.month === m) || { income: 0, spending: 0 };
+}
+
+// --- Overview ---------------------------------------------------------
+
+function overview() {
+  const assets = data.accounts.filter((a) => !a.debt).reduce((n, a) => n + (a.balance || 0), 0);
+  const debts = data.accounts.filter((a) => a.debt).reduce((n, a) => n + (a.balance || 0), 0);
+  $("#worth").textContent = usd(assets - debts, false);
+  $("#split").textContent = `${usd(assets, false)} assets · ${usd(debts, false)} debts` +
+    (data.synced ? ` · synced ${day(data.synced.slice(0, 10))}` : "");
+  worthChart();
+
+  const t = totals(current);
+  $("#thismonth").textContent = monthName(current);
+  tiles($("#monthtiles"), [["Income", usd(t.income, false)], ["Spending", usd(t.spending, false)],
+    ["Net", usd(t.income - t.spending, false)]]);
+
+  const groups = [
+    ["Cash", (a) => a.type === "depository"],
+    ["Investments", (a) => a.type === "investment" || a.type === "brokerage"],
+    ["Cards and loans", (a) => a.debt],
+    ["Other", (a) => !a.debt && !["depository", "investment", "brokerage"].includes(a.type)],
+  ];
+  $("#accounts").replaceChildren(...groups.map(([name, test]) => {
+    const list = data.accounts.filter(test);
+    if (!list.length) return null;
+    const sum = list.reduce((n, a) => n + (a.balance || 0), 0);
+    return el("div", { className: "group" },
+      el("h3", {}, el("span", { textContent: name }), el("span", { className: "money", textContent: usd(sum, false) })),
+      ...list.map((a) => el("div", { className: "row" },
+        el("div", { className: "grow" },
+          el("div", { textContent: `${a.name || "Account"}${a.mask ? " ··" + a.mask : ""}` }),
+          el("div", { className: "sub", textContent: details(a) })),
+        el("span", { className: "money", textContent: usd(a.balance) }))));
+  }).filter(Boolean));
+}
+
+function details(a) {
+  const bits = [a.institution];
+  if (a.debt) {
+    if (a.due) bits.push(`${a.minimum != null ? usd(a.minimum) + " " : ""}due ${day(a.due)}`);
+    if (a.statement != null) bits.push(`statement ${usd(a.statement)}`);
+    if (a.apr != null) bits.push(`${a.apr}% APR`);
+    if (a.limit) bits.push(`${Math.round(100 * (a.balance || 0) / a.limit)}% of ${usd(a.limit, false)}`);
+  } else if (a.subtype) bits.push(a.subtype);
+  return bits.filter(Boolean).join(" · ");
+}
+
+// One series, so no legend: the card's title names it. Crosshair on hover.
+function worthChart() {
+  const box = $("#worthchart");
+  const pts = data.worth.map((w) => ({ date: w.date, v: w.assets - w.debts }));
+  if (pts.length < 2) {
+    box.replaceChildren(el("p", { className: "soft small", style: "margin:0",
+      textContent: "History builds from here: a point each day." }));
+    return;
+  }
+  const W = 840, H = 160, L = 8, R = 56, T = 8, B = 22;
+  const vs = pts.map((p) => p.v);
+  let lo = Math.min(...vs), hi = Math.max(...vs);
+  if (hi === lo) { hi += 1; lo -= 1; }
+  const pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
+  const x = (i) => L + (W - L - R) * i / (pts.length - 1);
+  const y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Net worth by day" });
+  for (const v of [lo + pad, hi - pad]) {
+    s.append(svg("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "#d6cab6", "stroke-width": 1 }),
+      svg("text", { x: W - R + 6, y: y(v) + 4 }, short(v)));
+  }
+  s.append(svg("text", { x: L, y: H - 4 }, day(pts[0].date)),
+    svg("text", { x: W - R, y: H - 4, "text-anchor": "end" }, day(pts.at(-1).date)));
+  s.append(svg("path", { d: pts.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(p.v)}`).join(""),
+    fill: "none", stroke: "#2b2620", "stroke-width": 2, "stroke-linejoin": "round" }));
+  const cross = svg("line", { y1: T, y2: H - B, stroke: "#978b7d", "stroke-width": 1, visibility: "hidden" });
+  const dot = svg("circle", { r: 4, fill: "#2b2620", stroke: "#f4ede1", "stroke-width": 2, visibility: "hidden" });
+  const hit = svg("rect", { x: L, y: 0, width: W - L - R, height: H, fill: "transparent" });
+  s.append(cross, dot, hit);
+  hit.addEventListener("mousemove", (e) => {
+    const r = s.getBoundingClientRect();
+    const i = Math.max(0, Math.min(pts.length - 1, Math.round((((e.clientX - r.left) / r.width * W) - L) / (W - L - R) * (pts.length - 1))));
+    const p = pts[i];
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
+    dot.setAttribute("cx", x(i)); dot.setAttribute("cy", y(p.v)); dot.setAttribute("visibility", "visible");
+    tip.textContent = `${day(p.date)}: ${usd(p.v, false)}`; tip.style.display = "block";
+    tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + "px"; tip.style.top = (e.clientY - 36) + "px";
+  });
+  hit.addEventListener("mouseleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
+  box.replaceChildren(s);
+}
+
+// --- Spending ---------------------------------------------------------
+
+function spending() {
+  $("#monthname").textContent = monthName(month);
+  $("#next").disabled = month >= current;
+  const t = totals(month);
+  tiles($("#spendtiles"), [["Income", usd(t.income, false)], ["Spending", usd(t.spending, false)],
+    ["Net", usd(t.income - t.spending, false)]]);
+  flowChart();
+
+  const cats = data.categories.filter((c) => c.kind === "spend" && c.amount > 0).sort((a, b) => b.amount - a.amount);
+  const top = cats.length ? cats[0].amount : 1;
+  $("#cats").replaceChildren(...(cats.length ? cats.map((c) => {
+    const bar = el("div", { className: "bar" + (only === c.name ? " on" : ""), onclick: () => { only = only === c.name ? null : c.name; spending(); } },
+      el("span", { textContent: c.name }),
+      el("div", { className: "track" }, el("div", { className: "fill", style: `width:${100 * c.amount / top}%` })),
+      el("span", { className: "amt money", textContent: usd(c.amount, false) }));
+    hover(bar, `${c.name}: ${usd(c.amount)} over ${c.count} transaction${c.count === 1 ? "" : "s"}`);
+    return bar;
+  }) : [el("p", { className: "soft", style: "margin:0", textContent: "No spending this month." })]));
+
+  const list = data.transactions.filter((x) => !only || x.category === only);
+  $("#txtitle").replaceChildren("Transactions", only ? el("span", { className: "soft small" },
+    `  ·  ${only}  `, el("button", { textContent: "Show all", style: "padding:1px 8px;font-size:12px", onclick: () => { only = null; spending(); } })) : "");
+  $("#txs").replaceChildren(...(list.length ? list.map(txRow) : [el("p", { className: "soft", style: "margin:0", textContent: "Nothing here." })]));
+}
+
+const names = () => data.categories.map((c) => c.name);
+
+function txRow(x) {
+  const pick = el("select", { title: x.source === "plaid" ? "Plaid's guess" : x.source === "rule" ? "Your rule for this merchant" : "Picked by you" },
+    ...names().map((n) => el("option", { value: n, textContent: n, selected: n === x.category })));
+  const wrap = el("div", {});
+  const row = el("div", { className: "row tx" },
+    el("span", { className: "date", textContent: day(x.date) }),
+    el("div", { className: "what" },
+      el("span", { textContent: x.merchant || x.name }),
+      el("span", { className: "sub hide-phone", textContent: `  ${x.account || ""}${x.pending ? " · pending" : ""}` })),
+    pick,
+    el("span", { className: "money" + (x.amount < 0 ? " in" : ""), textContent: (x.amount < 0 ? "+" : "") + usd(Math.abs(x.amount)) }));
+  wrap.append(row);
+  pick.onchange = () => {
+    const to = pick.value;
+    const file = async (every) => {
+      try { await api("/api/category", { transaction: x.id, category: to, every }); await load(); }
+      catch (e) { $("#error").textContent = e.message; }
+    };
+    wrap.querySelector(".ask")?.remove();
+    wrap.append(el("div", { className: "ask" }, `${to}:`,
+      el("button", { textContent: "Just this one", onclick: () => file(false) }),
+      el("button", { className: "main", textContent: `Every ${x.merchant || x.name}`, onclick: () => file(true) }),
+      el("button", { textContent: "Cancel", onclick: () => { pick.value = x.category; wrap.querySelector(".ask").remove(); } })));
+  };
+  return wrap;
+}
+
+// Income and spending side by side per month, oldest on the left; one
+// y-axis, both in dollars. The chosen month is the darker pair.
+function flowChart() {
+  const ms = [...data.months].reverse();
+  const box = $("#flow");
+  if (!ms.length) { box.replaceChildren(el("p", { className: "soft small", style: "margin:0", textContent: "No transactions yet." })); return; }
+  const W = 840, H = 180, L = 8, R = 56, T = 8, B = 22;
+  const hi = Math.max(1, ...ms.flatMap((m) => [m.income, m.spending])) * 1.08;
+  const slot = (W - L - R) / Math.max(ms.length, 6);
+  const bw = Math.min(18, (slot - 10) / 2);
+  const y = (v) => T + (H - T - B) * (1 - v / hi);
+  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Income and spending by month" });
+  for (const v of [hi / 1.08 / 2, hi / 1.08]) {
+    s.append(svg("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "#d6cab6", "stroke-width": 1 }),
+      svg("text", { x: W - R + 6, y: y(v) + 4 }, short(v)));
+  }
+  s.append(svg("line", { x1: L, x2: W - R, y1: y(0), y2: y(0), stroke: "#978b7d", "stroke-width": 1 }));
+  // Bars rise from the baseline with the top two corners rounded.
+  const bar = (x0, v, color, faded) => {
+    const h = Math.max(0, y(0) - y(v)), r = Math.min(4, h, bw / 2);
+    return svg("path", { fill: color, opacity: faded ? 0.45 : 1,
+      d: `M${x0},${y(0)}V${y(0) - h + r}Q${x0},${y(0) - h} ${x0 + r},${y(0) - h}H${x0 + bw - r}Q${x0 + bw},${y(0) - h} ${x0 + bw},${y(0) - h + r}V${y(0)}Z` });
+  };
+  ms.forEach((m, i) => {
+    const cx = L + slot * i + slot / 2, faded = m.month !== month;
+    const g = svg("g", { style: "cursor:pointer" },
+      svg("rect", { x: cx - slot / 2, y: 0, width: slot, height: H, fill: "transparent" }),
+      bar(cx - bw - 1, m.income, "#2f6db5", faded), bar(cx + 1, m.spending, "#b0482a", faded),
+      svg("text", { x: cx, y: H - 4, "text-anchor": "middle", style: m.month === month ? "fill:#2b2620" : "" }, monthName(m.month, false)));
+    hover(g, `${monthName(m.month)}: income ${usd(m.income, false)}, spending ${usd(m.spending, false)}, net ${usd(m.income - m.spending, false)}`);
+    g.addEventListener("click", () => go(m.month));
+    s.append(g);
+  });
+  box.replaceChildren(s);
+}
+
+async function go(m) {
+  month = m; only = null;
+  await load();
+}
+
+// --- Investments ------------------------------------------------------
+
+function investments() {
+  const hs = data.holdings;
+  const value = hs.reduce((n, h) => n + (h.value || 0), 0);
+  const known = hs.filter((h) => h.cost != null && h.value != null);
+  const gain = known.reduce((n, h) => n + h.value - h.cost, 0);
+  const cost = known.reduce((n, h) => n + h.cost, 0);
+  tiles($("#invtiles"), [["Value", usd(value, false)], ["Gain", usd(gain, false)],
+    ["Return", cost ? `${(100 * gain / cost).toFixed(1)}%` : "–"]]);
+  if (!hs.length) { $("#holdings").replaceChildren(el("p", { className: "soft", style: "margin:0", textContent: "No holdings yet." })); return; }
+  $("#holdings").replaceChildren(el("table", {},
+    el("thead", {}, el("tr", {}, ...[["Holding"], ["Account", "hide-phone"], ["Shares", "num hide-phone"], ["Price", "num hide-phone"], ["Value", "num"], ["Gain", "num"]]
+      .map(([t, c]) => el("th", { className: c || "", textContent: t })))),
+    el("tbody", {}, ...hs.map((h) => {
+      const g = h.cost != null && h.value != null ? h.value - h.cost : null;
+      return el("tr", {},
+        el("td", {}, el("div", { textContent: h.ticker || h.name || "–" }), h.ticker ? el("div", { className: "soft small", textContent: h.name }) : null),
+        el("td", { className: "hide-phone mid small", textContent: `${h.account || ""}${h.mask ? " ··" + h.mask : ""}` }),
+        el("td", { className: "num money hide-phone", textContent: h.quantity?.toLocaleString(undefined, { maximumFractionDigits: 3 }) ?? "–" }),
+        el("td", { className: "num money hide-phone", textContent: usd(h.price) }),
+        el("td", { className: "num money", textContent: usd(h.value, false) }),
+        el("td", { className: "num money", textContent: g == null ? "–" : (g >= 0 ? "+" : "−") + usd(Math.abs(g), false) }));
+    }))));
+}
+
+// --- Banks: linking and logging in again, through Plaid Link -------------
+
+const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+const counts = (accounts) => {
+  const sum = (k) => accounts.reduce((n, a) => n + a[k], 0);
+  return [plural(sum("transactions"), "transaction"), plural(sum("holdings"), "holding")].join(" · ");
+};
+
+async function banks() {
+  const o = await api("/api/overview");
+  $("#env").replaceChildren(o.sandbox ? el("span", { className: "tag", textContent: "SANDBOX" }) : "");
+  $("#slots").textContent = o.sandbox
+    ? "Test banks only. Log in with user_good / pass_good."
+    : `${o.slots.used} of ${o.slots.of} bank logins used. A login's slot is never given back.`;
+  $("#items").replaceChildren(...o.items.map((i) => el("section", { className: "card" },
+    el("div", { style: "display:flex;align-items:baseline;gap:10px" },
+      el("h2", { style: "flex:1;margin:0", textContent: i.institution || "Linking…" }),
+      el("span", { className: "soft small", textContent: i.synced ? `synced ${i.synced} UTC` : i.status })),
+    el("div", { style: "margin-top:8px" }, ...i.accounts.map((a) => el("div", { className: "row" },
+      el("span", { className: "grow" }, `${a.name}${a.mask ? " ··" + a.mask : ""} `,
+        el("span", { className: "sub", textContent: a.subtype || a.type || "" }),
+        a.duplicate ? el("div", { className: "warn", textContent: "Also linked through another login; counted twice." }) : null),
+      el("span", { className: "money", textContent: usd(a.balance) })))),
+    el("p", { className: "soft small", style: "margin:8px 0 0", textContent: counts(i.accounts) }),
+    i.status === "login" ? el("div", {},
+      el("p", { className: "mid small", textContent: "The bank wants a fresh login." }),
+      el("button", { className: "main", textContent: "Log in again", onclick: () => link({ item: i.id }) })) : null,
+    i.status === "error" ? el("p", { className: "warn", textContent: i.error }) : null,
+  )));
+}
+
+async function link(ask) {
+  $("#error").textContent = "";
+  try {
+    const { link_token } = await api("/api/link", ask);
+    Plaid.create({
+      token: link_token,
+      onSuccess: async (public_token) => {
+        // Update mode keeps the Item's token; only a new Item is exchanged.
+        if (ask.item) await api("/api/sync", {});
+        else await api("/api/linked", { public_token });
+        await banks();
+        setTimeout(() => { banks(); load(); }, 5000);
+      },
+      onExit: (err) => { if (err) $("#error").textContent = err.display_message || err.error_message || err.error_code; },
+    }).open();
+  } catch (e) {
+    $("#error").textContent = e.message;
+  }
+}
+
+document.querySelectorAll("[data-kind]").forEach((b) => b.onclick = () => link({ kind: b.dataset.kind }));
+$("#sync").onclick = async (ev) => {
+  ev.target.disabled = true;
+  try { await api("/api/sync", {}); await banks(); await load(); } catch (e) { $("#error").textContent = e.message; }
+  ev.target.disabled = false;
+};
+
+// --- Tabs and loading ---------------------------------------------------
+
+function tab() {
+  const name = (location.hash || "#overview").slice(1);
+  document.querySelectorAll("[data-tab]").forEach((s) => s.hidden = s.id !== name);
+  document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("on", a.hash === "#" + name));
+  if (name === "banks") banks().catch((e) => $("#error").textContent = e.message);
+}
+addEventListener("hashchange", tab);
+$("#prev").onclick = () => go(shift(month, -1));
+$("#next").onclick = () => go(shift(month, 1));
+
+async function load() {
+  data = await api("/api/money" + (month ? `?month=${month}` : ""));
+  current ??= data.month;
+  month = data.month;
+  overview();
+  spending();
+  investments();
+}
+
+tab();
+load().catch((e) => $("#error").textContent = e.message);
+</script>
+</body>
+</html>

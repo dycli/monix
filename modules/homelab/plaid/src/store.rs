@@ -134,6 +134,18 @@ impl Store {
         })
     }
 
+    /// Opens the databases and brings the money page's tables, view and
+    /// category list up to this build. Once at start, not per request:
+    /// rebuilding the view is a write.
+    pub fn prepare(dir: &Path) -> Result<Self, String> {
+        let s = Self::open(dir)?;
+        s.finance
+            .execute_batch(crate::money::SCHEMA)
+            .map_err(|e| format!("finance.db: {e}"))?;
+        crate::money::seed(&s.finance)?;
+        Ok(s)
+    }
+
     /// Every Item ever linked; on the Trial plan this is the count of used slots.
     pub fn slots(&self) -> Result<i64, String> {
         self.vault
@@ -243,7 +255,7 @@ impl Store {
             ])
             .map_err(|e| e.to_string())?;
         }
-        Ok(())
+        crate::money::snapshot(&self.finance)
     }
 
     /// One `/transactions/sync` run's changes and the cursor after them, in
@@ -463,7 +475,7 @@ mod tests {
     fn sync_keeps_rows_and_flags_joint_accounts() {
         let dir = std::env::temp_dir().join(format!("plaid-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let mut s = Store::open(&dir).unwrap();
+        let mut s = Store::prepare(&dir).unwrap();
         for (item, inst) in [("i1", "Amex"), ("i2", "Amex")] {
             s.add(item, "tok").unwrap();
             s.describe(item, inst, "transactions").unwrap();

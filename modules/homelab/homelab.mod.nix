@@ -105,10 +105,10 @@
           agent = true;
         }
         {
-          name = "Plaid";
-          about = "Money";
+          name = "Money";
+          about = "Spending and savings";
           icon = "";
-          route = "plaid";
+          route = "money";
         }
         {
           name = "Frame";

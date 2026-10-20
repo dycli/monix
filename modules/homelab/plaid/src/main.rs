@@ -1,8 +1,9 @@
-//! The household's bank link. It holds the Plaid keys and each bank login's
-//! access token, pulls accounts, transactions, holdings and card statements
-//! into `finance.db` on a timer, and serves the page where we link a bank or
-//! log in to one again. Nothing here can move money: the products are
-//! read-only.
+//! The household's money page and bank link. It holds the Plaid keys and
+//! each bank login's access token, pulls accounts, transactions, holdings
+//! and card statements into `finance.db` on a timer, and serves the page:
+//! net worth, spending by category, investments, and the Banks tab where we
+//! link a bank or log in to one again. Nothing here can move money: the
+//! products are read-only.
 //!
 //! Environment:
 //! - `PLAID_LISTEN`: address to bind, e.g. `127.0.0.1:8975`.
@@ -12,6 +13,7 @@
 //! - `PLAID_STATE`: directory for `finance.db` and `vault/vault.db`.
 
 mod api;
+mod money;
 mod store;
 
 use std::path::PathBuf;
@@ -19,7 +21,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Json, Response};
 use axum::routing::{get, post};
@@ -249,7 +251,71 @@ fn fail(status: StatusCode, message: impl ToString) -> Response {
 }
 
 async fn page() -> Html<&'static str> {
-    Html(include_str!("page.html"))
+    Html(include_str!("money.html"))
+}
+
+#[derive(Deserialize)]
+struct Month {
+    /// `YYYY-MM`; this month when left out.
+    month: Option<String>,
+}
+
+fn is_month(m: &str) -> bool {
+    let b = m.as_bytes();
+    b.len() == 7
+        && b[4] == b'-'
+        && b.iter()
+            .enumerate()
+            .all(|(i, c)| i == 4 || c.is_ascii_digit())
+}
+
+async fn money_page(State(app): State<Arc<App>>, Query(q): Query<Month>) -> Response {
+    if q.month.as_deref().is_some_and(|m| !is_month(m)) {
+        return fail(StatusCode::BAD_REQUEST, "month is YYYY-MM");
+    }
+    let a = app.clone();
+    match tokio::task::spawn_blocking(move || {
+        let store = Store::open(&a.state)?;
+        let month = match q.month {
+            Some(m) => m,
+            None => store
+                .finance
+                .query_row("SELECT strftime('%Y-%m', 'now', 'localtime')", [], |r| {
+                    r.get(0)
+                })
+                .map_err(|e| e.to_string())?,
+        };
+        money::page(&store.finance, &month)
+    })
+    .await
+    {
+        Ok(Ok(v)) => Json(v).into_response(),
+        Ok(Err(e)) => fail(StatusCode::INTERNAL_SERVER_ERROR, e),
+        Err(e) => fail(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+#[derive(Deserialize)]
+struct Filing {
+    transaction: String,
+    category: String,
+    /// Every transaction from this merchant, now and later.
+    #[serde(default)]
+    every: bool,
+}
+
+async fn categorize(State(app): State<Arc<App>>, Json(f): Json<Filing>) -> Response {
+    let a = app.clone();
+    match tokio::task::spawn_blocking(move || {
+        let store = Store::open(&a.state)?;
+        money::categorize(&store.finance, &f.transaction, &f.category, f.every)
+    })
+    .await
+    {
+        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Err(e)) => fail(StatusCode::BAD_REQUEST, e),
+        Err(e) => fail(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
 }
 
 async fn overview(State(app): State<Arc<App>>) -> Response {
@@ -427,7 +493,7 @@ async fn main() {
     let state = PathBuf::from(env("PLAID_STATE"));
     // A subdirectory per environment, so test banks never mix with real ones.
     std::fs::create_dir_all(&state).unwrap_or_else(|e| panic!("{}: {e}", state.display()));
-    Store::open(&state).unwrap_or_else(|e| panic!("{e}"));
+    Store::prepare(&state).unwrap_or_else(|e| panic!("{e}"));
     let app = Arc::new(App {
         plaid: Plaid::new(sandbox, id, secret),
         sandbox,
@@ -446,6 +512,8 @@ async fn main() {
     let routes = Router::new()
         .route("/", get(page))
         .route("/api/overview", get(overview))
+        .route("/api/money", get(money_page))
+        .route("/api/category", post(categorize))
         .route("/api/link", post(link))
         .route("/api/linked", post(linked))
         .route("/api/sync", post(sync_now))
