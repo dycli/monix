@@ -16,8 +16,6 @@ CREATE TABLE IF NOT EXISTS staff (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   color TEXT NOT NULL,
-  -- The secret in the person's own page, /s/<token>.
-  token TEXT NOT NULL UNIQUE,
   active INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS shifts (
@@ -50,7 +48,8 @@ CREATE TABLE IF NOT EXISTS requests (
 
 /// Changes to the schema after the first, run in order once each;
 /// `PRAGMA user_version` counts those applied.
-const MIGRATIONS: &[&str] = &["
+const MIGRATIONS: &[&str] = &[
+    "
 -- The shifts each person works most weeks; weekday 0 is Monday.
 CREATE TABLE usual (
   id INTEGER PRIMARY KEY,
@@ -73,7 +72,35 @@ CREATE TABLE rules (
 INSERT INTO rules VALUES (1, 2, 3);
 -- Days the manager has agreed to run with fewer than the rules ask.
 CREATE TABLE short_ok (day TEXT PRIMARY KEY);
-"];
+",
+    "
+-- Per-person links gave way to one shared password; staff loses its token.
+CREATE TABLE staff2 (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  color TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1
+);
+INSERT INTO staff2 SELECT id, name, color, active FROM staff;
+DROP TABLE staff;
+ALTER TABLE staff2 RENAME TO staff;
+-- One password the whole team shares and one for the manager, salted
+-- and hashed.
+CREATE TABLE password (
+  role TEXT PRIMARY KEY CHECK (role IN ('admin', 'staff')),
+  salt TEXT NOT NULL,
+  hash TEXT NOT NULL
+);
+-- Signed-in browsers; a new password clears that role's.
+CREATE TABLE sessions (
+  token TEXT PRIMARY KEY,
+  role TEXT NOT NULL,
+  made TEXT NOT NULL
+);
+-- 1 for a shift its person can't work, waiting for someone to take it.
+ALTER TABLE shifts ADD COLUMN open INTEGER NOT NULL DEFAULT 0;
+",
+];
 
 /// How many weeks past this one the usual week fills in.
 const AHEAD: i64 = 8;
@@ -93,7 +120,7 @@ const MAX_DAYS: i64 = 60;
 pub enum Error {
     /// The request itself is wrong; the text says how.
     Bad(String),
-    /// No such row, or no such person for a token.
+    /// No such row.
     Missing,
     Db(rusqlite::Error),
 }
@@ -116,9 +143,6 @@ pub struct Person {
     pub name: String,
     pub color: String,
     pub active: bool,
-    /// Only the manager's staff list carries the link.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub token: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -129,6 +153,8 @@ pub struct Shift {
     pub start: i64,
     pub end: i64,
     pub note: String,
+    /// Up for anyone to take; it counts toward no one's day.
+    pub open: bool,
 }
 
 #[derive(Serialize)]
@@ -210,20 +236,6 @@ pub struct Requests {
     pub decided: Vec<Off>,
 }
 
-#[derive(Serialize)]
-pub struct Mine {
-    pub me: Person,
-    pub today: String,
-    pub monday: String,
-    /// Whether the week is posted; an unposted week shows no shifts.
-    pub published: bool,
-    pub staff: Vec<Person>,
-    pub shifts: Vec<Shift>,
-    /// The person's own posted shifts from today, four weeks out.
-    pub upcoming: Vec<Shift>,
-    pub requests: Vec<Off>,
-}
-
 #[derive(Deserialize)]
 pub struct ShiftIn {
     pub id: Option<i64>,
@@ -233,6 +245,8 @@ pub struct ShiftIn {
     pub end: i64,
     #[serde(default)]
     pub note: String,
+    #[serde(default)]
+    pub open: bool,
 }
 
 #[derive(Deserialize)]
@@ -251,13 +265,38 @@ pub struct OffIn {
     pub reason: String,
 }
 
+/// Who a signed-in browser is: the manager sees and changes everything;
+/// staff see posted weeks, ask for time off and take open shifts.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    Admin,
+    Staff,
+}
+
+impl Role {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Role::Admin => "admin",
+            Role::Staff => "staff",
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct Passwords {
+    pub admin: bool,
+    pub staff: bool,
+}
+
 pub struct Store {
     db: Connection,
 }
 
 const OFF: &str =
     "SELECT r.id, r.staff, s.name, r.first, r.last, r.reason, r.status, r.made, r.decided,
-      (SELECT COUNT(*) FROM shifts WHERE staff = r.staff AND day BETWEEN r.first AND r.last)
+      (SELECT COUNT(*) FROM shifts
+        WHERE staff = r.staff AND NOT open AND day BETWEEN r.first AND r.last)
     FROM requests r JOIN staff s ON s.id = r.staff";
 
 fn off(r: &rusqlite::Row) -> rusqlite::Result<Off> {
@@ -283,6 +322,7 @@ fn shift(r: &rusqlite::Row) -> rusqlite::Result<Shift> {
         start: r.get(3)?,
         end: r.get(4)?,
         note: r.get(5)?,
+        open: r.get(6)?,
     })
 }
 
@@ -292,17 +332,22 @@ fn person(r: &rusqlite::Row) -> rusqlite::Result<Person> {
         name: r.get(1)?,
         color: r.get(2)?,
         active: r.get(3)?,
-        token: None,
     })
 }
 
-/// 128 random bits as hex, for a person's link.
+/// 128 random bits as hex, for a sign-in session or a password's salt.
 fn token() -> String {
     let mut bytes = [0u8; 16];
     std::fs::File::open("/dev/urandom")
         .and_then(|mut f| f.read_exact(&mut bytes))
         .expect("/dev/urandom");
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn hash(salt: &str, password: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let d = Sha256::digest(format!("{salt}:{password}"));
+    d.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn text(what: &str, s: &str, max: usize) -> Result<String> {
@@ -318,12 +363,16 @@ impl Store {
         let db = Connection::open(path)?;
         db.execute_batch(SCHEMA)?;
         let done: usize = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        // Rebuilding a table needs foreign keys off, and the pragma only
+        // takes effect outside a transaction.
+        db.pragma_update(None, "foreign_keys", false)?;
         for (i, m) in MIGRATIONS.iter().enumerate().skip(done) {
             let tx = db.unchecked_transaction()?;
             tx.execute_batch(m)?;
             tx.pragma_update(None, "user_version", i + 1)?;
             tx.commit()?;
         }
+        db.pragma_update(None, "foreign_keys", true)?;
         Ok(Store { db })
     }
 
@@ -378,7 +427,7 @@ impl Store {
 
     fn shifts(&self, monday: &str, only: Option<i64>) -> Result<Vec<Shift>> {
         let mut q = self.db.prepare(
-            "SELECT id, staff, day, start, end, note FROM shifts
+            "SELECT id, staff, day, start, end, note, open FROM shifts
              WHERE day BETWEEN ?1 AND date(?1, '+6 days') AND (?2 IS NULL OR staff = ?2)
              ORDER BY day, start, end",
         )?;
@@ -672,8 +721,9 @@ impl Store {
         self.carry(Some(&old), None)
     }
 
-    /// Takes the person off their coming shifts on days they now have off;
-    /// days already past keep the record of who worked.
+    /// Opens the person's coming shifts on days they now have off, for
+    /// someone else to take; days already past keep the record of who
+    /// worked.
     fn clear_off(&self, request: i64) -> Result<usize> {
         const MATCH: &str = "FROM shifts h JOIN requests r ON r.id = ?1
             WHERE h.staff = r.staff AND h.day BETWEEN max(r.first, ?2) AND r.last";
@@ -684,7 +734,7 @@ impl Store {
                 .collect::<rusqlite::Result<_>>()?
         };
         let n = self.db.execute(
-            &format!("DELETE FROM shifts WHERE id IN (SELECT h.id {MATCH})"),
+            &format!("UPDATE shifts SET open = 1, usual = 0 WHERE id IN (SELECT h.id {MATCH})"),
             params![request, today],
         )?;
         for d in days {
@@ -715,17 +765,18 @@ impl Store {
                     .optional()?
                     .ok_or(Error::Missing)?;
                 self.db.execute(
-                    "UPDATE shifts SET staff = ?2, day = ?3, start = ?4, end = ?5, note = ?6
+                    "UPDATE shifts SET staff = ?2, day = ?3, start = ?4, end = ?5, note = ?6, open = ?7
                      WHERE id = ?1",
-                    params![id, s.staff, s.day, s.start, s.end, note],
+                    params![id, s.staff, s.day, s.start, s.end, note, s.open],
                 )?;
                 self.touch(&was)?;
                 id
             }
             None => {
                 self.db.execute(
-                    "INSERT INTO shifts (staff, day, start, end, note) VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![s.staff, s.day, s.start, s.end, note],
+                    "INSERT INTO shifts (staff, day, start, end, note, open)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![s.staff, s.day, s.start, s.end, note, s.open],
                 )?;
                 self.db.last_insert_rowid()
             }
@@ -733,7 +784,7 @@ impl Store {
         // A shift the same as that person's usual one that weekday counts
         // as usual, so changes to the usual week carry into it.
         self.db.execute(
-            "UPDATE shifts SET usual = EXISTS (SELECT 1 FROM usual u WHERE u.staff = shifts.staff
+            "UPDATE shifts SET usual = NOT open AND EXISTS (SELECT 1 FROM usual u WHERE u.staff = shifts.staff
                AND u.start = shifts.start AND u.end = shifts.end
                AND u.weekday = (CAST(strftime('%w', shifts.day) AS INTEGER) + 6) % 7)
              WHERE id = ?1",
@@ -787,16 +838,10 @@ impl Store {
 
     pub fn staff(&self) -> Result<Vec<Person>> {
         let mut q = self.db.prepare(
-            "SELECT id, name, color, active, token FROM staff
+            "SELECT id, name, color, active FROM staff
              ORDER BY NOT active, name COLLATE NOCASE",
         )?;
-        Ok(q.query_map([], |r| {
-            Ok(Person {
-                token: Some(r.get(4)?),
-                ..person(r)?
-            })
-        })?
-        .collect::<rusqlite::Result<_>>()?)
+        Ok(q.query_map([], person)?.collect::<rusqlite::Result<_>>()?)
     }
 
     pub fn save_person(&self, p: &PersonIn) -> Result<i64> {
@@ -823,21 +868,12 @@ impl Store {
             }
             None => {
                 self.db.execute(
-                    "INSERT INTO staff (name, color, token, active) VALUES (?1, ?2, ?3, ?4)",
-                    params![name, p.color, token(), p.active],
+                    "INSERT INTO staff (name, color, active) VALUES (?1, ?2, ?3)",
+                    params![name, p.color, p.active],
                 )?;
                 Ok(self.db.last_insert_rowid())
             }
         }
-    }
-
-    /// A new link for the person; the old one stops working.
-    pub fn relink(&self, id: i64) -> Result<String> {
-        let t = token();
-        let n = self
-            .db
-            .execute("UPDATE staff SET token = ?2 WHERE id = ?1", params![id, t])?;
-        if n == 0 { Err(Error::Missing) } else { Ok(t) }
     }
 
     pub fn requests(&self) -> Result<Requests> {
@@ -906,85 +942,179 @@ impl Store {
         if n == 0 { Err(Error::Missing) } else { Ok(()) }
     }
 
-    /// The person a link belongs to; archived staff lose their page.
-    pub fn me(&self, token: &str) -> Result<Person> {
-        self.db
-            .query_row(
-                "SELECT id, name, color, active FROM staff WHERE token = ?1 AND active",
-                [token],
-                person,
-            )
+    fn active(&self, staff: i64) -> Result<()> {
+        let active: bool = self
+            .db
+            .query_row("SELECT active FROM staff WHERE id = ?1", [staff], |r| {
+                r.get(0)
+            })
             .optional()?
-            .ok_or(Error::Missing)
+            .ok_or(Error::Missing)?;
+        if active { Ok(()) } else { Err(Error::Missing) }
     }
 
-    pub fn mine(&self, token: &str, monday: &str) -> Result<Mine> {
-        let me = self.me(token)?;
-        self.monday(monday)?;
-        self.fill_ahead()?;
-        let today = self.today()?;
-        let published: bool = self.db.query_row(
-            "SELECT EXISTS (SELECT 1 FROM weeks WHERE monday = ?1)",
-            [monday],
-            |r| r.get(0),
-        )?;
-        let mut q = self.db.prepare(concat!(
-            "SELECT h.id, h.staff, h.day, h.start, h.end, h.note FROM shifts h
-             JOIN weeks w ON w.monday = ",
-            monday_of!("h.day"),
-            " WHERE h.staff = ?1 AND h.day BETWEEN ?2 AND date(?2, '+27 days')
-             ORDER BY h.day, h.start"
-        ))?;
-        let upcoming = q
-            .query_map(params![me.id, today], shift)?
-            .collect::<rusqlite::Result<_>>()?;
-        let mut q = self.db.prepare(&format!(
-            "{OFF} WHERE r.staff = ?1 ORDER BY r.first DESC LIMIT 30"
-        ))?;
-        let requests = q
-            .query_map([me.id], off)?
-            .collect::<rusqlite::Result<_>>()?;
-        Ok(Mine {
-            staff: if published {
-                self.people(monday, true)?
-            } else {
-                Vec::new()
-            },
-            shifts: if published {
-                self.shifts(monday, None)?
-            } else {
-                Vec::new()
-            },
-            me,
-            today,
-            monday: monday.to_owned(),
-            published,
-            upcoming,
-            requests,
-        })
+    /// The week as staff see it: empty until posted, and without anyone's
+    /// reasons for time off.
+    pub fn board(&self, monday: &str) -> Result<Week> {
+        let mut w = self.week(monday)?;
+        if w.published.is_none() {
+            w.shifts.clear();
+        }
+        for o in &mut w.off {
+            o.reason.clear();
+        }
+        w.pending = 0;
+        w.usual.clear();
+        Ok(w)
     }
 
-    pub fn ask_off(&self, token: &str, o: &OffIn) -> Result<i64> {
-        let me = self.me(token)?;
+    /// A request for time off, waiting for the manager.
+    pub fn ask_off(&self, staff: i64, o: &OffIn) -> Result<i64> {
+        self.active(staff)?;
         let reason = self.check_off(o)?;
         if o.first < self.today()? {
             return bad("that day has passed");
         }
         self.db.execute(
             "INSERT INTO requests (staff, first, last, reason) VALUES (?1, ?2, ?3, ?4)",
-            params![me.id, o.first, o.last, reason],
+            params![staff, o.first, o.last, reason],
         )?;
         Ok(self.db.last_insert_rowid())
     }
 
-    /// Staff can withdraw a request until it is decided.
-    pub fn withdraw(&self, token: &str, id: i64) -> Result<()> {
-        let me = self.me(token)?;
-        let n = self.db.execute(
-            "DELETE FROM requests WHERE id = ?1 AND staff = ?2 AND status = 'pending'",
-            params![id, me.id],
+    /// Someone takes an open shift in a posted week, from today on.
+    pub fn take(&self, shift: i64, staff: i64) -> Result<()> {
+        self.active(staff)?;
+        let (day, start, end, open, posted): (String, i64, i64, bool, bool) = self
+            .db
+            .query_row(
+                concat!(
+                    "SELECT day, start, end, open, EXISTS (SELECT 1 FROM weeks WHERE monday = ",
+                    monday_of!("h.day"),
+                    ") FROM shifts h WHERE id = ?1"
+                ),
+                [shift],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .optional()?
+            .ok_or(Error::Missing)?;
+        if !open {
+            return bad("someone already took that shift");
+        }
+        if !posted {
+            return Err(Error::Missing);
+        }
+        if day < self.today()? {
+            return bad("that day has passed");
+        }
+        let busy: bool = self.db.query_row(
+            "SELECT EXISTS (SELECT 1 FROM shifts WHERE staff = ?1 AND day = ?2 AND NOT open
+               AND start < ?4 AND ?3 < end)",
+            params![staff, day, start, end],
+            |r| r.get(0),
         )?;
-        if n == 0 { Err(Error::Missing) } else { Ok(()) }
+        if busy {
+            return bad("you already work then");
+        }
+        let off: bool = self.db.query_row(
+            "SELECT EXISTS (SELECT 1 FROM requests WHERE staff = ?1 AND status = 'approved'
+               AND ?2 BETWEEN first AND last)",
+            params![staff, day],
+            |r| r.get(0),
+        )?;
+        if off {
+            return bad("you have that day off");
+        }
+        self.db.execute(
+            "UPDATE shifts SET staff = ?2, open = 0, usual = 0 WHERE id = ?1",
+            params![shift, staff],
+        )?;
+        Ok(())
+    }
+
+    pub fn passwords(&self) -> Result<Passwords> {
+        let set = |role: Role| -> Result<bool> {
+            Ok(self.db.query_row(
+                "SELECT EXISTS (SELECT 1 FROM password WHERE role = ?1)",
+                [role.as_str()],
+                |r| r.get(0),
+            )?)
+        };
+        Ok(Passwords {
+            admin: set(Role::Admin)?,
+            staff: set(Role::Staff)?,
+        })
+    }
+
+    fn matches(&self, password: &str) -> Result<Option<Role>> {
+        let mut q = self.db.prepare("SELECT role, salt, hash FROM password")?;
+        let rows: Vec<(String, String, String)> = q
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(rows
+            .into_iter()
+            .find(|(_, salt, h)| hash(salt, password) == *h)
+            .map(|(role, ..)| {
+                if role == "admin" {
+                    Role::Admin
+                } else {
+                    Role::Staff
+                }
+            }))
+    }
+
+    /// Sets one role's password and signs that role out everywhere. The two
+    /// differ, since the password alone says who is signing in.
+    pub fn set_password(&self, role: Role, password: &str) -> Result<()> {
+        if password.chars().count() < 6 {
+            return bad("the password needs at least 6 characters");
+        }
+        if self.matches(password)?.is_some_and(|r| r != role) {
+            return bad("the staff and manager passwords must differ");
+        }
+        let salt = token();
+        self.db.execute(
+            "INSERT OR REPLACE INTO password (role, salt, hash) VALUES (?1, ?2, ?3)",
+            params![role.as_str(), salt, hash(&salt, password)],
+        )?;
+        self.db
+            .execute("DELETE FROM sessions WHERE role = ?1", [role.as_str()])?;
+        Ok(())
+    }
+
+    /// A new session and its role if the password is either one.
+    pub fn sign_in(&self, password: &str) -> Result<Option<(String, Role)>> {
+        let Some(role) = self.matches(password)? else {
+            return Ok(None);
+        };
+        let t = token();
+        self.db.execute(
+            "INSERT INTO sessions (token, role, made) VALUES (?1, ?2, datetime('now', 'localtime'))",
+            params![t, role.as_str()],
+        )?;
+        Ok(Some((t, role)))
+    }
+
+    /// Who a browser is. Until the manager's password is set, everyone is
+    /// the manager, so the first visit can set things up.
+    pub fn role(&self, session: Option<&str>) -> Result<Option<Role>> {
+        if !self.passwords()?.admin {
+            return Ok(Some(Role::Admin));
+        }
+        let Some(t) = session else { return Ok(None) };
+        let role: Option<String> = self
+            .db
+            .query_row("SELECT role FROM sessions WHERE token = ?1", [t], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        Ok(role.map(|r| {
+            if r == "admin" {
+                Role::Admin
+            } else {
+                Role::Staff
+            }
+        }))
     }
 }
 
@@ -1014,6 +1144,7 @@ mod tests {
             start: 390,
             end: 840,
             note: String::new(),
+            open: false,
         })
         .unwrap()
     }
@@ -1063,36 +1194,83 @@ mod tests {
     }
 
     #[test]
-    fn staff_see_only_posted_weeks_and_their_own_requests() {
+    fn staff_see_posted_weeks_and_take_open_shifts() {
         let s = store();
         let a = add(&s, "Ana");
-        add(&s, "Ben");
-        let token = s.staff().unwrap()[0].token.clone().unwrap();
-        let today = s.today().unwrap();
-        let monday: String =
-            s.db.query_row(concat!("SELECT ", monday_of!("?1")), [&today], |r| r.get(0))
-                .unwrap();
-        put(&s, a, &today);
-        let m = s.mine(&token, &monday).unwrap();
-        assert!(!m.published && m.shifts.is_empty() && m.upcoming.is_empty());
+        let b = add(&s, "Ben");
+        let monday = s.plus(&this_monday(&s), 7).unwrap();
+        let day = s.plus(&monday, 2).unwrap();
+        let id = put(&s, a, &day);
+        assert!(s.board(&monday).unwrap().shifts.is_empty());
         s.publish(&monday).unwrap();
-        let m = s.mine(&token, &monday).unwrap();
-        assert_eq!((m.shifts.len(), m.upcoming.len(), m.staff.len()), (1, 1, 1));
+        assert_eq!(s.board(&monday).unwrap().shifts.len(), 1);
 
-        let id = s
-            .ask_off(
-                &token,
-                &OffIn {
-                    first: today.clone(),
-                    last: today.clone(),
-                    reason: "dentist".into(),
-                },
-            )
-            .unwrap();
-        assert_eq!(s.requests().unwrap().pending.len(), 1);
-        s.decide(id, "approved").unwrap();
-        assert!(matches!(s.withdraw(&token, id), Err(Error::Missing)));
-        assert!(matches!(s.mine("nope", &monday), Err(Error::Missing)));
+        let off = OffIn {
+            first: day.clone(),
+            last: day.clone(),
+            reason: "dentist".into(),
+        };
+        let r = s.ask_off(a, &off).unwrap();
+        let w = s.board(&monday).unwrap();
+        assert_eq!((w.off.len(), w.off[0].reason.as_str()), (1, ""));
+        assert!(matches!(s.take(id, b), Err(Error::Bad(_))));
+
+        // Approving opens Ana's shift rather than dropping it.
+        s.decide(r, "approved").unwrap();
+        assert!(s.week(&monday).unwrap().shifts[0].open);
+        assert!(matches!(s.take(id, a), Err(Error::Bad(_))));
+        s.take(id, b).unwrap();
+        let h = &s.week(&monday).unwrap().shifts[0];
+        assert_eq!((h.staff, h.open), (b, false));
+        assert!(matches!(s.take(id, b), Err(Error::Bad(_))));
+    }
+
+    #[test]
+    fn the_password_says_who_signs_in() {
+        let s = store();
+        assert_eq!(s.role(None).unwrap(), Some(Role::Admin));
+        assert!(matches!(
+            s.set_password(Role::Staff, "short"),
+            Err(Error::Bad(_))
+        ));
+        s.set_password(Role::Staff, "macchiato").unwrap();
+        s.set_password(Role::Admin, "cortado").unwrap();
+        assert!(matches!(
+            s.set_password(Role::Staff, "cortado"),
+            Err(Error::Bad(_))
+        ));
+        assert_eq!(s.role(None).unwrap(), None);
+        assert!(s.sign_in("espresso").unwrap().is_none());
+        let (staff, role) = s.sign_in("macchiato").unwrap().unwrap();
+        assert_eq!(role, Role::Staff);
+        let (admin, _) = s.sign_in("cortado").unwrap().unwrap();
+        assert_eq!(s.role(Some(&admin)).unwrap(), Some(Role::Admin));
+        s.set_password(Role::Staff, "flat white").unwrap();
+        assert_eq!(s.role(Some(&staff)).unwrap(), None);
+        assert_eq!(s.role(Some(&admin)).unwrap(), Some(Role::Admin));
+    }
+
+    #[test]
+    fn an_old_database_keeps_its_staff_and_shifts() {
+        let path = std::env::temp_dir().join(format!("endgrain-old-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let old = Connection::open(&path).unwrap();
+        old.execute_batch(
+            "CREATE TABLE staff (id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+               color TEXT NOT NULL, token TEXT NOT NULL UNIQUE, active INTEGER NOT NULL DEFAULT 1);
+             CREATE TABLE shifts (id INTEGER PRIMARY KEY, staff INTEGER NOT NULL REFERENCES staff(id),
+               day TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '');
+             INSERT INTO staff VALUES (1, 'Ana', '#b0482a', 'abc', 1);
+             INSERT INTO shifts VALUES (1, 1, '2026-10-20', 465, 900, '');",
+        )
+        .unwrap();
+        drop(old);
+        let s = Store::open(&path).unwrap();
+        assert_eq!(s.staff().unwrap()[0].name, "Ana");
+        assert_eq!(s.shifts("2026-10-19", None).unwrap().len(), 1);
+        assert_eq!(add(&s, "Ben"), 2);
+        drop(s);
+        let _ = std::fs::remove_file(&path);
     }
 
     fn this_monday(s: &Store) -> String {
@@ -1156,7 +1334,7 @@ mod tests {
     }
 
     #[test]
-    fn approved_time_off_clears_the_shifts_and_is_left_unfilled() {
+    fn approved_time_off_opens_the_shifts_and_the_usual_week_skips_it() {
         let s = store();
         let a = add(&s, "Ana");
         let monday = s.plus(&this_monday(&s), 7).unwrap();
@@ -1175,7 +1353,9 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(s.week(&monday).unwrap().shifts.len(), 5);
+        let w = s.week(&monday).unwrap();
+        assert_eq!(w.shifts.len(), 7);
+        assert_eq!(w.shifts.iter().filter(|h| h.open).count(), 2);
         s.decide(id, "approved").unwrap();
         assert_eq!(s.use_usual(&monday).unwrap(), 5);
         assert!(
@@ -1235,6 +1415,7 @@ mod tests {
             start: 7 * 60,
             end: 15 * 60,
             note: String::new(),
+            open: false,
         })
         .unwrap();
         s.delete_default(id).unwrap();

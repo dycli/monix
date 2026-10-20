@@ -2,10 +2,14 @@
 //! posts the week when it's ready, and staff ask for time off, which the
 //! manager approves or denies. A usual week fills the weeks ahead, and days
 //! with fewer people than the rules ask show red until covered or let go.
-//! The manager's page is `/`; each person has a page of their own at
-//! `/s/<token>` showing their shifts and the posted team schedule, where
-//! they ask for days off. Everything staff can reach
-//! sits under `/s/`, so a public door can admit that path alone.
+//! Time off a manager approves leaves the person's shifts open, and anyone
+//! can take an open shift.
+//!
+//! Two shared passwords: staff sign in with one and see only the posted
+//! weeks, where they ask for days off and take open shifts; the team is
+//! small and trusted, so no one signs in as themselves. The manager signs
+//! in with the other and sees everything. Until the manager's password is
+//! set, the site is open.
 //!
 //! Environment:
 //! - `ENDGRAIN_LISTEN`: address to bind, e.g. `127.0.0.1:8980`.
@@ -17,14 +21,15 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
-use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
-use axum::response::{Html, IntoResponse, Json, Response};
+use axum::extract::{Form, Path, Query, Request, State};
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::middleware::{self, Next};
+use axum::response::{Html, IntoResponse, Json, Redirect, Response};
 use axum::routing::{get, post, put};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use store::{DefaultIn, Error, OffIn, PersonIn, Rules, ShiftIn, Store};
+use store::{DefaultIn, Error, OffIn, PersonIn, Role, Rules, ShiftIn, Store};
 
 /// One connection behind a lock: a handful of people use this, and every
 /// request is a few small queries.
@@ -49,8 +54,15 @@ fn reply<T: Serialize>(app: &App, f: impl FnOnce(&Store) -> Result<T, Error>) ->
 
 const PAGE: &str = include_str!("page.html");
 
-async fn page() -> Html<&'static str> {
-    Html(PAGE)
+/// The one page, told whose it is; signed-out browsers get the sign-in.
+async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
+    match role(&app, &headers) {
+        Ok(Some(r)) => {
+            Html(PAGE.replace("'admin'; // ROLE", &format!("'{}';", r.as_str()))).into_response()
+        }
+        Ok(None) => login_page(false).into_response(),
+        Err(e) => reply::<()>(&app, |_| Err(e)),
+    }
 }
 
 #[derive(Deserialize)]
@@ -120,12 +132,6 @@ async fn save_person(State(app): State<App>, Json(b): Json<PersonIn>) -> Respons
     reply(&app, |s| s.save_person(&b).map(|id| json!({ "id": id })))
 }
 
-async fn relink(State(app): State<App>, Path(id): Path<i64>) -> Response {
-    reply(&app, |s| {
-        s.relink(id).map(|token| json!({ "token": token }))
-    })
-}
-
 async fn requests(State(app): State<App>) -> Response {
     reply(&app, |s| s.requests())
 }
@@ -156,44 +162,133 @@ async fn delete_off(State(app): State<App>, Path(id): Path<i64>) -> Response {
     reply(&app, |s| s.delete_off(id))
 }
 
-/// A person's page; an unknown or archived link is a plain 404.
-async fn my_page(State(app): State<App>, Path(token): Path<String>) -> Response {
-    let known = app
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .me(&token)
-        .is_ok();
-    if known {
-        Html(PAGE).into_response()
-    } else {
-        (
-            StatusCode::NOT_FOUND,
-            "This link no longer works. Ask for a new one.",
-        )
-            .into_response()
-    }
+async fn board(State(app): State<App>, Query(q): Query<Monday>) -> Response {
+    reply(&app, |s| s.board(&q.monday))
 }
 
-async fn mine(
-    State(app): State<App>,
-    Path(token): Path<String>,
-    Query(q): Query<Monday>,
-) -> Response {
-    reply(&app, |s| s.mine(&token, &q.monday))
-}
-
-async fn ask_off(
-    State(app): State<App>,
-    Path(token): Path<String>,
-    Json(b): Json<OffIn>,
-) -> Response {
+async fn ask_off(State(app): State<App>, Json(b): Json<AddOff>) -> Response {
     reply(&app, |s| {
-        s.ask_off(&token, &b).map(|id| json!({ "id": id }))
+        s.ask_off(b.staff, &b.off).map(|id| json!({ "id": id }))
     })
 }
 
-async fn withdraw(State(app): State<App>, Path((token, id)): Path<(String, i64)>) -> Response {
-    reply(&app, |s| s.withdraw(&token, id))
+#[derive(Deserialize)]
+struct Take {
+    shift: i64,
+    staff: i64,
+}
+
+async fn take(State(app): State<App>, Json(b): Json<Take>) -> Response {
+    reply(&app, |s| s.take(b.shift, b.staff))
+}
+
+const LOGIN: &str = include_str!("login.html");
+const COOKIE: &str = "endgrain";
+/// A year: people sign in once on their phone and stay signed in.
+const STAY: u32 = 365 * 24 * 3600;
+
+fn session(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(';'))
+        .find_map(|c| c.trim().strip_prefix(COOKIE)?.strip_prefix('='))
+        .map(str::to_owned)
+}
+
+fn login_page(wrong: bool) -> Html<String> {
+    Html(LOGIN.replace(
+        "<!--wrong-->",
+        if wrong {
+            "<p class=\"wrong\">That's not it. Try again.</p>"
+        } else {
+            ""
+        },
+    ))
+}
+
+fn signed(token: &str) -> [(header::HeaderName, String); 1] {
+    [(
+        header::SET_COOKIE,
+        format!("{COOKIE}={token}; Path=/; Max-Age={STAY}; HttpOnly; Secure; SameSite=Lax"),
+    )]
+}
+
+#[derive(Deserialize)]
+struct Password {
+    password: String,
+}
+
+async fn sign_in(State(app): State<App>, Form(f): Form<Password>) -> Response {
+    let t = app
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .sign_in(&f.password);
+    match t {
+        Ok(Some((t, _))) => (signed(&t), Redirect::to("/")).into_response(),
+        Ok(None) => {
+            // Slows guessing; the lock is not held while waiting.
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            (StatusCode::UNAUTHORIZED, login_page(true)).into_response()
+        }
+        Err(e) => reply::<()>(&app, |_| Err(e)),
+    }
+}
+
+#[derive(Deserialize)]
+struct NewPassword {
+    role: Role,
+    password: String,
+}
+
+/// Sets one of the two passwords. The manager who changed their own stays
+/// signed in.
+async fn set_password(State(app): State<App>, Json(b): Json<NewPassword>) -> Response {
+    let store = app.lock().unwrap_or_else(|p| p.into_inner());
+    let done = store.set_password(b.role, &b.password).and_then(|()| {
+        if b.role == Role::Admin {
+            store.sign_in(&b.password)
+        } else {
+            Ok(None)
+        }
+    });
+    match done {
+        Ok(Some((t, _))) => (signed(&t), StatusCode::NO_CONTENT).into_response(),
+        Ok(None) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            drop(store);
+            reply::<()>(&app, |_| Err(e))
+        }
+    }
+}
+
+async fn passwords(State(app): State<App>) -> Response {
+    reply(&app, |s| s.passwords())
+}
+
+fn role(app: &App, headers: &HeaderMap) -> Result<Option<Role>, Error> {
+    app.lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .role(session(headers).as_deref())
+}
+
+async fn let_in(app: &App, req: Request, next: Next, manager: bool) -> Response {
+    match role(app, req.headers()) {
+        Ok(Some(Role::Admin)) => next.run(req).await,
+        Ok(Some(Role::Staff)) if !manager => next.run(req).await,
+        Ok(Some(Role::Staff)) => (StatusCode::FORBIDDEN, "for the manager").into_response(),
+        Ok(None) => (StatusCode::UNAUTHORIZED, "sign in again").into_response(),
+        Err(e) => reply::<()>(app, |_| Err(e)),
+    }
+}
+
+async fn anyone(State(app): State<App>, req: Request, next: Next) -> Response {
+    let_in(&app, req, next, false).await
+}
+
+async fn manager(State(app): State<App>, req: Request, next: Next) -> Response {
+    let_in(&app, req, next, true).await
 }
 
 #[tokio::main]
@@ -203,8 +298,12 @@ async fn main() {
     let store = Store::open(&state.join("endgrain.db")).unwrap_or_else(|e| panic!("{e:?}"));
     let app: App = Arc::new(Mutex::new(store));
 
+    let board_routes = Router::new()
+        .route("/api/board", get(board))
+        .route("/api/board/off", post(ask_off))
+        .route("/api/board/take", post(take))
+        .route_layer(middleware::from_fn_with_state(app.clone(), anyone));
     let routes = Router::new()
-        .route("/", get(page))
         .route("/api/week", get(week))
         .route("/api/week/copy", post(copy_week))
         .route("/api/week/publish", post(publish))
@@ -216,16 +315,13 @@ async fn main() {
         .route("/api/shift", put(save_shift))
         .route("/api/shift/{id}", axum::routing::delete(delete_shift))
         .route("/api/staff", get(staff).put(save_person))
-        .route("/api/staff/{id}/link", post(relink))
         .route("/api/requests", get(requests).post(add_off))
         .route("/api/requests/{id}", post(decide).delete(delete_off))
-        .route("/s/{token}", get(my_page))
-        .route("/s/{token}/api", get(mine))
-        .route("/s/{token}/api/requests", post(ask_off))
-        .route(
-            "/s/{token}/api/requests/{id}",
-            axum::routing::delete(withdraw),
-        )
+        .route("/api/password", get(passwords).put(set_password))
+        .route_layer(middleware::from_fn_with_state(app.clone(), manager))
+        .merge(board_routes)
+        .route("/", get(page))
+        .route("/login", post(sign_in))
         .with_state(app);
     let listen = env("ENDGRAIN_LISTEN");
     let socket = tokio::net::TcpListener::bind(&listen)

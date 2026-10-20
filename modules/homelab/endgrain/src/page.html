@@ -77,6 +77,12 @@
   .shift small { display: block; color: var(--mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .off { font-size: 12px; border-radius: 6px; padding: 4px 7px; color: var(--mid); background: repeating-linear-gradient(-45deg, var(--edge) 0 4px, transparent 4px 9px); }
   .off.ask { background: none; border: 1px dashed var(--soft); }
+  /* A shift its person can't work, up for anyone to take. */
+  .shift.open { background: none; border: 1px dashed var(--accent); border-left: 4px solid var(--accent); color: var(--mid); }
+  .shift.open small { color: var(--accent); }
+  .board .shift.open { cursor: pointer; }
+  .board .shift.open:hover { background: var(--paper); }
+  label.check { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--ink); }
 
   dialog { border: 1px solid var(--edge); border-radius: 16px; background: var(--lift); color: var(--ink); padding: 20px; width: min(420px, calc(100vw - 24px)); }
   dialog::backdrop { background: rgba(43, 38, 32, .35); }
@@ -113,11 +119,8 @@
   <header class="top">
     <h1>Endgrain</h1>
     <nav id="nav"></nav>
-    <span class="grow"></span>
-    <span id="hello" class="mid"></span>
   </header>
 
-  <!-- The manager's tabs. -->
   <section id="schedule" hidden>
     <div class="card">
       <div class="weeknav">
@@ -125,14 +128,16 @@
         <b class="range"></b>
         <button data-step="7" aria-label="Next week">›</button>
         <button data-step="0">This week</button>
-        <span id="status"></span>
+        <span id="status" class="mgr"></span>
         <span class="grow"></span>
-        <button id="fill" class="noprint">Use usual week</button>
-        <button id="copy" class="noprint">Copy last week</button>
+        <button id="fill" class="noprint mgr">Use usual week</button>
+        <button id="copy" class="noprint mgr">Copy last week</button>
         <button id="print" class="noprint">Print</button>
-        <button id="publish" class="main noprint">Post week</button>
+        <button id="publish" class="main noprint mgr">Post week</button>
+        <button id="ask" class="main noprint crew">Ask for time off</button>
       </div>
-      <div class="scroll"><table class="grid edit" id="grid"></table></div>
+      <p class="small soft crew" style="margin:-4px 0 10px">Dashed shifts are open: tap one to take it.</p>
+      <div class="scroll"><table class="grid" id="grid"></table></div>
     </div>
   </section>
 
@@ -183,38 +188,18 @@
         <label class="wide">Name <input name="name" maxlength="40" required></label>
         <button class="main">Add</button>
       </form>
-      <p class="small soft">Each person gets a private link to their own page: their shifts, the posted schedule, and a form to ask for days off. The links work on the tailnet for now.</p>
-    </div>
-  </section>
-
-  <!-- A staff member's page. -->
-  <section id="me" hidden>
-    <div class="card">
-      <h2>Your shifts</h2>
-      <div id="upcoming"></div>
     </div>
     <div class="card">
-      <div class="weeknav">
-        <button data-step="-7" aria-label="Previous week">‹</button>
-        <b class="range"></b>
-        <button data-step="7" aria-label="Next week">›</button>
-        <button data-step="0">This week</button>
-      </div>
-      <div class="scroll"><table class="grid" id="team"></table></div>
-      <p class="empty" id="unposted" hidden>This week's schedule isn't posted yet.</p>
-    </div>
-    <div class="card">
-      <h2>Ask for time off</h2>
-      <form class="form" id="askoff">
-        <label>From <input type="date" name="first" required></label>
-        <label>To <input type="date" name="last" required></label>
-        <label class="wide">Note <input name="reason" maxlength="500" placeholder="Optional"></label>
-        <button class="main">Send</button>
+      <h2>Passwords</h2>
+      <p class="small soft" id="pwnote"></p>
+      <form class="form password" data-role="staff">
+        <label class="wide">Staff password <input name="password" type="text" minlength="6" autocomplete="off" required></label>
+        <button class="main">Set</button>
       </form>
-    </div>
-    <div class="card">
-      <h2>Your requests</h2>
-      <div id="mine"></div>
+      <form class="form password" data-role="admin" style="margin-top:12px">
+        <label class="wide">Your password <input name="password" type="text" minlength="6" autocomplete="off" required></label>
+        <button class="main">Set</button>
+      </form>
     </div>
   </section>
 </main>
@@ -231,6 +216,7 @@
     </div>
     <div class="picks" id="picks"></div>
     <label>Note <input name="note" maxlength="200" placeholder="Optional, e.g. opening"></label>
+    <label class="check" id="edopen"><input type="checkbox" name="open"> Needs cover: anyone can take it</label>
     <p class="warn" id="edwarn"></p>
     <div class="actions">
       <button type="button" id="eddelete" class="quiet">Delete</button>
@@ -240,11 +226,42 @@
     </div>
   </form>
 </dialog>
+<dialog id="askdlg">
+  <form>
+    <h2>Ask for time off</h2>
+    <label>Who <select name="staff" class="who" required></select></label>
+    <div class="times">
+      <label>From <input type="date" name="first" required></label>
+      <label>To <input type="date" name="last" required></label>
+    </div>
+    <label>Note for the manager <input name="reason" maxlength="500" placeholder="Optional"></label>
+    <div class="actions">
+      <span class="grow"></span>
+      <button type="button" class="cancel">Cancel</button>
+      <button class="main">Send</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="takedlg">
+  <form>
+    <h2>Take this shift?</h2>
+    <p id="takewhat" style="margin:0"></p>
+    <label>Who <select name="staff" class="who" required></select></label>
+    <div class="actions">
+      <span class="grow"></span>
+      <button type="button" class="cancel">Cancel</button>
+      <button class="main">Take it</button>
+    </div>
+  </form>
+</dialog>
 <div id="toast"></div>
 
 <script>
-const token = (location.pathname.match(/^\/s\/([0-9a-f]+)/) || [])[1];
-const base = token ? `/s/${token}/api` : '/api';
+const base = '/api';
+// The server writes who this is: the manager, or staff.
+const ROLE = 'admin'; // ROLE
+const MANAGER = ROLE === 'admin';
 const PALETTE = ['#b0482a', '#2f6db5', '#4f7a42', '#8a5a9e', '#c28a1e', '#2f8a83', '#a8436e', '#6b6156'];
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const $ = (s, el = document) => el.querySelector(s);
@@ -257,6 +274,7 @@ async function api(path, opt = {}) {
     body: opt.body && JSON.stringify(opt.body),
   });
   const text = await r.text();
+  if (r.status === 401) { location.reload(); throw new Error('Sign in again.'); }
   if (!r.ok) throw new Error(text || r.statusText);
   return text ? JSON.parse(text) : null;
 }
@@ -306,7 +324,7 @@ function grid(table, w, editable) {
   const dayMins = days.map(() => 0), dayPeople = days.map(() => new Set());
   for (const s of w.shifts) {
     const i = days.indexOf(s.day);
-    if (i >= 0) { dayMins[i] += s.end - s.start; dayPeople[i].add(s.staff); }
+    if (i >= 0 && !s.open) { dayMins[i] += s.end - s.start; dayPeople[i].add(s.staff); }
   }
   const need = i => w.rules ? (i >= 5 ? w.rules.weekend : w.rules.weekday) : 0;
   const okd = d => (w.short_ok || []).includes(d);
@@ -324,8 +342,10 @@ function grid(table, w, editable) {
       const shifts = w.shifts.filter(s => s.staff === p.id && s.day === d);
       let cell = offs.map(o => `<div class="off ${o.status === 'pending' ? 'ask' : ''}" title="${esc(o.reason)}">${o.status === 'pending' ? 'Asked off' : 'Off'}</div>`).join('');
       for (const s of shifts) {
-        total += s.end - s.start;
-        cell += `<button class="shift" style="--c:${p.color}" data-id="${s.id}" ${editable ? '' : 'tabindex="-1"'}>${span(s)}${s.note ? `<small>${esc(s.note)}</small>` : ''}</button>`;
+        if (!s.open) total += s.end - s.start;
+        const takeable = s.open && d >= now;
+        const small = s.open ? 'Open' + (s.note ? ' · ' + esc(s.note) : '') : esc(s.note);
+        cell += `<button class="shift ${s.open ? 'open' : ''}" style="--c:${p.color}" data-id="${s.id}" ${editable || takeable ? '' : 'tabindex="-1"'}>${span(s)}${small ? `<small>${small}</small>` : ''}</button>`;
       }
       html += `<td class="${cls(d, i)}"><div class="cell" data-staff="${p.id}" data-day="${d}">${cell}</div></td>`;
     });
@@ -362,6 +382,53 @@ async function loadWeek() {
   setCount(week.pending);
 }
 
+// ---- Staff ----
+
+async function loadBoard() {
+  week = await api(`/board?monday=${monday}`);
+  $('#schedule .range').textContent = range(monday);
+  if (!week.published) {
+    $('#grid').innerHTML = '<tbody><tr><td class="empty" style="position:static">This week isn\'t posted yet.</td></tr></tbody>';
+  } else grid($('#grid'), { ...week, rules: null }, false);
+}
+
+// Each phone remembers who last used it, to save picking again.
+function whoPicker(sel) {
+  const staff = week.staff.filter(p => p.active);
+  sel.innerHTML = '<option value="">Pick your name</option>' + staff.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  if (staff.some(p => p.id === Number(localStorage.who))) sel.value = localStorage.who;
+}
+for (const d of document.querySelectorAll('#askdlg, #takedlg')) d.querySelector('.cancel').onclick = () => d.close();
+
+const askf = $('#askdlg form');
+$('#ask').onclick = () => {
+  askf.reset(); whoPicker(askf.staff);
+  askf.first.min = askf.last.min = today();
+  $('#askdlg').showModal();
+};
+askf.addEventListener('input', e => { if (e.target === askf.first && (!askf.last.value || askf.last.value < askf.first.value)) askf.last.value = askf.first.value; });
+askf.addEventListener('submit', e => {
+  e.preventDefault();
+  act(async () => {
+    localStorage.who = askf.staff.value;
+    await api('/board/off', { method: 'POST', body: { staff: Number(askf.staff.value), first: askf.first.value, last: askf.last.value, reason: askf.reason.value } });
+    $('#askdlg').close(); toast('Sent. It shows on the schedule as asked off until the manager answers.');
+    await loadBoard();
+  });
+});
+
+const takef = $('#takedlg form');
+let taking = null;
+takef.addEventListener('submit', e => {
+  e.preventDefault();
+  act(async () => {
+    localStorage.who = takef.staff.value;
+    await api('/board/take', { method: 'POST', body: { shift: taking.id, staff: Number(takef.staff.value) } });
+    $('#takedlg').close(); toast("It's yours.");
+    await loadBoard();
+  });
+});
+
 function setCount(n) {
   const c = $('#nav .count');
   if (c) { c.textContent = n; c.hidden = !n; }
@@ -384,7 +451,15 @@ function onGrid(table, data) {
     if (c) openEditor({ staff: Number(c.dataset.staff), day: c.dataset.day });
   });
 }
-onGrid($('#grid'), () => week);
+if (MANAGER) onGrid($('#grid'), () => week);
+else $('#grid').addEventListener('click', e => {
+  const b = e.target.closest('.shift.open'); if (!b) return;
+  taking = week.shifts.find(s => s.id === Number(b.dataset.id));
+  if (taking.day < today()) return;
+  $('#takewhat').textContent = `${nice(taking.day, { weekday: 'long', month: 'short', day: 'numeric' })}, ${span(taking)}${taking.note ? ' · ' + taking.note : ''}`;
+  whoPicker(takef.staff);
+  $('#takedlg').showModal();
+});
 
 const ed = $('#editor'), edf = $('#editor form');
 let editing = null;
@@ -402,6 +477,7 @@ function openEditor(s) {
   edf.start.value = toTime(s.start ?? first?.start ?? 7 * 60);
   edf.end.value = toTime(s.end ?? first?.end ?? 15 * 60);
   edf.note.value = s.note || '';
+  $('#edopen').hidden = usual; edf.open.checked = !!s.open;
   $('#picks').innerHTML = cur.usual.map(u => `<button type="button" data-s="${u.start}" data-e="${u.end}">${span(u)}</button>`).join('');
   $('#eddelete').hidden = !s.id;
   warn();
@@ -432,7 +508,7 @@ edf.addEventListener('submit', e => {
       start: fromTime(edf.start.value), end: fromTime(edf.end.value), note: edf.note.value,
     };
     if (cur.days) await api('/usual', { method: 'PUT', body: { ...body, weekday: Number(edf.weekday.value) } });
-    else await api('/shift', { method: 'PUT', body: { ...body, day: edf.day.value } });
+    else await api('/shift', { method: 'PUT', body: { ...body, day: edf.day.value, open: edf.open.checked } });
     ed.close(); await (cur.days ? loadUsual : loadWeek)();
   });
 });
@@ -538,12 +614,24 @@ async function loadStaff() {
       <input class="name" value="${esc(p.name)}" maxlength="40" aria-label="Name" ${p.active ? '' : 'disabled'}>
       <span class="swatches">${PALETTE.map(c => `<button style="--c:${c}" class="${c === p.color ? 'on' : ''}" data-color="${c}" aria-label="Colour"></button>`).join('')}</span>
       <span class="grow"></span>
-      ${p.active ? `<button data-act="copy">Copy link</button>
-      <a class="small mid" href="/s/${p.token}" target="_blank">Open</a>
-      <button class="quiet" data-act="relink" title="The old link stops working">New link</button>` : '<span class="pill">Archived</span>'}
+      ${p.active ? '' : '<span class="pill">Archived</span>'}
       <button class="quiet" data-act="active">${p.active ? 'Archive' : 'Restore'}</button>
     </div>`).join('') : '<p class="empty">No one yet.</p>';
+  const pw = await api('/password');
+  $('#pwnote').textContent = (pw.admin
+    ? 'Staff sign in with theirs and see the posted weeks, ask for time off and take open shifts. Yours opens everything.'
+    : 'Until you set yours, anyone who can reach this site can change it.')
+    + ' A new password signs out whoever used the old one.'
+    + (pw.staff ? '' : ' Staff have no password yet.');
 }
+for (const f of document.querySelectorAll('form.password')) f.addEventListener('submit', e => {
+  e.preventDefault();
+  act(async () => {
+    await api('/password', { method: 'PUT', body: { role: f.dataset.role, password: f.password.value } });
+    f.reset(); toast(f.dataset.role === 'staff' ? 'Staff password set. Share it with the team.' : 'Your password is set.');
+    await loadStaff();
+  });
+});
 const savePerson = (p, change) => api('/staff', { method: 'PUT', body: { id: p.id, name: p.name, color: p.color, active: p.active, ...change } });
 $('#people').addEventListener('change', e => {
   if (!e.target.matches('input.name')) return;
@@ -556,15 +644,8 @@ $('#people').addEventListener('click', e => {
   act(async () => {
     if (b.dataset.color) await savePerson(p, { color: b.dataset.color });
     else if (b.dataset.act === 'active') {
-      if (p.active && !confirm(`Archive ${p.name}? Their link stops working; their past shifts stay.`)) return;
+      if (p.active && !confirm(`Archive ${p.name}? Their past shifts stay.`)) return;
       await savePerson(p, { active: !p.active });
-    } else if (b.dataset.act === 'relink') {
-      if (!confirm(`Make a new link for ${p.name}? The old one stops working.`)) return;
-      await api(`/staff/${p.id}/link`, { method: 'POST' });
-      toast('New link made.');
-    } else if (b.dataset.act === 'copy') {
-      await navigator.clipboard.writeText(`${location.origin}/s/${p.token}`);
-      return toast(`Copied ${p.name}'s link.`);
     }
     await loadStaff();
   });
@@ -579,59 +660,29 @@ $('#addperson').addEventListener('submit', e => {
   });
 });
 
-// ---- A staff member's page ----
-
-async function loadMine() {
-  const m = await api(`?monday=${monday}`);
-  $('#hello').textContent = `Hi, ${m.me.name}`;
-  $('#me .range').textContent = range(monday);
-  $('#upcoming').innerHTML = m.upcoming.length ? m.upcoming.map(s => `
-    <div class="row"><div class="what"><b>${nice(s.day)}</b> · ${span(s)} <span class="soft">· ${hrs(s.end - s.start)}h</span>
-      ${s.note ? `<div class="sub">${esc(s.note)}</div>` : ''}</div></div>`).join('')
-    : '<p class="empty">No posted shifts in the next four weeks.</p>';
-  $('#unposted').hidden = m.published;
-  $('#team').hidden = !m.published;
-  if (m.published) grid($('#team'), { monday: m.monday, staff: m.staff, shifts: m.shifts, off: [] }, false);
-  const label = { pending: 'Waiting', approved: 'Approved', denied: 'Denied' };
-  $('#mine').innerHTML = m.requests.length ? m.requests.map(o => `
-    <div class="row"><div class="what">${dates(o)}${o.reason ? `<div class="sub">${esc(o.reason)}</div>` : ''}</div>
-      <span class="pill ${o.status}">${label[o.status]}</span>
-      ${o.status === 'pending' ? `<button class="quiet" data-id="${o.id}">Withdraw</button>` : ''}</div>`).join('')
-    : '<p class="empty">None yet.</p>';
-  const f = $('#askoff'); f.first.min = f.last.min = m.today;
-}
-$('#mine').addEventListener('click', e => {
-  const b = e.target.closest('button[data-id]'); if (!b) return;
-  act(async () => { await api(`/requests/${b.dataset.id}`, { method: 'DELETE' }); await loadMine(); });
-});
-$('#askoff').addEventListener('input', e => { const f = e.currentTarget; if (e.target === f.first && (!f.last.value || f.last.value < f.first.value)) f.last.value = f.first.value; });
-$('#askoff').addEventListener('submit', e => {
-  e.preventDefault(); const f = e.currentTarget;
-  act(async () => {
-    await api('/requests', { method: 'POST', body: { first: f.first.value, last: f.last.value, reason: f.reason.value } });
-    f.reset(); toast('Sent. You will see the answer here.'); await loadMine();
-  });
-});
-
 // ---- Navigation ----
 
 for (const nav of document.querySelectorAll('.weeknav')) nav.addEventListener('click', e => {
   const b = e.target.closest('button[data-step]'); if (!b) return;
   const step = Number(b.dataset.step);
   monday = step ? addDays(monday, step) : mondayOf(today());
-  act(token ? loadMine : loadWeek);
+  act(MANAGER ? loadWeek : loadBoard);
 });
 
-const TABS = { schedule: loadWeek, usual: loadUsual, requests: loadRequests, staff: loadStaff };
+for (const el of document.querySelectorAll(MANAGER ? '.crew' : '.mgr')) el.hidden = true;
+$('#grid').classList.add(MANAGER ? 'edit' : 'board');
+
+const TABS = MANAGER
+  ? { schedule: loadWeek, requests: loadRequests, usual: loadUsual, staff: loadStaff }
+  : { schedule: loadBoard };
 function show() {
-  if (token) { $('#me').hidden = false; return act(loadMine); }
   const tab = TABS[location.hash.slice(1)] ? location.hash.slice(1) : 'schedule';
-  $('#nav').innerHTML = `<a href="#schedule">Schedule</a><a href="#usual">Usual week</a><a href="#requests">Requests<span class="count" hidden></span></a><a href="#staff">Staff</a>`;
+  $('#nav').innerHTML = MANAGER ? `<a href="#schedule">Schedule</a><a href="#requests">Requests<span class="count" hidden></span></a><a href="#usual">Usual week</a><a href="#staff">Staff</a>` : '';
   for (const a of document.querySelectorAll('#nav a')) a.classList.toggle('on', a.hash === '#' + tab);
-  for (const t in TABS) $('#' + t).hidden = t !== tab;
+  for (const t of ['schedule', 'requests', 'usual', 'staff']) $('#' + t).hidden = t !== tab;
   act(async () => {
     await TABS[tab]();
-    if (tab !== 'schedule' && tab !== 'requests') setCount((await api('/requests')).pending.length);
+    if (MANAGER && tab !== 'schedule' && tab !== 'requests') setCount((await api('/requests')).pending.length);
   });
 }
 addEventListener('hashchange', show);

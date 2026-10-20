@@ -1,8 +1,7 @@
 # Endgrain's staff schedule at https://endgrain.<domain> (tailnet only for
 # now): ./endgrain lays out each week's shifts, posts them, and takes
-# time-off requests. Each person's page lives under /s/<token>, so letting
-# staff in from the internet later means a tunnel that admits /s/ alone,
-# the way Immich shares photos.
+# time-off requests. The app asks for a password itself (staff or
+# manager), so a public door later can pass every path through.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.endgrain;
