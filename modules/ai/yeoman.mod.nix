@@ -17,10 +17,11 @@
 # over IMAP, YouTube search and captions through yt-dlp, which reaches
 # YouTube only, and film and show requests, going over Seerr on loopback
 # only with `requestsKeyFile` set), which reaches only its book, its hippo
-# and those services, and pictures (yeoman-image.py), drawn by the image
-# service that alone holds the household's Codex login, and X, read by
-# Grok's x_search through the X service (`yeoman x`, yeoman/src/x.rs) that
-# alone holds the subscription's xAI sign-in; `yeoman tools`
+# and those services, and pictures (yeoman-image.py), drawn either by the
+# image service that alone holds the household's Codex login or by Grok
+# Imagine through the X service, and X, read by Grok's x_search through
+# the X service (`yeoman x`, yeoman/src/x.rs) that alone holds the
+# subscription's xAI sign-in; `yeoman tools`
 # also reads the subscription
 # limits from the usage service (usage.mod.nix). Mail and pages let
 # anyone put text in front of the model, so fetch opens only links a

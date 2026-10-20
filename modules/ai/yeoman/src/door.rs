@@ -2,9 +2,9 @@
 //! the web app next. The core answers, reminds and asks for approval
 //! through it without knowing which kind it is.
 
-use crate::Read;
 use crate::model::Step;
 use crate::pending::Pending;
+use crate::{Read, image_type};
 use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -24,7 +24,12 @@ pub trait Door: Clone + Send + Sync + 'static {
     fn quote(&self, text: &str) -> impl Future<Output = Result<String, String>> + Send;
     /// Reacts to the message `to` with an emoji.
     fn react(&self, to: &str, emoji: &str) -> impl Future<Output = Result<(), String>> + Send;
-    fn picture(&self, png: Vec<u8>) -> impl Future<Output = Result<(), String>> + Send;
+    /// Sends a picture of type `mime`.
+    fn picture(
+        &self,
+        data: Vec<u8>,
+        mime: &'static str,
+    ) -> impl Future<Output = Result<(), String>> + Send;
     fn typing(&self, on: bool) -> impl Future<Output = ()> + Send;
     /// Shows a tool call or its result while the answer is being worked
     /// out. Called from the model's reader thread, so it must not block.
@@ -108,18 +113,22 @@ impl<D: Door> Drop for Typing<D> {
 
 /// Sends the pictures `make_image` left in the outbox, oldest first,
 /// deleting each once sent; one that fails stays for the next answer.
+/// ChatGPT draws PNGs, Grok JPEGs.
 pub async fn send_images(door: &impl Door, outbox: &Path) {
     let Ok(dir) = fs::read_dir(outbox) else {
         return;
     };
     let mut files: Vec<PathBuf> = dir
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|x| x == "png"))
+        .filter(|p| p.extension().is_some_and(|x| x == "png" || x == "jpg"))
         .collect();
     files.sort();
     for path in files {
         let sent = match fs::read(&path) {
-            Ok(data) => door.picture(data).await,
+            Ok(data) => match image_type(&data) {
+                Some(mime) => door.picture(data, mime).await,
+                None => Err("not an image".into()),
+            },
             Err(e) => Err(e.to_string()),
         };
         match sent {

@@ -11,8 +11,8 @@ export type Msg = {
   text: string;
   /** Shown word for word: a draft waiting for approval. */
   plain?: boolean;
-  /** A PNG, base64. */
-  png?: string;
+  /** A picture, as a data URL. */
+  picture?: string;
   reaction?: string;
   date?: Date;
   /** Files sent with the message; `image` is a local URL to show one by. */
@@ -48,7 +48,7 @@ type Shown =
   | { type: "pending"; pending: Pending }
   | { type: "settled"; id: number; text: string; done: boolean }
   | { type: "react"; to: string; emoji: string }
-  | { type: "picture"; png: string }
+  | { type: "picture"; image: string; mime: string }
   | { type: "typing"; on: boolean }
   | { type: "step"; step: Step; task: boolean }
   | { type: "task"; text: string | null; question: string | null }
@@ -213,7 +213,7 @@ export function useChat(): Chat {
             setMessages((ms) => ms.map((m) => (m.id === s.to ? { ...m, reaction: s.emoji } : m)));
             break;
           case "picture":
-            setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", png: s.png, date: new Date() }]);
+            setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", picture: `data:${s.mime};base64,${s.image}`, date: new Date() }]);
             break;
           case "typing":
             setTyping(s.on);

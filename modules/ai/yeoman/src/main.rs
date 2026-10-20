@@ -198,10 +198,9 @@ fn fits(r: &Read) -> bool {
     }
 }
 
-/// Names a file by its first bytes; the sender's stated type is a fallback
-/// for text only.
-fn read(data: Vec<u8>, mime: Option<&str>) -> Option<Read> {
-    let image = match data.as_slice() {
+/// An image's type by its first bytes.
+pub fn image_type(data: &[u8]) -> Option<&'static str> {
+    match data {
         [0xFF, 0xD8, 0xFF, ..] => Some("image/jpeg"),
         [0x89, b'P', b'N', b'G', ..] => Some("image/png"),
         [b'G', b'I', b'F', b'8', ..] => Some("image/gif"),
@@ -221,8 +220,13 @@ fn read(data: Vec<u8>, mime: Option<&str>) -> Option<Read> {
             ..,
         ] => Some("image/webp"),
         _ => None,
-    };
-    if let Some(mime) = image {
+    }
+}
+
+/// Names a file by its first bytes; the sender's stated type is a fallback
+/// for text only.
+fn read(data: Vec<u8>, mime: Option<&str>) -> Option<Read> {
+    if let Some(mime) = image_type(&data) {
         Some(Read::Model(Attachment::Image { mime, data }))
     } else if data.starts_with(b"%PDF") {
         Some(Read::Model(Attachment::Pdf(data)))

@@ -96,9 +96,10 @@ enum Shown {
         to: String,
         emoji: String,
     },
-    /// A PNG, base64.
+    /// An image of type `mime`, base64.
     Picture {
-        png: String,
+        image: String,
+        mime: &'static str,
     },
     Typing {
         on: bool,
@@ -212,9 +213,10 @@ impl Door for Web {
         Ok(())
     }
 
-    async fn picture(&self, png: Vec<u8>) -> Result<(), String> {
+    async fn picture(&self, data: Vec<u8>, mime: &'static str) -> Result<(), String> {
         self.show(Shown::Picture {
-            png: STANDARD.encode(png),
+            image: STANDARD.encode(data),
+            mime,
         });
         Ok(())
     }
@@ -313,11 +315,11 @@ impl<D: Door> Door for Mirror<D> {
         self.door.react(to, emoji).await
     }
 
-    async fn picture(&self, png: Vec<u8>) -> Result<(), String> {
+    async fn picture(&self, data: Vec<u8>, mime: &'static str) -> Result<(), String> {
         if let Some(w) = &self.web {
-            w.picture(png.clone()).await?;
+            w.picture(data.clone(), mime).await?;
         }
-        self.door.picture(png).await
+        self.door.picture(data, mime).await
     }
 
     async fn typing(&self, on: bool) {

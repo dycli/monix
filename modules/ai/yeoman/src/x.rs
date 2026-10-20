@@ -5,7 +5,8 @@
 //! its socket. Grok runs the searches and answers with the posts it found
 //! and their links. It reads X and nothing else, so it acts on nothing.
 //! The same sign-in reads replies aloud through xAI's text to speech, and
-//! mints the short-lived passes a page holds to talk with Grok Voice.
+//! mints the short-lived passes a page holds to talk with Grok Voice, and
+//! draws pictures with Grok Imagine for the image tool (yeoman-image.py).
 
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use schemars::JsonSchema;
@@ -26,6 +27,10 @@ const SCOPE: &str = "openid profile email offline_access grok-cli:access api:acc
 const API: &str = "https://api.x.ai/v1/responses";
 const TTS: &str = "https://api.x.ai/v1/tts";
 const SECRETS: &str = "https://api.x.ai/v1/realtime/client_secrets";
+const IMAGES: &str = "https://api.x.ai/v1/images/generations";
+const IMAGE_MODEL: &str = "grok-imagine-image-2.0";
+/// The longest description the image tool sends.
+const DRAW_MAX: usize = 4000;
 /// xAI's limit on one text to speak, in characters.
 pub const SPEAK_MAX: usize = 60_000;
 const MODEL: &str = "grok-4.7";
@@ -54,7 +59,8 @@ pub struct Ask {
     pub to: Option<String>,
 }
 
-/// What the socket carries: text to speak, a voice pass, or else a search.
+/// What the socket carries: text to speak, a voice pass, a picture to
+/// draw, or else a search.
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 enum Request {
@@ -65,6 +71,10 @@ enum Request {
     /// A pass to Grok Voice good for this many seconds.
     Secret {
         secret: u64,
+    },
+    /// A picture from this description; the reply carries it as base64.
+    Draw {
+        draw: String,
     },
     Search(Ask),
 }
@@ -129,6 +139,7 @@ pub fn serve() -> Result<(), String> {
             tts(&speak, &voice).map(|mp3| json!({ "audio": BASE64.encode(mp3) }))
         }
         Ok(Request::Secret { secret }) => client_secret(secret),
+        Ok(Request::Draw { draw }) => imagine(&draw).map(|image| json!({ "image": image })),
         Err(e) => Err(e),
     };
     let reply = reply.unwrap_or_else(|e| {
@@ -250,6 +261,37 @@ fn client_secret(seconds: u64) -> Result<Value, String> {
     }
     eprintln!("yeoman-x: voice pass for {seconds}s");
     Ok(json!({"value": reply["value"], "expires_at": reply["expires_at"]}))
+}
+
+/// One picture from Grok Imagine, base64 as xAI sends it (a JPEG).
+fn imagine(description: &str) -> Result<String, String> {
+    let prompt: String = description.chars().take(DRAW_MAX).collect();
+    let token = token()?;
+    let mut resp = agent()
+        .post(IMAGES)
+        .header("Authorization", &format!("Bearer {token}"))
+        .send_json(json!({"model": IMAGE_MODEL, "prompt": prompt, "n": 1,
+            "response_format": "b64_json"}))
+        .map_err(|e| format!("xai image: {e}"))?;
+    let status = resp.status().as_u16();
+    let reply: Value = resp
+        .body_mut()
+        .with_config()
+        .limit(64 * 1024 * 1024)
+        .read_json()
+        .map_err(|e| format!("xai image: {status}: {e}"))?;
+    let Some(image) = reply["data"][0]["b64_json"].as_str() else {
+        let msg = reply["error"]["message"]
+            .as_str()
+            .or(reply["error"].as_str())
+            .unwrap_or("no picture");
+        return Err(format!("xai image: {status}: {msg}"));
+    };
+    eprintln!(
+        "yeoman-x: drew model={IMAGE_MODEL} bytes={}",
+        image.len() / 4 * 3
+    );
+    Ok(image.to_owned())
 }
 
 /// The request as Grok reads it: the tool's filters bind the search, but

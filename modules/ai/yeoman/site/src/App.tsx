@@ -66,7 +66,7 @@ const convert = (m: Msg): ThreadMessageLike => ({
       isError: t.error,
     })),
     ...(m.text ? [{ type: "text" as const, text: m.text }] : []),
-    ...(m.png ? [{ type: "image" as const, image: `data:image/png;base64,${m.png}` }] : []),
+    ...(m.picture ? [{ type: "image" as const, image: m.picture }] : []),
   ],
   attachments: m.files?.map((f, n) => ({
     id: `${m.id}-file-${n}`,
