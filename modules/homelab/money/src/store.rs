@@ -159,6 +159,34 @@ impl Store {
             .map_err(|e| e.to_string())
     }
 
+    /// The first of `picked` (mask, subtype) already linked at `institution`,
+    /// named as it shows on the page.
+    pub fn linked_already(
+        &self,
+        institution: &str,
+        picked: &[(&str, &str)],
+    ) -> Result<Option<String>, String> {
+        let mut q = self
+            .finance
+            .prepare(
+                "SELECT a.name FROM accounts a JOIN items i USING (item_id)
+                 WHERE lower(i.institution) = lower(?1) AND a.mask = ?2 AND a.subtype = ?3",
+            )
+            .map_err(|e| e.to_string())?;
+        for (mask, subtype) in picked {
+            if let Some(name) = q
+                .query_row(params![institution, mask, subtype], |r| {
+                    r.get::<_, Option<String>>(0)
+                })
+                .optional()
+                .map_err(|e| e.to_string())?
+            {
+                return Ok(Some(format!("{} ··{mask}", name.unwrap_or_default())));
+            }
+        }
+        Ok(None)
+    }
+
     pub fn add(&self, item: &str, token: &str) -> Result<(), String> {
         self.vault
             .execute(
@@ -566,6 +594,17 @@ mod tests {
         assert_eq!(o.as_array().unwrap().len(), 2);
         assert_eq!(o[0]["accounts"][0]["duplicate"], json!(true));
 
+        assert_eq!(
+            s.linked_already("AMEX", &[("9999", "checking"), ("1001", "credit card")])
+                .unwrap()
+                .as_deref(),
+            Some("Gold ··1001")
+        );
+        assert_eq!(
+            s.linked_already("Chase", &[("1001", "credit card")])
+                .unwrap(),
+            None
+        );
         s.remove("i1").unwrap();
         let o = s.overview().unwrap();
         assert_eq!(o.as_array().unwrap().len(), 1);

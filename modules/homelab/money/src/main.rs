@@ -423,6 +423,9 @@ struct LinkAsk {
     kind: Option<String>,
     /// An existing Item to log in to again.
     item: Option<String>,
+    /// With `item`: change which accounts and data that login shares.
+    #[serde(default)]
+    choose: bool,
 }
 
 fn kind(name: Option<&str>) -> Option<Kind> {
@@ -462,7 +465,7 @@ async fn link(State(app): State<Arc<App>>, Json(ask): Json<LinkAsk>) -> Response
             }
         };
         a.plaid
-            .link_token(k, token.as_deref())
+            .link_token(k, token.as_deref(), ask.choose)
             .map_err(|f| (StatusCode::BAD_GATEWAY, f.to_string()))
     })
     .await;
@@ -476,17 +479,52 @@ async fn link(State(app): State<Arc<App>>, Json(ask): Json<LinkAsk>) -> Response
 #[derive(Deserialize)]
 struct Linked {
     public_token: String,
+    /// Link's own account of what was picked, checked before the exchange.
+    #[serde(default)]
+    institution: Option<String>,
+    #[serde(default)]
+    accounts: Vec<Picked>,
+}
+
+#[derive(Deserialize)]
+struct Picked {
+    mask: Option<String>,
+    subtype: Option<String>,
 }
 
 /// Link succeeded with a new Item: keep its token and start pulling.
 async fn linked(State(app): State<Arc<App>>, Json(l): Json<Linked>) -> Response {
     let a = app.clone();
-    let kept = tokio::task::spawn_blocking(move || -> Result<String, String> {
+    let kept = tokio::task::spawn_blocking(move || -> Result<String, (StatusCode, String)> {
+        let store = Store::open(&a.state).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        // Every exchanged token takes a Trial slot, so a login that repeats
+        // an account already here is left unexchanged.
+        if let Some(name) = &l.institution {
+            let picked: Vec<_> = l
+                .accounts
+                .iter()
+                .filter_map(|p| Some((p.mask.as_deref()?, p.subtype.as_deref()?)))
+                .collect();
+            if let Some(acct) = store
+                .linked_already(name, &picked)
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+            {
+                return Err((
+                    StatusCode::CONFLICT,
+                    format!(
+                        "{name} {acct} is already linked, so this login wasn't kept. \
+                         To change what it shares, use \"Change what's shared\" on that login."
+                    ),
+                ));
+            }
+        }
         let (item, token) = a
             .plaid
             .exchange(&l.public_token)
-            .map_err(|f| f.to_string())?;
-        Store::open(&a.state)?.add(&item, &token)?;
+            .map_err(|f| (StatusCode::BAD_GATEWAY, f.to_string()))?;
+        store
+            .add(&item, &token)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
         Ok(item)
     })
     .await;
@@ -495,7 +533,7 @@ async fn linked(State(app): State<Arc<App>>, Json(l): Json<Linked>) -> Response 
             follow_up(app);
             Json(json!({ "item": item })).into_response()
         }
-        Ok(Err(e)) => fail(StatusCode::BAD_GATEWAY, e),
+        Ok(Err((s, e))) => fail(s, e),
         Err(e) => fail(StatusCode::INTERNAL_SERVER_ERROR, e),
     }
 }

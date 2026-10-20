@@ -82,7 +82,14 @@ impl Plaid {
 
     /// A token that opens Link: for a new Item of `kind`, or in update mode
     /// for an existing one, which logs in again without taking a new slot.
-    pub fn link_token(&self, kind: Kind, update: Option<&str>) -> Result<String, Failure> {
+    /// `update` reopens an existing Item; `choose` there lets the user change
+    /// which accounts and data it shares, without making a new Item.
+    pub fn link_token(
+        &self,
+        kind: Kind,
+        update: Option<&str>,
+        choose: bool,
+    ) -> Result<String, Failure> {
         let mut body = json!({
             "client_name": "Kestrel",
             "language": "en",
@@ -90,7 +97,12 @@ impl Plaid {
             "user": { "client_user_id": "household" },
         });
         match update {
-            Some(token) => body["access_token"] = json!(token),
+            Some(token) => {
+                body["access_token"] = json!(token);
+                if choose {
+                    body["update"] = json!({ "account_selection_enabled": true });
+                }
+            }
             None => {
                 let (required, optional) = match kind {
                     Kind::Bank => ("transactions", json!(["liabilities", "investments"])),

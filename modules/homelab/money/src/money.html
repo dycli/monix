@@ -696,7 +696,9 @@ async function banks() {
       el("p", { className: "mid small", textContent: "The bank wants a fresh login." }),
       el("button", { className: "main", textContent: "Log in again", onclick: () => link({ item: i.id }) })) : null,
     i.status === "error" ? el("p", { className: "warn", textContent: i.error }) : null,
-    el("button", { className: "quiet small", style: "margin-top:8px", textContent: "Remove this login", onclick: (ev) => removeLogin(ev, i) }),
+    el("div", { style: "display:flex;gap:8px;margin-top:8px" },
+      el("button", { className: "quiet small", textContent: "Change what's shared", onclick: () => link({ item: i.id, choose: true }) }),
+      el("button", { className: "quiet small", textContent: "Remove this login", onclick: (ev) => removeLogin(ev, i) })),
   )));
 }
 
@@ -713,10 +715,16 @@ async function link(ask) {
     const { link_token } = await api("/api/link", ask);
     Plaid.create({
       token: link_token,
-      onSuccess: async (public_token) => {
-        // Update mode keeps the Item's token; only a new Item is exchanged.
-        if (ask.item) await api("/api/sync", {});
-        else await api("/api/linked", { public_token });
+      onSuccess: async (public_token, meta) => {
+        try {
+          // Update mode keeps the Item's token; only a new Item is exchanged.
+          if (ask.item) await api("/api/sync", {});
+          else await api("/api/linked", {
+            public_token,
+            institution: meta.institution?.name,
+            accounts: (meta.accounts || []).map((a) => ({ mask: a.mask, subtype: a.subtype })),
+          });
+        } catch (e) { $("#error").textContent = e.message; }
         await banks();
         setTimeout(() => { banks(); load(); }, 5000);
       },
