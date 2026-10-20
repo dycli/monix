@@ -167,6 +167,10 @@ async fn delete_off(State(app): State<App>, Path(id): Path<i64>) -> Response {
     reply(&app, |s| s.delete_off(id))
 }
 
+async fn withdraw(State(app): State<App>, Path(id): Path<i64>) -> Response {
+    reply(&app, |s| s.withdraw(id))
+}
+
 async fn board(State(app): State<App>, Query(q): Query<Monday>) -> Response {
     reply(&app, |s| s.board(&q.monday))
 }
@@ -315,6 +319,7 @@ async fn main() {
         .route("/api/board/off", post(ask_off))
         .route("/api/board/cover", post(ask_cover))
         .route("/api/board/requests", get(team_off))
+        .route("/api/board/requests/{id}", axum::routing::delete(withdraw))
         .route_layer(middleware::from_fn_with_state(app.clone(), anyone));
     let routes = Router::new()
         .route("/api/week", get(week))

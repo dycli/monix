@@ -110,6 +110,21 @@ ALTER TABLE requests ADD COLUMN end INTEGER;
 DELETE FROM shifts WHERE open;
 ALTER TABLE shifts DROP COLUMN open;
 ",
+    "
+-- Shifts an approved day off took away, so taking the approval back can
+-- return them.
+CREATE TABLE cleared (
+  request INTEGER NOT NULL REFERENCES requests(id),
+  staff INTEGER NOT NULL REFERENCES staff(id),
+  day TEXT NOT NULL,
+  start INTEGER NOT NULL,
+  end INTEGER NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  usual INTEGER NOT NULL DEFAULT 0
+);
+-- The shift an approved ask to work put on the schedule.
+ALTER TABLE requests ADD COLUMN shift INTEGER;
+",
 ];
 
 /// How many weeks past this one the usual week fills in.
@@ -751,6 +766,13 @@ impl Store {
             q.query_map(params![request, today], |r| r.get(0))?
                 .collect::<rusqlite::Result<_>>()?
         };
+        self.db.execute(
+            &format!(
+                "INSERT INTO cleared (request, staff, day, start, end, note, usual)
+                 SELECT ?1, h.staff, h.day, h.start, h.end, h.note, h.usual {MATCH}"
+            ),
+            params![request, today],
+        )?;
         let n = self.db.execute(
             &format!("DELETE FROM shifts WHERE id IN (SELECT h.id {MATCH})"),
             params![request, today],
@@ -759,6 +781,53 @@ impl Store {
             self.touch(&d)?;
         }
         Ok(n)
+    }
+
+    /// Undoes an approval: returns the shifts a day off took away, or takes
+    /// away the shift an ask to work added. Days already past stay as they
+    /// are, and a returning shift yields to one booked since.
+    fn unapprove(&self, request: i64, kind: &str) -> Result<()> {
+        let today = self.today()?;
+        let days: Vec<String> = if kind == "off" {
+            let days: Vec<String> = self
+                .db
+                .prepare("SELECT DISTINCT day FROM cleared WHERE request = ?1 AND day >= ?2")?
+                .query_map(params![request, today], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?;
+            self.db.execute(
+                "INSERT INTO shifts (staff, day, start, end, note, usual)
+                 SELECT c.staff, c.day, c.start, c.end, c.note, c.usual FROM cleared c
+                 WHERE c.request = ?1 AND c.day >= ?2 AND NOT EXISTS (
+                   SELECT 1 FROM shifts h WHERE h.staff = c.staff AND h.day = c.day
+                     AND h.start < c.end AND c.start < h.end)",
+                params![request, today],
+            )?;
+            self.db
+                .execute("DELETE FROM cleared WHERE request = ?1", [request])?;
+            days
+        } else {
+            let day: Option<String> = self
+                .db
+                .query_row(
+                    "SELECT h.day FROM shifts h JOIN requests r ON r.shift = h.id
+                     WHERE r.id = ?1 AND h.day >= ?2",
+                    params![request, today],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            self.db.execute(
+                "DELETE FROM shifts WHERE day >= ?2
+                   AND id = (SELECT shift FROM requests WHERE id = ?1)",
+                params![request, today],
+            )?;
+            self.db
+                .execute("UPDATE requests SET shift = NULL WHERE id = ?1", [request])?;
+            day.into_iter().collect()
+        };
+        for d in days {
+            self.touch(&d)?;
+        }
+        Ok(())
     }
 
     pub fn save_shift(&self, s: &ShiftIn) -> Result<i64> {
@@ -774,6 +843,15 @@ impl Store {
         )?;
         if !known {
             return bad("no such person");
+        }
+        let busy: bool = self.db.query_row(
+            "SELECT EXISTS (SELECT 1 FROM shifts WHERE staff = ?1 AND day = ?2
+               AND start < ?4 AND ?3 < end AND id IS NOT ?5)",
+            params![s.staff, s.day, s.start, s.end, s.id],
+            |r| r.get(0),
+        )?;
+        if busy {
+            return bad("they already work then");
         }
         let id = match s.id {
             Some(id) => {
@@ -873,6 +951,14 @@ impl Store {
         if !hex {
             return bad("colour is #rrggbb");
         }
+        let taken: bool = self.db.query_row(
+            "SELECT EXISTS (SELECT 1 FROM staff WHERE name = ?1 COLLATE NOCASE AND id IS NOT ?2)",
+            params![name, p.id],
+            |r| r.get(0),
+        )?;
+        if taken {
+            return bad("someone already has that name");
+        }
         match p.id {
             Some(id) => {
                 let n = self.db.execute(
@@ -906,7 +992,7 @@ impl Store {
         Ok(Requests { pending, decided })
     }
 
-    fn check_off(&self, o: &OffIn) -> Result<String> {
+    fn check_off(&self, staff: i64, o: &OffIn) -> Result<String> {
         self.day(&o.first)?;
         self.day(&o.last)?;
         let days: i64 = self.db.query_row(
@@ -920,12 +1006,21 @@ impl Store {
         if days > MAX_DAYS {
             return bad(format!("at most {MAX_DAYS} days at a time"));
         }
+        let taken: bool = self.db.query_row(
+            "SELECT EXISTS (SELECT 1 FROM requests WHERE staff = ?1 AND kind = 'off'
+               AND status != 'denied' AND first <= ?3 AND ?2 <= last)",
+            params![staff, o.first, o.last],
+            |r| r.get(0),
+        )?;
+        if taken {
+            return bad("those days are already asked off or off");
+        }
         text("The note", &o.reason, 500)
     }
 
     /// Time off the manager enters; it needs no approval.
     pub fn add_off(&self, staff: i64, o: &OffIn) -> Result<i64> {
-        let reason = self.check_off(o)?;
+        let reason = self.check_off(staff, o)?;
         self.db.execute(
             "INSERT INTO requests (staff, first, last, reason, status, decided)
              VALUES (?1, ?2, ?3, ?4, 'approved', datetime('now', 'localtime'))",
@@ -948,13 +1043,21 @@ impl Store {
         if !matches!(status, "approved" | "denied") {
             return bad("approved or denied");
         }
-        let kind: String = self
+        let (kind, was): (String, String) = self
             .db
-            .query_row("SELECT kind FROM requests WHERE id = ?1", [id], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT kind, status FROM requests WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .optional()?
             .ok_or(Error::Missing)?;
+        if was == status {
+            return bad(format!("it is already {status}"));
+        }
+        if was == "approved" {
+            self.unapprove(id, &kind)?;
+        }
         if status == "approved" && kind == "cover" {
             self.fill_cover(id)?;
         }
@@ -982,6 +1085,10 @@ impl Store {
         self.db.execute(
             "INSERT INTO shifts (staff, day, start, end) VALUES (?1, ?2, ?3, ?4)",
             params![staff, day, start, end],
+        )?;
+        self.db.execute(
+            "UPDATE requests SET shift = ?2 WHERE id = ?1",
+            params![id, self.db.last_insert_rowid()],
         )?;
         self.touch(&day)
     }
@@ -1029,10 +1136,35 @@ impl Store {
         Ok(ids.len())
     }
 
+    /// Removes a request; an approved one is undone first.
     pub fn delete_off(&self, id: i64) -> Result<()> {
-        let n = self
+        let (kind, status): (String, String) = self
             .db
+            .query_row(
+                "SELECT kind, status FROM requests WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?
+            .ok_or(Error::Missing)?;
+        let tx = self.db.unchecked_transaction()?;
+        if status == "approved" {
+            self.unapprove(id, &kind)?;
+        }
+        self.db
+            .execute("DELETE FROM cleared WHERE request = ?1", [id])?;
+        self.db
             .execute("DELETE FROM requests WHERE id = ?1", [id])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Staff take back a request the manager hasn't decided yet.
+    pub fn withdraw(&self, id: i64) -> Result<()> {
+        let n = self.db.execute(
+            "DELETE FROM requests WHERE id = ?1 AND status = 'pending'",
+            [id],
+        )?;
         if n == 0 { Err(Error::Missing) } else { Ok(()) }
     }
 
@@ -1080,7 +1212,7 @@ impl Store {
     /// A request for time off, waiting for the manager.
     pub fn ask_off(&self, staff: i64, o: &OffIn) -> Result<i64> {
         self.active(staff)?;
-        let reason = self.check_off(o)?;
+        let reason = self.check_off(staff, o)?;
         if o.first < self.today()? {
             return bad("that day has passed");
         }
@@ -1197,6 +1329,8 @@ impl Store {
     /// Sets one role's password and signs that role out everywhere. The two
     /// differ, since the password alone says who is signing in.
     pub fn set_password(&self, role: Role, password: &str) -> Result<()> {
+        // Phone keyboards add a space after a suggested word.
+        let password = password.trim();
         if password.chars().count() < 6 {
             return bad("the password needs at least 6 characters");
         }
@@ -1215,7 +1349,7 @@ impl Store {
 
     /// A new session and its role if the password is either one.
     pub fn sign_in(&self, password: &str) -> Result<Option<(String, Role)>> {
-        let Some(role) = self.matches(password)? else {
+        let Some(role) = self.matches(password.trim())? else {
             return Ok(None);
         };
         let t = token();
@@ -1295,7 +1429,8 @@ mod tests {
         s.publish("2026-10-19").unwrap();
         assert!(!s.week("2026-10-19").unwrap().edited);
         // Sunday belongs to the week before it.
-        put(&s, a, "2026-10-25");
+        let b = add(&s, "Ben");
+        put(&s, b, "2026-10-25");
         assert!(s.week("2026-10-19").unwrap().edited);
         s.publish("2026-10-19").unwrap();
         put(&s, a, "2026-10-26");
@@ -1361,6 +1496,133 @@ mod tests {
     }
 
     #[test]
+    fn repeated_taps_make_nothing_twice() {
+        let s = store();
+        let a = add(&s, "Ana");
+        let day = s.plus(&this_monday(&s), 9).unwrap();
+        let shift = |id, start, end| ShiftIn {
+            id,
+            staff: a,
+            day: day.clone(),
+            start,
+            end,
+            note: String::new(),
+        };
+        let h = s.save_shift(&shift(None, 390, 840)).unwrap();
+        assert!(matches!(
+            s.save_shift(&shift(None, 390, 840)),
+            Err(Error::Bad(_))
+        ));
+        assert!(matches!(
+            s.save_shift(&shift(None, 800, 900)),
+            Err(Error::Bad(_))
+        ));
+        s.save_shift(&shift(Some(h), 400, 840)).unwrap();
+        s.save_shift(&shift(None, 840, 900)).unwrap();
+
+        let off = |first: &str, last: &str| OffIn {
+            first: first.into(),
+            last: last.into(),
+            reason: String::new(),
+        };
+        let next = s.plus(&day, 1).unwrap();
+        let r = s.ask_off(a, &off(&day, &day)).unwrap();
+        assert!(matches!(s.ask_off(a, &off(&day, &day)), Err(Error::Bad(_))));
+        assert!(matches!(
+            s.ask_off(a, &off(&day, &next)),
+            Err(Error::Bad(_))
+        ));
+        assert!(matches!(s.add_off(a, &off(&day, &day)), Err(Error::Bad(_))));
+        s.decide(r, "denied").unwrap();
+        s.ask_off(a, &off(&day, &next)).unwrap();
+
+        assert!(matches!(
+            s.save_person(&PersonIn {
+                id: None,
+                name: "ana".into(),
+                color: "#b0482a".into(),
+                active: true,
+            }),
+            Err(Error::Bad(_))
+        ));
+        s.save_person(&PersonIn {
+            id: Some(a),
+            name: "Ana".into(),
+            color: "#123456".into(),
+            active: true,
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn undoing_an_approval_puts_the_schedule_back() {
+        let s = store();
+        let a = add(&s, "Ana");
+        let b = add(&s, "Ben");
+        let monday = s.plus(&this_monday(&s), 7).unwrap();
+        let day = s.plus(&monday, 2).unwrap();
+        put(&s, a, &day);
+        s.publish(&monday).unwrap();
+        let shifts = |s: &Store| {
+            let mut v: Vec<i64> = s
+                .week(&monday)
+                .unwrap()
+                .shifts
+                .iter()
+                .map(|h| h.staff)
+                .collect();
+            v.sort();
+            v
+        };
+
+        let off = OffIn {
+            first: day.clone(),
+            last: day.clone(),
+            reason: String::new(),
+        };
+        let r = s.ask_off(a, &off).unwrap();
+        s.decide(r, "approved").unwrap();
+        assert!(shifts(&s).is_empty());
+        assert!(matches!(s.decide(r, "approved"), Err(Error::Bad(_))));
+        s.decide(r, "denied").unwrap();
+        assert_eq!(shifts(&s), [a]);
+        s.decide(r, "approved").unwrap();
+        s.delete_off(r).unwrap();
+        assert_eq!(shifts(&s), [a]);
+
+        // A shift booked since wins over the one coming back.
+        let r = s.ask_off(a, &off).unwrap();
+        s.decide(r, "approved").unwrap();
+        s.save_shift(&ShiftIn {
+            id: None,
+            staff: a,
+            day: day.clone(),
+            start: 600,
+            end: 700,
+            note: String::new(),
+        })
+        .unwrap();
+        s.decide(r, "denied").unwrap();
+        assert_eq!(s.week(&monday).unwrap().shifts[0].start, 600);
+
+        let c = s.ask_cover(b, &CoverIn { day: day.clone() }).unwrap();
+        s.decide(c, "approved").unwrap();
+        assert_eq!(shifts(&s), [a, b]);
+        s.decide(c, "denied").unwrap();
+        assert_eq!(shifts(&s), [a]);
+        s.decide(c, "approved").unwrap();
+        s.delete_off(c).unwrap();
+        assert_eq!(shifts(&s), [a]);
+
+        // Staff take back only what is still pending.
+        let c = s.ask_cover(b, &CoverIn { day: day.clone() }).unwrap();
+        s.withdraw(c).unwrap();
+        let c = s.ask_cover(b, &CoverIn { day: day.clone() }).unwrap();
+        s.decide(c, "denied").unwrap();
+        assert!(matches!(s.withdraw(c), Err(Error::Missing)));
+    }
+
+    #[test]
     fn the_password_says_who_signs_in() {
         let s = store();
         assert_eq!(s.role(None).unwrap(), Some(Role::Admin));
@@ -1383,6 +1645,9 @@ mod tests {
         s.set_password(Role::Staff, "flat white").unwrap();
         assert_eq!(s.role(Some(&staff)).unwrap(), None);
         assert_eq!(s.role(Some(&admin)).unwrap(), Some(Role::Admin));
+        assert!(s.sign_in(" flat white ").unwrap().is_some());
+        s.set_password(Role::Staff, "cappuccino ").unwrap();
+        assert!(s.sign_in("cappuccino").unwrap().is_some());
     }
 
     #[test]
@@ -1519,7 +1784,7 @@ mod tests {
             .unwrap();
         let w = s.week(&monday).unwrap();
         assert_eq!(w.shifts.len(), 5);
-        s.decide(id, "approved").unwrap();
+        assert!(matches!(s.decide(id, "approved"), Err(Error::Bad(_))));
         assert_eq!(s.use_usual(&monday).unwrap(), 5);
         assert!(
             s.week(&monday)

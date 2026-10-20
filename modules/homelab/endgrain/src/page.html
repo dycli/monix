@@ -28,6 +28,7 @@
   button.main { background: var(--ink); color: var(--lift); border-color: var(--ink); }
   button.quiet { border-color: transparent; background: transparent; color: var(--mid); padding: 4px 8px; }
   button.quiet:hover { border-color: var(--edge); }
+  [aria-busy] { opacity: .6; cursor: progress; }
   button:disabled { opacity: .4; cursor: default; }
   input, select { font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--edge); border-radius: 8px; padding: 6px 8px; }
   input:focus, select:focus { outline: 2px solid var(--soft); outline-offset: -1px; }
@@ -343,7 +344,13 @@ function toast(msg) {
   const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', 3500);
 }
-async function act(f) { try { await f(); } catch (e) { toast(e.message); } }
+// Given the button, form or row it came from, a tap while the last one is
+// still on its way does nothing, so impatient taps send nothing twice.
+async function act(f, el) {
+  if (el) { if (el.busy) return; el.busy = true; el.setAttribute('aria-busy', 'true'); }
+  try { await f(); } catch (e) { toast(e.message); }
+  finally { if (el) { el.busy = false; el.removeAttribute('aria-busy'); } }
+}
 
 // Days are YYYY-MM-DD in local time; times are minutes after midnight.
 const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -377,6 +384,9 @@ function range(monday) {
 
 let monday = mondayOf(today());
 let week = null;
+// Counts schedule loads, so a slow reply for a week or month already left
+// behind can't draw over the one on screen.
+let loads = 0;
 
 // The week grid: a row per person, a column per day.
 // `w.days` names the columns; shifts and time off match them by `day`.
@@ -407,13 +417,14 @@ function grid(table, w, editable) {
       // (a dashed day they want to work) and off. A shift on a day they
       // asked off is one in-between card, still on until the manager answers.
       const asked = offs.some(o => o.status === 'pending') && shifts.length > 0;
-      let cell = offs.filter(o => !(asked && o.status === 'pending')).map(o => `<div class="off ${o.status === 'pending' ? 'ask' : ''}" title="${esc(o.reason)}">${o.status === 'pending' ? 'Asked off' : 'Off'}</div>`).join('');
+      const ask = asked && offs.find(o => o.status === 'pending').id;
+      let cell = offs.filter(o => !(asked && o.status === 'pending')).map(o => `<div class="off ${o.status === 'pending' ? 'ask' : ''}" ${o.status === 'pending' ? `data-req="${o.id}"` : ''} title="${esc(o.reason)}">${o.status === 'pending' ? 'Asked off' : 'Off'}</div>`).join('');
       for (const s of shifts) {
         const small = asked ? 'Asked off' + (s.note ? ' · ' + esc(s.note) : '') : esc(s.note);
-        cell += `<button class="shift ${asked ? 'asked' : ''}" style="--c:${p.color}" data-id="${s.id}" ${editable || d >= now ? '' : 'tabindex="-1"'}>${spanCell(s)}${small ? `<small>${small}</small>` : ''}</button>`;
+        cell += `<button class="shift ${asked ? 'asked' : ''}" style="--c:${p.color}" data-id="${s.id}" ${asked ? `data-req="${ask}"` : ''} ${editable || d >= now ? '' : 'tabindex="-1"'}>${spanCell(s)}${small ? `<small>${small}</small>` : ''}</button>`;
       }
       for (const o of wants.filter(o => o.status === 'pending'))
-        cell += `<div class="shift want" style="--c:${p.color}">${spanCell(o)}<small>Asked to work</small></div>`;
+        cell += `<div class="shift want" style="--c:${p.color}" data-req="${o.id}">${spanCell(o)}<small>Asked to work</small></div>`;
       html += `<td class="${cls(d, i)}"><div class="cell" data-staff="${p.id}" data-day="${d}">${cell}</div></td>`;
     });
     html += '</tr>';
@@ -435,7 +446,9 @@ function grid(table, w, editable) {
 // ---- Manager ----
 
 async function loadWeek() {
-  week = await api(`/week?monday=${monday}`);
+  const n = ++loads, w = await api(`/week?monday=${monday}`);
+  if (n !== loads) return;
+  week = w;
   $('#schedule .range').textContent = range(monday);
   const st = $('#status');
   st.innerHTML = week.published
@@ -456,7 +469,9 @@ async function loadWeek() {
 // ---- Staff ----
 
 async function loadBoard() {
-  week = await api(`/board?monday=${monday}`);
+  const n = ++loads, w = await api(`/board?monday=${monday}`);
+  if (n !== loads) return;
+  week = w;
   $('#schedule .range').textContent = range(monday);
   if (!week.published) {
     $('#grid').innerHTML = '<tbody><tr><td class="empty" style="position:static">This week isn\'t posted yet.</td></tr></tbody>';
@@ -477,13 +492,26 @@ async function loadAsks() {
   [teamOff, week] = await Promise.all([api('/board/requests'), week ? week : api(`/board?monday=${monday}`)]);
   const list = (status, el, none) => {
     const os = teamOff.filter(o => o.status === status);
-    $(el).innerHTML = os.length ? os.map(o => `<div class="row"><div class="what"><b>${esc(o.name)}</b> · ${asked(o)}</div></div>`).join('') : `<p class="empty">${none}</p>`;
+    $(el).innerHTML = os.length ? os.map(o => `<div class="row"><div class="what"><b>${esc(o.name)}</b> · ${asked(o)}</div>${status === 'pending' ? `<button class="quiet" data-req="${o.id}">Take back</button>` : ''}</div>`).join('') : `<p class="empty">${none}</p>`;
     return os.length;
   };
   list('pending', '#tpending', 'Nothing waiting.');
   list('approved', '#tapproved', 'Nothing approved.');
   $('#tdeniedcard').hidden = !list('denied', '#tdenied', '');
 }
+
+// Staff take back a request the manager hasn't answered.
+function takeBack(el) {
+  const o = teamOff.find(o => o.id === Number(el.dataset.req)) || week.off.find(o => o.id === Number(el.dataset.req));
+  const name = o && (o.name || week.staff.find(p => p.id === o.staff)?.name);
+  if (!confirm(`Take back ${name ? name + "'s" : 'this'} ${o?.kind === 'cover' ? 'ask to work' : 'time off request'}?`)) return;
+  act(async () => {
+    await api(`/board/requests/${el.dataset.req}`, { method: 'DELETE' });
+    toast('Taken back.');
+    await (location.hash === '#asks' ? loadAsks : loadBoard)();
+  }, el);
+}
+$('#asks').addEventListener('click', e => { const b = e.target.closest('button[data-req]'); if (b) takeBack(b); });
 
 const askf = $('#askdlg form');
 // From a shift on the grid, the form comes filled in with its person and day.
@@ -509,7 +537,7 @@ askf.addEventListener('submit', e => {
     await api('/board/off', { method: 'POST', body: { staff: Number(askf.staff.value), first: askf.first.value, last: askf.last.value, reason: askf.reason.value } });
     $('#askdlg').close(); toast('Sent. It shows as asked off until the manager answers.');
     await (location.hash === '#asks' ? loadAsks : loadBoard)();
-  });
+  }, askf);
 });
 
 const workf = $('#workdlg form');
@@ -521,16 +549,16 @@ workf.addEventListener('submit', e => {
     await api('/board/cover', { method: 'POST', body: { staff: Number(workf.staff.value), day: working } });
     $('#workdlg').close(); toast('Sent. It shows as asked to work until the manager answers.');
     await loadBoard();
-  });
+  }, workf);
 });
 
-$('#approve').onclick = () => act(async () => {
+$('#approve').onclick = e => act(async () => {
   const names = [...new Set(week.off.filter(o => o.status === 'pending' && o.kind === 'off').map(o => week.staff.find(p => p.id === o.staff)?.name))];
   if (!confirm(`Approve time off this week for ${names.join(', ')}? Their shifts those days come off the schedule.`)) return;
   const r = await api('/week/approve', { method: 'POST', body: { monday } });
   toast(`Approved ${r.approved}.`);
   await loadWeek();
-});
+}, e.currentTarget);
 
 function setCount(n) {
   const c = $('#nav .count');
@@ -546,7 +574,7 @@ function onGrid(table, data) {
     if (k) return act(async () => {
       await api('/week/short', { method: 'POST', body: { day: k.dataset.short, ok: !!k.dataset.ok } });
       await loadWeek();
-    });
+    }, k);
     if (e.target.closest('.want')) return location.hash = '#requests';
     const b = e.target.closest('.shift');
     cur = data();
@@ -559,7 +587,10 @@ if (MANAGER) onGrid($('#grid'), () => week);
 // Staff: a shift asks for that day off; an empty day asks to work it.
 else $('#grid').addEventListener('click', e => {
   const c = e.target.closest('.cell');
-  if (!c || !week.published || c.dataset.day < today() || e.target.closest('.want, .off')) return;
+  if (!c || !week.published || c.dataset.day < today()) return;
+  const r = e.target.closest('[data-req]');
+  if (r) return takeBack(r);
+  if (e.target.closest('.want, .off')) return;
   const staff = Number(c.dataset.staff);
   if (e.target.closest('.shift')) return openAsk(staff, c.dataset.day);
   if (c.querySelector('.shift, .want, .off')) return;
@@ -618,25 +649,25 @@ edf.addEventListener('submit', e => {
     if (cur.days) await api('/usual', { method: 'PUT', body: { ...body, weekday: Number(edf.weekday.value) } });
     else await api('/shift', { method: 'PUT', body: { ...body, day: edf.day.value } });
     ed.close(); await (cur.days ? loadUsual : loadWeek)();
-  });
+  }, edf);
 });
 $('#eddelete').onclick = () => act(async () => {
   await api(`${cur.days ? '/usual' : '/shift'}/${editing.id}`, { method: 'DELETE' });
   ed.close(); await (cur.days ? loadUsual : loadWeek)();
-});
+}, edf);
 
-$('#copy').onclick = () => act(async () => {
+$('#copy').onclick = e => act(async () => {
   if (week.shifts.length && !confirm(`Replace this week's ${week.shifts.length} shifts with last week's?`)) return;
   const r = await api('/week/copy', { method: 'POST', body: { monday } });
   toast(r.copied ? `Copied ${r.copied} shifts.` : 'Last week had no shifts.');
   await loadWeek();
-});
-$('#fill').onclick = () => act(async () => {
+}, e.currentTarget);
+$('#fill').onclick = e => act(async () => {
   if (week.shifts.length && !confirm(`Replace this week's ${week.shifts.length} shifts with the usual week?`)) return;
   const r = await api('/week/usual', { method: 'POST', body: { monday } });
   toast(r.filled ? `Filled ${r.filled} shifts.` : 'The usual week is empty. Set it on the Usual week tab.');
   await loadWeek();
-});
+}, e.currentTarget);
 
 // The usual week reuses the grid, with weekday numbers for days.
 let usualWeek = null;
@@ -666,11 +697,11 @@ $('#rules').addEventListener('change', e => {
 });
 $('#editor select[name=weekday]').innerHTML = DAYS.map((d, i) => `<option value="${i}">${d}</option>`).join('');
 
-$('#publish').onclick = () => act(async () => {
+$('#publish').onclick = e => act(async () => {
   await api('/week/publish', { method: 'POST', body: { monday } });
   toast('Posted. Staff can see this week now.');
   await loadWeek();
-});
+}, e.currentTarget);
 
 async function loadRequests() {
   const [r, staff] = await Promise.all([api('/requests'), api('/staff')]);
@@ -697,11 +728,11 @@ $('#requests').addEventListener('click', e => {
   const b = e.target.closest('button[data-id]'); if (!b) return;
   act(async () => {
     if (b.dataset.del !== undefined) {
-      if (!confirm('Remove this time off?')) return;
+      if (!confirm('Remove this request? If it was approved, the schedule goes back to how it was.')) return;
       await api(`/requests/${b.dataset.id}`, { method: 'DELETE' });
     } else await api(`/requests/${b.dataset.id}`, { method: 'POST', body: { status: b.dataset.to } });
     await loadRequests();
-  });
+  }, b.closest('.row'));
 });
 $('#addoff').addEventListener('input', e => { const f = e.currentTarget; if (e.target === f.first && (!f.last.value || f.last.value < f.first.value)) f.last.value = f.first.value; });
 $('#addoff').addEventListener('submit', e => {
@@ -709,7 +740,7 @@ $('#addoff').addEventListener('submit', e => {
   act(async () => {
     await api('/requests', { method: 'POST', body: { staff: Number(f.staff.value), first: f.first.value, last: f.last.value, reason: f.reason.value } });
     f.reset(); toast('Added.'); await loadRequests();
-  });
+  }, f);
 });
 
 let people = [];
@@ -737,7 +768,7 @@ for (const f of document.querySelectorAll('form.password')) f.addEventListener('
     await api('/password', { method: 'PUT', body: { role: f.dataset.role, password: f.password.value } });
     f.reset(); toast(f.dataset.role === 'staff' ? 'Staff password set. Share it with the team.' : 'Your password is set.');
     await loadStaff();
-  });
+  }, f);
 });
 const savePerson = (p, change) => api('/staff', { method: 'PUT', body: { id: p.id, name: p.name, color: p.color, active: p.active, ...change } });
 $('#people').addEventListener('change', e => {
@@ -764,7 +795,7 @@ $('#addperson').addEventListener('submit', e => {
   act(async () => {
     await api('/staff', { method: 'PUT', body: { id: null, name: f.name.value, color, active: true } });
     f.reset(); await loadStaff();
-  });
+  }, f);
 });
 
 // ---- Month ----
@@ -777,7 +808,9 @@ async function loadMonth() {
   const last = iso(new Date(y, m + 1, 0)), now = today();
   const mondays = [];
   for (let d = mondayOf(month); d <= last; d = addDays(d, 7)) mondays.push(d);
+  const n = ++loads;
   const weeks = await Promise.all(mondays.map(d => api(`/${MANAGER ? 'week' : 'board'}?monday=${d}`)));
+  if (n !== loads) return;
   $('#schedule .range').textContent = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   let html = DAYS.map(d => `<div class="dow">${d}</div>`).join('');
   weeks.forEach((w, wi) => {
