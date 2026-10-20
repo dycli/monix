@@ -94,6 +94,25 @@
   .swatches button { width: 22px; height: 22px; padding: 0; border-radius: 50%; background: var(--c); border: 2px solid transparent; }
   .swatches button.on { border-color: var(--ink); }
   .staffrow input.name { width: 160px; }
+  /* Month: a calendar of who works each day. Week-only tools step aside. */
+  .seg { display: inline-flex; }
+  .seg button { border-radius: 0; }
+  .seg button:first-child { border-radius: 8px 0 0 8px; }
+  .seg button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
+  .seg button.on { background: var(--ink); color: var(--lift); border-color: var(--ink); }
+  #schedule.month .weekonly, #schedule:not(.month) #month { display: none !important; }
+  #month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--edge); border-left: 1px solid var(--edge); }
+  #month .dow { font: 600 12px system-ui; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); padding: 4px 6px 8px; border-right: 1px solid var(--edge); border-bottom: 1px solid var(--edge); }
+  #month .day { min-height: 104px; padding: 5px 6px 6px; border-right: 1px solid var(--edge); border-bottom: 1px solid var(--edge); cursor: pointer; min-width: 0; }
+  #month .day:hover { background: var(--paper); }
+  #month .day.other { opacity: .45; }
+  #month .day.short { background: rgba(176, 72, 42, .09); }
+  #month .num { display: block; width: fit-content; min-width: 1.5em; padding: 0 .3em; margin: 0 0 3px -.3em; border-radius: 99px; text-align: center; font: 400 16px Georgia, serif; }
+  #month .short .num { color: var(--accent); }
+  #month .today .num { background: var(--ink); color: var(--lift); }
+  #month .name { display: flex; align-items: center; gap: 5px; font-size: 13px; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #month .name .dot { width: 8px; height: 8px; }
+  #month .none { font-size: 12px; color: var(--soft); }
   [hidden] { display: none !important; }
   @media (max-width: 600px) {
     main { padding: 16px 12px 40px; }
@@ -116,6 +135,13 @@
     .off { font-size: 10px; padding: 3px 2px; text-align: center; }
     .cell { min-height: 40px; gap: 2px; border-radius: 6px; }
     .grid tfoot td { font-size: 10px; padding: 6px 1px 0; text-align: center; }
+    .card:has(#month) { padding: 12px 8px; }
+    #month .dow { padding: 2px 2px 6px; font-size: 10px; letter-spacing: .02em; text-align: center; }
+    #month .day { min-height: 76px; padding: 3px 2px 4px; }
+    #month .num { font-size: 14px; margin: 0 auto 2px; }
+    #month .name { display: block; font-size: 10px; line-height: 1.35; letter-spacing: -.02em; border-left: 3px solid var(--c); padding-left: 2px; text-overflow: clip; }
+    #month .name .dot { display: none; }
+    #month .none { font-size: 9px; text-align: center; }
   }
   @media print {
     body { background: #fff; }
@@ -137,19 +163,21 @@
   <section id="schedule" hidden>
     <div class="card">
       <div class="weeknav">
-        <button data-step="0">This week</button>
-        <button data-step="-7" aria-label="Previous week">‹</button>
-        <button data-step="7" aria-label="Next week">›</button>
+        <button data-step="0" class="now">This week</button>
+        <button data-step="-1" aria-label="Previous">‹</button>
+        <button data-step="1" aria-label="Next">›</button>
         <b class="range"></b>
-        <span id="status" class="mgr"></span>
+        <span id="status" class="mgr weekonly"></span>
         <span class="grow"></span>
-        <button id="fill" class="noprint mgr">Use usual week</button>
-        <button id="copy" class="noprint mgr">Copy last week</button>
-        <button id="approve" class="noprint mgr" hidden></button>
-        <button id="publish" class="main noprint mgr">Post week</button>
+        <span class="seg noprint"><button data-mode="week">Week</button><button data-mode="month">Month</button></span>
+        <button id="fill" class="noprint mgr weekonly">Use usual week</button>
+        <button id="copy" class="noprint mgr weekonly">Copy last week</button>
+        <button id="approve" class="noprint mgr weekonly" hidden></button>
+        <button id="publish" class="main noprint mgr weekonly">Post week</button>
       </div>
-      <p class="small soft crew" style="margin:-4px 0 10px">Tap a shift to ask for it off, or an empty day to ask to work it.</p>
-      <div class="scroll"><table class="grid" id="grid"></table></div>
+      <p class="small soft crew weekonly" style="margin:-4px 0 10px">Tap a shift to ask for it off, or an empty day to ask to work it.</p>
+      <div class="scroll weekonly"><table class="grid" id="grid"></table></div>
+      <div id="month"></div>
     </div>
   </section>
 
@@ -739,21 +767,78 @@ $('#addperson').addEventListener('submit', e => {
   });
 });
 
+// ---- Month ----
+
+// Who works each day, a month at a time, built from the weeks it touches.
+// Staff get posted weeks only; the rest of the month stays blank for them.
+let month = null;
+async function loadMonth() {
+  const first = parse(month), y = first.getFullYear(), m = first.getMonth();
+  const last = iso(new Date(y, m + 1, 0)), now = today();
+  const mondays = [];
+  for (let d = mondayOf(month); d <= last; d = addDays(d, 7)) mondays.push(d);
+  const weeks = await Promise.all(mondays.map(d => api(`/${MANAGER ? 'week' : 'board'}?monday=${d}`)));
+  $('#schedule .range').textContent = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  let html = DAYS.map(d => `<div class="dow">${d}</div>`).join('');
+  weeks.forEach((w, wi) => {
+    const color = new Map(w.staff.map(p => [p.id, p]));
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(mondays[wi], i);
+      const on = w.shifts.filter(s => s.day === d).sort((a, b) => a.start - b.start);
+      const people = [...new Map(on.map(s => [s.staff, color.get(s.staff)])).values()].filter(Boolean);
+      const need = i >= 5 ? w.rules.weekend : w.rules.weekday;
+      const posted = MANAGER || w.published;
+      const short = posted && d >= now && people.length < need && !(w.short_ok || []).includes(d);
+      const cls = ['day', d.slice(0, 7) === month.slice(0, 7) ? '' : 'other', d === now ? 'today' : '', short ? 'short' : ''].join(' ');
+      const names = people.map(p => `<div class="name" style="--c:${p.color}"><span class="dot"></span>${esc(p.name)}</div>`).join('');
+      html += `<div class="${cls}" data-day="${d}"><span class="num">${parse(d).getDate()}</span>${posted ? names : '<div class="none">Not posted</div>'}</div>`;
+    }
+  });
+  $('#month').innerHTML = html;
+}
+// A day opens its week.
+$('#month').addEventListener('click', e => {
+  const day = e.target.closest('.day'); if (!day) return;
+  monday = mondayOf(day.dataset.day);
+  setMode('week');
+});
+
 // ---- Navigation ----
 
+// Week or month, remembered per device.
+let mode = localStorage.mode === 'month' ? 'month' : 'week';
+function setMode(m) {
+  mode = m;
+  localStorage.mode = m;
+  // The month holding most of the week on screen.
+  if (m === 'month') month = addDays(monday, 3).slice(0, 8) + '01';
+  loadSchedule();
+}
+function loadSchedule() {
+  $('#schedule').classList.toggle('month', mode === 'month');
+  for (const b of document.querySelectorAll('.seg button')) b.classList.toggle('on', b.dataset.mode === mode);
+  $('#schedule .now').textContent = mode === 'month' ? 'This month' : 'This week';
+  if (mode === 'month' && !month) month = addDays(monday, 3).slice(0, 8) + '01';
+  return act(mode === 'month' ? loadMonth : MANAGER ? loadWeek : loadBoard);
+}
 for (const nav of document.querySelectorAll('.weeknav')) nav.addEventListener('click', e => {
+  const seg = e.target.closest('button[data-mode]');
+  if (seg) return setMode(seg.dataset.mode);
   const b = e.target.closest('button[data-step]'); if (!b) return;
   const step = Number(b.dataset.step);
-  monday = step ? addDays(monday, step) : mondayOf(today());
-  act(MANAGER ? loadWeek : loadBoard);
+  if (mode === 'month') {
+    const d = parse(step ? month : today());
+    month = iso(new Date(d.getFullYear(), d.getMonth() + step, 1));
+  } else monday = step ? addDays(monday, step * 7) : mondayOf(today());
+  loadSchedule();
 });
 
 for (const el of document.querySelectorAll(MANAGER ? '.crew' : '.mgr')) el.hidden = true;
 $('#grid').classList.add(MANAGER ? 'edit' : 'board');
 
 const TABS = MANAGER
-  ? { schedule: loadWeek, requests: loadRequests, usual: loadUsual, staff: loadStaff }
-  : { schedule: loadBoard, asks: loadAsks };
+  ? { schedule: loadSchedule, requests: loadRequests, usual: loadUsual, staff: loadStaff }
+  : { schedule: loadSchedule, asks: loadAsks };
 $('#nav').addEventListener('click', e => {
   if (!e.target.classList.contains('switch')) return;
   e.preventDefault();
