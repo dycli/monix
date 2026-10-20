@@ -354,7 +354,7 @@ function spending() {
 const names = () => data.categories.map((c) => c.name);
 
 function txRow(x) {
-  const pick = el("select", { title: { plaid: "Plaid's guess", rule: "Your rule", match: "Matches a payment on a linked card", picked: "Picked by you" }[x.source] },
+  const pick = el("select", { title: { plaid: "Plaid's guess", rule: "Your rule", match: "Matches a payment on a linked card", deposit: "Deposit from outside your linked accounts", picked: "Picked by you" }[x.source] },
     ...names().map((n) => el("option", { value: n, textContent: n, selected: n === x.category })));
   const wrap = el("div", {});
   const row = el("div", { className: "row tx" },

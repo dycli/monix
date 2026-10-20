@@ -4,8 +4,9 @@
 //!
 //! A transaction's category is, in order: the one picked for it on the
 //! page, the rule for its merchant at that exact amount, the rule for its
-//! merchant, a card payment matched from the other side, then Plaid's guess
-//! mapped onto our list.
+//! merchant, a card payment matched from the other side, income for an
+//! outside transfer into a bank account, then Plaid's guess mapped onto our
+//! list.
 //! The `ledger` view does that once, so the page and the yeomen (who read
 //! `finance.db` directly) always agree.
 
@@ -125,6 +126,7 @@ SELECT t.transaction_id, t.account_id, t.date, t.name,
        CASE WHEN o.category IS NOT NULL THEN 'picked'
             WHEN a.category IS NOT NULL OR r.category IS NOT NULL THEN 'rule'
             WHEN m.paid IS NOT NULL THEN 'match'
+            WHEN i.transaction_id IS NOT NULL THEN 'deposit'
             ELSE 'plaid' END AS source
 FROM transactions t
 LEFT JOIN overrides o ON o.transaction_id = t.transaction_id
@@ -144,9 +146,25 @@ LEFT JOIN (
 ) m ON m.transaction_id = t.transaction_id
 LEFT JOIN category_map d ON d.code = t.detail
 LEFT JOIN category_map p ON p.code = t.category
+-- A transfer into a bank account that no other linked account sent is
+-- income: banks call paychecks and outside deposits plain transfers.
+LEFT JOIN (
+    SELECT t3.transaction_id
+    FROM transactions t3
+    JOIN accounts ia ON ia.account_id = t3.account_id AND ia.type = 'depository'
+    LEFT JOIN category_map d3 ON d3.code = t3.detail
+    LEFT JOIN category_map p3 ON p3.code = t3.category
+    WHERE t3.amount < 0 AND coalesce(d3.category, p3.category) = 'Transfers'
+      AND NOT EXISTS (
+        SELECT 1 FROM transactions y
+        WHERE y.account_id != t3.account_id
+          AND y.amount BETWEEN -t3.amount - 0.005 AND -t3.amount + 0.005
+          AND abs(julianday(y.date) - julianday(t3.date)) <= 5)
+) i ON i.transaction_id = t.transaction_id
 -- A rule naming a category this build no longer has falls to Other.
 LEFT JOIN categories c
-    ON c.name = coalesce(o.category, a.category, r.category, m.paid, d.category, p.category);
+    ON c.name = coalesce(o.category, a.category, r.category, m.paid,
+        CASE WHEN i.transaction_id IS NOT NULL THEN 'Income' END, d.category, p.category);
 ";
 
 /// Writes the category list and Plaid's mapping as this build has them.
@@ -605,6 +623,9 @@ mod tests {
             bank("t8", "2026-10-01", 3373.94),
             bank("t9", "2026-10-28", 3373.94),
             bank("t10", "2026-10-12", 100.0),
+            // Money in: a paycheck, and cash a linked card sent over.
+            bank("t11", "2026-10-16", -1726.77),
+            bank("t12", "2026-10-06", -40.0),
         ];
         s.transactions("i1", &list, &[], "c1").unwrap();
         let c = &s.finance;
@@ -651,6 +672,9 @@ mod tests {
         assert_eq!(of("t7")["source"], "match");
         assert_eq!(of("t9")["category"], "Home");
         assert_eq!(of("t10")["category"], "Transfers");
+        assert_eq!(of("t11")["category"], "Income");
+        assert_eq!(of("t11")["source"], "deposit");
+        assert_eq!(of("t12")["category"], "Transfers");
         let d = &p["debt"][0];
         assert_eq!(
             (d["account"].as_str(), d["payments"].as_f64()),
@@ -660,7 +684,7 @@ mod tests {
         assert_eq!(p["budget"].as_array().unwrap().len(), 2);
         assert_eq!(p["budget"][1]["annual"], 150.0);
         let m = &p["months"][0];
-        assert_eq!(m["income"], 2000.0);
+        assert_eq!(m["income"], 2000.0 + 1726.77);
         assert_eq!(m["spending"], 145.0 + 2.0 * 3373.94);
         let w = &p["worth"][0];
         assert_eq!(
