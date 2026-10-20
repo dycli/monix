@@ -245,8 +245,10 @@ mod tests {
         let lead = flights.wait(&short);
         assert!(lead.lead.is_some());
         let f = flights.clone();
+        // Timed from before the spawn: a thread scheduled late would
+        // otherwise see less of the leader's 100ms.
+        let at = Instant::now();
         let waiter = thread::spawn(move || {
-            let at = Instant::now();
             let flight = f.wait(&long);
             (at.elapsed(), flight.lead.is_some())
         });
