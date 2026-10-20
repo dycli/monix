@@ -97,7 +97,13 @@ const LOGIN: &[&str] = &[
 ];
 
 fn absent(f: &Failure) -> bool {
-    ABSENT.contains(&f.code.as_str()) || f.code == "PRODUCT_NOT_READY"
+    let skip = ABSENT.contains(&f.code.as_str()) || f.code == "PRODUCT_NOT_READY";
+    if skip {
+        // Skipped quietly, a missing product looks like an empty one; the
+        // journal keeps which it was.
+        eprintln!("money: skipped: {} {}", f.code, f.message);
+    }
+    skip
 }
 
 /// Pulls everything Plaid has for one Item. Errors that concern one product
@@ -186,6 +192,11 @@ fn sync_item(plaid: &Plaid, store: &mut Store, item: &str) -> Result<(), Failure
         match plaid.call("/investments/holdings/get", at.clone()) {
             Ok(r) => {
                 let list = |k: &str| r[k].as_array().cloned().unwrap_or_default();
+                eprintln!(
+                    "money: {item}: {} holdings over {} accounts",
+                    list("holdings").len(),
+                    list("accounts").len()
+                );
                 store.accounts(item, &list("accounts")).map_err(local)?;
                 store
                     .holdings(item, &list("holdings"), &list("securities"))
