@@ -100,6 +100,16 @@ CREATE TABLE sessions (
 -- 1 for a shift its person can't work, waiting for someone to take it.
 ALTER TABLE shifts ADD COLUMN open INTEGER NOT NULL DEFAULT 0;
 ",
+    "
+-- Staff ask to work a day as well as to have one off; both wait for the
+-- manager. An approved day off now drops the shift, so open shifts go.
+ALTER TABLE requests ADD COLUMN kind TEXT NOT NULL DEFAULT 'off'
+  CHECK (kind IN ('off', 'cover'));
+ALTER TABLE requests ADD COLUMN start INTEGER;
+ALTER TABLE requests ADD COLUMN end INTEGER;
+DELETE FROM shifts WHERE open;
+ALTER TABLE shifts DROP COLUMN open;
+",
 ];
 
 /// How many weeks past this one the usual week fills in.
@@ -153,8 +163,6 @@ pub struct Shift {
     pub start: i64,
     pub end: i64,
     pub note: String,
-    /// Up for anyone to take; it counts toward no one's day.
-    pub open: bool,
 }
 
 #[derive(Serialize)]
@@ -170,6 +178,15 @@ pub struct Off {
     pub decided: Option<String>,
     /// Shifts the person already has on those days.
     pub shifts: i64,
+    /// "off", or "cover": asking to work one day from `start` to `end`.
+    pub kind: String,
+    pub start: Option<i64>,
+    pub end: Option<i64>,
+}
+
+#[derive(Deserialize)]
+pub struct CoverIn {
+    pub day: String,
 }
 
 #[derive(Serialize)]
@@ -245,8 +262,6 @@ pub struct ShiftIn {
     pub end: i64,
     #[serde(default)]
     pub note: String,
-    #[serde(default)]
-    pub open: bool,
 }
 
 #[derive(Deserialize)]
@@ -266,7 +281,7 @@ pub struct OffIn {
 }
 
 /// Who a signed-in browser is: the manager sees and changes everything;
-/// staff see posted weeks, ask for time off and take open shifts.
+/// staff see posted weeks and ask for days off or days on.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
@@ -296,7 +311,8 @@ pub struct Store {
 const OFF: &str =
     "SELECT r.id, r.staff, s.name, r.first, r.last, r.reason, r.status, r.made, r.decided,
       (SELECT COUNT(*) FROM shifts
-        WHERE staff = r.staff AND NOT open AND day BETWEEN r.first AND r.last)
+        WHERE staff = r.staff AND day BETWEEN r.first AND r.last),
+      r.kind, r.start, r.end
     FROM requests r JOIN staff s ON s.id = r.staff";
 
 fn off(r: &rusqlite::Row) -> rusqlite::Result<Off> {
@@ -311,6 +327,9 @@ fn off(r: &rusqlite::Row) -> rusqlite::Result<Off> {
         made: r.get(7)?,
         decided: r.get(8)?,
         shifts: r.get(9)?,
+        kind: r.get(10)?,
+        start: r.get(11)?,
+        end: r.get(12)?,
     })
 }
 
@@ -322,7 +341,6 @@ fn shift(r: &rusqlite::Row) -> rusqlite::Result<Shift> {
         start: r.get(3)?,
         end: r.get(4)?,
         note: r.get(5)?,
-        open: r.get(6)?,
     })
 }
 
@@ -427,7 +445,7 @@ impl Store {
 
     fn shifts(&self, monday: &str, only: Option<i64>) -> Result<Vec<Shift>> {
         let mut q = self.db.prepare(
-            "SELECT id, staff, day, start, end, note, open FROM shifts
+            "SELECT id, staff, day, start, end, note FROM shifts
              WHERE day BETWEEN ?1 AND date(?1, '+6 days') AND (?2 IS NULL OR staff = ?2)
              ORDER BY day, start, end",
         )?;
@@ -549,7 +567,8 @@ impl Store {
              WHERE (?3 IS NULL OR u.id = ?3)
                AND NOT EXISTS (SELECT 1 FROM shifts h WHERE h.staff = u.staff AND h.day = days.day)
                AND NOT EXISTS (SELECT 1 FROM requests r WHERE r.staff = u.staff
-                 AND r.status = 'approved' AND days.day BETWEEN r.first AND r.last)
+                 AND r.kind = 'off' AND r.status = 'approved'
+                 AND days.day BETWEEN r.first AND r.last)
              ORDER BY days.day, u.start",
             params![first, last, only],
         )?;
@@ -721,9 +740,8 @@ impl Store {
         self.carry(Some(&old), None)
     }
 
-    /// Opens the person's coming shifts on days they now have off, for
-    /// someone else to take; days already past keep the record of who
-    /// worked.
+    /// Drops the person's coming shifts on days they now have off; days
+    /// already past keep the record of who worked.
     fn clear_off(&self, request: i64) -> Result<usize> {
         const MATCH: &str = "FROM shifts h JOIN requests r ON r.id = ?1
             WHERE h.staff = r.staff AND h.day BETWEEN max(r.first, ?2) AND r.last";
@@ -734,7 +752,7 @@ impl Store {
                 .collect::<rusqlite::Result<_>>()?
         };
         let n = self.db.execute(
-            &format!("UPDATE shifts SET open = 1, usual = 0 WHERE id IN (SELECT h.id {MATCH})"),
+            &format!("DELETE FROM shifts WHERE id IN (SELECT h.id {MATCH})"),
             params![request, today],
         )?;
         for d in days {
@@ -765,18 +783,18 @@ impl Store {
                     .optional()?
                     .ok_or(Error::Missing)?;
                 self.db.execute(
-                    "UPDATE shifts SET staff = ?2, day = ?3, start = ?4, end = ?5, note = ?6, open = ?7
+                    "UPDATE shifts SET staff = ?2, day = ?3, start = ?4, end = ?5, note = ?6
                      WHERE id = ?1",
-                    params![id, s.staff, s.day, s.start, s.end, note, s.open],
+                    params![id, s.staff, s.day, s.start, s.end, note],
                 )?;
                 self.touch(&was)?;
                 id
             }
             None => {
                 self.db.execute(
-                    "INSERT INTO shifts (staff, day, start, end, note, open)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![s.staff, s.day, s.start, s.end, note, s.open],
+                    "INSERT INTO shifts (staff, day, start, end, note)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![s.staff, s.day, s.start, s.end, note],
                 )?;
                 self.db.last_insert_rowid()
             }
@@ -784,7 +802,7 @@ impl Store {
         // A shift the same as that person's usual one that weekday counts
         // as usual, so changes to the usual week carry into it.
         self.db.execute(
-            "UPDATE shifts SET usual = NOT open AND EXISTS (SELECT 1 FROM usual u WHERE u.staff = shifts.staff
+            "UPDATE shifts SET usual = EXISTS (SELECT 1 FROM usual u WHERE u.staff = shifts.staff
                AND u.start = shifts.start AND u.end = shifts.end
                AND u.weekday = (CAST(strftime('%w', shifts.day) AS INTEGER) + 6) % 7)
              WHERE id = ?1",
@@ -919,8 +937,26 @@ impl Store {
     }
 
     pub fn decide(&self, id: i64, status: &str) -> Result<()> {
+        let tx = self.db.unchecked_transaction()?;
+        self.decide_in(id, status)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// `decide` inside a transaction the caller holds.
+    fn decide_in(&self, id: i64, status: &str) -> Result<()> {
         if !matches!(status, "approved" | "denied") {
             return bad("approved or denied");
+        }
+        let kind: String = self
+            .db
+            .query_row("SELECT kind FROM requests WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .optional()?
+            .ok_or(Error::Missing)?;
+        if status == "approved" && kind == "cover" {
+            self.fill_cover(id)?;
         }
         let n = self.db.execute(
             "UPDATE requests SET status = ?2, decided = datetime('now', 'localtime') WHERE id = ?1",
@@ -929,26 +965,65 @@ impl Store {
         if n == 0 {
             return Err(Error::Missing);
         }
-        if status == "approved" {
+        if status == "approved" && kind == "off" {
             self.clear_off(id)?;
         }
         Ok(())
     }
 
-    /// Approves every pending request that touches a week.
+    /// Puts an approved day on the schedule as a new shift.
+    fn fill_cover(&self, id: i64) -> Result<()> {
+        let (staff, day, start, end): (i64, String, i64, i64) = self.db.query_row(
+            "SELECT staff, first, start, end FROM requests WHERE id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )?;
+        self.free(staff, &day, start, end)?;
+        self.db.execute(
+            "INSERT INTO shifts (staff, day, start, end) VALUES (?1, ?2, ?3, ?4)",
+            params![staff, day, start, end],
+        )?;
+        self.touch(&day)
+    }
+
+    /// Fails if they already work then or have the day off.
+    fn free(&self, staff: i64, day: &str, start: i64, end: i64) -> Result<()> {
+        let busy: bool = self.db.query_row(
+            "SELECT EXISTS (SELECT 1 FROM shifts WHERE staff = ?1 AND day = ?2
+               AND start < ?4 AND ?3 < end)",
+            params![staff, day, start, end],
+            |r| r.get(0),
+        )?;
+        if busy {
+            return bad("they already work then");
+        }
+        let off: bool = self.db.query_row(
+            "SELECT EXISTS (SELECT 1 FROM requests WHERE staff = ?1 AND kind = 'off'
+               AND status = 'approved' AND ?2 BETWEEN first AND last)",
+            params![staff, day],
+            |r| r.get(0),
+        )?;
+        if off {
+            return bad("they have that day off");
+        }
+        Ok(())
+    }
+
+    /// Approves every pending time-off request that touches a week. Covers
+    /// wait for one at a time: two may want the same shift.
     pub fn approve_week(&self, monday: &str) -> Result<usize> {
         self.monday(monday)?;
         let ids: Vec<i64> = self
             .db
             .prepare(
-                "SELECT id FROM requests WHERE status = 'pending'
+                "SELECT id FROM requests WHERE status = 'pending' AND kind = 'off'
                    AND first <= date(?1, '+6 days') AND last >= ?1",
             )?
             .query_map([monday], |r| r.get(0))?
             .collect::<rusqlite::Result<_>>()?;
         let tx = self.db.unchecked_transaction()?;
         for &id in &ids {
-            self.decide(id, "approved")?;
+            self.decide_in(id, "approved")?;
         }
         tx.commit()?;
         Ok(ids.len())
@@ -1016,54 +1091,76 @@ impl Store {
         Ok(self.db.last_insert_rowid())
     }
 
-    /// Someone takes an open shift in a posted week, from today on.
-    pub fn take(&self, shift: i64, staff: i64) -> Result<()> {
+    /// A request to work a day in a posted week, from today on, on the
+    /// hours that day usually runs.
+    pub fn ask_cover(&self, staff: i64, c: &CoverIn) -> Result<i64> {
         self.active(staff)?;
-        let (day, start, end, open, posted): (String, i64, i64, bool, bool) = self
-            .db
-            .query_row(
-                concat!(
-                    "SELECT day, start, end, open, EXISTS (SELECT 1 FROM weeks WHERE monday = ",
-                    monday_of!("h.day"),
-                    ") FROM shifts h WHERE id = ?1"
-                ),
-                [shift],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
-            )
-            .optional()?
-            .ok_or(Error::Missing)?;
-        if !open {
-            return bad("someone already took that shift");
+        self.day(&c.day)?;
+        if c.day < self.today()? {
+            return bad("that day has passed");
         }
+        let posted: bool = self.db.query_row(
+            concat!(
+                "SELECT EXISTS (SELECT 1 FROM weeks WHERE monday = ",
+                monday_of!("?1"),
+                ")"
+            ),
+            [&c.day],
+            |r| r.get(0),
+        )?;
         if !posted {
             return Err(Error::Missing);
         }
-        if day < self.today()? {
-            return bad("that day has passed");
-        }
-        let busy: bool = self.db.query_row(
-            "SELECT EXISTS (SELECT 1 FROM shifts WHERE staff = ?1 AND day = ?2 AND NOT open
-               AND start < ?4 AND ?3 < end)",
-            params![staff, day, start, end],
+        let (start, end) = self.day_hours(&c.day)?;
+        self.free(staff, &c.day, start, end)?;
+        let asked: bool = self.db.query_row(
+            "SELECT EXISTS (SELECT 1 FROM requests WHERE staff = ?1 AND kind = 'cover'
+               AND status = 'pending' AND first = ?2)",
+            params![staff, c.day],
             |r| r.get(0),
         )?;
-        if busy {
-            return bad("you already work then");
-        }
-        let off: bool = self.db.query_row(
-            "SELECT EXISTS (SELECT 1 FROM requests WHERE staff = ?1 AND status = 'approved'
-               AND ?2 BETWEEN first AND last)",
-            params![staff, day],
-            |r| r.get(0),
-        )?;
-        if off {
-            return bad("you have that day off");
+        if asked {
+            return bad("they already asked to work that day");
         }
         self.db.execute(
-            "UPDATE shifts SET staff = ?2, open = 0, usual = 0 WHERE id = ?1",
-            params![shift, staff],
+            "INSERT INTO requests (staff, first, last, kind, start, end)
+             VALUES (?1, ?2, ?2, 'cover', ?3, ?4)",
+            params![staff, c.day, start, end],
         )?;
-        Ok(())
+        Ok(self.db.last_insert_rowid())
+    }
+
+    /// The hours a day usually runs: its most common usual shift, else the
+    /// most common shift on that weekday lately, else 7:45 to 3.
+    fn day_hours(&self, day: &str) -> Result<(i64, i64)> {
+        const WEEKDAY: &str = "(CAST(strftime('%w', ?1) AS INTEGER) + 6) % 7";
+        let usual = self
+            .db
+            .query_row(
+                &format!(
+                    "SELECT start, end FROM usual WHERE weekday = {WEEKDAY}
+                     GROUP BY start, end ORDER BY COUNT(*) DESC, start LIMIT 1"
+                ),
+                [day],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let recent = || {
+            self.db
+                .query_row(
+                    "SELECT start, end FROM shifts
+                     WHERE strftime('%w', day) = strftime('%w', ?1)
+                       AND day BETWEEN date(?1, '-56 days') AND ?1
+                     GROUP BY start, end ORDER BY COUNT(*) DESC, start LIMIT 1",
+                    [day],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()
+        };
+        Ok(match usual {
+            Some(h) => h,
+            None => recent()?.unwrap_or((7 * 60 + 45, 15 * 60)),
+        })
     }
 
     pub fn passwords(&self) -> Result<Passwords> {
@@ -1178,7 +1275,6 @@ mod tests {
             start: 390,
             end: 840,
             note: String::new(),
-            open: false,
         })
         .unwrap()
     }
@@ -1228,13 +1324,13 @@ mod tests {
     }
 
     #[test]
-    fn staff_see_posted_weeks_and_take_open_shifts() {
+    fn staff_ask_for_days_off_and_days_on() {
         let s = store();
         let a = add(&s, "Ana");
         let b = add(&s, "Ben");
         let monday = s.plus(&this_monday(&s), 7).unwrap();
         let day = s.plus(&monday, 2).unwrap();
-        let id = put(&s, a, &day);
+        put(&s, a, &day);
         assert!(s.board(&monday).unwrap().shifts.is_empty());
         s.publish(&monday).unwrap();
         assert_eq!(s.board(&monday).unwrap().shifts.len(), 1);
@@ -1247,16 +1343,21 @@ mod tests {
         let r = s.ask_off(a, &off).unwrap();
         let w = s.board(&monday).unwrap();
         assert_eq!((w.off.len(), w.off[0].reason.as_str()), (1, ""));
-        assert!(matches!(s.take(id, b), Err(Error::Bad(_))));
+        let on = |day: &str| CoverIn { day: day.into() };
+        // Ana already works that day; Ben asks to work it too.
+        assert!(matches!(s.ask_cover(a, &on(&day)), Err(Error::Bad(_))));
+        let c = s.ask_cover(b, &on(&day)).unwrap();
+        assert!(matches!(s.ask_cover(b, &on(&day)), Err(Error::Bad(_))));
 
-        // Approving opens Ana's shift rather than dropping it.
-        s.decide(r, "approved").unwrap();
-        assert!(s.week(&monday).unwrap().shifts[0].open);
-        assert!(matches!(s.take(id, a), Err(Error::Bad(_))));
-        s.take(id, b).unwrap();
-        let h = &s.week(&monday).unwrap().shifts[0];
-        assert_eq!((h.staff, h.open), (b, false));
-        assert!(matches!(s.take(id, b), Err(Error::Bad(_))));
+        // Approving the day off drops Ana's shift; approve-all leaves the
+        // ask to work for one at a time.
+        assert_eq!(s.approve_week(&monday).unwrap(), 1);
+        assert!(s.week(&monday).unwrap().shifts.is_empty());
+        assert!(matches!(s.ask_cover(a, &on(&day)), Err(Error::Bad(_))));
+        s.decide(c, "approved").unwrap();
+        let w = s.week(&monday).unwrap();
+        assert_eq!((w.shifts.len(), w.shifts[0].staff), (1, b));
+        let _ = r;
     }
 
     #[test]
@@ -1392,12 +1493,12 @@ mod tests {
         assert!(r.decided.iter().any(|o| o.id == before));
         assert!(r.decided.iter().any(|o| o.id == inside));
         let w = s.week(&monday).unwrap();
-        assert!(w.shifts.iter().find(|h| h.id == shift).unwrap().open);
+        assert!(w.shifts.iter().all(|h| h.id != shift));
         assert_eq!(s.approve_week(&monday).unwrap(), 0);
     }
 
     #[test]
-    fn approved_time_off_opens_the_shifts_and_the_usual_week_skips_it() {
+    fn approved_time_off_drops_the_shifts_and_the_usual_week_skips_it() {
         let s = store();
         let a = add(&s, "Ana");
         let monday = s.plus(&this_monday(&s), 7).unwrap();
@@ -1417,8 +1518,7 @@ mod tests {
             )
             .unwrap();
         let w = s.week(&monday).unwrap();
-        assert_eq!(w.shifts.len(), 7);
-        assert_eq!(w.shifts.iter().filter(|h| h.open).count(), 2);
+        assert_eq!(w.shifts.len(), 5);
         s.decide(id, "approved").unwrap();
         assert_eq!(s.use_usual(&monday).unwrap(), 5);
         assert!(
@@ -1478,7 +1578,6 @@ mod tests {
             start: 7 * 60,
             end: 15 * 60,
             note: String::new(),
-            open: false,
         })
         .unwrap();
         s.delete_default(id).unwrap();

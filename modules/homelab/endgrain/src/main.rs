@@ -2,11 +2,10 @@
 //! posts the week when it's ready, and staff ask for time off, which the
 //! manager approves or denies. A usual week fills the weeks ahead, and days
 //! with fewer people than the rules ask show red until covered or let go.
-//! Time off a manager approves leaves the person's shifts open, and anyone
-//! can take an open shift.
+//! Staff also ask to work a day; once approved it becomes a shift.
 //!
 //! Two shared passwords: staff sign in with one and see only the posted
-//! weeks, where they ask for days off and take open shifts; the team is
+//! weeks, where they ask for days off or to work a day; the team is
 //! small and trusted, so no one signs in as themselves. The manager signs
 //! in with the other and sees everything. Until the manager's password is
 //! set, the site is open.
@@ -29,7 +28,7 @@ use axum::routing::{get, post, put};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use store::{DefaultIn, Error, OffIn, PersonIn, Role, Rules, ShiftIn, Store};
+use store::{CoverIn, DefaultIn, Error, OffIn, PersonIn, Role, Rules, ShiftIn, Store};
 
 /// One connection behind a lock: a handful of people use this, and every
 /// request is a few small queries.
@@ -183,13 +182,16 @@ async fn ask_off(State(app): State<App>, Json(b): Json<AddOff>) -> Response {
 }
 
 #[derive(Deserialize)]
-struct Take {
-    shift: i64,
+struct AskCover {
     staff: i64,
+    #[serde(flatten)]
+    cover: CoverIn,
 }
 
-async fn take(State(app): State<App>, Json(b): Json<Take>) -> Response {
-    reply(&app, |s| s.take(b.shift, b.staff))
+async fn ask_cover(State(app): State<App>, Json(b): Json<AskCover>) -> Response {
+    reply(&app, |s| {
+        s.ask_cover(b.staff, &b.cover).map(|id| json!({ "id": id }))
+    })
 }
 
 const LOGIN: &str = include_str!("login.html");
@@ -311,7 +313,7 @@ async fn main() {
     let board_routes = Router::new()
         .route("/api/board", get(board))
         .route("/api/board/off", post(ask_off))
-        .route("/api/board/take", post(take))
+        .route("/api/board/cover", post(ask_cover))
         .route("/api/board/requests", get(team_off))
         .route_layer(middleware::from_fn_with_state(app.clone(), anyone));
     let routes = Router::new()

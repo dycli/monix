@@ -78,11 +78,9 @@
   .shift small { display: block; color: var(--mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .off { font-size: 12px; border-radius: 6px; padding: 4px 7px; color: var(--mid); background: repeating-linear-gradient(-45deg, var(--edge) 0 4px, transparent 4px 9px); }
   .off.ask { background: none; border: 1px dashed var(--soft); }
-  /* A shift its person can't work, up for anyone to take. */
-  .shift.open { background: none; border: 1px dashed var(--accent); border-left: 4px solid var(--accent); color: var(--mid); }
-  .shift.open small { color: var(--accent); }
-  .board .shift.open { cursor: pointer; }
-  .board .shift.open:hover { background: var(--paper); }
+  /* Between on and off: a shift they asked off, or a day they asked to work. */
+  .shift.asked, .shift.want { background: none; border: 1px dashed var(--soft); border-left: 4px dashed var(--c); color: var(--mid); }
+  .board .shift, .board .cell { cursor: pointer; }
   label.check { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--ink); }
 
   dialog { border: 1px solid var(--edge); border-radius: 16px; background: var(--lift); color: var(--ink); padding: 20px; width: min(420px, calc(100vw - 24px)); }
@@ -138,7 +136,7 @@
         <button id="publish" class="main noprint mgr">Post week</button>
         <button id="ask" class="main noprint crew">Ask for time off</button>
       </div>
-      <p class="small soft crew" style="margin:-4px 0 10px">Dashed shifts are open: tap one to take it.</p>
+      <p class="small soft crew" style="margin:-4px 0 10px">Tap a shift to ask for it off, or an empty day to ask to work it.</p>
       <div class="scroll"><table class="grid" id="grid"></table></div>
     </div>
   </section>
@@ -179,10 +177,10 @@
     </div>
   </section>
 
-  <section id="timeoff" hidden>
+  <section id="asks" hidden>
     <div class="card">
-      <div class="actions"><h2 style="margin:0">Time off</h2><span class="grow"></span><button class="main" id="ask2">Ask for time off</button></div>
-      <p class="small soft">Everyone's time off from today on, so you can see who's already out. Only the manager approves.</p>
+      <div class="actions"><h2 style="margin:0">Requests</h2><span class="grow"></span><button class="main" id="ask2">Ask for time off</button></div>
+      <p class="small soft">Everyone's requests from today on: days off and days asked to work, so you can see who's already out. Only the manager approves. To ask to work a day, tap it on the schedule.</p>
     </div>
     <div class="card">
       <h2>Waiting</h2>
@@ -237,7 +235,6 @@
     </div>
     <div class="picks" id="picks"></div>
     <label>Note <input name="note" maxlength="200" placeholder="Optional, e.g. opening"></label>
-    <label class="check" id="edopen"><input type="checkbox" name="open"> Needs cover: anyone can take it</label>
     <p class="warn" id="edwarn"></p>
     <div class="actions">
       <button type="button" id="eddelete" class="quiet">Delete</button>
@@ -265,15 +262,15 @@
   </form>
 </dialog>
 
-<dialog id="takedlg">
+<dialog id="workdlg">
   <form>
-    <h2>Take this shift?</h2>
-    <p id="takewhat" style="margin:0"></p>
+    <h2>Ask to work this day?</h2>
+    <p id="workwhat" style="margin:0"></p>
     <label>Who <select name="staff" class="who" required></select></label>
     <div class="actions">
       <span class="grow"></span>
       <button type="button" class="cancel">Cancel</button>
-      <button class="main">Take it</button>
+      <button class="main">Send</button>
     </div>
   </form>
 </dialog>
@@ -323,6 +320,8 @@ const span = s => `${clock(s.start)}–${clock(s.end)}`;
 const hrs = n => (Math.round(n / 6) / 10).toString().replace(/\.0$/, '');
 const toTime = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const fromTime = v => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+// A request in a list: days off, or the day and hours they asked to work.
+const asked = o => o.kind === 'cover' ? `Work ${nice(o.first)} <span class="soft">· ${span(o)}</span>` : dates(o);
 function dates(o) {
   const n = Math.round((parse(o.last) - parse(o.first)) / 864e5) + 1;
   const d = o.first === o.last ? nice(o.first) : `${nice(o.first)} – ${nice(o.last)}`;
@@ -347,7 +346,7 @@ function grid(table, w, editable) {
   const dayMins = days.map(() => 0), dayPeople = days.map(() => new Set());
   for (const s of w.shifts) {
     const i = days.indexOf(s.day);
-    if (i >= 0 && !s.open) { dayMins[i] += s.end - s.start; dayPeople[i].add(s.staff); }
+    if (i >= 0) { dayMins[i] += s.end - s.start; dayPeople[i].add(s.staff); }
   }
   const need = i => w.rules ? (i >= 5 ? w.rules.weekend : w.rules.weekday) : 0;
   const okd = d => (w.short_ok || []).includes(d);
@@ -361,15 +360,21 @@ function grid(table, w, editable) {
     let total = 0;
     html += `<tr><td><div class="who ${p.active ? '' : 'gone'}"><span class="dot" style="--c:${p.color}"></span>${esc(p.name)}</div></td>`;
     days.forEach((d, i) => {
-      const offs = (w.off || []).filter(o => o.staff === p.id && o.first <= d && o.last >= d);
+      const mine = (w.off || []).filter(o => o.staff === p.id && o.first <= d && o.last >= d);
+      const offs = mine.filter(o => o.kind === 'off'), wants = mine.filter(o => o.kind === 'cover');
       const shifts = w.shifts.filter(s => s.staff === p.id && s.day === d);
-      let cell = offs.map(o => `<div class="off ${o.status === 'pending' ? 'ask' : ''}" title="${esc(o.reason)}">${o.status === 'pending' ? 'Asked off' : 'Off'}</div>`).join('');
+      // Four states: on (a shift), asked off (that shift, dashed), asked on
+      // (a dashed day they want to work) and off. A shift on a day they
+      // asked off is one in-between card, still on until the manager answers.
+      const asked = offs.some(o => o.status === 'pending') && shifts.length > 0;
+      let cell = offs.filter(o => !(asked && o.status === 'pending')).map(o => `<div class="off ${o.status === 'pending' ? 'ask' : ''}" title="${esc(o.reason)}">${o.status === 'pending' ? 'Asked off' : 'Off'}</div>`).join('');
       for (const s of shifts) {
-        if (!s.open) total += s.end - s.start;
-        const takeable = s.open && d >= now;
-        const small = s.open ? 'Open' + (s.note ? ' · ' + esc(s.note) : '') : esc(s.note);
-        cell += `<button class="shift ${s.open ? 'open' : ''}" style="--c:${p.color}" data-id="${s.id}" ${editable || takeable ? '' : 'tabindex="-1"'}>${span(s)}${small ? `<small>${small}</small>` : ''}</button>`;
+        total += s.end - s.start;
+        const small = asked ? 'Asked off' + (s.note ? ' · ' + esc(s.note) : '') : esc(s.note);
+        cell += `<button class="shift ${asked ? 'asked' : ''}" style="--c:${p.color}" data-id="${s.id}" ${editable || d >= now ? '' : 'tabindex="-1"'}>${span(s)}${small ? `<small>${small}</small>` : ''}</button>`;
       }
+      for (const o of wants.filter(o => o.status === 'pending'))
+        cell += `<div class="shift want" style="--c:${p.color}">${span(o)}<small>Asked to work</small></div>`;
       html += `<td class="${cls(d, i)}"><div class="cell" data-staff="${p.id}" data-day="${d}">${cell}</div></td>`;
     });
     html += `<td><div class="hours ${total > 40 * 60 ? 'over' : ''}">${total ? hrs(total) : ''}</div></td></tr>`;
@@ -399,9 +404,10 @@ async function loadWeek() {
     : '<span class="pill">Draft</span>';
   $('#publish').textContent = week.published ? (week.edited ? 'Post changes' : 'Posted') : 'Post week';
   $('#publish').disabled = !!week.published && !week.edited;
-  const asks = new Set(week.off.filter(o => o.status === 'pending').map(o => o.id)).size;
+  // Approve-all is for time off; days asked to work are judged one by one.
+  const asks = new Set(week.off.filter(o => o.status === 'pending' && o.kind === 'off').map(o => o.id)).size;
   $('#approve').hidden = !asks;
-  $('#approve').textContent = asks > 1 ? `Approve all ${asks} requests` : 'Approve request';
+  $('#approve').textContent = asks > 1 ? `Approve all ${asks} time off` : 'Approve time off';
   if (!week.staff.length) {
     $('#grid').innerHTML = '<tbody><tr><td class="empty" style="position:static">Add your staff on the Staff tab first.</td></tr></tbody>';
   } else grid($('#grid'), week, true);
@@ -415,7 +421,7 @@ async function loadBoard() {
   $('#schedule .range').textContent = range(monday);
   if (!week.published) {
     $('#grid').innerHTML = '<tbody><tr><td class="empty" style="position:static">This week isn\'t posted yet.</td></tr></tbody>';
-  } else grid($('#grid'), { ...week, rules: null }, false);
+  } else grid($('#grid'), week, false);
 }
 
 // Each phone remembers who last used it, to save picking again.
@@ -424,34 +430,37 @@ function whoPicker(sel) {
   sel.innerHTML = '<option value="">Pick your name</option>' + staff.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
   if (staff.some(p => p.id === Number(localStorage.who))) sel.value = localStorage.who;
 }
-for (const d of document.querySelectorAll('#askdlg, #takedlg')) d.querySelector('.cancel').onclick = () => d.close();
+for (const d of document.querySelectorAll('#askdlg, #workdlg')) d.querySelector('.cancel').onclick = () => d.close();
 
-// Everyone's time off, so staff see who's out before asking.
+// Everyone's requests, so staff see who's out before asking.
 let teamOff = [];
-async function loadTimeOff() {
+async function loadAsks() {
   [teamOff, week] = await Promise.all([api('/board/requests'), week ? week : api(`/board?monday=${monday}`)]);
   const list = (status, el, none) => {
     const os = teamOff.filter(o => o.status === status);
-    $(el).innerHTML = os.length ? os.map(o => `<div class="row"><div class="what"><b>${esc(o.name)}</b> · ${dates(o)}</div></div>`).join('') : `<p class="empty">${none}</p>`;
+    $(el).innerHTML = os.length ? os.map(o => `<div class="row"><div class="what"><b>${esc(o.name)}</b> · ${asked(o)}</div></div>`).join('') : `<p class="empty">${none}</p>`;
     return os.length;
   };
   list('pending', '#tpending', 'Nothing waiting.');
-  list('approved', '#tapproved', 'No one is off.');
+  list('approved', '#tapproved', 'Nothing approved.');
   $('#tdeniedcard').hidden = !list('denied', '#tdenied', '');
 }
 
 const askf = $('#askdlg form');
-const openAsk = () => act(async () => {
+// From a shift on the grid, the form comes filled in with its person and day.
+const openAsk = (staff, day) => act(async () => {
   askf.reset(); whoPicker(askf.staff); $('#askwarn').textContent = '';
   askf.first.min = askf.last.min = today();
+  if (staff) { askf.staff.value = staff; askf.first.value = askf.last.value = day; }
   $('#askdlg').showModal();
   teamOff = await api('/board/requests');
+  askf.dispatchEvent(new Event('input'));
 });
-$('#ask').onclick = $('#ask2').onclick = openAsk;
+$('#ask').onclick = $('#ask2').onclick = () => openAsk();
 askf.addEventListener('input', e => {
   if (e.target === askf.first && (!askf.last.value || askf.last.value < askf.first.value)) askf.last.value = askf.first.value;
   const [a, b, me] = [askf.first.value, askf.last.value, Number(askf.staff.value)];
-  const out = a && b ? teamOff.filter(o => o.status !== 'denied' && o.staff !== me && o.first <= b && o.last >= a) : [];
+  const out = a && b ? teamOff.filter(o => o.kind === 'off' && o.status !== 'denied' && o.staff !== me && o.first <= b && o.last >= a) : [];
   $('#askwarn').textContent = out.length ? 'Also off then: ' + out.map(o => `${o.name} (${o.status === 'approved' ? 'approved' : 'asked'})`).join(', ') : '';
 });
 askf.addEventListener('submit', e => {
@@ -460,25 +469,25 @@ askf.addEventListener('submit', e => {
     localStorage.who = askf.staff.value;
     await api('/board/off', { method: 'POST', body: { staff: Number(askf.staff.value), first: askf.first.value, last: askf.last.value, reason: askf.reason.value } });
     $('#askdlg').close(); toast('Sent. It shows as asked off until the manager answers.');
-    await (location.hash === '#timeoff' ? loadTimeOff : loadBoard)();
+    await (location.hash === '#asks' ? loadAsks : loadBoard)();
   });
 });
 
-const takef = $('#takedlg form');
-let taking = null;
-takef.addEventListener('submit', e => {
+const workf = $('#workdlg form');
+let working = null;
+workf.addEventListener('submit', e => {
   e.preventDefault();
   act(async () => {
-    localStorage.who = takef.staff.value;
-    await api('/board/take', { method: 'POST', body: { shift: taking.id, staff: Number(takef.staff.value) } });
-    $('#takedlg').close(); toast("It's yours.");
+    localStorage.who = workf.staff.value;
+    await api('/board/cover', { method: 'POST', body: { staff: Number(workf.staff.value), day: working } });
+    $('#workdlg').close(); toast('Sent. It shows as asked to work until the manager answers.');
     await loadBoard();
   });
 });
 
 $('#approve').onclick = () => act(async () => {
-  const names = [...new Set(week.off.filter(o => o.status === 'pending').map(o => week.staff.find(p => p.id === o.staff)?.name))];
-  if (!confirm(`Approve time off this week for ${names.join(', ')}? Their shifts those days open up for others to take.`)) return;
+  const names = [...new Set(week.off.filter(o => o.status === 'pending' && o.kind === 'off').map(o => week.staff.find(p => p.id === o.staff)?.name))];
+  if (!confirm(`Approve time off this week for ${names.join(', ')}? Their shifts those days come off the schedule.`)) return;
   const r = await api('/week/approve', { method: 'POST', body: { monday } });
   toast(`Approved ${r.approved}.`);
   await loadWeek();
@@ -499,6 +508,7 @@ function onGrid(table, data) {
       await api('/week/short', { method: 'POST', body: { day: k.dataset.short, ok: !!k.dataset.ok } });
       await loadWeek();
     });
+    if (e.target.closest('.want')) return location.hash = '#requests';
     const b = e.target.closest('.shift');
     cur = data();
     if (b) return openEditor(cur.shifts.find(s => s.id === Number(b.dataset.id)));
@@ -507,13 +517,18 @@ function onGrid(table, data) {
   });
 }
 if (MANAGER) onGrid($('#grid'), () => week);
+// Staff: a shift asks for that day off; an empty day asks to work it.
 else $('#grid').addEventListener('click', e => {
-  const b = e.target.closest('.shift.open'); if (!b) return;
-  taking = week.shifts.find(s => s.id === Number(b.dataset.id));
-  if (taking.day < today()) return;
-  $('#takewhat').textContent = `${nice(taking.day, { weekday: 'long', month: 'short', day: 'numeric' })}, ${span(taking)}${taking.note ? ' · ' + taking.note : ''}`;
-  whoPicker(takef.staff);
-  $('#takedlg').showModal();
+  const c = e.target.closest('.cell');
+  if (!c || !week.published || c.dataset.day < today() || e.target.closest('.want, .off')) return;
+  const staff = Number(c.dataset.staff);
+  if (e.target.closest('.shift')) return openAsk(staff, c.dataset.day);
+  if (c.querySelector('.shift, .want, .off')) return;
+  working = c.dataset.day;
+  $('#workwhat').textContent = `${nice(working, { weekday: 'long', month: 'short', day: 'numeric' })}, on that day's usual hours.`;
+  whoPicker(workf.staff);
+  workf.staff.value = staff;
+  $('#workdlg').showModal();
 });
 
 const ed = $('#editor'), edf = $('#editor form');
@@ -532,7 +547,6 @@ function openEditor(s) {
   edf.start.value = toTime(s.start ?? first?.start ?? 7 * 60);
   edf.end.value = toTime(s.end ?? first?.end ?? 15 * 60);
   edf.note.value = s.note || '';
-  $('#edopen').hidden = usual; edf.open.checked = !!s.open;
   $('#picks').innerHTML = cur.usual.map(u => `<button type="button" data-s="${u.start}" data-e="${u.end}">${span(u)}</button>`).join('');
   $('#eddelete').hidden = !s.id;
   warn();
@@ -563,7 +577,7 @@ edf.addEventListener('submit', e => {
       start: fromTime(edf.start.value), end: fromTime(edf.end.value), note: edf.note.value,
     };
     if (cur.days) await api('/usual', { method: 'PUT', body: { ...body, weekday: Number(edf.weekday.value) } });
-    else await api('/shift', { method: 'PUT', body: { ...body, day: edf.day.value, open: edf.open.checked } });
+    else await api('/shift', { method: 'PUT', body: { ...body, day: edf.day.value } });
     ed.close(); await (cur.days ? loadUsual : loadWeek)();
   });
 });
@@ -626,14 +640,14 @@ async function loadRequests() {
   const clash = o => o.shifts ? ` <span class="warn">· has ${o.shifts} shift${o.shifts > 1 ? 's' : ''} then</span>` : '';
   $('#pending').innerHTML = r.pending.length ? r.pending.map(o => `
     <div class="row">
-      <div class="what"><b>${esc(o.name)}</b> · ${dates(o)}${clash(o)}
+      <div class="what"><b>${esc(o.name)}</b> · ${asked(o)}${o.kind === 'off' ? clash(o) : ''}
         <div class="sub">${o.reason ? esc(o.reason) + ' · ' : ''}asked ${nice(o.made.slice(0, 10))}</div></div>
       <button data-id="${o.id}" data-to="denied">Deny</button>
       <button class="main" data-id="${o.id}" data-to="approved">Approve</button>
     </div>`).join('') : '<p class="empty">Nothing waiting.</p>';
   $('#decided').innerHTML = r.decided.length ? r.decided.map(o => `
     <div class="row">
-      <div class="what">${esc(o.name)} · ${dates(o)}${o.status === 'approved' ? clash(o) : ''}
+      <div class="what">${esc(o.name)} · ${asked(o)}
         ${o.reason ? `<div class="sub">${esc(o.reason)}</div>` : ''}</div>
       <span class="pill ${o.status}">${o.status === 'approved' ? 'Approved' : 'Denied'}</span>
       <button class="quiet" data-id="${o.id}" data-del title="Remove">Remove</button>
@@ -674,7 +688,7 @@ async function loadStaff() {
     </div>`).join('') : '<p class="empty">No one yet.</p>';
   const pw = await api('/password');
   $('#pwnote').textContent = (pw.admin
-    ? 'Staff sign in with theirs and see the posted weeks, ask for time off and take open shifts. Yours opens everything.'
+    ? 'Staff sign in with theirs and see the posted weeks, ask for days off and ask to work days. Yours opens everything.'
     : 'Until you set yours, anyone who can reach this site can change it.')
     + ' A new password signs out whoever used the old one.'
     + (pw.staff ? '' : ' Staff have no password yet.');
@@ -729,7 +743,7 @@ $('#grid').classList.add(MANAGER ? 'edit' : 'board');
 
 const TABS = MANAGER
   ? { schedule: loadWeek, requests: loadRequests, usual: loadUsual, staff: loadStaff }
-  : { schedule: loadBoard, timeoff: loadTimeOff };
+  : { schedule: loadBoard, asks: loadAsks };
 $('#nav').addEventListener('click', e => {
   if (!e.target.classList.contains('switch')) return;
   e.preventDefault();
@@ -739,10 +753,10 @@ $('#nav').addEventListener('click', e => {
 });
 function show() {
   const tab = TABS[location.hash.slice(1)] ? location.hash.slice(1) : 'schedule';
-  $('#nav').innerHTML = MANAGER ? `<a href="#schedule">Schedule</a><a href="#requests">Requests<span class="count" hidden></span></a><a href="#usual">Usual week</a><a href="#staff">Staff</a>` : `<a href="#schedule">Schedule</a><a href="#timeoff">Time off</a>`;
+  $('#nav').innerHTML = MANAGER ? `<a href="#schedule">Schedule</a><a href="#requests">Requests<span class="count" hidden></span></a><a href="#usual">Usual week</a><a href="#staff">Staff</a>` : `<a href="#schedule">Schedule</a><a href="#asks">Requests</a>`;
   if (ROLE === 'admin') $('#nav').insertAdjacentHTML('beforeend', `<a href="#" class="switch">${MANAGER ? 'Staff view' : 'Manager view'}</a>`);
   for (const a of document.querySelectorAll('#nav a')) a.classList.toggle('on', a.hash === '#' + tab);
-  for (const t of ['schedule', 'timeoff', 'requests', 'usual', 'staff']) $('#' + t).hidden = t !== tab;
+  for (const t of ['schedule', 'asks', 'requests', 'usual', 'staff']) $('#' + t).hidden = t !== tab;
   act(async () => {
     await TABS[tab]();
     if (MANAGER && tab !== 'schedule' && tab !== 'requests') setCount((await api('/requests')).pending.length);
