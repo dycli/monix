@@ -80,7 +80,7 @@ pub struct Run {
 pub type Steps = Arc<dyn Fn(Step) + Send + Sync>;
 
 /// The most of a tool's result a door is shown; the model reads it all.
-const STEP_MAX: usize = 16 * 1024;
+pub const STEP_MAX: usize = 16 * 1024;
 
 /// One step of the work behind an answer.
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]

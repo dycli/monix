@@ -279,6 +279,18 @@ struct Money {
 }
 
 #[derive(Deserialize, JsonSchema)]
+struct Spending {
+    /// First day, YYYY-MM-DD.
+    from: String,
+    /// Last day, YYYY-MM-DD, included.
+    to: String,
+    /// Only this category, by its name in the categories table.
+    category: Option<String>,
+    /// Only merchants whose name holds this, in any case.
+    merchant: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 enum Record {
     /// File a transaction: {transaction, category, scope}. scope is one (just
@@ -641,6 +653,30 @@ impl Tools {
             Some(sql) => finance.query(&sql),
             None => finance.schema(),
         }
+    }
+
+    #[tool(
+        description = "The household's transactions between two days, filed as the money page files them (categories, rules and card-payment matches applied): money spent and money in, spending by category, and the newest transactions, as many as fit (`shown` of `count`), as rows under `columns`. Choose the days from what was asked: \"this month\" is the 1st to today, \"last week\" the seven days before today. Amounts are Plaid's: positive is money out. Card payments, transfers and investing are moves, in the list but in neither total. It is drawn as a card."
+    )]
+    fn transactions(&self, Parameters(s): Parameters<Spending>) -> Result<String, String> {
+        let finance = self
+            .finance
+            .as_deref()
+            .ok_or("There is no finance data here.")?;
+        finance
+            .transactions(&s.from, &s.to, s.category.as_deref(), s.merchant.as_deref())
+            .map(|v| v.to_string())
+    }
+
+    #[tool(
+        description = "How the household's investment accounts are doing: each account's value, its holdings with what they're worth against what they cost, cash or holdings the brokerage doesn't break down, and the total on each day balances were kept (daily from 2026-10-20). Prices are the last close Plaid reported, as of `as_of`. It is drawn as a card."
+    )]
+    fn markets(&self) -> Result<String, String> {
+        let finance = self
+            .finance
+            .as_deref()
+            .ok_or("There is no finance data here.")?;
+        finance.markets().map(|v| v.to_string())
     }
 
     #[tool(

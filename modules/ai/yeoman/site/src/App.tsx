@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import {
   ActionBarPrimitive,
   AssistantRuntimeProvider,
@@ -27,13 +27,15 @@ type Args = ToolCallMessagePartProps["args"];
 // A card the model drew, read from its tool's result. A tool may draw
 // several: each list is a card of its own. `key` is the tool call's id (with
 // `#n` for the nth of several), which holds from the first step to the answer.
-type Kind = "weather" | "calendar" | "list" | "inbox" | "mail";
+type Kind = "weather" | "calendar" | "list" | "inbox" | "mail" | "transactions" | "markets";
 type Face =
   | { key: string; kind: "weather"; data: Forecast }
   | { key: string; kind: "calendar"; data: Event[] }
   | { key: string; kind: "list"; data: List | null }
   | { key: string; kind: "inbox"; data: Mail[] }
-  | { key: string; kind: "mail"; data: Mail };
+  | { key: string; kind: "mail"; data: Mail }
+  | { key: string; kind: "transactions"; data: Ledger }
+  | { key: string; kind: "markets"; data: Markets };
 
 // The cards of one answer make a deck that slides up from behind the
 // composer; closing it leaves each card's one-line summary in the talk.
@@ -51,6 +53,8 @@ function cardKind(name: string): Kind | undefined {
   if (/__(lists|list_add|list_remove|share_list)$/.test(name)) return "list";
   if (name.endsWith("__mail_search")) return "inbox";
   if (name.endsWith("__mail_read")) return "mail";
+  if (name.endsWith("__transactions")) return "transactions";
+  if (name.endsWith("__markets")) return "markets";
 }
 
 const convert = (m: Msg): ThreadMessageLike => ({
@@ -1001,7 +1005,7 @@ function Tool(props: ToolCallMessagePartProps) {
 
 // A tool's result read into a card's shape, if it parses; undefined while it
 // runs, when it failed, or when a long result was cut short on the way here.
-function parseCard(kind: Kind, result: unknown): Forecast | Event[] | List[] | Mail[] | Mail | undefined {
+function parseCard(kind: Kind, result: unknown): Forecast | Event[] | List[] | Mail[] | Mail | Ledger | Markets | undefined {
   switch (kind) {
     case "weather":
       return parsed<Forecast>(result, isForecast);
@@ -1013,6 +1017,10 @@ function parseCard(kind: Kind, result: unknown): Forecast | Event[] | List[] | M
       return parsed<Mail[]>(result, (v) => Array.isArray(v) && v.every(isMail));
     case "mail":
       return parsed<Mail>(result, isMail);
+    case "transactions":
+      return parsed<Ledger>(result, (v) => typeof v?.spent === "number" && Array.isArray(v.rows) && Array.isArray(v.categories));
+    case "markets":
+      return parsed<Markets>(result, (v) => typeof v?.value === "number" && Array.isArray(v.accounts) && Array.isArray(v.history));
   }
 }
 
@@ -1079,6 +1087,14 @@ function cardSummary(kind: Kind, data: unknown): [string, string] {
     case "mail": {
       const m = data as Mail;
       return ["✉️", m.subject || "(no subject)"];
+    }
+    case "transactions": {
+      const l = data as Ledger;
+      return ["💳", `${usd(l.spent)} spent · ${span(l.from, l.to)}`];
+    }
+    case "markets": {
+      const m = data as Markets;
+      return ["📈", `${usd(m.value)} invested`];
     }
   }
 }
@@ -1262,6 +1278,10 @@ function CardFace({ face: f }: { face: Face }) {
       return <InboxCard list={f.data} />;
     case "mail":
       return <MailCard m={f.data} />;
+    case "transactions":
+      return <TransactionsCard l={f.data} />;
+    case "markets":
+      return <MarketsCard m={f.data} />;
   }
 }
 
@@ -1768,5 +1788,238 @@ function Letter({ card: c, decide }: { card: Card; decide: Decide }) {
         )}
       </footer>
     </article>
+  );
+}
+
+// Money as the money page writes it: dollars and cents, the sign apart.
+const dollars = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const usd = (n: number) => dollars.format(Math.abs(n) < 0.005 ? 0 : n);
+const signed = (n: number) => (n > 0.005 ? "+" : n < -0.005 ? "−" : "") + usd(Math.abs(n));
+
+// "2026-10-01" read as a local day.
+function localDay(d: string) {
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(y, m - 1, day);
+}
+const shortDay = (d: string) => localDay(d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+const span = (from: string, to: string) => (from === to ? shortDay(from) : `${shortDay(from)} – ${shortDay(to)}`);
+
+// What the transactions tool gives: totals, spending by category, and the
+// newest rows that fit, as [date, merchant, amount, category, kind, pending,
+// account mask]. Amounts are Plaid's: positive is money out.
+type Charge = [string, string | null, number, string, string, boolean, string];
+type Ledger = {
+  from: string;
+  to: string;
+  category: string | null;
+  merchant: string | null;
+  spent: number;
+  income: number;
+  count: number;
+  shown: number;
+  categories: { category: string; amount: number; count: number }[];
+  accounts: Record<string, string | null>;
+  rows: Charge[];
+};
+
+// Transactions over the days asked: what went out and came in, where the
+// spending went, then each transaction by day. Spending is red, money in is
+// ink, and moves between our own accounts stay quiet.
+function TransactionsCard({ l }: { l: Ledger }) {
+  const days = new Map<string, Charge[]>();
+  for (const r of l.rows) days.set(r[0], [...(days.get(r[0]) ?? []), r]);
+  const top = l.categories.filter((c) => c.amount > 0);
+  const most = Math.max(1, ...top.map((c) => c.amount));
+  const tile = (label: string, value: string, tone: string) => (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="text-[11px] font-semibold tracking-wide text-soft uppercase">{label}</span>
+      <span className={`truncate text-[22px] tabular-nums ${tone}`}>{value}</span>
+    </div>
+  );
+  const filter = [l.category, l.merchant].filter(Boolean).join(" · ");
+  return (
+    <BigCard icon="💳" title={filter || "Transactions"} tag={span(l.from, l.to)}>
+      <div className="grid grid-cols-3 gap-3 border-b border-hair px-5 py-4 max-sm:px-4">
+        {tile("Spent", usd(l.spent), "text-accent")}
+        {tile("Came in", usd(l.income), "text-ink")}
+        {tile("Transactions", String(l.count), "text-ink")}
+      </div>
+      {top.length > 1 && (
+        <ul className="flex flex-col gap-2 border-b border-hair px-5 py-3.5 max-sm:px-4">
+          {top.slice(0, 8).map((c) => (
+            <li key={c.category} className="group/bar flex items-center gap-3 text-[14px]" title={`${c.category}: ${usd(c.amount)} over ${c.count} ${c.count === 1 ? "charge" : "charges"}`}>
+              <span className="w-28 shrink-0 truncate text-mid group-hover/bar:text-ink max-sm:w-24">{c.category}</span>
+              <span className="h-2 min-w-0 flex-1">
+                <span className="block h-full rounded-r-[4px] bg-accent/70 group-hover/bar:bg-accent" style={{ width: `${Math.max(1.5, (c.amount / most) * 100)}%` }} />
+              </span>
+              <span className="w-24 shrink-0 text-right text-ink tabular-nums">{usd(c.amount)}</span>
+            </li>
+          ))}
+          {top.length > 8 && <li className="text-[12.5px] text-soft">and {top.length - 8} more categories</li>}
+        </ul>
+      )}
+      {l.rows.length === 0 && <p className="px-5 py-4 text-[15px] text-mid">No transactions in these days.</p>}
+      {[...days].map(([day, rows]) => (
+        <section key={day} className="border-hair not-first:border-t">
+          <h4 className="sticky top-0 z-10 bg-block px-5 py-2 text-xs font-semibold tracking-wide text-mid uppercase max-sm:px-4">{dayLabel(day)}</h4>
+          <ul className="flex flex-col py-1">
+            {rows.map(([, merchant, amount, category, kind, pending, mask], n) => {
+              const tone = kind === "spend" ? (amount > 0 ? "text-accent" : "text-ink") : kind === "income" ? "text-ink" : "text-soft";
+              const shown = kind === "spend" ? (amount > 0 ? usd(amount) : signed(-amount)) : kind === "income" ? signed(-amount) : usd(Math.abs(amount));
+              const account = l.accounts[mask];
+              return (
+                <li key={n} className="flex items-baseline gap-3 px-5 py-2 max-sm:px-4">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] text-ink">{merchant || "Unnamed"}</span>
+                    <span className="block truncate text-[12.5px] text-soft">
+                      {category}
+                      {account ? ` · ${account}` : ""}
+                      {mask ? ` ··${mask}` : ""}
+                      {pending ? " · pending" : ""}
+                    </span>
+                  </span>
+                  <span className={`shrink-0 text-[15px] tabular-nums ${tone}`}>{shown}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+      {l.shown < l.count && <p className="border-t border-hair px-5 py-3 text-[13px] text-soft max-sm:px-4">The newest {l.shown} of {l.count}. Ask for fewer days to see the rest.</p>}
+    </BigCard>
+  );
+}
+
+// What the markets tool gives: the investment accounts with their holdings,
+// and their total on each day the money page kept balances.
+type Holding = { ticker: string | null; name: string | null; type: string | null; quantity: number | null; price: number | null; as_of: string | null; value: number | null; cost: number | null };
+type Account = { name: string | null; mask: string | null; subtype: string | null; institution: string | null; value: number; cash: number; cost: number; gain: number; holdings: Holding[] };
+type Markets = { value: number; cost: number; gain: number; as_of: string | null; accounts: Account[]; history: { date: string; value: number }[] };
+
+// How the investments are doing: their worth now and against what they
+// cost, the total over time, then each account and what it holds. Gains are
+// ink, losses red.
+function MarketsCard({ m }: { m: Markets }) {
+  const tone = (n: number) => (n < -0.005 ? "text-accent" : "text-ink");
+  const pct = (gain: number, cost: number) => (cost > 0 ? ` (${(gain / cost * 100).toFixed(1)}%)` : "");
+  const first = m.history[0];
+  const moved = first ? m.value - first.value : 0;
+  return (
+    <BigCard icon="📈" title="Markets" tag={m.as_of ? `prices ${shortDay(m.as_of)}` : undefined}>
+      <div className="flex flex-col gap-1 border-b border-hair px-5 pt-5 pb-4 max-sm:px-4">
+        <span className="text-[11px] font-semibold tracking-wide text-soft uppercase">Invested</span>
+        <span className="text-[40px] leading-none text-ink tabular-nums max-sm:text-[34px]">{usd(m.value)}</span>
+        {m.cost > 0 && (
+          <span className={`text-[15px] tabular-nums ${tone(m.gain)}`}>
+            {signed(m.gain)}
+            {pct(m.gain, m.cost)} on cost
+          </span>
+        )}
+        {first && m.history.length > 1 && (
+          <span className={`text-[15px] tabular-nums ${tone(moved)}`}>
+            {signed(moved)} since {shortDay(first.date)}
+          </span>
+        )}
+      </div>
+      {m.history.length > 1 ? (
+        <History points={m.history} />
+      ) : (
+        <p className="border-b border-hair px-5 py-3 text-[13px] text-soft max-sm:px-4">The money page keeps a balance each day; the line over time fills in from here.</p>
+      )}
+      {m.accounts.length === 0 && <p className="px-5 py-4 text-[15px] text-mid">No investment accounts linked.</p>}
+      {m.accounts.map((a, n) => (
+        <section key={n} className="border-hair not-first:border-t">
+          <header className="flex items-baseline gap-3 px-5 pt-3.5 pb-1 max-sm:px-4">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[16px] font-medium text-ink">{a.name || "Account"}</span>
+              <span className="block truncate text-[12.5px] text-soft">
+                {[a.institution, a.subtype, a.mask && `··${a.mask}`].filter(Boolean).join(" · ")}
+              </span>
+            </span>
+            <span className="shrink-0 text-right">
+              <span className="block text-[16px] text-ink tabular-nums">{usd(a.value)}</span>
+              {a.cost > 0 && <span className={`block text-[12.5px] tabular-nums ${tone(a.gain)}`}>{signed(a.gain)}{pct(a.gain, a.cost)}</span>}
+            </span>
+          </header>
+          <ul className="flex flex-col pb-2">
+            {a.holdings.map((h, k) => {
+              const gain = h.value != null && h.cost != null ? h.value - h.cost : null;
+              return (
+                <li key={k} className="flex items-baseline gap-3 px-5 py-1.5 text-[14px] max-sm:px-4">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-ink">
+                      {h.ticker && <span className="font-medium">{h.ticker} </span>}
+                      <span className={h.ticker ? "text-mid" : ""}>{h.name || ""}</span>
+                    </span>
+                    {h.quantity != null && h.price != null && (
+                      <span className="block truncate text-[12.5px] text-soft tabular-nums">
+                        {+h.quantity.toFixed(4)} × {usd(h.price)}
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block text-ink tabular-nums">{h.value != null ? usd(h.value) : "—"}</span>
+                    {gain != null && <span className={`block text-[12.5px] tabular-nums ${tone(gain)}`}>{signed(gain)}</span>}
+                  </span>
+                </li>
+              );
+            })}
+            {Math.abs(a.cash) >= 0.5 && (
+              <li className="flex items-baseline gap-3 px-5 py-1.5 text-[14px] max-sm:px-4">
+                <span className="min-w-0 flex-1 truncate text-mid">{a.holdings.length ? "Cash and the rest" : "Holdings not reported"}</span>
+                <span className="shrink-0 text-ink tabular-nums">{usd(a.cash)}</span>
+              </li>
+            )}
+          </ul>
+        </section>
+      ))}
+    </BigCard>
+  );
+}
+
+// The total over time as one ink line, with a crosshair and the day's value
+// under the finger or pointer.
+function History({ points }: { points: { date: string; value: number }[] }) {
+  const [at, setAt] = useState<number | null>(null);
+  const W = 600;
+  const H = 120;
+  const lo = Math.min(...points.map((p) => p.value));
+  const hi = Math.max(...points.map((p) => p.value));
+  const pad = Math.max(1, (hi - lo) * 0.12);
+  const x = (n: number) => (n / (points.length - 1)) * W;
+  const y = (v: number) => H - ((v - lo + pad) / (hi - lo + 2 * pad)) * H;
+  const line = points.map((p, n) => `${n ? "L" : "M"}${x(n).toFixed(1)},${y(p.value).toFixed(1)}`).join("");
+  const pick = (e: PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setAt(Math.round(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (points.length - 1)));
+  };
+  const p = at == null ? null : points[at];
+  return (
+    <div className="border-b border-hair px-5 pt-9 pb-3 max-sm:px-4">
+      <div className="relative h-[120px] touch-pan-y" onPointerMove={pick} onPointerDown={pick} onPointerLeave={() => setAt(null)}>
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 size-full overflow-visible">
+          <path d={line} fill="none" stroke="var(--ink)" strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+          {p && <line x1={x(at!)} x2={x(at!)} y1={0} y2={H} stroke="var(--ink)" strokeOpacity={0.25} strokeWidth={1} vectorEffect="non-scaling-stroke" />}
+        </svg>
+        {p && (
+          <>
+            <span
+              className="pointer-events-none absolute size-2.5 -translate-1/2 rounded-full border-2 border-lift bg-ink"
+              style={{ left: `${(x(at!) / W) * 100}%`, top: `${(y(p.value) / H) * 100}%` }}
+            />
+            <span
+              className="pointer-events-none absolute -top-1 rounded-md border border-hair bg-lift px-2 py-1 text-[12.5px] whitespace-nowrap text-ink shadow-lift tabular-nums"
+              style={{ left: `${(x(at!) / W) * 100}%`, transform: `translate(${at! > points.length / 2 ? "calc(-100% - 8px)" : "8px"}, -100%)` }}
+            >
+              {shortDay(p.date)} · {usd(p.value)}
+            </span>
+          </>
+        )}
+      </div>
+      <div className="mt-1 flex justify-between text-[11.5px] text-soft tabular-nums">
+        <span>{shortDay(points[0].date)}</span>
+        <span>{shortDay(points[points.length - 1].date)}</span>
+      </div>
+    </div>
   );
 }
