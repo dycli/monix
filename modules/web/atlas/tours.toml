@@ -1,0 +1,173 @@
+# Guided tours through the system, shown on atlas.su.is. Each step picks a
+# view and lights up its focus: "monix:<module id>" for a module on the
+# Wiring view, "<repo>:<path>" for a file or directory on the Map.
+# `atlas.py check` (a flake check) fails if a focus stops existing, so a
+# rename here is caught before deploy.
+
+[[tour]]
+id = "message"
+title = "A message to Sokka"
+summary = "What happens between typing a message and reading Sokka's answer."
+
+[[tour.step]]
+title = "Two doors"
+view = "wiring"
+focus = ["monix:modules/ai/yeoman.mod.nix", "monix:modules/homelab/matrix.mod.nix"]
+text = """
+Sokka is one program, the yeoman, run once per person. You reach it through
+a door: an encrypted Matrix room served by tuwunel, or the web chat at
+si.su.is. The yeoman starts after tuwunel, since it logs in there."""
+
+[[tour.step]]
+title = "Matrix in"
+view = "map"
+focus = ["monix:modules/ai/yeoman/src/matrix.rs", "monix:modules/ai/yeoman/src/door.rs"]
+text = """
+matrix.rs keeps the device keys and room state on disk, so a restart resumes
+the same encrypted session. door.rs hides which door a message came from:
+the rest of the program just answers, reminds and asks for approval."""
+
+[[tour.step]]
+title = "One call per message"
+view = "map"
+focus = ["monix:modules/ai/yeoman/src/main.rs", "monix:modules/ai/yeoman/src/model.rs"]
+text = """
+There are no sessions. Each message becomes one fresh model call that sees
+the prompt, the whole memory and the new message. model.rs decides which
+backend runs it: the claude CLI on the subscription, or a local model."""
+
+[[tour.step]]
+title = "Memory"
+view = "map"
+focus = ["monix:modules/ai/yeoman/src/hippo.rs", "monix:modules/ai/seat/hippo"]
+text = """
+The memory is Sokka's own hippo service. Both the message and the answer go
+into it, so the next call remembers them. hippo is a separate Rust program
+shared with the coding seat."""
+
+[[tour.step]]
+title = "Tools"
+view = "map"
+focus = ["monix:modules/ai/yeoman/src/tools.rs", "monix:modules/ai/yeoman/src/calendar.rs", "monix:modules/ai/yeoman/src/weather.rs", "monix:modules/ai/yeoman/src/mail.rs"]
+text = """
+During the call the model can use Sokka's tools: calendar, weather, mail,
+lists, media and more. They run as their own MCP server and can reach the
+household's things but never the Matrix keys, so text from a web search
+cannot steer them elsewhere."""
+
+[[tour.step]]
+title = "The web door"
+view = "wiring"
+focus = ["monix:modules/ai/yeoman.mod.nix", "monix:modules/homelab/ship-proxy.mod.nix"]
+text = """
+The same yeoman serves the web chat on a local port, and ship-proxy puts it
+on si.su.is with TLS. History comes from hippo, so Matrix and web read as
+one conversation."""
+
+[[tour]]
+id = "deploy"
+title = "From commit to running"
+summary = "How a pushed change reaches the machines, and how it backs out."
+
+[[tour.step]]
+title = "One flake, four machines"
+view = "machines"
+focus = ["monix:hosts/water", "monix:hosts/earth", "monix:hosts/fire", "monix:hosts/air"]
+text = """
+monix is one Nix flake. Each machine is a host that picks the modules it
+runs; the Machines view shows what each one carries, sized by lines."""
+
+[[tour.step]]
+title = "The checks"
+view = "wiring"
+focus = ["monix:options/checks.mod.nix"]
+text = """
+Before a push, `nix flake check` builds every host and runs each module's
+own tests. A change that breaks any machine fails here, not in production."""
+
+[[tour.step]]
+title = "The mirror"
+view = "wiring"
+focus = ["monix:modules/homelab/git-mirror.mod.nix"]
+text = """
+Water keeps a mirror of every repository on the NAS, refreshed every five
+minutes. Deploys read from it, so a GitHub outage cannot block one, and
+this atlas scans it."""
+
+[[tour.step]]
+title = "switcharoo"
+view = "wiring"
+focus = ["monix:modules/core/switcharoo.mod.nix"]
+text = """
+switcharoo builds pushed main, activates it as a test, and watches. If a
+unit newly fails, the previous system comes back on its own. Only a healthy
+system becomes the boot default. Changes to fenced files need the captain's
+`switcharoo --approve`."""
+
+[[tour]]
+id = "web"
+title = "A web request"
+summary = "How a name like frame.su.is reaches a program on Water."
+
+[[tour.step]]
+title = "ship-proxy"
+view = "wiring"
+focus = ["monix:modules/homelab/ship-proxy.mod.nix"]
+text = """
+nginx on Water terminates TLS for every <name>.su.is with one wildcard
+certificate. The names resolve publicly but only route inside the tailnet."""
+
+[[tour.step]]
+title = "Routes"
+view = "wiring"
+focus = ["monix:modules/homelab/frame.mod.nix", "monix:modules/homelab/immich.mod.nix", "monix:modules/homelab/media.mod.nix", "monix:modules/homelab/plaid.mod.nix"]
+text = """
+Each module that wants a web address declares a route: a name and a local
+port. The dashed "served by" lines on the Wiring view are those routes."""
+
+[[tour.step]]
+title = "A program behind it"
+view = "map"
+focus = ["monix:modules/homelab/frame"]
+text = """
+Behind frame.su.is is a Rust program serving the photo frame and the home
+page. On the Map you can open it and see each file, sized by its lines."""
+
+[[tour]]
+id = "hippo"
+title = "How hippo remembers"
+summary = "The memory every assistant shares: a log, a tree of summaries and a view."
+
+[[tour.step]]
+title = "The log"
+view = "map"
+focus = ["monix:modules/ai/seat/hippo/src/memory/store.rs"]
+text = """
+Every message is kept word for word, append-only, one line each. Nothing is
+ever rewritten."""
+
+[[tour.step]]
+title = "The tree"
+view = "map"
+focus = ["monix:modules/ai/seat/hippo/src/memory/tree.rs", "monix:modules/ai/seat/hippo/src/memory/compactor.rs"]
+text = """
+A model writes a one-line summary of each message, then of each pair, each
+four, and so on up. The compactor runs those calls in message order, a few
+at a time."""
+
+[[tour.step]]
+title = "The view"
+view = "map"
+focus = ["monix:modules/ai/seat/hippo/src/memory/view.rs"]
+text = """
+The view tiles the whole history with summaries: recent messages close up,
+older ones folded into wider lines. It stays under a byte budget and only
+grows at its end, so the model's prompt cache keeps working."""
+
+[[tour.step]]
+title = "Who uses it"
+view = "wiring"
+focus = ["monix:modules/ai/seat/hippo.mod.nix", "monix:modules/ai/yeoman.mod.nix"]
+text = """
+The coding seat runs one hippo over every coding chat; each assistant runs
+its own. They are the same binary."""

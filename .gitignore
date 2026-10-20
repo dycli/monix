@@ -62,6 +62,7 @@ result-*
 .direnv/
 node_modules/
 dist/
+modules/web/atlas/site/public/data/
 __pycache__/
 *.qcow2
 *.swp
