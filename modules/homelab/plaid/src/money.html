@@ -597,7 +597,7 @@ function networth() {
         el("div", { className: "grow" },
           el("div", { textContent: `${a.name || "Account"}${a.mask ? " ··" + a.mask : ""}` }),
           el("div", { className: "sub", textContent: `${a.institution || ""} · ${delta(sign(a) * ((a.balance || 0) - balanceAt(a, months[0])))} in a year` })),
-        el("span", { className: "money", textContent: usd(sign(a) * (a.balance || 0)) }))));
+        el("span", { className: "money", textContent: usd(sign(a) * (a.balance || 0) || 0) }))));
   }).filter(Boolean));
 }
 
