@@ -104,6 +104,7 @@
       <a href="#spending">Spending</a>
       <a href="#networth">Net worth</a>
       <a href="#debt">Debt</a>
+      <a href="#recurring">Recurring</a>
       <a href="#investments">Investments</a>
       <a href="#banks">Banks</a>
     </nav>
@@ -165,6 +166,12 @@
       <div id="debtflow"></div>
     </div>
     <div id="debtcards"></div>
+  </section>
+
+  <section id="recurring" data-tab hidden>
+    <div class="card"><div class="tiles" id="rectiles"></div></div>
+    <div class="card"><h2>Coming back</h2><div id="reclist"></div></div>
+    <div class="card" id="recendedcard"><h2>Probably ended</h2><div id="recended"></div></div>
   </section>
 
   <section id="investments" data-tab hidden>
@@ -541,6 +548,33 @@ const flowOf = (id, m) => data.flows.find((d) => d.account === id && d.month ===
 const balanceAt = (a, m) => (a.balance || 0) + (a.debt ? -1 : 1) *
   data.flows.filter((d) => d.account === a.id && d.month > m).reduce((k, d) => k + d.net, 0);
 
+// --- Recurring -----------------------------------------------------------
+
+// Subscriptions and bills, found by the server from charges at a steady
+// interval. "Probably ended" is one that missed its date by half a cycle.
+function recurring() {
+  const live = data.recurring.filter((r) => r.active), ended = data.recurring.filter((r) => !r.active);
+  const monthly = live.reduce((n, r) => n + r.monthly, 0);
+  const subs = live.filter((r) => r.category === "Subscriptions");
+  tiles($("#rectiles"), [["Monthly", usd(monthly, false), true], ["Yearly", usd(monthly * 12, false), true],
+    ["Subscriptions", `${subs.length} · ${usd(subs.reduce((n, r) => n + r.monthly, 0), false)}/mo`]]);
+  const per = { weekly: "/wk", "every two weeks": "/2 wk", monthly: "/mo", quarterly: "/qtr", yearly: "/yr" };
+  const next = (r) => {
+    const d = new Date(r.last + "T12:00");
+    d.setDate(d.getDate() + Math.round(r.days));
+    return d.toISOString().slice(0, 10);
+  };
+  const row = (r, when) => el("div", { className: "row" },
+    el("div", { className: "grow" },
+      el("div", { textContent: r.merchant }),
+      el("div", { className: "sub", textContent: [r.cadence[0].toUpperCase() + r.cadence.slice(1), r.category, r.account, when].join(" · ") })),
+    el("span", { className: "money out", textContent: (r.fixed ? "" : "about ") + usd(r.amount) + per[r.cadence] }));
+  $("#reclist").replaceChildren(...(live.length ? live.map((r) => row(r, "next " + day(next(r))))
+    : [el("p", { className: "soft small", style: "margin:0", textContent: "Nothing recurring found yet." })]));
+  $("#recendedcard").hidden = !ended.length;
+  $("#recended").replaceChildren(...ended.map((r) => row(r, "last " + day(r.last))));
+}
+
 function debt() {
   const cards = data.accounts.filter((a) => a.debt);
   const months = [...new Set(data.flows.filter((d) => cards.some((a) => a.id === d.account)).map((d) => d.month))].sort().slice(-12);
@@ -715,6 +749,7 @@ async function load() {
   spending();
   networth();
   debt();
+  recurring();
   investments();
 }
 

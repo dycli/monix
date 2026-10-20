@@ -550,7 +550,131 @@ pub fn page(c: &Connection, month: &str) -> Result<Value, String> {
         "budget": budget,
         "flows": flows,
         "fees": fees,
+        "recurring": recurring(c)?,
     }))
+}
+
+/// One posted charge, as the recurring finder sees it.
+#[derive(Clone)]
+struct Charge {
+    day: f64,
+    date: String,
+    merchant: String,
+    amount: f64,
+    category: String,
+    account: String,
+}
+
+/// How often a bill comes, with the gaps (in days) that still count as on
+/// schedule, and how many charges it takes to believe it.
+const CADENCES: [(&str, f64, f64, f64, usize); 5] = [
+    ("weekly", 7.0, 5.0, 9.0, 4),
+    ("every two weeks", 14.0, 12.0, 16.0, 3),
+    ("monthly", 30.44, 26.0, 35.0, 2),
+    ("quarterly", 91.3, 80.0, 100.0, 2),
+    ("yearly", 365.25, 350.0, 380.0, 2),
+];
+
+/// The cadence every gap fits, if any. A bill whose amount moves (power,
+/// water) needs one more charge than a fixed one before it counts.
+fn cadence(list: &[Charge], fixed: bool) -> Option<(&'static str, f64)> {
+    let gaps: Vec<f64> = list.windows(2).map(|w| w[1].day - w[0].day).collect();
+    CADENCES.iter().find_map(|&(name, days, lo, hi, need)| {
+        let need = if fixed { need } else { need.max(3) };
+        (list.len() >= need && gaps.iter().all(|g| (lo..=hi).contains(g))).then_some((name, days))
+    })
+}
+
+/// Recurring charges in the spending history, found the way Mint and
+/// Copilot do: the same merchant at a steady interval. Same-amount runs are
+/// tried first, so two plans at one merchant stay two; what's left of a
+/// merchant may still be one bill whose amount moves.
+fn find_recurring(charges: &[Charge], today: f64) -> Vec<Value> {
+    let mut by: std::collections::BTreeMap<&str, Vec<&Charge>> = Default::default();
+    for x in charges {
+        by.entry(&x.merchant).or_default().push(x);
+    }
+    let mut found = Vec::new();
+    let mut series = |list: Vec<Charge>, name: &'static str, days: f64, fixed: bool| {
+        let last = list.last().unwrap();
+        let recent = &list[list.len().saturating_sub(3)..];
+        let usual = recent.iter().map(|x| x.amount).sum::<f64>() / recent.len() as f64;
+        found.push(json!({
+            "merchant": last.merchant,
+            "category": last.category,
+            "account": last.account,
+            "cadence": name,
+            "days": days,
+            "count": list.len(),
+            "first": list[0].date,
+            "last": last.date,
+            "amount": last.amount,
+            "fixed": fixed,
+            "monthly": usual * 30.44 / days,
+            // Missed one and a bit: probably cancelled.
+            "active": today - last.day <= days * 1.5 + 5.0,
+        }));
+    };
+    for list in by.into_values() {
+        let busy = list.len();
+        let mut groups: std::collections::BTreeMap<i64, Vec<Charge>> = Default::default();
+        for x in &list {
+            groups
+                .entry((x.amount * 100.0).round() as i64)
+                .or_default()
+                .push((*x).clone());
+        }
+        let mut rest = Vec::new();
+        for group in groups.into_values() {
+            // Two same-amount charges at a shop you visit anyway (a $5.03
+            // coffee in July and October) are chance, not a plan.
+            match cadence(&group, true).filter(|_| group.len() > 2 || busy == group.len()) {
+                Some((name, days)) => series(group, name, days, true),
+                None => rest.extend(group),
+            }
+        }
+        rest.sort_by(|a, b| a.day.total_cmp(&b.day));
+        let (lo, hi) = rest.iter().fold((f64::MAX, 0.0f64), |(lo, hi), x| {
+            (lo.min(x.amount), hi.max(x.amount))
+        });
+        if hi <= lo * 3.0
+            && let Some((name, days)) = cadence(&rest, false)
+        {
+            series(rest, name, days, false);
+        }
+    }
+    let monthly = |x: &Value| x["monthly"].as_f64().unwrap_or(0.0);
+    found.sort_by(|a, b| monthly(b).total_cmp(&monthly(a)));
+    found
+}
+
+/// Every recurring payment in the history, biggest monthly cost first.
+pub fn recurring(c: &Connection) -> Result<Vec<Value>, String> {
+    let mut q = c
+        .prepare(
+            "SELECT julianday(l.date), l.date, l.merchant, l.amount, l.category,
+             coalesce(a.name, 'Account') || coalesce(' ··' || a.mask, ''), julianday('now')
+             FROM ledger l JOIN accounts a ON a.account_id = l.account_id
+             WHERE l.kind = 'spend' AND NOT l.pending AND l.amount > 0
+             ORDER BY l.date",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut today = 0.0;
+    let charges = q
+        .query_map([], |r| {
+            today = r.get(6)?;
+            Ok(Charge {
+                day: r.get(0)?,
+                date: r.get(1)?,
+                merchant: r.get(2)?,
+                amount: r.get(3)?,
+                category: r.get(4)?,
+                account: r.get(5)?,
+            })
+        })
+        .and_then(Iterator::collect::<rusqlite::Result<Vec<_>>>)
+        .map_err(|e| e.to_string())?;
+    Ok(find_recurring(&charges, today))
 }
 
 /// The purchase APR from Plaid's list of a card's APRs, kept as JSON text.
@@ -689,5 +813,61 @@ mod tests {
             (Some(1000.0), Some(300.0))
         );
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn recurring_finds_steady_bills_and_skips_noise() {
+        let mut list = Vec::new();
+        let mut add = |day: f64, merchant: &str, amount: f64| {
+            list.push(super::Charge {
+                day,
+                date: format!("d{day}"),
+                merchant: merchant.into(),
+                amount,
+                category: "Subscriptions".into(),
+                account: "Card".into(),
+            })
+        };
+        for m in 0..6 {
+            let day = 30.0 * m as f64;
+            // Two plans billed the same day at one merchant.
+            add(day, "Netflix", 15.49);
+            add(day + 0.0, "Netflix", 7.99);
+            // Power moves with the season.
+            add(day + 3.0, "Eversource", 110.0 + 20.0 * m as f64);
+        }
+        // Cancelled after three months.
+        for m in 0..3 {
+            add(30.0 * m as f64, "Hulu", 9.99);
+        }
+        // Coffee at no steady interval, twice the same price a month apart.
+        for (day, amount) in [
+            (1.0, 6.2),
+            (4.0, 7.7),
+            (13.0, 6.16),
+            (14.0, 7.69),
+            (31.0, 6.2),
+        ] {
+            add(day, "Starbucks", amount);
+        }
+        list.sort_by(|a, b| a.day.total_cmp(&b.day));
+        let found = super::find_recurring(&list, 160.0);
+        let names: Vec<_> = found
+            .iter()
+            .map(|x| {
+                (
+                    x["merchant"].as_str().unwrap(),
+                    x["amount"].as_f64().unwrap(),
+                    x["active"].as_bool().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(names.len(), 4, "{names:?}");
+        assert!(names.contains(&("Netflix", 15.49, true)));
+        assert!(names.contains(&("Netflix", 7.99, true)));
+        assert!(names.contains(&("Eversource", 210.0, true)));
+        assert!(names.contains(&("Hulu", 9.99, false)));
+        assert_eq!(found[0]["merchant"], "Eversource");
+        assert_eq!(found[0]["fixed"], false);
     }
 }
