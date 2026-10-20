@@ -12,24 +12,26 @@ use serde_json::{Value, json};
 
 /// What a category does to the month's totals: `spend` counts as spending,
 /// `income` as income, and `move` is money between our own accounts (card
-/// payments, transfers), which counted would show twice.
+/// payments, transfers, investing), which counted would show twice. The
+/// spending groups follow the household budget sheet; the four after
+/// Discretionary are for spending the budget doesn't plan.
 const CATEGORIES: &[(&str, &str)] = &[
     ("Income", "income"),
-    ("Housing", "spend"),
-    ("Utilities", "spend"),
-    ("Groceries", "spend"),
-    ("Dining", "spend"),
-    ("Transport", "spend"),
-    ("Travel", "spend"),
-    ("Shopping", "spend"),
-    ("Entertainment", "spend"),
-    ("Health", "spend"),
-    ("Personal care", "spend"),
-    ("Services", "spend"),
     ("Home", "spend"),
-    ("Fees", "spend"),
+    ("Auto", "spend"),
+    ("Health", "spend"),
+    ("Food", "spend"),
+    ("Utilities", "spend"),
+    ("Pets", "spend"),
+    ("Subscriptions", "spend"),
+    ("Tech Infra", "spend"),
+    ("Card Fees", "spend"),
+    ("Discretionary", "spend"),
+    ("Shopping", "spend"),
+    ("Travel", "spend"),
     ("Taxes & giving", "spend"),
     ("Other", "spend"),
+    ("Invest", "move"),
     ("Card payments", "move"),
     ("Loan payments", "move"),
     ("Transfers", "move"),
@@ -41,23 +43,33 @@ const PLAID: &[(&str, &str)] = &[
     ("INCOME", "Income"),
     ("TRANSFER_IN", "Transfers"),
     ("TRANSFER_OUT", "Transfers"),
+    ("TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS", "Invest"),
     ("LOAN_DISBURSEMENTS", "Transfers"),
     ("LOAN_PAYMENTS", "Loan payments"),
     ("LOAN_PAYMENTS_CREDIT_CARD_PAYMENT", "Card payments"),
-    ("BANK_FEES", "Fees"),
-    ("ENTERTAINMENT", "Entertainment"),
-    ("FOOD_AND_DRINK", "Dining"),
-    ("FOOD_AND_DRINK_GROCERIES", "Groceries"),
+    ("LOAN_PAYMENTS_CAR_PAYMENT", "Auto"),
+    ("LOAN_PAYMENTS_MORTGAGE_PAYMENT", "Home"),
+    ("BANK_FEES", "Card Fees"),
+    ("ENTERTAINMENT", "Discretionary"),
+    ("ENTERTAINMENT_TV_AND_MOVIES", "Subscriptions"),
+    ("ENTERTAINMENT_MUSIC_AND_AUDIO", "Subscriptions"),
+    ("FOOD_AND_DRINK", "Food"),
     ("GENERAL_MERCHANDISE", "Shopping"),
+    ("GENERAL_MERCHANDISE_PET_SUPPLIES", "Pets"),
     ("HOME_IMPROVEMENT", "Home"),
     ("MEDICAL", "Health"),
-    ("PERSONAL_CARE", "Personal care"),
-    ("GENERAL_SERVICES", "Services"),
+    ("MEDICAL_VETERINARY_SERVICES", "Pets"),
+    ("PERSONAL_CARE", "Discretionary"),
+    ("PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS", "Health"),
+    ("GENERAL_SERVICES", "Other"),
+    ("GENERAL_SERVICES_AUTOMOTIVE", "Auto"),
     ("GOVERNMENT_AND_NON_PROFIT", "Taxes & giving"),
-    ("TRANSPORTATION", "Transport"),
+    ("TRANSPORTATION", "Auto"),
+    ("TRANSPORTATION_PUBLIC_TRANSIT", "Travel"),
+    ("TRANSPORTATION_TAXIS_AND_RIDE_SHARES", "Travel"),
     ("TRAVEL", "Travel"),
     ("RENT_AND_UTILITIES", "Utilities"),
-    ("RENT_AND_UTILITIES_RENT", "Housing"),
+    ("RENT_AND_UTILITIES_RENT", "Home"),
 ];
 
 pub const SCHEMA: &str = "
@@ -83,6 +95,16 @@ CREATE TABLE IF NOT EXISTS balances (
     date TEXT NOT NULL,
     current REAL,
     PRIMARY KEY (account_id, date)
+);
+-- The plan: each line is a monthly amount, a yearly one, or both; a
+-- category's month is its monthly lines plus a twelfth of its yearly ones.
+CREATE TABLE IF NOT EXISTS budget (
+    category TEXT NOT NULL,
+    item TEXT NOT NULL,
+    monthly REAL NOT NULL DEFAULT 0,
+    annual REAL NOT NULL DEFAULT 0,
+    renews TEXT,
+    rank INTEGER NOT NULL
 );
 DROP VIEW IF EXISTS ledger;
 CREATE VIEW ledger AS
@@ -190,6 +212,46 @@ pub fn categorize(
         )
     }
     .map_err(|e| e.to_string())?;
+    t.commit().map_err(|e| e.to_string())
+}
+
+/// One line of the budget as the page sends it.
+#[derive(serde::Deserialize)]
+pub struct Line {
+    pub category: String,
+    pub item: String,
+    #[serde(default)]
+    pub monthly: f64,
+    #[serde(default)]
+    pub annual: f64,
+    /// `YYYY-MM-DD` of a yearly charge's last renewal.
+    pub renews: Option<String>,
+}
+
+/// Replaces the whole budget; it is small and edited as one sheet.
+pub fn set_budget(c: &Connection, lines: &[Line]) -> Result<(), String> {
+    let t = c.unchecked_transaction().map_err(|e| e.to_string())?;
+    t.execute("DELETE FROM budget", [])
+        .map_err(|e| e.to_string())?;
+    for (rank, l) in lines.iter().enumerate() {
+        let known = t
+            .query_row(
+                "SELECT 1 FROM categories WHERE name = ?1",
+                params![l.category],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if known.is_none() {
+            return Err(format!("no category {}", l.category));
+        }
+        t.execute(
+            "INSERT INTO budget (category, item, monthly, annual, renews, rank)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![l.category, l.item, l.monthly, l.annual, l.renews, rank],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     t.commit().map_err(|e| e.to_string())
 }
 
@@ -338,6 +400,21 @@ pub fn page(c: &Connection, month: &str) -> Result<Value, String> {
         },
     )?;
 
+    let budget = rows(
+        c,
+        "SELECT category, item, monthly, annual, renews FROM budget ORDER BY rank",
+        &[],
+        |r| {
+            Ok(json!({
+                "category": r.get::<_, String>(0)?,
+                "item": r.get::<_, String>(1)?,
+                "monthly": r.get::<_, f64>(2)?,
+                "annual": r.get::<_, f64>(3)?,
+                "renews": r.get::<_, Option<String>>(4)?,
+            }))
+        },
+    )?;
+
     let synced: Option<String> = c
         .query_row("SELECT max(synced) FROM items", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
@@ -351,6 +428,7 @@ pub fn page(c: &Connection, month: &str) -> Result<Value, String> {
         "categories": categories,
         "transactions": transactions,
         "holdings": holdings,
+        "budget": budget,
     }))
 }
 
@@ -415,7 +493,23 @@ mod tests {
         let c = &s.finance;
 
         super::categorize(c, "t3", "Travel", false).unwrap();
-        super::categorize(c, "t1", "Dining", true).unwrap();
+        super::categorize(c, "t1", "Discretionary", true).unwrap();
+        let line = |category: &str, item: &str, monthly: f64, annual: f64| super::Line {
+            category: category.into(),
+            item: item.into(),
+            monthly,
+            annual,
+            renews: None,
+        };
+        super::set_budget(
+            c,
+            &[
+                line("Food", "Food", 600.0, 0.0),
+                line("Card Fees", "Green", 0.0, 150.0),
+            ],
+        )
+        .unwrap();
+        assert!(super::set_budget(c, &[line("Nope", "x", 1.0, 0.0)]).is_err());
         assert!(super::categorize(c, "t1", "Nope", false).is_err());
 
         let p = super::page(c, "2026-10").unwrap();
@@ -428,12 +522,15 @@ mod tests {
                 .unwrap()
                 .clone()
         };
-        assert_eq!(of("t1")["category"], "Dining");
+        assert_eq!(of("t1")["category"], "Discretionary");
         assert_eq!(of("t2")["source"], "rule");
         assert_eq!(of("t3")["category"], "Travel");
         assert_eq!(of("t3")["source"], "picked");
         assert_eq!(of("t4")["category"], "Card payments");
         assert_eq!(of("t6")["category"], "Other");
+        // A failed load leaves the old budget alone.
+        assert_eq!(p["budget"].as_array().unwrap().len(), 2);
+        assert_eq!(p["budget"][1]["annual"], 150.0);
         let m = &p["months"][0];
         assert_eq!(m["income"], 2000.0);
         assert_eq!(m["spending"], 145.0);

@@ -24,7 +24,7 @@ use axum::Router;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Json, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -318,6 +318,20 @@ async fn categorize(State(app): State<Arc<App>>, Json(f): Json<Filing>) -> Respo
     }
 }
 
+async fn budget(State(app): State<Arc<App>>, Json(lines): Json<Vec<money::Line>>) -> Response {
+    let a = app.clone();
+    match tokio::task::spawn_blocking(move || {
+        let store = Store::open(&a.state)?;
+        money::set_budget(&store.finance, &lines)
+    })
+    .await
+    {
+        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Err(e)) => fail(StatusCode::BAD_REQUEST, e),
+        Err(e) => fail(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
 async fn overview(State(app): State<Arc<App>>) -> Response {
     let a = app.clone();
     match tokio::task::spawn_blocking(move || {
@@ -514,6 +528,7 @@ async fn main() {
         .route("/api/overview", get(overview))
         .route("/api/money", get(money_page))
         .route("/api/category", post(categorize))
+        .route("/api/budget", put(budget))
         .route("/api/link", post(link))
         .route("/api/linked", post(linked))
         .route("/api/sync", post(sync_now))

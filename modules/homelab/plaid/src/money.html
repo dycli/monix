@@ -54,6 +54,13 @@
   .bars .track { height: 10px; }
   .bars .fill { height: 10px; background: var(--spend); border-radius: 0 4px 4px 0; min-width: 2px; }
   .bars .amt { text-align: right; }
+  .budget .bar, #unplanned .bar { grid-template-columns: 130px 1fr 160px; }
+  .budget .track { position: relative; background: var(--paper); border-radius: 0 4px 4px 0; }
+  .budget .fill.in { background: var(--income); }
+  .budget .today { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); border-radius: 1px; }
+  .items { padding: 2px 0 10px 140px; font-size: 13px; }
+  .items .row { padding: 4px 0; }
+  .tile .of { color: var(--soft); font-size: 13px; }
   .legend { display: flex; gap: 16px; font-size: 13px; color: var(--mid); margin-bottom: 6px; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
   svg { display: block; width: 100%; overflow: visible; }
@@ -73,6 +80,8 @@
     .tile .value { font-size: 18px; }
     .hero { font-size: 32px; }
     .bars .bar { grid-template-columns: 112px 1fr 76px; }
+    .budget .bar, #unplanned .bar { grid-template-columns: 96px 1fr 118px; font-size: 14px; }
+    .items { padding-left: 0; }
     /* Too narrow for one line: merchant and amount, then date and category beneath. */
     .tx { flex-wrap: wrap; row-gap: 0; }
     .tx .what { flex-basis: calc(100% - 108px); }
@@ -89,6 +98,7 @@
     <h1>Money<span id="env"></span></h1>
     <nav>
       <a href="#overview">Overview</a>
+      <a href="#budget">Budget</a>
       <a href="#spending">Spending</a>
       <a href="#investments">Investments</a>
       <a href="#banks">Banks</a>
@@ -105,6 +115,19 @@
     </div>
     <div class="card"><h2 id="thismonth">This month</h2><div class="tiles" id="monthtiles"></div></div>
     <div class="card"><h2>Accounts</h2><div id="accounts"></div></div>
+  </section>
+
+  <section id="budget" data-tab hidden>
+    <div class="monthnav">
+      <button id="bprev" aria-label="Earlier month">‹</button><b id="bmonthname"></b><button id="bnext" aria-label="Later month">›</button>
+    </div>
+    <div class="card"><div class="tiles" id="budgettiles"></div></div>
+    <div class="card">
+      <h2>Plan</h2>
+      <p class="soft small" id="todaynote" style="margin:-4px 0 8px"></p>
+      <div class="bars budget" id="plan"></div>
+    </div>
+    <div class="card"><h2>Outside the budget</h2><div class="bars" id="unplanned"></div></div>
   </section>
 
   <section id="spending" data-tab hidden>
@@ -382,6 +405,98 @@ async function go(m) {
   await load();
 }
 
+// --- Budget -----------------------------------------------------------
+
+let opened = new Set(); // groups showing their lines
+
+// A category's month: its monthly lines plus a twelfth of its yearly ones.
+function plans() {
+  const by = new Map();
+  for (const l of data.budget) {
+    const g = by.get(l.category) || { lines: [], plan: 0 };
+    g.lines.push(l); g.plan += l.monthly + l.annual / 12;
+    by.set(l.category, g);
+  }
+  return by;
+}
+
+// The next time a yearly charge comes round, from the date it last did.
+function renewal(d) {
+  if (!d) return null;
+  const now = new Date(), next = new Date(d + "T12:00");
+  while (next < now) next.setFullYear(next.getFullYear() + 1);
+  return next.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function budget() {
+  $("#bmonthname").textContent = monthName(month);
+  $("#bnext").disabled = month >= current;
+  const by = plans();
+  const actual = new Map(data.categories.map((c) => [c.name, c.kind === "income" ? -c.amount : c.amount]));
+  const spendCats = data.categories.filter((c) => c.kind === "spend");
+  const planned = spendCats.filter((c) => by.has(c.name));
+  const sum = (list, f) => list.reduce((n, c) => n + f(c), 0);
+  const income = { plan: by.get("Income")?.plan || 0, actual: actual.get("Income") || 0 };
+  const spent = sum(spendCats, (c) => c.amount);
+  const plan = sum(planned, (c) => by.get(c.name).plan);
+
+  const tile = (label, value, of) => el("div", { className: "tile" }, el("div", { className: "label", textContent: label }),
+    el("div", { className: "value money", textContent: value }), el("div", { className: "of money", textContent: of }));
+  $("#budgettiles").replaceChildren(
+    tile("Income", usd(income.actual, false), `of ${usd(income.plan, false)}`),
+    tile("Spent", usd(spent, false), `of ${usd(plan, false)}`),
+    tile(plan - spent < 0 ? "Over" : "Left", usd(Math.abs(plan - spent), false),
+      `plan leaves ${usd(income.plan - plan, false)}`));
+
+  if (!data.budget.length) {
+    $("#todaynote").textContent = "";
+    $("#plan").replaceChildren(el("p", { className: "soft", style: "margin:0", textContent: "No budget yet." }));
+  } else {
+    // How far through the month we are, for this month only.
+    const now = new Date();
+    const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const through = month === current ? now.getDate() / days : null;
+    $("#todaynote").textContent = through == null ? "" : `The line marks today, day ${now.getDate()} of ${days}.`;
+    const groups = [["Income", "income"], ...planned.map((c) => [c.name, "spend"])].filter(([n]) => by.has(n));
+    $("#plan").replaceChildren(...groups.flatMap(([name, kind]) => {
+      const g = by.get(name), got = actual.get(name) || 0;
+      const over = kind === "spend" && got > g.plan + 0.005;
+      const bar = el("div", { className: "bar" + (opened.has(name) ? " on" : ""),
+        onclick: () => { opened.has(name) ? opened.delete(name) : opened.add(name); budget(); } },
+        el("span", { textContent: name }),
+        el("div", { className: "track" },
+          el("div", { className: "fill" + (kind === "income" ? " in" : ""), style: `width:${Math.min(100, g.plan ? 100 * Math.max(0, got) / g.plan : 100)}%` }),
+          through == null ? null : el("div", { className: "today", style: `left:calc(${100 * through}% - 1px)` })),
+        el("span", { className: "amt money" + (over ? " warn" : ""),
+          textContent: over ? `${usd(got - g.plan, false)} over` : `${usd(got, false)} of ${usd(g.plan, false)}` }));
+      hover(bar, `${name}: ${usd(got)} of ${usd(g.plan)} planned` +
+        (kind === "spend" ? (over ? `, ${usd(got - g.plan)} over` : `, ${usd(g.plan - got)} left`) : ""));
+      if (!opened.has(name)) return [bar];
+      const items = el("div", { className: "items" }, ...g.lines.map((l) => {
+        const when = renewal(l.renews);
+        const bits = [l.monthly ? `${usd(l.monthly)} a month` : null, l.annual ? `${usd(l.annual)} a year` : null,
+          when ? `renews ${when}` : null].filter(Boolean);
+        return el("div", { className: "row" },
+          el("span", { className: "grow", textContent: l.item }),
+          el("span", { className: "mid", textContent: bits.join(" · ") }));
+      }));
+      return [bar, items];
+    }));
+  }
+
+  // Spending in categories the budget doesn't plan; a click lists it.
+  const rest = spendCats.filter((c) => !by.has(c.name) && c.amount > 0).sort((a, b) => b.amount - a.amount);
+  const top = rest.length ? rest[0].amount : 1;
+  $("#unplanned").replaceChildren(...(rest.length ? rest.map((c) => {
+    const bar = el("div", { className: "bar", onclick: () => { only = c.name; location.hash = "#spending"; spending(); } },
+      el("span", { textContent: c.name }),
+      el("div", { className: "track" }, el("div", { className: "fill", style: `width:${100 * c.amount / top}%` })),
+      el("span", { className: "amt money", textContent: usd(c.amount, false) }));
+    hover(bar, `${c.name}: ${usd(c.amount)} over ${c.count} transaction${c.count === 1 ? "" : "s"}; click to list them`);
+    return bar;
+  }) : [el("p", { className: "soft", style: "margin:0", textContent: "Nothing this month." })]));
+}
+
 // --- Investments ------------------------------------------------------
 
 function investments() {
@@ -477,12 +592,15 @@ function tab() {
 addEventListener("hashchange", tab);
 $("#prev").onclick = () => go(shift(month, -1));
 $("#next").onclick = () => go(shift(month, 1));
+$("#bprev").onclick = () => go(shift(month, -1));
+$("#bnext").onclick = () => go(shift(month, 1));
 
 async function load() {
   data = await api("/api/money" + (month ? `?month=${month}` : ""));
   current ??= data.month;
   month = data.month;
   overview();
+  budget();
   spending();
   investments();
 }
