@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Endgrain schedule</title>
+<style>
+  /* The paper theme the frame, the chat and the money page use. */
+  :root { --paper: #ece3d4; --lift: #f4ede1; --ink: #2b2620; --mid: #6b6156; --soft: #978b7d; --edge: #d6cab6; --accent: #b0482a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 18px 60px; }
+  header.top { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font: 400 30px/1.1 Georgia, serif; margin: 0; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav a { color: var(--mid); text-decoration: none; padding: 5px 12px; border-radius: 99px; }
+  nav a.on { background: var(--ink); color: var(--lift); }
+  nav .count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 99px; background: var(--accent); color: var(--lift); font-size: 12px; text-align: center; }
+  h2 { font: 400 20px Georgia, serif; margin: 0 0 10px; }
+  .card { background: var(--lift); border: 1px solid var(--edge); border-radius: 14px; padding: 16px 18px; margin-bottom: 16px; }
+  .soft { color: var(--soft); }
+  .mid { color: var(--mid); }
+  .small { font-size: 13px; }
+  .grow { flex: 1; }
+  button { font: inherit; border: 1px solid var(--edge); background: var(--lift); color: var(--ink); border-radius: 10px; padding: 7px 13px; cursor: pointer; }
+  button:hover { border-color: var(--soft); }
+  button.main { background: var(--ink); color: var(--lift); border-color: var(--ink); }
+  button.quiet { border-color: transparent; background: transparent; color: var(--mid); padding: 4px 8px; }
+  button.quiet:hover { border-color: var(--edge); }
+  button:disabled { opacity: .4; cursor: default; }
+  input, select { font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--edge); border-radius: 8px; padding: 6px 8px; }
+  input:focus, select:focus { outline: 2px solid var(--soft); outline-offset: -1px; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--mid); }
+  .form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .form label.wide { flex: 1; min-width: 180px; }
+  .row { display: flex; gap: 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--edge); flex-wrap: wrap; }
+  .row:first-child { border-top: 0; }
+  .row .what { flex: 1 1 160px; min-width: 0; }
+  .row .sub { color: var(--soft); font-size: 13px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; }
+  .pill { display: inline-block; font-size: 12px; padding: 2px 9px; border-radius: 99px; border: 1px solid var(--edge); color: var(--mid); white-space: nowrap; }
+  .pill.posted { background: var(--ink); color: var(--lift); border-color: var(--ink); }
+  .pill.approved { border-color: #4f7a42; color: #3d6233; }
+  .pill.denied { border-color: var(--accent); color: var(--accent); }
+  .warn { color: var(--accent); font-size: 13px; margin: 0; }
+  .empty { color: var(--soft); padding: 6px 0; margin: 0; }
+
+  .weeknav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .weeknav b { font: 400 22px Georgia, serif; min-width: 190px; text-align: center; }
+  .scroll { overflow-x: auto; margin: 0 -18px; padding: 0 18px; }
+  table.grid { width: 100%; min-width: 820px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+  .grid th { font: 600 12px system-ui; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); text-align: left; padding: 4px 6px 8px; }
+  .grid th .date { display: block; font: 400 18px Georgia, serif; letter-spacing: 0; text-transform: none; color: var(--ink); }
+  .grid th.today .date { color: var(--accent); }
+  .grid th:first-child, .grid td:first-child { width: 132px; }
+  .grid th:last-child, .grid td:last-child { width: 56px; text-align: right; }
+  .grid td { vertical-align: top; padding: 4px; border-top: 1px solid var(--edge); height: 58px; }
+  .grid td.today { background: rgba(176, 72, 42, .05); }
+  .grid td:first-child, .grid th:first-child { position: sticky; left: 0; background: var(--lift); z-index: 1; }
+  .grid .who { display: flex; align-items: center; gap: 8px; padding-top: 6px; font-weight: 500; }
+  .grid .who.gone { color: var(--soft); }
+  .grid .hours { padding-top: 6px; color: var(--mid); font-variant-numeric: tabular-nums; }
+  .grid .hours.over { color: var(--accent); font-weight: 600; }
+  .grid tfoot td { color: var(--mid); font-size: 13px; height: auto; padding-top: 8px; font-variant-numeric: tabular-nums; }
+  .cell { position: relative; min-height: 50px; display: flex; flex-direction: column; gap: 4px; border-radius: 8px; }
+  .edit .cell { cursor: pointer; }
+  .edit .cell:hover { background: var(--paper); }
+  .edit .cell:empty:hover::after { content: "+"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--soft); font-size: 20px; }
+  .shift { display: block; width: 100%; text-align: left; border: 0; border-left: 4px solid var(--c); background: var(--paper); border-radius: 6px; padding: 5px 7px; font-size: 13px; font-variant-numeric: tabular-nums; line-height: 1.3; color: var(--ink); }
+  .edit .shift:hover { background: var(--edge); }
+  .shift small { display: block; color: var(--mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .off { font-size: 12px; border-radius: 6px; padding: 4px 7px; color: var(--mid); background: repeating-linear-gradient(-45deg, var(--edge) 0 4px, transparent 4px 9px); }
+  .off.ask { background: none; border: 1px dashed var(--soft); }
+
+  dialog { border: 1px solid var(--edge); border-radius: 16px; background: var(--lift); color: var(--ink); padding: 20px; width: min(420px, calc(100vw - 24px)); }
+  dialog::backdrop { background: rgba(43, 38, 32, .35); }
+  dialog form { display: flex; flex-direction: column; gap: 12px; }
+  dialog .times { display: flex; gap: 10px; }
+  dialog .times label { flex: 1; }
+  .picks { display: flex; gap: 6px; flex-wrap: wrap; }
+  .picks button { padding: 3px 10px; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .actions { display: flex; gap: 8px; align-items: center; }
+  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--lift); padding: 9px 14px; border-radius: 10px; font-size: 14px; display: none; z-index: 9; max-width: calc(100vw - 24px); }
+  .swatches { display: flex; gap: 4px; }
+  .swatches button { width: 22px; height: 22px; padding: 0; border-radius: 50%; background: var(--c); border: 2px solid transparent; }
+  .swatches button.on { border-color: var(--ink); }
+  .staffrow input.name { width: 160px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 600px) {
+    main { padding: 16px 12px 40px; }
+    .scroll { margin: 0 -12px; padding: 0 12px; }
+    .weeknav b { min-width: 0; font-size: 19px; }
+    .grid th:first-child, .grid td:first-child { width: 96px; }
+  }
+  @media print {
+    body { background: #fff; }
+    header.top nav, .weeknav button, .noprint, #toast { display: none !important; }
+    .card { border: 0; padding: 0; background: #fff; }
+    .grid td:first-child, .grid th:first-child { background: #fff; }
+    table.grid { min-width: 0; }
+    .shift { background: #fff; border: 1px solid #ccc; border-left: 4px solid var(--c); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <h1>Endgrain</h1>
+    <nav id="nav"></nav>
+    <span class="grow"></span>
+    <span id="hello" class="mid"></span>
+  </header>
+
+  <!-- The manager's tabs. -->
+  <section id="schedule" hidden>
+    <div class="card">
+      <div class="weeknav">
+        <button data-step="-7" aria-label="Previous week">‹</button>
+        <b class="range"></b>
+        <button data-step="7" aria-label="Next week">›</button>
+        <button data-step="0">This week</button>
+        <span id="status"></span>
+        <span class="grow"></span>
+        <button id="copy" class="noprint">Copy last week</button>
+        <button id="print" class="noprint">Print</button>
+        <button id="publish" class="main noprint">Post week</button>
+      </div>
+      <div class="scroll"><table class="grid edit" id="grid"></table></div>
+    </div>
+  </section>
+
+  <section id="requests" hidden>
+    <div class="card">
+      <h2>Waiting on you</h2>
+      <div id="pending"></div>
+    </div>
+    <div class="card">
+      <h2>Add time off</h2>
+      <p class="small soft" style="margin-top:-4px">For days off you already know about. It's approved as you add it.</p>
+      <form class="form" id="addoff">
+        <label>Who <select name="staff" required></select></label>
+        <label>From <input type="date" name="first" required></label>
+        <label>To <input type="date" name="last" required></label>
+        <label class="wide">Note <input name="reason" maxlength="500" placeholder="Optional"></label>
+        <button class="main">Add</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Decided</h2>
+      <div id="decided"></div>
+    </div>
+  </section>
+
+  <section id="staff" hidden>
+    <div class="card">
+      <h2>Staff</h2>
+      <div id="people"></div>
+    </div>
+    <div class="card">
+      <h2>Add someone</h2>
+      <form class="form" id="addperson">
+        <label class="wide">Name <input name="name" maxlength="40" required></label>
+        <button class="main">Add</button>
+      </form>
+      <p class="small soft">Each person gets a private link to their own page: their shifts, the posted schedule, and a form to ask for days off. The links work on the tailnet for now.</p>
+    </div>
+  </section>
+
+  <!-- A staff member's page. -->
+  <section id="me" hidden>
+    <div class="card">
+      <h2>Your shifts</h2>
+      <div id="upcoming"></div>
+    </div>
+    <div class="card">
+      <div class="weeknav">
+        <button data-step="-7" aria-label="Previous week">‹</button>
+        <b class="range"></b>
+        <button data-step="7" aria-label="Next week">›</button>
+        <button data-step="0">This week</button>
+      </div>
+      <div class="scroll"><table class="grid" id="team"></table></div>
+      <p class="empty" id="unposted" hidden>This week's schedule isn't posted yet.</p>
+    </div>
+    <div class="card">
+      <h2>Ask for time off</h2>
+      <form class="form" id="askoff">
+        <label>From <input type="date" name="first" required></label>
+        <label>To <input type="date" name="last" required></label>
+        <label class="wide">Note <input name="reason" maxlength="500" placeholder="Optional"></label>
+        <button class="main">Send</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Your requests</h2>
+      <div id="mine"></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="editor">
+  <form>
+    <h2 id="edtitle">Add shift</h2>
+    <label>Who <select name="staff" required></select></label>
+    <label>Day <input type="date" name="day" required></label>
+    <div class="times">
+      <label>Start <input type="time" name="start" step="900" required></label>
+      <label>End <input type="time" name="end" step="900" required></label>
+    </div>
+    <div class="picks" id="picks"></div>
+    <label>Note <input name="note" maxlength="200" placeholder="Optional, e.g. opening"></label>
+    <p class="warn" id="edwarn"></p>
+    <div class="actions">
+      <button type="button" id="eddelete" class="quiet">Delete</button>
+      <span class="grow"></span>
+      <button type="button" id="edcancel">Cancel</button>
+      <button class="main">Save</button>
+    </div>
+  </form>
+</dialog>
+<div id="toast"></div>
+
+<script>
+const token = (location.pathname.match(/^\/s\/([0-9a-f]+)/) || [])[1];
+const base = token ? `/s/${token}/api` : '/api';
+const PALETTE = ['#b0482a', '#2f6db5', '#4f7a42', '#8a5a9e', '#c28a1e', '#2f8a83', '#a8436e', '#6b6156'];
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+async function api(path, opt = {}) {
+  const r = await fetch(base + path, {
+    method: opt.method || 'GET',
+    headers: opt.body ? { 'content-type': 'application/json' } : {},
+    body: opt.body && JSON.stringify(opt.body),
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(text || r.statusText);
+  return text ? JSON.parse(text) : null;
+}
+let toastTimer;
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', 3500);
+}
+async function act(f) { try { await f(); } catch (e) { toast(e.message); } }
+
+// Days are YYYY-MM-DD in local time; times are minutes after midnight.
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
+const mondayOf = s => addDays(s, -((parse(s).getDay() + 6) % 7));
+const today = () => iso(new Date());
+const nice = (s, o = { weekday: 'short', month: 'short', day: 'numeric' }) => parse(s).toLocaleDateString(undefined, o);
+function clock(m) {
+  const h = Math.floor(m / 60) % 24, min = m % 60, h12 = h % 12 || 12;
+  return `${h12}${min ? ':' + String(min).padStart(2, '0') : ''}${h < 12 ? 'a' : 'p'}`;
+}
+const span = s => `${clock(s.start)}–${clock(s.end)}`;
+const hrs = n => (Math.round(n / 6) / 10).toString().replace(/\.0$/, '');
+const toTime = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const fromTime = v => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+function dates(o) {
+  const n = Math.round((parse(o.last) - parse(o.first)) / 864e5) + 1;
+  const d = o.first === o.last ? nice(o.first) : `${nice(o.first)} – ${nice(o.last)}`;
+  return `${d} <span class="soft">· ${n} day${n > 1 ? 's' : ''}</span>`;
+}
+function range(monday) {
+  const sun = addDays(monday, 6), a = parse(monday), b = parse(sun);
+  const left = a.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const right = b.toLocaleDateString(undefined, a.getMonth() === b.getMonth() ? { day: 'numeric' } : { month: 'short', day: 'numeric' });
+  return `${left} – ${right}`;
+}
+
+let monday = mondayOf(today());
+let week = null;
+
+// The week grid: a row per person, a column per day, hours at the end.
+function grid(table, w, editable) {
+  const days = [...Array(7)].map((_, i) => addDays(w.monday, i));
+  const now = today();
+  let html = '<thead><tr><th></th>' + days.map((d, i) =>
+    `<th class="${d === now ? 'today' : ''}">${DAYS[i]}<span class="date">${parse(d).getDate()}</span></th>`).join('') +
+    '<th>Hours</th></tr></thead><tbody>';
+  const dayMins = days.map(() => 0), dayPeople = days.map(() => new Set());
+  for (const p of w.staff) {
+    let total = 0;
+    html += `<tr><td><div class="who ${p.active ? '' : 'gone'}"><span class="dot" style="--c:${p.color}"></span>${esc(p.name)}</div></td>`;
+    days.forEach((d, i) => {
+      const offs = (w.off || []).filter(o => o.staff === p.id && o.first <= d && o.last >= d);
+      const shifts = w.shifts.filter(s => s.staff === p.id && s.day === d);
+      let cell = offs.map(o => `<div class="off ${o.status === 'pending' ? 'ask' : ''}" title="${esc(o.reason)}">${o.status === 'pending' ? 'Asked off' : 'Off'}</div>`).join('');
+      for (const s of shifts) {
+        total += s.end - s.start; dayMins[i] += s.end - s.start; dayPeople[i].add(p.id);
+        cell += `<button class="shift" style="--c:${p.color}" data-id="${s.id}" ${editable ? '' : 'tabindex="-1"'}>${span(s)}${s.note ? `<small>${esc(s.note)}</small>` : ''}</button>`;
+      }
+      html += `<td class="${d === now ? 'today' : ''}"><div class="cell" data-staff="${p.id}" data-day="${d}">${cell}</div></td>`;
+    });
+    html += `<td><div class="hours ${total > 40 * 60 ? 'over' : ''}">${total ? hrs(total) : ''}</div></td></tr>`;
+  }
+  const all = dayMins.reduce((a, b) => a + b, 0);
+  html += '</tbody><tfoot><tr><td>Total</td>' + days.map((_, i) =>
+    `<td>${dayMins[i] ? `${hrs(dayMins[i])}h · ${dayPeople[i].size} on` : ''}</td>`).join('') +
+    `<td>${all ? hrs(all) : ''}</td></tr></tfoot>`;
+  table.innerHTML = html;
+}
+
+// ---- Manager ----
+
+async function loadWeek() {
+  week = await api(`/week?monday=${monday}`);
+  $('#schedule .range').textContent = range(monday);
+  const st = $('#status');
+  st.innerHTML = week.published
+    ? `<span class="pill posted">Posted</span>${week.edited ? ' <span class="pill">Changed since</span>' : ''}`
+    : '<span class="pill">Draft</span>';
+  $('#publish').textContent = week.published ? (week.edited ? 'Post changes' : 'Posted') : 'Post week';
+  $('#publish').disabled = !!week.published && !week.edited;
+  if (!week.staff.length) {
+    $('#grid').innerHTML = '<tbody><tr><td class="empty" style="position:static">Add your staff on the Staff tab first.</td></tr></tbody>';
+  } else grid($('#grid'), week, true);
+  setCount(week.pending);
+}
+
+function setCount(n) {
+  const c = $('#nav .count');
+  if (c) { c.textContent = n; c.hidden = !n; }
+}
+
+$('#grid').addEventListener('click', e => {
+  const b = e.target.closest('.shift');
+  if (b) return openEditor(week.shifts.find(s => s.id === Number(b.dataset.id)));
+  const c = e.target.closest('.cell');
+  if (c) openEditor({ staff: Number(c.dataset.staff), day: c.dataset.day });
+});
+
+const ed = $('#editor'), edf = $('#editor form');
+let editing = null;
+function openEditor(s) {
+  editing = s;
+  $('#edtitle').textContent = s.id ? 'Edit shift' : 'Add shift';
+  edf.staff.innerHTML = week.staff.filter(p => p.active || p.id === s.staff)
+    .map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  edf.staff.value = s.staff;
+  edf.day.value = s.day;
+  const first = week.usual[0];
+  edf.start.value = toTime(s.start ?? first?.start ?? 7 * 60);
+  edf.end.value = toTime(s.end ?? first?.end ?? 15 * 60);
+  edf.note.value = s.note || '';
+  $('#picks').innerHTML = week.usual.map(u => `<button type="button" data-s="${u.start}" data-e="${u.end}">${span(u)}</button>`).join('');
+  $('#eddelete').hidden = !s.id;
+  warn();
+  ed.showModal();
+}
+$('#picks').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  edf.start.value = toTime(Number(b.dataset.s)); edf.end.value = toTime(Number(b.dataset.e)); warn();
+});
+function warn() {
+  const who = Number(edf.staff.value), day = edf.day.value;
+  const start = edf.start.value && fromTime(edf.start.value), end = edf.end.value && fromTime(edf.end.value);
+  const notes = [];
+  for (const o of week.off) if (o.staff === who && o.first <= day && o.last >= day)
+    notes.push(o.status === 'pending' ? 'They asked for this day off.' : 'They have this day off.');
+  if (week.shifts.some(s => s.staff === who && s.day === day && s.id !== editing.id && s.start < end && start < s.end))
+    notes.push('This overlaps another of their shifts.');
+  if (start !== '' && end !== '' && end <= start) notes.push('The shift ends before it starts.');
+  $('#edwarn').textContent = notes.join(' ');
+}
+edf.addEventListener('input', warn);
+$('#edcancel').onclick = () => ed.close();
+edf.addEventListener('submit', e => {
+  e.preventDefault();
+  act(async () => {
+    await api('/shift', { method: 'PUT', body: {
+      id: editing.id ?? null, staff: Number(edf.staff.value), day: edf.day.value,
+      start: fromTime(edf.start.value), end: fromTime(edf.end.value), note: edf.note.value,
+    } });
+    ed.close(); await loadWeek();
+  });
+});
+$('#eddelete').onclick = () => act(async () => {
+  await api(`/shift/${editing.id}`, { method: 'DELETE' });
+  ed.close(); await loadWeek();
+});
+
+$('#copy').onclick = () => act(async () => {
+  if (week.shifts.length && !confirm(`Replace this week's ${week.shifts.length} shifts with last week's?`)) return;
+  const r = await api('/week/copy', { method: 'POST', body: { monday } });
+  toast(r.copied ? `Copied ${r.copied} shifts.` : 'Last week had no shifts.');
+  await loadWeek();
+});
+$('#publish').onclick = () => act(async () => {
+  await api('/week/publish', { method: 'POST', body: { monday } });
+  toast('Posted. Staff can see this week now.');
+  await loadWeek();
+});
+$('#print').onclick = () => print();
+
+async function loadRequests() {
+  const [r, staff] = await Promise.all([api('/requests'), api('/staff')]);
+  setCount(r.pending.length);
+  const clash = o => o.shifts ? ` <span class="warn">· has ${o.shifts} shift${o.shifts > 1 ? 's' : ''} then</span>` : '';
+  $('#pending').innerHTML = r.pending.length ? r.pending.map(o => `
+    <div class="row">
+      <div class="what"><b>${esc(o.name)}</b> · ${dates(o)}${clash(o)}
+        <div class="sub">${o.reason ? esc(o.reason) + ' · ' : ''}asked ${nice(o.made.slice(0, 10))}</div></div>
+      <button data-id="${o.id}" data-to="denied">Deny</button>
+      <button class="main" data-id="${o.id}" data-to="approved">Approve</button>
+    </div>`).join('') : '<p class="empty">Nothing waiting.</p>';
+  $('#decided').innerHTML = r.decided.length ? r.decided.map(o => `
+    <div class="row">
+      <div class="what">${esc(o.name)} · ${dates(o)}${o.status === 'approved' ? clash(o) : ''}
+        ${o.reason ? `<div class="sub">${esc(o.reason)}</div>` : ''}</div>
+      <span class="pill ${o.status}">${o.status === 'approved' ? 'Approved' : 'Denied'}</span>
+      <button class="quiet" data-id="${o.id}" data-del title="Remove">Remove</button>
+    </div>`).join('') : '<p class="empty">None yet.</p>';
+  const f = $('#addoff');
+  f.staff.innerHTML = staff.filter(p => p.active).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+}
+$('#requests').addEventListener('click', e => {
+  const b = e.target.closest('button[data-id]'); if (!b) return;
+  act(async () => {
+    if (b.dataset.del !== undefined) {
+      if (!confirm('Remove this time off?')) return;
+      await api(`/requests/${b.dataset.id}`, { method: 'DELETE' });
+    } else await api(`/requests/${b.dataset.id}`, { method: 'POST', body: { status: b.dataset.to } });
+    await loadRequests();
+  });
+});
+$('#addoff').addEventListener('input', e => { const f = e.currentTarget; if (e.target === f.first && (!f.last.value || f.last.value < f.first.value)) f.last.value = f.first.value; });
+$('#addoff').addEventListener('submit', e => {
+  e.preventDefault(); const f = e.currentTarget;
+  act(async () => {
+    await api('/requests', { method: 'POST', body: { staff: Number(f.staff.value), first: f.first.value, last: f.last.value, reason: f.reason.value } });
+    f.reset(); toast('Added.'); await loadRequests();
+  });
+});
+
+let people = [];
+async function loadStaff() {
+  people = await api('/staff');
+  $('#people').innerHTML = people.length ? people.map(p => `
+    <div class="row staffrow" data-id="${p.id}">
+      <span class="dot" style="--c:${p.color}"></span>
+      <input class="name" value="${esc(p.name)}" maxlength="40" aria-label="Name" ${p.active ? '' : 'disabled'}>
+      <span class="swatches">${PALETTE.map(c => `<button style="--c:${c}" class="${c === p.color ? 'on' : ''}" data-color="${c}" aria-label="Colour"></button>`).join('')}</span>
+      <span class="grow"></span>
+      ${p.active ? `<button data-act="copy">Copy link</button>
+      <a class="small mid" href="/s/${p.token}" target="_blank">Open</a>
+      <button class="quiet" data-act="relink" title="The old link stops working">New link</button>` : '<span class="pill">Archived</span>'}
+      <button class="quiet" data-act="active">${p.active ? 'Archive' : 'Restore'}</button>
+    </div>`).join('') : '<p class="empty">No one yet.</p>';
+}
+const savePerson = (p, change) => api('/staff', { method: 'PUT', body: { id: p.id, name: p.name, color: p.color, active: p.active, ...change } });
+$('#people').addEventListener('change', e => {
+  if (!e.target.matches('input.name')) return;
+  const p = people.find(p => p.id === Number(e.target.closest('.row').dataset.id));
+  act(async () => { await savePerson(p, { name: e.target.value }); await loadStaff(); });
+});
+$('#people').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const p = people.find(p => p.id === Number(b.closest('.row').dataset.id));
+  act(async () => {
+    if (b.dataset.color) await savePerson(p, { color: b.dataset.color });
+    else if (b.dataset.act === 'active') {
+      if (p.active && !confirm(`Archive ${p.name}? Their link stops working; their past shifts stay.`)) return;
+      await savePerson(p, { active: !p.active });
+    } else if (b.dataset.act === 'relink') {
+      if (!confirm(`Make a new link for ${p.name}? The old one stops working.`)) return;
+      await api(`/staff/${p.id}/link`, { method: 'POST' });
+      toast('New link made.');
+    } else if (b.dataset.act === 'copy') {
+      await navigator.clipboard.writeText(`${location.origin}/s/${p.token}`);
+      return toast(`Copied ${p.name}'s link.`);
+    }
+    await loadStaff();
+  });
+});
+$('#addperson').addEventListener('submit', e => {
+  e.preventDefault(); const f = e.currentTarget;
+  const used = new Set(people.filter(p => p.active).map(p => p.color));
+  const color = PALETTE.find(c => !used.has(c)) || PALETTE[people.length % PALETTE.length];
+  act(async () => {
+    await api('/staff', { method: 'PUT', body: { id: null, name: f.name.value, color, active: true } });
+    f.reset(); await loadStaff();
+  });
+});
+
+// ---- A staff member's page ----
+
+async function loadMine() {
+  const m = await api(`?monday=${monday}`);
+  $('#hello').textContent = `Hi, ${m.me.name}`;
+  $('#me .range').textContent = range(monday);
+  $('#upcoming').innerHTML = m.upcoming.length ? m.upcoming.map(s => `
+    <div class="row"><div class="what"><b>${nice(s.day)}</b> · ${span(s)} <span class="soft">· ${hrs(s.end - s.start)}h</span>
+      ${s.note ? `<div class="sub">${esc(s.note)}</div>` : ''}</div></div>`).join('')
+    : '<p class="empty">No posted shifts in the next four weeks.</p>';
+  $('#unposted').hidden = m.published;
+  $('#team').hidden = !m.published;
+  if (m.published) grid($('#team'), { monday: m.monday, staff: m.staff, shifts: m.shifts, off: [] }, false);
+  const label = { pending: 'Waiting', approved: 'Approved', denied: 'Denied' };
+  $('#mine').innerHTML = m.requests.length ? m.requests.map(o => `
+    <div class="row"><div class="what">${dates(o)}${o.reason ? `<div class="sub">${esc(o.reason)}</div>` : ''}</div>
+      <span class="pill ${o.status}">${label[o.status]}</span>
+      ${o.status === 'pending' ? `<button class="quiet" data-id="${o.id}">Withdraw</button>` : ''}</div>`).join('')
+    : '<p class="empty">None yet.</p>';
+  const f = $('#askoff'); f.first.min = f.last.min = m.today;
+}
+$('#mine').addEventListener('click', e => {
+  const b = e.target.closest('button[data-id]'); if (!b) return;
+  act(async () => { await api(`/requests/${b.dataset.id}`, { method: 'DELETE' }); await loadMine(); });
+});
+$('#askoff').addEventListener('input', e => { const f = e.currentTarget; if (e.target === f.first && (!f.last.value || f.last.value < f.first.value)) f.last.value = f.first.value; });
+$('#askoff').addEventListener('submit', e => {
+  e.preventDefault(); const f = e.currentTarget;
+  act(async () => {
+    await api('/requests', { method: 'POST', body: { first: f.first.value, last: f.last.value, reason: f.reason.value } });
+    f.reset(); toast('Sent. You will see the answer here.'); await loadMine();
+  });
+});
+
+// ---- Navigation ----
+
+for (const nav of document.querySelectorAll('.weeknav')) nav.addEventListener('click', e => {
+  const b = e.target.closest('button[data-step]'); if (!b) return;
+  const step = Number(b.dataset.step);
+  monday = step ? addDays(monday, step) : mondayOf(today());
+  act(token ? loadMine : loadWeek);
+});
+
+const TABS = { schedule: loadWeek, requests: loadRequests, staff: loadStaff };
+function show() {
+  if (token) { $('#me').hidden = false; return act(loadMine); }
+  const tab = TABS[location.hash.slice(1)] ? location.hash.slice(1) : 'schedule';
+  $('#nav').innerHTML = `<a href="#schedule">Schedule</a><a href="#requests">Requests<span class="count" hidden></span></a><a href="#staff">Staff</a>`;
+  for (const a of document.querySelectorAll('#nav a')) a.classList.toggle('on', a.hash === '#' + tab);
+  for (const t in TABS) $('#' + t).hidden = t !== tab;
+  act(async () => {
+    await TABS[tab]();
+    if (tab !== 'schedule' && tab !== 'requests') setCount((await api('/requests')).pending.length);
+  });
+}
+addEventListener('hashchange', show);
+show();
+</script>
+</body>
+</html>

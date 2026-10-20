@@ -105,6 +105,12 @@
           agent = true;
         }
         {
+          name = "Endgrain";
+          about = "Staff schedule";
+          icon = "";
+          route = "endgrain";
+        }
+        {
           name = "Money";
           about = "Spending and savings";
           icon = "";
