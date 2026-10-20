@@ -485,9 +485,10 @@ impl Store {
         Ok(())
     }
 
-    /// Puts each person's usual shifts on the days from `first` to `last`,
-    /// except where they already have a shift or have the day off.
-    fn fill(&self, first: &str, last: &str) -> Result<usize> {
+    /// Puts each person's usual shifts, or only usual shift `only`, on the
+    /// days from `first` to `last`, except where they already have a shift
+    /// or have the day off.
+    fn fill(&self, first: &str, last: &str, only: Option<i64>) -> Result<usize> {
         let n = self.db.execute(
             "WITH RECURSIVE days(day) AS (
                SELECT ?1 UNION ALL SELECT date(day, '+1 day') FROM days WHERE day < ?2)
@@ -496,11 +497,12 @@ impl Store {
              FROM days
              JOIN usual u ON u.weekday = (CAST(strftime('%w', days.day) AS INTEGER) + 6) % 7
              JOIN staff s ON s.id = u.staff AND s.active
-             WHERE NOT EXISTS (SELECT 1 FROM shifts h WHERE h.staff = u.staff AND h.day = days.day)
+             WHERE (?3 IS NULL OR u.id = ?3)
+               AND NOT EXISTS (SELECT 1 FROM shifts h WHERE h.staff = u.staff AND h.day = days.day)
                AND NOT EXISTS (SELECT 1 FROM requests r WHERE r.staff = u.staff
                  AND r.status = 'approved' AND days.day BETWEEN r.first AND r.last)
              ORDER BY days.day, u.start",
-            params![first, last],
+            params![first, last, only],
         )?;
         self.touch(first)?;
         Ok(n)
@@ -522,27 +524,30 @@ impl Store {
         )
     }
 
-    /// Fills each week in reach the first time it comes into reach, unless
-    /// the manager already posted it.
+    /// Fills each week the first time it comes into reach, unless the
+    /// manager already posted it or planned it by hand: a gap in a planned
+    /// week, like a holiday, is on purpose.
     fn fill_ahead(&self) -> Result<()> {
         for (monday, from) in self.horizon()? {
             let new = self.db.execute(
                 "INSERT INTO filled SELECT ?1
                  WHERE NOT EXISTS (SELECT 1 FROM filled WHERE monday = ?1)
-                   AND NOT EXISTS (SELECT 1 FROM weeks WHERE monday = ?1)",
+                   AND NOT EXISTS (SELECT 1 FROM weeks WHERE monday = ?1)
+                   AND NOT EXISTS (SELECT 1 FROM shifts WHERE day BETWEEN ?1 AND date(?1, '+6 days'))",
                 [&monday],
             )?;
             if new == 1 {
-                self.fill(&from, &self.plus(&monday, 6)?)?;
+                self.fill(&from, &self.plus(&monday, 6)?, None)?;
             }
         }
         Ok(())
     }
 
-    /// After the usual week changes: the coming days of every unposted week
-    /// in reach lose their untouched usual shifts and take the new ones.
-    /// Posted weeks and hand-made shifts stay as they are.
-    fn refill(&self) -> Result<()> {
+    /// Carries one change to the usual week into the coming days of the
+    /// unposted weeks in reach: the shifts `old` put there go, and usual
+    /// shift `new` goes in where the person is free. Everything else in
+    /// those weeks stays, so a gap left on purpose stays a gap.
+    fn carry(&self, old: Option<&Default>, new: Option<i64>) -> Result<()> {
         let tx = self.db.unchecked_transaction()?;
         for (monday, from) in self.horizon()? {
             let posted: bool = tx.query_row(
@@ -550,18 +555,44 @@ impl Store {
                 [&monday],
                 |r| r.get(0),
             )?;
-            tx.execute("INSERT OR IGNORE INTO filled VALUES (?1)", [&monday])?;
             if posted {
                 continue;
             }
-            tx.execute(
-                "DELETE FROM shifts WHERE usual AND day BETWEEN ?1 AND date(?2, '+6 days')",
-                params![from, monday],
-            )?;
-            self.fill(&from, &self.plus(&monday, 6)?)?;
+            let last = self.plus(&monday, 6)?;
+            if let Some(o) = old {
+                tx.execute(
+                    "DELETE FROM shifts WHERE usual AND staff = ?3 AND start = ?4 AND end = ?5
+                       AND (CAST(strftime('%w', day) AS INTEGER) + 6) % 7 = ?6
+                       AND day BETWEEN ?1 AND ?2",
+                    params![from, last, o.staff, o.start, o.end, o.weekday],
+                )?;
+            }
+            if let Some(id) = new {
+                self.fill(&from, &last, Some(id))?;
+            }
         }
         tx.commit()?;
         Ok(())
+    }
+
+    fn default(&self, id: i64) -> Result<Default> {
+        self.db
+            .query_row(
+                "SELECT id, staff, weekday, start, end, note FROM usual WHERE id = ?1",
+                [id],
+                |r| {
+                    Ok(Default {
+                        id: r.get(0)?,
+                        staff: r.get(1)?,
+                        weekday: r.get(2)?,
+                        start: r.get(3)?,
+                        end: r.get(4)?,
+                        note: r.get(5)?,
+                    })
+                },
+            )
+            .optional()?
+            .ok_or(Error::Missing)
     }
 
     /// Replaces the week's shifts with the usual week.
@@ -573,7 +604,7 @@ impl Store {
             [monday],
         )?;
         tx.execute("INSERT OR IGNORE INTO filled VALUES (?1)", [monday])?;
-        let n = self.fill(monday, &self.plus(monday, 6)?)?;
+        let n = self.fill(monday, &self.plus(monday, 6)?, None)?;
         tx.commit()?;
         Ok(n)
     }
@@ -613,16 +644,14 @@ impl Store {
             return bad("a shift ends after it starts, within the day");
         }
         let note = text("The note", &d.note, 200)?;
+        let old = d.id.map(|id| self.default(id)).transpose()?;
         let id = match d.id {
             Some(id) => {
-                let n = self.db.execute(
+                self.db.execute(
                     "UPDATE usual SET staff = ?2, weekday = ?3, start = ?4, end = ?5, note = ?6
                      WHERE id = ?1",
                     params![id, d.staff, d.weekday, d.start, d.end, note],
                 )?;
-                if n == 0 {
-                    return Err(Error::Missing);
-                }
                 id
             }
             None => {
@@ -633,16 +662,14 @@ impl Store {
                 self.db.last_insert_rowid()
             }
         };
-        self.refill()?;
+        self.carry(old.as_ref(), Some(id))?;
         Ok(id)
     }
 
     pub fn delete_default(&self, id: i64) -> Result<()> {
-        let n = self.db.execute("DELETE FROM usual WHERE id = ?1", [id])?;
-        if n == 0 {
-            return Err(Error::Missing);
-        }
-        self.refill()
+        let old = self.default(id)?;
+        self.db.execute("DELETE FROM usual WHERE id = ?1", [id])?;
+        self.carry(Some(&old), None)
     }
 
     /// Takes the person off their coming shifts on days they now have off;
@@ -688,8 +715,8 @@ impl Store {
                     .optional()?
                     .ok_or(Error::Missing)?;
                 self.db.execute(
-                    "UPDATE shifts SET staff = ?2, day = ?3, start = ?4, end = ?5, note = ?6,
-                       usual = 0 WHERE id = ?1",
+                    "UPDATE shifts SET staff = ?2, day = ?3, start = ?4, end = ?5, note = ?6
+                     WHERE id = ?1",
                     params![id, s.staff, s.day, s.start, s.end, note],
                 )?;
                 self.touch(&was)?;
@@ -703,6 +730,15 @@ impl Store {
                 self.db.last_insert_rowid()
             }
         };
+        // A shift the same as that person's usual one that weekday counts
+        // as usual, so changes to the usual week carry into it.
+        self.db.execute(
+            "UPDATE shifts SET usual = EXISTS (SELECT 1 FROM usual u WHERE u.staff = shifts.staff
+               AND u.start = shifts.start AND u.end = shifts.end
+               AND u.weekday = (CAST(strftime('%w', shifts.day) AS INTEGER) + 6) % 7)
+             WHERE id = ?1",
+            [id],
+        )?;
         self.touch(&s.day)?;
         Ok(id)
     }
@@ -1166,5 +1202,42 @@ mod tests {
         assert_eq!((w.rules.weekday, w.short_ok.len()), (1, 1));
         s.short_ok(&monday, false).unwrap();
         assert!(s.week(&monday).unwrap().short_ok.is_empty());
+    }
+
+    #[test]
+    fn a_week_planned_by_hand_keeps_its_gaps() {
+        let s = store();
+        let a = add(&s, "Ana");
+        let b = add(&s, "Ben");
+        let monday = s.plus(&this_monday(&s), 14).unwrap();
+        put(&s, a, &monday);
+        // As if the usual week had been set before this week came in reach.
+        s.db.execute(
+            "INSERT INTO usual (staff, weekday, start, end) VALUES (?1, 1, 420, 900)",
+            [b],
+        )
+        .unwrap();
+        assert_eq!(s.week(&monday).unwrap().shifts.len(), 1);
+    }
+
+    #[test]
+    fn a_hand_made_shift_like_the_usual_one_follows_the_usual_week() {
+        let s = store();
+        let a = add(&s, "Ana");
+        let monday = s.plus(&this_monday(&s), 7).unwrap();
+        let id = usual(&s, a, 0);
+        let w = s.week(&monday).unwrap();
+        s.delete_shift(w.shifts[0].id).unwrap();
+        s.save_shift(&ShiftIn {
+            id: None,
+            staff: a,
+            day: monday.clone(),
+            start: 7 * 60,
+            end: 15 * 60,
+            note: String::new(),
+        })
+        .unwrap();
+        s.delete_default(id).unwrap();
+        assert!(s.week(&monday).unwrap().shifts.is_empty());
     }
 }
