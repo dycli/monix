@@ -1,8 +1,10 @@
 //! Endgrain's staff schedule: the manager lays out each week's shifts and
 //! posts the week when it's ready, and staff ask for time off, which the
-//! manager approves or denies. The manager's page is `/`; each person has
-//! a page of their own at `/s/<token>` showing their shifts and the posted
-//! team schedule, where they ask for days off. Everything staff can reach
+//! manager approves or denies. A usual week fills the weeks ahead, and days
+//! with fewer people than the rules ask show red until covered or let go.
+//! The manager's page is `/`; each person has a page of their own at
+//! `/s/<token>` showing their shifts and the posted team schedule, where
+//! they ask for days off. Everything staff can reach
 //! sits under `/s/`, so a public door can admit that path alone.
 //!
 //! Environment:
@@ -22,7 +24,7 @@ use axum::routing::{get, post, put};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use store::{Error, OffIn, PersonIn, ShiftIn, Store};
+use store::{DefaultIn, Error, OffIn, PersonIn, Rules, ShiftIn, Store};
 
 /// One connection behind a lock: a handful of people use this, and every
 /// request is a few small queries.
@@ -72,6 +74,38 @@ async fn copy_week(State(app): State<App>, Json(b): Json<Monday>) -> Response {
     reply(&app, |s| {
         s.copy_week(&b.monday).map(|n| json!({ "copied": n }))
     })
+}
+
+async fn use_usual(State(app): State<App>, Json(b): Json<Monday>) -> Response {
+    reply(&app, |s| {
+        s.use_usual(&b.monday).map(|n| json!({ "filled": n }))
+    })
+}
+
+async fn usual(State(app): State<App>) -> Response {
+    reply(&app, |s| s.usual_week())
+}
+
+async fn save_default(State(app): State<App>, Json(b): Json<DefaultIn>) -> Response {
+    reply(&app, |s| s.save_default(&b).map(|id| json!({ "id": id })))
+}
+
+async fn delete_default(State(app): State<App>, Path(id): Path<i64>) -> Response {
+    reply(&app, |s| s.delete_default(id))
+}
+
+async fn rules(State(app): State<App>, Json(b): Json<Rules>) -> Response {
+    reply(&app, |s| s.set_rules(&b))
+}
+
+#[derive(Deserialize)]
+struct Short {
+    day: String,
+    ok: bool,
+}
+
+async fn short_ok(State(app): State<App>, Json(b): Json<Short>) -> Response {
+    reply(&app, |s| s.short_ok(&b.day, b.ok))
 }
 
 async fn publish(State(app): State<App>, Json(b): Json<Monday>) -> Response {
@@ -174,6 +208,11 @@ async fn main() {
         .route("/api/week", get(week))
         .route("/api/week/copy", post(copy_week))
         .route("/api/week/publish", post(publish))
+        .route("/api/week/usual", post(use_usual))
+        .route("/api/week/short", post(short_ok))
+        .route("/api/usual", get(usual).put(save_default))
+        .route("/api/usual/{id}", axum::routing::delete(delete_default))
+        .route("/api/rules", put(rules))
         .route("/api/shift", put(save_shift))
         .route("/api/shift/{id}", axum::routing::delete(delete_shift))
         .route("/api/staff", get(staff).put(save_person))

@@ -61,6 +61,12 @@
   .grid .who.gone { color: var(--soft); }
   .grid .hours { padding-top: 6px; color: var(--mid); font-variant-numeric: tabular-nums; }
   .grid .hours.over { color: var(--accent); font-weight: 600; }
+  /* Days with fewer people on than the rules ask. */
+  .grid th.short, .grid th.short .date { color: var(--accent); }
+  .grid td.short { background: rgba(176, 72, 42, .09); }
+  .grid tfoot .need { color: var(--accent); font-weight: 600; }
+  .grid tfoot button { font-size: 12px; padding: 2px 7px; margin-top: 4px; }
+  .rules input { width: 64px; }
   .grid tfoot td { color: var(--mid); font-size: 13px; height: auto; padding-top: 8px; font-variant-numeric: tabular-nums; }
   .cell { position: relative; min-height: 50px; display: flex; flex-direction: column; gap: 4px; border-radius: 8px; }
   .edit .cell { cursor: pointer; }
@@ -121,11 +127,26 @@
         <button data-step="0">This week</button>
         <span id="status"></span>
         <span class="grow"></span>
+        <button id="fill" class="noprint">Use usual week</button>
         <button id="copy" class="noprint">Copy last week</button>
         <button id="print" class="noprint">Print</button>
         <button id="publish" class="main noprint">Post week</button>
       </div>
       <div class="scroll"><table class="grid edit" id="grid"></table></div>
+    </div>
+  </section>
+
+  <section id="usual" hidden>
+    <div class="card">
+      <h2>Usual week</h2>
+      <p class="small soft" style="margin-top:-4px">The shifts people work most weeks. They fill in the next eight weeks on their own, skipping approved days off. Changing them redoes the weeks not yet posted, from today on; shifts you added or edited by hand stay.</p>
+      <form class="form rules" id="rules">
+        <label>Fewest on, Mon–Fri <input type="number" name="weekday" min="0" max="20" required></label>
+        <label>Fewest on, Sat–Sun <input type="number" name="weekend" min="0" max="20" required></label>
+      </form>
+    </div>
+    <div class="card">
+      <div class="scroll"><table class="grid edit" id="usualgrid"></table></div>
     </div>
   </section>
 
@@ -202,7 +223,8 @@
   <form>
     <h2 id="edtitle">Add shift</h2>
     <label>Who <select name="staff" required></select></label>
-    <label>Day <input type="date" name="day" required></label>
+    <label id="edday">Day <input type="date" name="day"></label>
+    <label id="edweekday">Day <select name="weekday"></select></label>
     <div class="times">
       <label>Start <input type="time" name="start" step="900" required></label>
       <label>End <input type="time" name="end" step="900" required></label>
@@ -276,13 +298,24 @@ let monday = mondayOf(today());
 let week = null;
 
 // The week grid: a row per person, a column per day, hours at the end.
+// `w.days` names the columns; shifts and time off match them by `day`.
+// With `w.rules` the grid counts people per day and marks days short.
 function grid(table, w, editable) {
-  const days = [...Array(7)].map((_, i) => addDays(w.monday, i));
-  const now = today();
-  let html = '<thead><tr><th></th>' + days.map((d, i) =>
-    `<th class="${d === now ? 'today' : ''}">${DAYS[i]}<span class="date">${parse(d).getDate()}</span></th>`).join('') +
-    '<th>Hours</th></tr></thead><tbody>';
+  const days = w.days || [...Array(7)].map((_, i) => addDays(w.monday, i));
+  const dated = !w.days, now = today();
   const dayMins = days.map(() => 0), dayPeople = days.map(() => new Set());
+  for (const s of w.shifts) {
+    const i = days.indexOf(s.day);
+    if (i >= 0) { dayMins[i] += s.end - s.start; dayPeople[i].add(s.staff); }
+  }
+  const need = i => w.rules ? (i >= 5 ? w.rules.weekend : w.rules.weekday) : 0;
+  const okd = d => (w.short_ok || []).includes(d);
+  // Past days are history, not something left to fix.
+  const short = days.map((d, i) => (!dated || d >= now) && dayPeople[i].size < need(i) && !okd(d));
+  const cls = (d, i) => [d === now ? 'today' : '', short[i] ? 'short' : ''].join(' ');
+  let html = '<thead><tr><th></th>' + days.map((d, i) =>
+    `<th class="${cls(d, i)}">${DAYS[i]}${dated ? `<span class="date">${parse(d).getDate()}</span>` : ''}</th>`).join('') +
+    '<th>Hours</th></tr></thead><tbody>';
   for (const p of w.staff) {
     let total = 0;
     html += `<tr><td><div class="who ${p.active ? '' : 'gone'}"><span class="dot" style="--c:${p.color}"></span>${esc(p.name)}</div></td>`;
@@ -291,16 +324,23 @@ function grid(table, w, editable) {
       const shifts = w.shifts.filter(s => s.staff === p.id && s.day === d);
       let cell = offs.map(o => `<div class="off ${o.status === 'pending' ? 'ask' : ''}" title="${esc(o.reason)}">${o.status === 'pending' ? 'Asked off' : 'Off'}</div>`).join('');
       for (const s of shifts) {
-        total += s.end - s.start; dayMins[i] += s.end - s.start; dayPeople[i].add(p.id);
+        total += s.end - s.start;
         cell += `<button class="shift" style="--c:${p.color}" data-id="${s.id}" ${editable ? '' : 'tabindex="-1"'}>${span(s)}${s.note ? `<small>${esc(s.note)}</small>` : ''}</button>`;
       }
-      html += `<td class="${d === now ? 'today' : ''}"><div class="cell" data-staff="${p.id}" data-day="${d}">${cell}</div></td>`;
+      html += `<td class="${cls(d, i)}"><div class="cell" data-staff="${p.id}" data-day="${d}">${cell}</div></td>`;
     });
     html += `<td><div class="hours ${total > 40 * 60 ? 'over' : ''}">${total ? hrs(total) : ''}</div></td></tr>`;
   }
   const all = dayMins.reduce((a, b) => a + b, 0);
-  html += '</tbody><tfoot><tr><td>Total</td>' + days.map((_, i) =>
-    `<td>${dayMins[i] ? `${hrs(dayMins[i])}h · ${dayPeople[i].size} on` : ''}</td>`).join('') +
+  const foot = (d, i) => {
+    const n = dayPeople[i].size, hours = dayMins[i] ? `${hrs(dayMins[i])}h · ` : '';
+    if (!w.rules || n >= need(i) || (dated && d < now)) return n ? `${hours}${n} on` : '';
+    // Short days in a real week can be let go; the usual week has no dates to excuse.
+    const toggle = dated && editable && d >= now
+      ? `<br><button class="noprint" data-short="${d}" data-ok="${okd(d) ? '' : '1'}">${okd(d) ? 'Undo' : 'OK short'}</button>` : '';
+    return okd(d) ? `${hours}${n} on · short, OK${toggle}` : `${hours}<span class="need">${n} of ${need(i)}</span>${toggle}`;
+  };
+  html += '</tbody><tfoot><tr><td>Total</td>' + days.map((d, i) => `<td>${foot(d, i)}</td>`).join('') +
     `<td>${all ? hrs(all) : ''}</td></tr></tfoot>`;
   table.innerHTML = html;
 }
@@ -327,27 +367,42 @@ function setCount(n) {
   if (c) { c.textContent = n; c.hidden = !n; }
 }
 
-$('#grid').addEventListener('click', e => {
-  const b = e.target.closest('.shift');
-  if (b) return openEditor(week.shifts.find(s => s.id === Number(b.dataset.id)));
-  const c = e.target.closest('.cell');
-  if (c) openEditor({ staff: Number(c.dataset.staff), day: c.dataset.day });
-});
+// The editor works on whichever grid opened it: a real week, or the
+// usual week, whose days are weekday numbers.
+let cur = null;
+function onGrid(table, data) {
+  table.addEventListener('click', e => {
+    const k = e.target.closest('button[data-short]');
+    if (k) return act(async () => {
+      await api('/week/short', { method: 'POST', body: { day: k.dataset.short, ok: !!k.dataset.ok } });
+      await loadWeek();
+    });
+    const b = e.target.closest('.shift');
+    cur = data();
+    if (b) return openEditor(cur.shifts.find(s => s.id === Number(b.dataset.id)));
+    const c = e.target.closest('.cell');
+    if (c) openEditor({ staff: Number(c.dataset.staff), day: c.dataset.day });
+  });
+}
+onGrid($('#grid'), () => week);
 
 const ed = $('#editor'), edf = $('#editor form');
 let editing = null;
 function openEditor(s) {
   editing = s;
-  $('#edtitle').textContent = s.id ? 'Edit shift' : 'Add shift';
-  edf.staff.innerHTML = week.staff.filter(p => p.active || p.id === s.staff)
+  const usual = !!cur.days;
+  $('#edtitle').textContent = (s.id ? 'Edit' : 'Add') + (usual ? ' usual shift' : ' shift');
+  $('#edday').hidden = usual; $('#edweekday').hidden = !usual;
+  edf.day.required = !usual;
+  edf.staff.innerHTML = cur.staff.filter(p => p.active || p.id === s.staff)
     .map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
   edf.staff.value = s.staff;
-  edf.day.value = s.day;
-  const first = week.usual[0];
+  if (usual) edf.weekday.value = s.day; else edf.day.value = s.day;
+  const first = cur.usual[0];
   edf.start.value = toTime(s.start ?? first?.start ?? 7 * 60);
   edf.end.value = toTime(s.end ?? first?.end ?? 15 * 60);
   edf.note.value = s.note || '';
-  $('#picks').innerHTML = week.usual.map(u => `<button type="button" data-s="${u.start}" data-e="${u.end}">${span(u)}</button>`).join('');
+  $('#picks').innerHTML = cur.usual.map(u => `<button type="button" data-s="${u.start}" data-e="${u.end}">${span(u)}</button>`).join('');
   $('#eddelete').hidden = !s.id;
   warn();
   ed.showModal();
@@ -357,12 +412,12 @@ $('#picks').addEventListener('click', e => {
   edf.start.value = toTime(Number(b.dataset.s)); edf.end.value = toTime(Number(b.dataset.e)); warn();
 });
 function warn() {
-  const who = Number(edf.staff.value), day = edf.day.value;
+  const who = Number(edf.staff.value), day = cur.days ? edf.weekday.value : edf.day.value;
   const start = edf.start.value && fromTime(edf.start.value), end = edf.end.value && fromTime(edf.end.value);
   const notes = [];
-  for (const o of week.off) if (o.staff === who && o.first <= day && o.last >= day)
+  for (const o of cur.off) if (o.staff === who && o.first <= day && o.last >= day)
     notes.push(o.status === 'pending' ? 'They asked for this day off.' : 'They have this day off.');
-  if (week.shifts.some(s => s.staff === who && s.day === day && s.id !== editing.id && s.start < end && start < s.end))
+  if (cur.shifts.some(s => s.staff === who && s.day === day && s.id !== editing.id && s.start < end && start < s.end))
     notes.push('This overlaps another of their shifts.');
   if (start !== '' && end !== '' && end <= start) notes.push('The shift ends before it starts.');
   $('#edwarn').textContent = notes.join(' ');
@@ -372,16 +427,18 @@ $('#edcancel').onclick = () => ed.close();
 edf.addEventListener('submit', e => {
   e.preventDefault();
   act(async () => {
-    await api('/shift', { method: 'PUT', body: {
-      id: editing.id ?? null, staff: Number(edf.staff.value), day: edf.day.value,
+    const body = {
+      id: editing.id ?? null, staff: Number(edf.staff.value),
       start: fromTime(edf.start.value), end: fromTime(edf.end.value), note: edf.note.value,
-    } });
-    ed.close(); await loadWeek();
+    };
+    if (cur.days) await api('/usual', { method: 'PUT', body: { ...body, weekday: Number(edf.weekday.value) } });
+    else await api('/shift', { method: 'PUT', body: { ...body, day: edf.day.value } });
+    ed.close(); await (cur.days ? loadUsual : loadWeek)();
   });
 });
 $('#eddelete').onclick = () => act(async () => {
-  await api(`/shift/${editing.id}`, { method: 'DELETE' });
-  ed.close(); await loadWeek();
+  await api(`${cur.days ? '/usual' : '/shift'}/${editing.id}`, { method: 'DELETE' });
+  ed.close(); await (cur.days ? loadUsual : loadWeek)();
 });
 
 $('#copy').onclick = () => act(async () => {
@@ -390,6 +447,41 @@ $('#copy').onclick = () => act(async () => {
   toast(r.copied ? `Copied ${r.copied} shifts.` : 'Last week had no shifts.');
   await loadWeek();
 });
+$('#fill').onclick = () => act(async () => {
+  if (week.shifts.length && !confirm(`Replace this week's ${week.shifts.length} shifts with the usual week?`)) return;
+  const r = await api('/week/usual', { method: 'POST', body: { monday } });
+  toast(r.filled ? `Filled ${r.filled} shifts.` : 'The usual week is empty. Set it on the Usual week tab.');
+  await loadWeek();
+});
+
+// The usual week reuses the grid, with weekday numbers for days.
+let usualWeek = null;
+async function loadUsual() {
+  const u = await api('/usual');
+  const counts = {};
+  for (const s of u.shifts) { const k = `${s.start}-${s.end}`; counts[k] = (counts[k] || 0) + 1; }
+  usualWeek = {
+    days: DAYS.map((_, i) => String(i)), staff: u.staff, rules: u.rules, off: [],
+    shifts: u.shifts.map(s => ({ ...s, day: String(s.weekday) })),
+    usual: Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6)
+      .map(([k]) => { const [start, end] = k.split('-').map(Number); return { start, end }; }),
+  };
+  const f = $('#rules');
+  f.weekday.value = u.rules.weekday; f.weekend.value = u.rules.weekend;
+  if (!u.staff.length) $('#usualgrid').innerHTML = '<tbody><tr><td class="empty" style="position:static">Add your staff on the Staff tab first.</td></tr></tbody>';
+  else grid($('#usualgrid'), usualWeek, true);
+}
+onGrid($('#usualgrid'), () => usualWeek);
+$('#rules').addEventListener('change', e => {
+  const f = e.currentTarget;
+  if (!f.reportValidity()) return;
+  act(async () => {
+    await api('/rules', { method: 'PUT', body: { weekday: Number(f.weekday.value), weekend: Number(f.weekend.value) } });
+    toast('Saved.'); await loadUsual();
+  });
+});
+$('#editor select[name=weekday]').innerHTML = DAYS.map((d, i) => `<option value="${i}">${d}</option>`).join('');
+
 $('#publish').onclick = () => act(async () => {
   await api('/week/publish', { method: 'POST', body: { monday } });
   toast('Posted. Staff can see this week now.');
@@ -530,11 +622,11 @@ for (const nav of document.querySelectorAll('.weeknav')) nav.addEventListener('c
   act(token ? loadMine : loadWeek);
 });
 
-const TABS = { schedule: loadWeek, requests: loadRequests, staff: loadStaff };
+const TABS = { schedule: loadWeek, usual: loadUsual, requests: loadRequests, staff: loadStaff };
 function show() {
   if (token) { $('#me').hidden = false; return act(loadMine); }
   const tab = TABS[location.hash.slice(1)] ? location.hash.slice(1) : 'schedule';
-  $('#nav').innerHTML = `<a href="#schedule">Schedule</a><a href="#requests">Requests<span class="count" hidden></span></a><a href="#staff">Staff</a>`;
+  $('#nav').innerHTML = `<a href="#schedule">Schedule</a><a href="#usual">Usual week</a><a href="#requests">Requests<span class="count" hidden></span></a><a href="#staff">Staff</a>`;
   for (const a of document.querySelectorAll('#nav a')) a.classList.toggle('on', a.hash === '#' + tab);
   for (const t in TABS) $('#' + t).hidden = t !== tab;
   act(async () => {
