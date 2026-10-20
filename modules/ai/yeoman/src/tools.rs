@@ -59,7 +59,7 @@ struct Tools {
     x: Option<PathBuf>,
     /// The weather, when a place is set.
     weather: Option<Arc<Weather>>,
-    /// The household's money, when the plaid service's database is shared.
+    /// The household's money, when the money service's database is shared.
     finance: Option<Arc<Finance>>,
     /// Changes to the household's money records, when the service lets us.
     ledger: Option<Arc<Ledger>>,

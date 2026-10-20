@@ -120,7 +120,7 @@ certificate. The names resolve publicly but only route inside the tailnet."""
 [[tour.step]]
 title = "Routes"
 view = "wiring"
-focus = ["monix:modules/homelab/frame.mod.nix", "monix:modules/homelab/immich.mod.nix", "monix:modules/homelab/media.mod.nix", "monix:modules/homelab/plaid.mod.nix"]
+focus = ["monix:modules/homelab/frame.mod.nix", "monix:modules/homelab/immich.mod.nix", "monix:modules/homelab/media.mod.nix", "monix:modules/homelab/money.mod.nix"]
 text = """
 Each module that wants a web address declares a route: a name and a local
 port. The dashed "served by" lines on the Wiring view are those routes."""

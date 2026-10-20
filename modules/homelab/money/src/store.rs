@@ -474,7 +474,7 @@ mod tests {
 
     #[test]
     fn sync_keeps_rows_and_flags_joint_accounts() {
-        let dir = std::env::temp_dir().join(format!("plaid-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("money-store-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let mut s = Store::prepare(&dir).unwrap();
         for (item, inst) in [("i1", "Amex"), ("i2", "Amex")] {

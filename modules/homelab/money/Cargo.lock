@@ -511,6 +511,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "money"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "ureq",
+]
+
+[[package]]
 name = "num-conv"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -539,18 +551,6 @@ name = "pkg-config"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
-
-[[package]]
-name = "plaid"
-version = "0.1.0"
-dependencies = [
- "axum",
- "rusqlite",
- "serde",
- "serde_json",
- "tokio",
- "ureq",
-]
 
 [[package]]
 name = "potential_utf"

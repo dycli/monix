@@ -1,4 +1,4 @@
-//! The household's money, read from the plaid service's finance.db: accounts,
+//! The household's money, read from the money service's finance.db: accounts,
 //! transactions, holdings and card statements. Opened read-only; the file's
 //! group is the only grant, and the bank tokens live elsewhere. Changes go
 //! to the service itself, through `Ledger`.
@@ -94,7 +94,7 @@ pub fn from_env() -> Option<Finance> {
     std::env::var_os("YEOMAN_FINANCE").map(|p| Finance::new(Path::new(&p).to_path_buf()))
 }
 
-/// The money page's write side, asked over the plaid service's socket. The
+/// The money page's write side, asked over the money service's socket. The
 /// service checks every change, so this only carries them.
 pub struct Ledger {
     sock: PathBuf,

@@ -338,7 +338,7 @@
                     YEOMAN_FINANCE = cfg.financeDb;
                   }
                   // optionalAttrs i.money {
-                    YEOMAN_MONEY = "/run/plaid.sock";
+                    YEOMAN_MONEY = "/run/money.sock";
                   }
                   // optionalAttrs (i.mailCredentialsFile != null) {
                     YEOMAN_MAIL = "${creds}/mail";
@@ -399,9 +399,9 @@
               "yeoman-household"
               "usage"
             ]
-            # Read access to the plaid service's finance.db, not its vault.
+            # Read access to the money service's finance.db, not its vault.
             ++ lib.lists.optional (cfg.financeDb != null) "finance"
-            # And the plaid service's socket, to change them.
+            # And the money service's socket, to change them.
             ++ lib.lists.optional i.money "money";
             StateDirectory = n;
             StateDirectoryMode = "0700";
@@ -682,7 +682,7 @@
                     description = ''
                       Whether it may change the household's money records
                       (categories, budget lines, hand-kept accounts) through
-                      the plaid service's socket; reading needs only financeDb.
+                      the money service's socket; reading needs only financeDb.
                     '';
                   };
 
@@ -858,9 +858,9 @@
         financeDb = mkOption {
           type = types.nullOr types.str;
           default = null;
-          example = "/var/lib/plaid/production/finance.db";
+          example = "/var/lib/money/production/finance.db";
           description = ''
-            The plaid service's finance.db, which the finance tool reads
+            The money service's finance.db, which the finance tool reads
             through the `finance` group; shared by the instances. Null
             leaves it out.
           '';

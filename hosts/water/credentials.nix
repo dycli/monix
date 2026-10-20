@@ -21,8 +21,8 @@ in
 
   gitMirror.tokenFile = config.secrets.git-mirror-token.path;
 
-  plaid.keysFile = config.secrets.plaid-env.path;
-  plaid.environment = "production";
+  money.keysFile = config.secrets.plaid-env.path;
+  money.environment = "production";
 
   frame = {
     immichKeyFile = config.secrets.frame-immich-key.path;
@@ -59,7 +59,7 @@ in
     # Portsmouth, NH.
     weather = "43.07,-70.76";
     # The household's money, read-only.
-    financeDb = "/var/lib/plaid/${config.plaid.environment}/finance.db";
+    financeDb = "/var/lib/money/${config.money.environment}/finance.db";
   };
 
   secrets = {
@@ -101,7 +101,7 @@ in
     ./secrets/frame-immich-key.age
     ./secrets/yeoman-caldav.json.age
   ];
-  systemd.services.plaid.restartTriggers = singleton ./secrets/plaid.env.age;
+  systemd.services.money.restartTriggers = singleton ./secrets/plaid.env.age;
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
   systemd.services.sokka.restartTriggers = [

@@ -6,13 +6,13 @@
 //! products are read-only.
 //!
 //! Environment:
-//! - `PLAID_LISTEN`: address to bind, e.g. `127.0.0.1:8975`.
-//! - `PLAID_ENV`: `sandbox` (fake banks) or `production`.
-//! - `PLAID_KEYS_FILE`: `KEY=value` lines with `PLAID_CLIENT_ID` and
+//! - `MONEY_LISTEN`: address to bind, e.g. `127.0.0.1:8975`.
+//! - `MONEY_ENV`: `sandbox` (fake banks) or `production`.
+//! - `MONEY_KEYS_FILE`: `KEY=value` lines with `PLAID_CLIENT_ID` and
 //!   `PLAID_SECRET` (production) or `PLAID_SANDBOX_SECRET`.
-//! - `PLAID_STATE`: directory for `finance.db` and `vault/vault.db`.
+//! - `MONEY_STATE`: directory for `finance.db` and `vault/vault.db`.
 //!
-//! systemd may also hand over a listening Unix socket (`plaid.socket`):
+//! systemd may also hand over a listening Unix socket (`money.socket`):
 //! the same API for the household assistants, so they can file, budget and
 //! keep accounts by hand. The socket's group is who may.
 
@@ -537,12 +537,12 @@ async fn sandbox_item(State(app): State<Arc<App>>, Json(f): Json<Fake>) -> Respo
 
 #[tokio::main]
 async fn main() {
-    let sandbox = match env("PLAID_ENV").as_str() {
+    let sandbox = match env("MONEY_ENV").as_str() {
         "sandbox" => true,
         "production" => false,
-        other => panic!("PLAID_ENV is sandbox or production, not {other}"),
+        other => panic!("MONEY_ENV is sandbox or production, not {other}"),
     };
-    let file = env("PLAID_KEYS_FILE");
+    let file = env("MONEY_KEYS_FILE");
     let list = keys(&file);
     let secret_name = if sandbox {
         "PLAID_SANDBOX_SECRET"
@@ -555,12 +555,12 @@ async fn main() {
     // Lengths only: Plaid client ids are 24 characters and secrets 30, so a
     // mangled paste shows here without the keys reaching the journal.
     eprintln!(
-        "plaid: {} keys, client id {} chars, {secret_name} {} chars",
+        "money: {} keys, client id {} chars, {secret_name} {} chars",
         if sandbox { "sandbox" } else { "production" },
         id.len(),
         secret.len()
     );
-    let state = PathBuf::from(env("PLAID_STATE"));
+    let state = PathBuf::from(env("MONEY_STATE"));
     // A subdirectory per environment, so test banks never mix with real ones.
     std::fs::create_dir_all(&state).unwrap_or_else(|e| panic!("{}: {e}", state.display()));
     Store::prepare(&state).unwrap_or_else(|e| panic!("{e}"));
@@ -596,7 +596,7 @@ async fn main() {
     if let Some(unix) = handed_socket() {
         tokio::spawn(axum::serve(unix, routes.clone()).into_future());
     }
-    let listen = env("PLAID_LISTEN");
+    let listen = env("MONEY_LISTEN");
     let socket = tokio::net::TcpListener::bind(&listen)
         .await
         .unwrap_or_else(|e| panic!("{listen}: {e}"));

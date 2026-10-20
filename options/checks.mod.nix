@@ -17,7 +17,7 @@
         endgrain.path = "modules/homelab/endgrain";
         frame.path = "modules/homelab/frame";
         hippo.path = "modules/ai/seat/hippo";
-        plaid.path = "modules/homelab/plaid";
+        money.path = "modules/homelab/money";
         yeoman.path = "modules/ai/yeoman";
       };
       cratePaths = attrValues crates |> map (crate: crate.path);
