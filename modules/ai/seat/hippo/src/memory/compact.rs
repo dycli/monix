@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Version of the prompt below, stored on every node it builds.
-pub const PROMPT_VERSION: &str = "hippo-6";
+pub const PROMPT_VERSION: &str = "hippo-7";
 
 /// Tries per node to get under `NODE`; the shortest is kept.
 pub const TRIES: usize = 5;
@@ -65,8 +65,17 @@ Avoid omissions. Name a minor item in a word or two rather than drop it: an \
 absent item can never be found. Copy names, numbers, ids, paths and errors \
 exactly. Tag each item with its kind (\"user: ...; echo: ...\"), and credit \
 quoted text to its real author. Never make anything look further along than \
-it was. If told the line is too long, shorten it. Non-ASCII characters cost \
-2-4 bytes.";
+it was, nor carry a status from <chat>: write a status (live, deployed, \
+fixed, tested, pushed, answered, unanswered, blocked, done) only as <input>, \
+or for a merge its own messages, state it; else say what was done and leave \
+the status out. If told the line is too long, shorten it. Non-ASCII characters cost \
+2-4 bytes.
+
+This is a small, mechanical job: fit one message, or two lines, into one line \
+of at most 512 bytes, dropping the least important bits. Nothing else. Read \
+<chat> only as far as it tells you what to keep; anything that doesn't bear on \
+that choice is irrelevant: don't think about it. Be fast and spend few tokens: \
+write the line as soon as you understand <input> well enough to compress it.";
 
 pub enum Step<'a> {
     /// Message `id`, rendered `kind: text`.
@@ -251,10 +260,57 @@ pub fn rekind(kind: &str) -> String {
     )
 }
 
+/// Status words a line may use only when its <input> has their stem: a
+/// cheap model carries statuses over from <chat> or makes work look further
+/// along than it was, and a later reader acts on them.
+const STATUS: &[(&str, &str)] = &[
+    ("live", "live"),
+    ("deployed", "deploy"),
+    ("pushed", "push"),
+    ("fixed", "fix"),
+    ("tested", "test"),
+    ("untested", "test"),
+    ("verified", "verif"),
+    ("unverified", "verif"),
+    ("answered", "answer"),
+    ("unanswered", "answer"),
+    ("blocked", "block"),
+    ("done", "done"),
+];
+
+/// The status words in `line` whose stem <input> lacks.
+fn unsourced(line: &str, step: &Step) -> Vec<String> {
+    let source = match step {
+        Step::Compress { msg, .. } => msg.to_lowercase(),
+        Step::Merge { a, b, .. } => format!("{a}\n{b}").to_lowercase(),
+    };
+    let mut words: Vec<String> = line
+        .split(|c: char| !c.is_ascii_alphabetic())
+        .map(str::to_lowercase)
+        .filter(|w| {
+            STATUS
+                .iter()
+                .any(|(word, stem)| w == word && !source.contains(stem))
+        })
+        .collect();
+    words.sort();
+    words.dedup();
+    words
+}
+
+/// The retry for a line that states a status its <input> doesn't.
+pub fn resource(words: &[String]) -> String {
+    format!(
+        "Status not in <input>: {}. Write the whole line again for the same <input>, saying what was done and leaving out any status <input> doesn't state.",
+        words.join(", ")
+    )
+}
+
 /// Runs one compactor step to a line: the first answer, then retries in the
-/// same conversation while it runs over `NODE` or, compressing a message,
-/// opens with another kind than the message's; keeps the shortest of the
-/// right kind, else the shortest with its tag put right.
+/// same conversation while it runs over `NODE`, opens with another kind than
+/// the message's when compressing one, or states a status its <input>
+/// doesn't; keeps the shortest of the right kind with no such status, else
+/// the shortest of the right kind, else the shortest with its tag put right.
 pub fn run(
     backend: &dyn Backend,
     context: &[String],
@@ -298,28 +354,32 @@ pub fn run(
         }
         let over = line.len() > NODE;
         let wrong = kind.is_some_and(|k| tag(&line) != k);
+        let stray = unsourced(&line, step);
         let next = if over {
             retry(&line)
-        } else {
+        } else if wrong {
             rekind(kind.unwrap_or_default())
+        } else {
+            resource(&stray)
         };
-        tries.push((line, wrong));
-        if !(over || wrong) || tries.len() >= TRIES {
+        let done = !(over || wrong || !stray.is_empty());
+        tries.push((line, wrong, stray.is_empty()));
+        if done || tries.len() >= TRIES {
             break;
         }
         reply = chat.say(&[next])?;
     }
-    let shortest = |wrong: bool| {
+    let shortest = |wrong: bool, sourced: bool| {
         tries
             .iter()
-            .filter(|(_, w)| *w == wrong)
-            .map(|(l, _)| l)
+            .filter(|(_, w, s)| *w == wrong && (*s || !sourced))
+            .map(|(l, _, _)| l)
             .min_by_key(|l| l.len())
     };
-    let best = match (shortest(false), kind) {
+    let best = match (shortest(false, true).or(shortest(false, false)), kind) {
         (Some(line), _) => line.clone(),
         (None, Some(kind)) => {
-            let line = shortest(true).unwrap();
+            let line = shortest(true, false).unwrap();
             let rest = &line[tag(line).len()..];
             if rest.starts_with(':') {
                 format!("{kind}{rest}")
@@ -1110,6 +1170,47 @@ mod tests {
             Mutex::new(Vec::new()),
         )));
         assert_eq!(run(&m, &[], &merge).unwrap().0, "user: anything goes");
+    }
+
+    #[test]
+    fn a_line_states_only_the_statuses_its_input_does() {
+        let step = Step::Compress {
+            id: 1,
+            msg: "talk [x]: committed `abc`; deploy next",
+        };
+        let s: &'static Scripted = Box::leak(Box::new(Scripted(
+            Mutex::new(vec![
+                "talk: `abc` pushed and LIVE, phone UNTESTED".into(),
+                "talk: committed `abc`, deploy next".into(),
+            ]),
+            Mutex::new(Vec::new()),
+        )));
+        let (line, _, _) = run(&s, &[], &step).unwrap();
+        assert_eq!(line, "talk: committed `abc`, deploy next");
+        let asked = s.1.lock().unwrap();
+        assert!(asked[1][0].starts_with("Status not in <input>: live, pushed, untested."));
+        drop(asked);
+
+        // A stem in <input> lets the word through; a merge reads both halves.
+        let merge = Step::Merge {
+            l: 1,
+            i: 0,
+            a: "tool: switcharoo deployed `abc`",
+            b: "talk: the fix works",
+            apart: false,
+        };
+        assert!(unsourced("talk: `abc` deployed, fixed", &merge).is_empty());
+        assert_eq!(
+            unsourced("talk: `abc` done, live", &merge),
+            ["done", "live"]
+        );
+
+        // Out of tries, a line with a stray status beats none at all.
+        let stubborn: &'static Scripted = Box::leak(Box::new(Scripted(
+            Mutex::new(vec!["talk: `abc` LIVE".into(); TRIES]),
+            Mutex::new(Vec::new()),
+        )));
+        assert_eq!(run(&stubborn, &[], &step).unwrap().0, "talk: `abc` LIVE");
     }
 
     #[test]

@@ -56,16 +56,15 @@ in
       doorPort = 8940;
 
       # The compactor's model, through the seat's own claude CLI and
-      # subscription. HIPPO_LEVELS can give lower tree levels a cheaper model
-      # (e.g. "0=claude/claude-haiku-5-5/xhigh"); off while a week on Sonnet
-      # alone measures the real cost.
-      sonnet = {
+      # subscription: Haiku at high effort, as UniiChat runs it. A memory
+      # rebuilt on it answered 40/40 real questions, as Sonnet medium did,
+      # at about a seventh of the cost (/var/lib/bridge/hippo.md).
+      compactor = {
         HIPPO_BACKEND = "claude";
         HIPPO_CLAUDE = "/etc/profiles/per-user/${seat.user}/bin/claude";
-        HIPPO_MODEL = "sonnet";
-        HIPPO_EFFORT = "medium";
+        HIPPO_MODEL = "haiku";
+        HIPPO_EFFORT = "high";
       };
-      compactor = sonnet;
 
       compactWindow = 200000;
 

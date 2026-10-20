@@ -25,7 +25,9 @@
     - `hippo view` refreshes it; read every page, whole.
     - `hippo zoom <id> <n>` opens a line into its two halves; `n = 1` gives the
       message whole. Zoom before you act, guess or ask whenever a line only
-      mentions what you need.
+      mentions what you need. Before acting on or reporting a status (live,
+      deployed, pushed, fixed, tested, answered), zoom its message or check the
+      system itself.
     - `hippo search <regex>` searches every message word for word.
 
     ## Notes: bridge
