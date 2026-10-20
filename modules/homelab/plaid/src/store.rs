@@ -412,6 +412,7 @@ impl Store {
                  (SELECT count(*) FROM transactions t WHERE t.account_id = a.account_id),
                  (SELECT count(*) FROM holdings h WHERE h.account_id = a.account_id)
                  FROM items i LEFT JOIN accounts a ON a.item_id = i.item_id
+                 WHERE i.item_id != 'manual'
                  ORDER BY i.rowid, a.type, a.name",
             )
             .map_err(|e| e.to_string())?;

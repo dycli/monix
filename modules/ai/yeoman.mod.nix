@@ -337,6 +337,9 @@
                   // optionalAttrs (cfg.financeDb != null) {
                     YEOMAN_FINANCE = cfg.financeDb;
                   }
+                  // optionalAttrs i.money {
+                    YEOMAN_MONEY = "/run/plaid.sock";
+                  }
                   // optionalAttrs (i.mailCredentialsFile != null) {
                     YEOMAN_MAIL = "${creds}/mail";
                     YEOMAN_IMAP = cfg.mailServer;
@@ -397,7 +400,9 @@
               "usage"
             ]
             # Read access to the plaid service's finance.db, not its vault.
-            ++ lib.lists.optional (cfg.financeDb != null) "finance";
+            ++ lib.lists.optional (cfg.financeDb != null) "finance"
+            # And the plaid service's socket, to change them.
+            ++ lib.lists.optional i.money "money";
             StateDirectory = n;
             StateDirectoryMode = "0700";
             RestrictAddressFamilies = [
@@ -669,6 +674,16 @@
                     type = types.bool;
                     default = false;
                     description = "Whether it posts the host's alerts.";
+                  };
+
+                  money = mkOption {
+                    type = types.bool;
+                    default = false;
+                    description = ''
+                      Whether it may change the household's money records
+                      (categories, budget lines, hand-kept accounts) through
+                      the plaid service's socket; reading needs only financeDb.
+                    '';
                   };
 
                   claudeKeyFile = mkOption {

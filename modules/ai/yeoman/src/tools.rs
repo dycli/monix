@@ -6,7 +6,7 @@
 
 use crate::book::{self, Book, Repeat, Shelf};
 use crate::calendar::{Calendar, Change, NewEvent};
-use crate::finance::{self, Finance};
+use crate::finance::{self, Finance, Ledger};
 use crate::hippo::Hippo;
 use crate::house::House;
 use crate::keep;
@@ -61,6 +61,8 @@ struct Tools {
     weather: Option<Arc<Weather>>,
     /// The household's money, when the plaid service's database is shared.
     finance: Option<Arc<Finance>>,
+    /// Changes to the household's money records, when the service lets us.
+    ledger: Option<Arc<Ledger>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -274,6 +276,34 @@ struct Query {
 struct Money {
     /// One SQLite SELECT over finance.db. Leave it out to get the tables.
     sql: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+enum Record {
+    /// File a transaction: {transaction, category, scope}. scope is one (just
+    /// it), merchant (every one from its merchant, now and later) or amount
+    /// (every one from its merchant at exactly this amount).
+    Category,
+    /// Add, change or remove a budget line: {category, item, monthly, annual,
+    /// renews, remove}. annual with renews (YYYY-MM-DD of the last renewal)
+    /// is a yearly charge; category and item name the line.
+    #[serde(rename = "budget/line")]
+    Budget,
+    /// Add, change or remove an account kept by hand: {id, name, kind,
+    /// balance, remove}. Leave id out to add one; kind is investment, cash,
+    /// property or loan; a loan's balance is what is owed, positive.
+    Manual,
+    /// Say a merchant's charges are not recurring, or with not false put
+    /// them back: {merchant, account, not}.
+    Recurring,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct MoneyChange {
+    record: Record,
+    /// The change's fields, as the record describes.
+    change: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -611,6 +641,23 @@ impl Tools {
             Some(sql) => finance.query(&sql),
             None => finance.schema(),
         }
+    }
+
+    #[tool(
+        description = "Change the household's money records, as the money page at money.su.is would: file a transaction under a category, edit the budget, keep an account by hand, or mark a merchant not recurring. Find ids, merchants and category names with finance first; the categories are the ones in its categories table. The service checks each change and answers why it refuses one. Do what is asked without asking again; say what you changed."
+    )]
+    fn money_change(&self, Parameters(m): Parameters<MoneyChange>) -> Result<String, String> {
+        let ledger = self
+            .ledger
+            .as_deref()
+            .ok_or("Money records can't be changed from here.")?;
+        let what = match m.record {
+            Record::Category => "category",
+            Record::Budget => "budget/line",
+            Record::Manual => "manual",
+            Record::Recurring => "recurring",
+        };
+        ledger.change(what, &serde_json::Value::Object(m.change))
     }
 
     /// Search X: the posts found, with author, date and link. Takes up to
@@ -1103,6 +1150,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
         x: std::env::var_os("YEOMAN_X").map(PathBuf::from),
         weather: weather()?.map(Arc::new),
         finance: finance::from_env().map(Arc::new),
+        ledger: finance::ledger_from_env().map(Arc::new),
         tool_router: Tools::tool_router(),
     };
     let running = tools

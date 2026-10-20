@@ -4,7 +4,9 @@
 # (under /var/lib/plaid/<environment>), and serves the page: net worth,
 # spending by category, holdings, and a Banks tab where we link a bank. Its own user is the wall: nothing
 # else, Sokka included, can read the keys or the tokens. The `finance` group
-# reads finance.db and nothing more.
+# reads finance.db and nothing more; the `money` group may also change what
+# the page shows (categories, budget lines, hand-kept accounts) through
+# /run/plaid.sock, the same API without the page.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.plaid;
@@ -55,11 +57,26 @@
           group = "finance";
         };
         users.groups.finance = { };
+        users.groups.money = { };
+
+        systemd.sockets.plaid = {
+          description = "The money page's API for the household assistants";
+          wantedBy = singleton "sockets.target";
+          socketConfig = {
+            ListenStream = "/run/plaid.sock";
+            SocketMode = "0660";
+            SocketGroup = "money";
+          };
+        };
 
         systemd.services.plaid = {
           description = "The household's bank link";
           wantedBy = singleton "multi-user.target";
-          after = singleton "network-online.target";
+          after = [
+            "network-online.target"
+            "plaid.socket"
+          ];
+          requires = singleton "plaid.socket";
           wants = singleton "network-online.target";
           environment = {
             PLAID_LISTEN = "127.0.0.1:${toString port}";

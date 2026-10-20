@@ -102,6 +102,12 @@ CREATE TABLE IF NOT EXISTS amount_rules (
     PRIMARY KEY (merchant, cents)
 );
 CREATE INDEX IF NOT EXISTS transactions_amount ON transactions(amount);
+-- Recurring finds we said aren't bills; '' account means at every account.
+CREATE TABLE IF NOT EXISTS not_recurring (
+    merchant TEXT NOT NULL,
+    account_id TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (merchant, account_id)
+);
 CREATE TABLE IF NOT EXISTS balances (
     account_id TEXT NOT NULL,
     date TEXT NOT NULL,
@@ -204,6 +210,179 @@ pub fn snapshot(c: &Connection) -> Result<(), String> {
 
 /// Debts are the balances we owe; everything else is an asset.
 const DEBT: &str = "type IN ('credit', 'loan')";
+
+/// Sets one budget line (by category and item), or removes it.
+pub fn budget_line(c: &Connection, l: &Line, remove: bool) -> Result<(), String> {
+    if remove {
+        let n = c
+            .execute(
+                "DELETE FROM budget WHERE category = ?1 AND item = ?2",
+                params![l.category, l.item],
+            )
+            .map_err(|e| e.to_string())?;
+        return if n == 0 {
+            Err(format!("no budget line {} / {}", l.category, l.item))
+        } else {
+            Ok(())
+        };
+    }
+    known_category(c, &l.category)?;
+    let n = c
+        .execute(
+            "UPDATE budget SET monthly = ?3, annual = ?4, renews = ?5 WHERE category = ?1 AND item = ?2",
+            params![l.category, l.item, l.monthly, l.annual, l.renews],
+        )
+        .map_err(|e| e.to_string())?;
+    if n == 0 {
+        c.execute(
+            "INSERT INTO budget (category, item, monthly, annual, renews, rank)
+             VALUES (?1, ?2, ?3, ?4, ?5, (SELECT coalesce(max(rank), -1) + 1 FROM budget))",
+            params![l.category, l.item, l.monthly, l.annual, l.renews],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn known_category(c: &Connection, name: &str) -> Result<(), String> {
+    c.query_row(
+        "SELECT 1 FROM categories WHERE name = ?1",
+        params![name],
+        |_| Ok(()),
+    )
+    .optional()
+    .map_err(|e| e.to_string())?
+    .ok_or(format!("no category {name}"))
+}
+
+/// An account no bank reports, kept by hand: a 401(k) at an unlinked
+/// broker, the house, a family loan. It sits in `accounts` under the
+/// `manual` item, so every page and query counts it like a linked one.
+#[derive(serde::Deserialize)]
+pub struct Manual {
+    /// Left out to add one; given to change or remove it.
+    pub id: Option<String>,
+    pub name: Option<String>,
+    /// investment, cash, property or loan.
+    pub kind: Option<String>,
+    pub balance: Option<f64>,
+    #[serde(default)]
+    pub remove: bool,
+}
+
+pub const MANUAL: &str = "manual";
+
+/// Adds, changes or removes a hand-kept account; answers its id.
+pub fn manual(c: &Connection, m: &Manual) -> Result<String, String> {
+    let e = |e: rusqlite::Error| e.to_string();
+    let kind = match m.kind.as_deref() {
+        None => None,
+        Some("investment") => Some(("investment", "manual")),
+        Some("cash") => Some(("depository", "manual")),
+        Some("property") => Some(("other", "property")),
+        Some("loan") => Some(("loan", "manual")),
+        Some(k) => {
+            return Err(format!(
+                "kind is investment, cash, property or loan, not {k}"
+            ));
+        }
+    };
+    let t = c.unchecked_transaction().map_err(e)?;
+    let id = match &m.id {
+        Some(id) => {
+            let mine = t
+                .query_row(
+                    "SELECT 1 FROM accounts WHERE account_id = ?1 AND item_id = ?2",
+                    params![id, MANUAL],
+                    |_| Ok(()),
+                )
+                .optional()
+                .map_err(e)?;
+            if mine.is_none() {
+                return Err(format!("no hand-kept account {id}"));
+            }
+            if m.remove {
+                t.execute("DELETE FROM balances WHERE account_id = ?1", params![id])
+                    .map_err(e)?;
+                t.execute("DELETE FROM accounts WHERE account_id = ?1", params![id])
+                    .map_err(e)?;
+                t.commit().map_err(e)?;
+                return Ok(id.clone());
+            }
+            t.execute(
+                "UPDATE accounts SET name = coalesce(?2, name), type = coalesce(?3, type),
+                 subtype = coalesce(?4, subtype), current = coalesce(?5, current),
+                 updated = datetime('now') WHERE account_id = ?1",
+                params![id, m.name, kind.map(|k| k.0), kind.map(|k| k.1), m.balance],
+            )
+            .map_err(e)?;
+            id.clone()
+        }
+        None => {
+            let (Some(name), Some((ty, sub)), Some(balance)) = (&m.name, kind, m.balance) else {
+                return Err("a new account needs name, kind and balance".into());
+            };
+            t.execute(
+                "INSERT OR IGNORE INTO items (item_id, institution, status) VALUES (?1, 'Kept by hand', 'manual')",
+                params![MANUAL],
+            )
+            .map_err(e)?;
+            let n: i64 = t
+                .query_row(
+                    "SELECT count(*) FROM accounts WHERE item_id = ?1",
+                    params![MANUAL],
+                    |r| r.get(0),
+                )
+                .map_err(e)?;
+            let id = (n + 1..)
+                .map(|i| format!("manual-{i}"))
+                .find(|id| {
+                    t.query_row(
+                        "SELECT 1 FROM accounts WHERE account_id = ?1",
+                        params![id],
+                        |_| Ok(()),
+                    )
+                    .optional()
+                    .is_ok_and(|x| x.is_none())
+                })
+                .unwrap();
+            t.execute(
+                "INSERT INTO accounts (account_id, item_id, name, type, subtype, current, currency, updated)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'USD', datetime('now'))",
+                params![id, MANUAL, name, ty, sub, balance],
+            )
+            .map_err(e)?;
+            id
+        }
+    };
+    // Today's balance, so the net worth history has the point.
+    t.execute(
+        "INSERT OR REPLACE INTO balances (account_id, date, current)
+         SELECT account_id, date('now', 'localtime'), current FROM accounts WHERE account_id = ?1",
+        params![id],
+    )
+    .map_err(e)?;
+    t.commit().map_err(e)?;
+    Ok(id)
+}
+
+/// Marks a recurring find as not a bill (or a bill again). No account
+/// means the merchant at every account.
+pub fn not_recurring(
+    c: &Connection,
+    merchant: &str,
+    account: Option<&str>,
+    not: bool,
+) -> Result<(), String> {
+    let sql = if not {
+        "INSERT OR IGNORE INTO not_recurring (merchant, account_id) VALUES (?1, ?2)"
+    } else {
+        "DELETE FROM not_recurring WHERE merchant = ?1 AND account_id = ?2"
+    };
+    c.execute(sql, params![merchant, account.unwrap_or("")])
+        .map(drop)
+        .map_err(|e| e.to_string())
+}
 
 /// How far a category choice reaches.
 #[derive(serde::Deserialize, Clone, Copy)]
@@ -310,17 +489,7 @@ pub fn set_budget(c: &Connection, lines: &[Line]) -> Result<(), String> {
     t.execute("DELETE FROM budget", [])
         .map_err(|e| e.to_string())?;
     for (rank, l) in lines.iter().enumerate() {
-        let known = t
-            .query_row(
-                "SELECT 1 FROM categories WHERE name = ?1",
-                params![l.category],
-                |_| Ok(()),
-            )
-            .optional()
-            .map_err(|e| e.to_string())?;
-        if known.is_none() {
-            return Err(format!("no category {}", l.category));
-        }
+        known_category(&t, &l.category)?;
         t.execute(
             "INSERT INTO budget (category, item, monthly, annual, renews, rank)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -563,6 +732,7 @@ struct Charge {
     amount: f64,
     category: String,
     account: String,
+    account_id: String,
 }
 
 /// How often a bill comes, with the gaps (in days) that count as on
@@ -713,6 +883,7 @@ fn find_recurring(charges: &[Charge], today: f64) -> Vec<Value> {
                 "merchant": last.merchant,
                 "category": last.category,
                 "account": last.account,
+                "account_id": last.account_id,
                 "cadence": name,
                 "days": days,
                 "count": c.list.len(),
@@ -736,9 +907,11 @@ pub fn recurring(c: &Connection) -> Result<Vec<Value>, String> {
     let mut q = c
         .prepare(
             "SELECT julianday(l.date), l.date, l.merchant, l.amount, l.category,
-             coalesce(a.name, 'Account') || coalesce(' ··' || a.mask, ''), julianday('now')
+             coalesce(a.name, 'Account') || coalesce(' ··' || a.mask, ''), julianday('now'), l.account_id
              FROM ledger l JOIN accounts a ON a.account_id = l.account_id
              WHERE l.kind = 'spend' AND NOT l.pending AND l.amount > 0
+             AND NOT EXISTS (SELECT 1 FROM not_recurring n WHERE n.merchant = l.merchant
+                             AND n.account_id IN ('', l.account_id))
              ORDER BY l.date",
         )
         .map_err(|e| e.to_string())?;
@@ -753,6 +926,7 @@ pub fn recurring(c: &Connection) -> Result<Vec<Value>, String> {
                 amount: r.get(3)?,
                 category: r.get(4)?,
                 account: r.get(5)?,
+                account_id: r.get(7)?,
             })
         })
         .and_then(Iterator::collect::<rusqlite::Result<Vec<_>>>)
@@ -909,6 +1083,7 @@ mod tests {
                 amount,
                 category: "Subscriptions".into(),
                 account: "Card".into(),
+                account_id: "a1".into(),
             })
         };
         for m in 0..6 {
@@ -964,5 +1139,112 @@ mod tests {
         assert!(names.contains(&("Peacock", 9.99, false)));
         assert_eq!(found[0]["merchant"], "Eversource");
         assert_eq!(found[0]["fixed"], false);
+    }
+
+    #[test]
+    fn hand_kept_accounts_budget_lines_and_not_recurring() {
+        let dir = std::env::temp_dir().join(format!("money-hand-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let s = Store::prepare(&dir).unwrap();
+        let c = &s.finance;
+        let add = |name: &str, kind: &str, balance: f64| super::Manual {
+            id: None,
+            name: Some(name.into()),
+            kind: Some(kind.into()),
+            balance: Some(balance),
+            remove: false,
+        };
+        let a = super::manual(c, &add("Vanguard 401(k)", "investment", 52000.0)).unwrap();
+        let b = super::manual(c, &add("Car loan", "loan", 9000.0)).unwrap();
+        assert_ne!(a, b);
+        assert!(super::manual(c, &add("Boat", "yacht", 1.0)).is_err());
+        let change = super::Manual {
+            id: Some(a.clone()),
+            name: None,
+            kind: None,
+            balance: Some(53500.0),
+            remove: false,
+        };
+        super::manual(c, &change).unwrap();
+        let page = super::page(c, "2026-10").unwrap();
+        let mine: Vec<_> = page["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| {
+                (
+                    x["name"].as_str().unwrap().to_owned(),
+                    x["balance"].as_f64().unwrap(),
+                    x["debt"].as_bool().unwrap(),
+                )
+            })
+            .collect();
+        assert!(mine.contains(&("Vanguard 401(k)".into(), 53500.0, false)));
+        assert!(mine.contains(&("Car loan".into(), 9000.0, true)));
+        // The Banks tab lists linked logins only.
+        assert_eq!(s.overview().unwrap().as_array().map(Vec::len), Some(0));
+        let gone = super::Manual {
+            id: Some(b),
+            name: None,
+            kind: None,
+            balance: None,
+            remove: true,
+        };
+        super::manual(c, &gone).unwrap();
+        assert!(
+            super::manual(
+                c,
+                &super::Manual {
+                    id: Some("acc-real".into()),
+                    name: None,
+                    kind: None,
+                    balance: Some(1.0),
+                    remove: false
+                }
+            )
+            .is_err()
+        );
+
+        let line = |monthly: f64| super::Line {
+            category: "Subscriptions".into(),
+            item: "Netflix".into(),
+            monthly,
+            annual: 0.0,
+            renews: None,
+        };
+        super::budget_line(c, &line(9.59), false).unwrap();
+        super::budget_line(c, &line(15.49), false).unwrap();
+        let rows: Vec<f64> = page_budget(c);
+        assert_eq!(rows, vec![15.49]);
+        super::budget_line(c, &line(0.0), true).unwrap();
+        assert!(page_budget(c).is_empty());
+        assert!(
+            super::budget_line(
+                c,
+                &super::Line {
+                    category: "Nope".into(),
+                    ..line(1.0)
+                },
+                false
+            )
+            .is_err()
+        );
+
+        super::not_recurring(c, "CVS", None, true).unwrap();
+        super::not_recurring(c, "CVS", None, true).unwrap();
+        super::not_recurring(c, "CVS", None, false).unwrap();
+        let n: i64 = c
+            .query_row("SELECT count(*) FROM not_recurring", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0);
+    }
+
+    fn page_budget(c: &rusqlite::Connection) -> Vec<f64> {
+        super::page(c, "2026-10").unwrap()["budget"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["monthly"].as_f64().unwrap())
+            .collect()
     }
 }

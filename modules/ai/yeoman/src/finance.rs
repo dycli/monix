@@ -1,10 +1,13 @@
 //! The household's money, read from the plaid service's finance.db: accounts,
 //! transactions, holdings and card statements. Opened read-only; the file's
-//! group is the only grant, and the bank tokens live elsewhere.
+//! group is the only grant, and the bank tokens live elsewhere. Changes go
+//! to the service itself, through `Ledger`.
 
 use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
+use std::io::{Read, Write};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -91,6 +94,49 @@ pub fn from_env() -> Option<Finance> {
     std::env::var_os("YEOMAN_FINANCE").map(|p| Finance::new(Path::new(&p).to_path_buf()))
 }
 
+/// The money page's write side, asked over the plaid service's socket. The
+/// service checks every change, so this only carries them.
+pub struct Ledger {
+    sock: PathBuf,
+}
+
+impl Ledger {
+    /// POSTs one change to `/api/<what>` and answers the service's JSON, or
+    /// its refusal.
+    pub fn change(&self, what: &str, body: &Value) -> Result<String, String> {
+        let mut conn = UnixStream::connect(&self.sock)
+            .map_err(|e| format!("money at {}: {e}", self.sock.display()))?;
+        conn.set_read_timeout(Some(Duration::from_secs(30)))
+            .map_err(|e| e.to_string())?;
+        let body = body.to_string();
+        write!(
+            conn,
+            "POST /api/{what} HTTP/1.1\r\nHost: money\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .map_err(|e| e.to_string())?;
+        let mut raw = String::new();
+        conn.read_to_string(&mut raw).map_err(|e| e.to_string())?;
+        let (head, text) = raw.split_once("\r\n\r\n").ok_or("money: no reply")?;
+        let status = head.split(' ').nth(1).unwrap_or("");
+        if status.starts_with('2') {
+            Ok(if text.is_empty() {
+                "{}".into()
+            } else {
+                text.into()
+            })
+        } else {
+            Err(format!("money refused ({status}): {text}"))
+        }
+    }
+}
+
+pub fn ledger_from_env() -> Option<Ledger> {
+    std::env::var_os("YEOMAN_MONEY").map(|p| Ledger {
+        sock: PathBuf::from(p),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,5 +167,41 @@ mod tests {
         assert_eq!(v["rows"].as_array().unwrap().len(), ROWS);
         assert_eq!(v["more"], json!(true));
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn carries_changes_and_refusals() {
+        use std::io::{BufRead, BufReader};
+        use std::os::unix::net::UnixListener;
+        let sock = std::env::temp_dir().join(format!("yeoman-money-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&sock);
+        let listener = UnixListener::bind(&sock).unwrap();
+        let server = std::thread::spawn(move || {
+            let mut asked = Vec::new();
+            for reply in [
+                "HTTP/1.1 200 OK\r\ncontent-length: 11\r\n\r\n{\"id\":\"m1\"}",
+                "HTTP/1.1 400 Bad Request\r\ncontent-length: 12\r\n\r\nno such kind",
+            ] {
+                let (mut c, _) = listener.accept().unwrap();
+                let mut r = BufReader::new(c.try_clone().unwrap());
+                let mut line = String::new();
+                r.read_line(&mut line).unwrap();
+                asked.push(line);
+                c.write_all(reply.as_bytes()).unwrap();
+                // Closing with the body unread would reset the connection.
+                c.shutdown(std::net::Shutdown::Write).unwrap();
+                r.read_to_end(&mut Vec::new()).unwrap();
+            }
+            asked
+        });
+        let l = Ledger { sock: sock.clone() };
+        assert_eq!(
+            l.change("manual", &json!({"name": "House"})).unwrap(),
+            "{\"id\":\"m1\"}"
+        );
+        let e = l.change("manual", &json!({"kind": "boat"})).unwrap_err();
+        assert!(e.contains("400") && e.contains("no such kind"), "{e}");
+        assert_eq!(server.join().unwrap()[0], "POST /api/manual HTTP/1.1\r\n");
+        std::fs::remove_file(sock).unwrap();
     }
 }

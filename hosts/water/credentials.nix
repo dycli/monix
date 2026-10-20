@@ -37,6 +37,7 @@ in
       credentialsEnvFile = config.secrets.matrix-sokka-env.path;
       web = true;
       mailCredentialsFile = config.secrets.sokka-mail-json.path;
+      money = true;
     };
     instances.azula = {
       credentialsEnvFile = config.secrets.matrix-azula-env.path;
@@ -46,6 +47,7 @@ in
       credentialsEnvFile = config.secrets.matrix-suki-env.path;
       web = true;
       mailCredentialsFile = config.secrets.suki-mail-json.path;
+      money = true;
       claudeKeyFile = config.secrets.suki-claude-key.path;
     };
     registrationEnvFile = config.secrets.matrix-registration-env.path;

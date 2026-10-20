@@ -11,6 +11,10 @@
 //! - `PLAID_KEYS_FILE`: `KEY=value` lines with `PLAID_CLIENT_ID` and
 //!   `PLAID_SECRET` (production) or `PLAID_SANDBOX_SECRET`.
 //! - `PLAID_STATE`: directory for `finance.db` and `vault/vault.db`.
+//!
+//! systemd may also hand over a listening Unix socket (`plaid.socket`):
+//! the same API for the household assistants, so they can file, budget and
+//! keep accounts by hand. The socket's group is who may.
 
 mod api;
 mod money;
@@ -330,6 +334,60 @@ async fn budget(State(app): State<Arc<App>>, Json(lines): Json<Vec<money::Line>>
     }
 }
 
+#[derive(Deserialize)]
+struct LineChange {
+    #[serde(flatten)]
+    line: money::Line,
+    #[serde(default)]
+    remove: bool,
+}
+
+async fn budget_line(State(app): State<Arc<App>>, Json(b): Json<LineChange>) -> Response {
+    write(app, move |c| {
+        money::budget_line(c, &b.line, b.remove).map(|()| json!({}))
+    })
+    .await
+}
+
+async fn manual(State(app): State<Arc<App>>, Json(m): Json<money::Manual>) -> Response {
+    write(app, move |c| {
+        money::manual(c, &m).map(|id| json!({ "id": id }))
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+struct NotRecurring {
+    merchant: String,
+    account: Option<String>,
+    /// False puts it back.
+    #[serde(default = "yes")]
+    not: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+async fn not_recurring(State(app): State<Arc<App>>, Json(n): Json<NotRecurring>) -> Response {
+    write(app, move |c| {
+        money::not_recurring(c, &n.merchant, n.account.as_deref(), n.not).map(|()| json!({}))
+    })
+    .await
+}
+
+/// One change to finance.db, answered as JSON; a refusal is a 400 with why.
+async fn write(
+    app: Arc<App>,
+    f: impl FnOnce(&rusqlite::Connection) -> Result<serde_json::Value, String> + Send + 'static,
+) -> Response {
+    match tokio::task::spawn_blocking(move || f(&Store::open(&app.state)?.finance)).await {
+        Ok(Ok(v)) => Json(v).into_response(),
+        Ok(Err(e)) => fail(StatusCode::BAD_REQUEST, e),
+        Err(e) => fail(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
 async fn overview(State(app): State<Arc<App>>) -> Response {
     let a = app.clone();
     match tokio::task::spawn_blocking(move || {
@@ -527,16 +585,36 @@ async fn main() {
         .route("/api/money", get(money_page))
         .route("/api/category", post(categorize))
         .route("/api/budget", put(budget))
+        .route("/api/budget/line", post(budget_line))
+        .route("/api/manual", post(manual))
+        .route("/api/recurring", post(not_recurring))
         .route("/api/link", post(link))
         .route("/api/linked", post(linked))
         .route("/api/sync", post(sync_now))
         .route("/api/sandbox/item", post(sandbox_item))
         .with_state(app);
+    if let Some(unix) = handed_socket() {
+        tokio::spawn(axum::serve(unix, routes.clone()).into_future());
+    }
     let listen = env("PLAID_LISTEN");
     let socket = tokio::net::TcpListener::bind(&listen)
         .await
         .unwrap_or_else(|e| panic!("{listen}: {e}"));
     axum::serve(socket, routes).await.expect("serve");
+}
+
+/// The Unix socket systemd passed (`LISTEN_FDS`, first fd 3), if any.
+fn handed_socket() -> Option<tokio::net::UnixListener> {
+    use std::os::fd::FromRawFd;
+    let ours = std::env::var("LISTEN_PID").ok()? == std::process::id().to_string();
+    if !ours || std::env::var("LISTEN_FDS").ok()? != "1" {
+        return None;
+    }
+    // SAFETY: systemd's protocol gives this process fd 3 as a listening
+    // socket, and nothing else here takes it.
+    let std = unsafe { std::os::unix::net::UnixListener::from_raw_fd(3) };
+    std.set_nonblocking(true).expect("socket");
+    Some(tokio::net::UnixListener::from_std(std).expect("socket"))
 }
 
 #[cfg(test)]
