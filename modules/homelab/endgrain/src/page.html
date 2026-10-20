@@ -48,7 +48,8 @@
 
   .weeknav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
   .weeknav b { font: 400 22px Georgia, serif; min-width: 190px; text-align: center; }
-  .scroll { overflow-x: auto; margin: 0 -18px; padding: 0 18px; }
+  /* No padding left of the sticky names, so nothing scrolls into view there. */
+  .scroll { overflow-x: auto; }
   table.grid { width: 100%; min-width: 820px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
   .grid th { font: 600 12px system-ui; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); text-align: left; padding: 4px 6px 8px; }
   .grid th .date { display: block; font: 400 18px Georgia, serif; letter-spacing: 0; text-transform: none; color: var(--ink); }
@@ -99,9 +100,27 @@
   [hidden] { display: none !important; }
   @media (max-width: 600px) {
     main { padding: 16px 12px 40px; }
-    .scroll { margin: 0 -12px; padding: 0 12px; }
     .weeknav b { min-width: 0; font-size: 19px; }
-    .grid th:first-child, .grid td:first-child { width: 96px; }
+    /* The whole week fits a phone, like a calendar's week view: no side
+       scroll, so nothing slides behind the names. Hours per person go. */
+    .card:has(#grid) { padding: 12px 8px; }
+    .scroll { overflow-x: visible; }
+    table.grid { min-width: 0; }
+    .grid th:first-child, .grid td:first-child { width: 54px; }
+    .grid th:last-child, .grid td:last-child { display: none; }
+    .grid th { padding: 2px 2px 6px; font-size: 10px; letter-spacing: .02em; text-align: center; }
+    .grid th .date { font-size: 16px; }
+    .grid td { padding: 2px 1px; height: 46px; }
+    .grid .who { gap: 4px; padding-top: 4px; font-size: 12px; overflow: hidden; }
+    .grid .who .dot { width: 7px; height: 7px; }
+    .shift { overflow: hidden; border-left-width: 3px; padding: 3px 2px 3px 3px; font-size: 11px; line-height: 1.2; letter-spacing: -.02em; }
+    .shift.asked, .shift.want { border-left-width: 3px; }
+    .shift small { font-size: 9px; }
+    .off { font-size: 10px; padding: 3px 2px; text-align: center; }
+    .cell { min-height: 40px; gap: 2px; border-radius: 6px; }
+    .grid tfoot td { font-size: 10px; padding: 6px 1px 0; text-align: center; }
+    .grid tfoot td:first-child { text-align: left; }
+    .grid tfoot .fh { display: none; }
   }
   @media print {
     body { background: #fff; }
@@ -317,6 +336,8 @@ function clock(m) {
   return `${h12}${min ? ':' + String(min).padStart(2, '0') : ''}${h < 12 ? 'a' : 'p'}`;
 }
 const span = s => `${clock(s.start)}–${clock(s.end)}`;
+// On the grid the hours may break before the dash, so a narrow day stacks them.
+const spanCell = s => `${clock(s.start)}<wbr>–${clock(s.end)}`;
 const hrs = n => (Math.round(n / 6) / 10).toString().replace(/\.0$/, '');
 const toTime = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const fromTime = v => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
@@ -371,17 +392,17 @@ function grid(table, w, editable) {
       for (const s of shifts) {
         total += s.end - s.start;
         const small = asked ? 'Asked off' + (s.note ? ' · ' + esc(s.note) : '') : esc(s.note);
-        cell += `<button class="shift ${asked ? 'asked' : ''}" style="--c:${p.color}" data-id="${s.id}" ${editable || d >= now ? '' : 'tabindex="-1"'}>${span(s)}${small ? `<small>${small}</small>` : ''}</button>`;
+        cell += `<button class="shift ${asked ? 'asked' : ''}" style="--c:${p.color}" data-id="${s.id}" ${editable || d >= now ? '' : 'tabindex="-1"'}>${spanCell(s)}${small ? `<small>${small}</small>` : ''}</button>`;
       }
       for (const o of wants.filter(o => o.status === 'pending'))
-        cell += `<div class="shift want" style="--c:${p.color}">${span(o)}<small>Asked to work</small></div>`;
+        cell += `<div class="shift want" style="--c:${p.color}">${spanCell(o)}<small>Asked to work</small></div>`;
       html += `<td class="${cls(d, i)}"><div class="cell" data-staff="${p.id}" data-day="${d}">${cell}</div></td>`;
     });
     html += `<td><div class="hours ${total > 40 * 60 ? 'over' : ''}">${total ? hrs(total) : ''}</div></td></tr>`;
   }
   const all = dayMins.reduce((a, b) => a + b, 0);
   const foot = (d, i) => {
-    const n = dayPeople[i].size, hours = dayMins[i] ? `${hrs(dayMins[i])}h · ` : '';
+    const n = dayPeople[i].size, hours = dayMins[i] ? `<span class="fh">${hrs(dayMins[i])}h · </span>` : '';
     if (!w.rules || n >= need(i) || (dated && d < now)) return n ? `${hours}${n} on` : '';
     // Short days in a real week can be let go; the usual week has no dates to excuse.
     const toggle = dated && editable && d >= now
