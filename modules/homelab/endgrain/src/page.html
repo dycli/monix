@@ -14,6 +14,7 @@
   h1 { font: 400 30px/1.1 Georgia, serif; margin: 0; }
   nav { display: flex; gap: 4px; flex-wrap: wrap; }
   nav a { color: var(--mid); text-decoration: none; padding: 5px 12px; border-radius: 99px; }
+  nav a.switch { margin-left: auto; border: 1px solid var(--edge); }
   nav a.on { background: var(--ink); color: var(--lift); }
   nav .count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 99px; background: var(--accent); color: var(--lift); font-size: 12px; text-align: center; }
   h2 { font: 400 20px Georgia, serif; margin: 0 0 10px; }
@@ -282,7 +283,8 @@
 const base = '/api';
 // The server writes who this is: the manager, or staff.
 const ROLE = 'admin'; // ROLE
-const MANAGER = ROLE === 'admin';
+// The manager can look at the site as staff see it; the choice stays on this device.
+const MANAGER = ROLE === 'admin' && localStorage.view !== 'staff';
 const PALETTE = ['#b0482a', '#2f6db5', '#4f7a42', '#8a5a9e', '#c28a1e', '#2f8a83', '#a8436e', '#6b6156'];
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const $ = (s, el = document) => el.querySelector(s);
@@ -728,9 +730,17 @@ $('#grid').classList.add(MANAGER ? 'edit' : 'board');
 const TABS = MANAGER
   ? { schedule: loadWeek, requests: loadRequests, usual: loadUsual, staff: loadStaff }
   : { schedule: loadBoard, timeoff: loadTimeOff };
+$('#nav').addEventListener('click', e => {
+  if (!e.target.classList.contains('switch')) return;
+  e.preventDefault();
+  if (MANAGER) localStorage.view = 'staff'; else localStorage.removeItem('view');
+  location.hash = '';
+  location.reload();
+});
 function show() {
   const tab = TABS[location.hash.slice(1)] ? location.hash.slice(1) : 'schedule';
   $('#nav').innerHTML = MANAGER ? `<a href="#schedule">Schedule</a><a href="#requests">Requests<span class="count" hidden></span></a><a href="#usual">Usual week</a><a href="#staff">Staff</a>` : `<a href="#schedule">Schedule</a><a href="#timeoff">Time off</a>`;
+  if (ROLE === 'admin') $('#nav').insertAdjacentHTML('beforeend', `<a href="#" class="switch">${MANAGER ? 'Staff view' : 'Manager view'}</a>`);
   for (const a of document.querySelectorAll('#nav a')) a.classList.toggle('on', a.hash === '#' + tab);
   for (const t of ['schedule', 'timeoff', 'requests', 'usual', 'staff']) $('#' + t).hidden = t !== tab;
   act(async () => {
