@@ -470,6 +470,10 @@
                     HIPPO_BACKEND = "http";
                     HIPPO_URL = "http://127.0.0.1:${toString config.inference.port}/v1";
                     HIPPO_MODEL = i.localModel;
+                    # Its template thinks at xhigh by default: ~3x slower than
+                    # low for lines about as good on six real jobs, and Azula's
+                    # replies queue behind it on the one GPU slot.
+                    HIPPO_HTTP_EXTRA = lib.strings.toJSON { chat_template_kwargs.reasoning_effort = "low"; };
                   }
                 else
                   {
