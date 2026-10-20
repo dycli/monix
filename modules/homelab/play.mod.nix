@@ -31,7 +31,7 @@
         mode = "0700";
       };
       systemd.services.nginx.serviceConfig.ReadWritePaths = [ saves ];
-      services.nginx.virtualHosts."play.${domain}".locations."~ ^/saves/[a-z]+-[a-z]+-[a-z]+/(tennis|earthbound|miniman)$" =
+      services.nginx.virtualHosts."play.${domain}".locations."~ ^/saves/[a-z]+-[a-z]+-[a-z]+/(tennis|earthbound|miniman|tetrisdx)$" =
         {
           root = saves;
           extraConfig = ''
