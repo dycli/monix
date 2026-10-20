@@ -132,6 +132,7 @@
         <span class="grow"></span>
         <button id="fill" class="noprint mgr">Use usual week</button>
         <button id="copy" class="noprint mgr">Copy last week</button>
+        <button id="approve" class="noprint mgr" hidden></button>
         <button id="print" class="noprint">Print</button>
         <button id="publish" class="main noprint mgr">Post week</button>
         <button id="ask" class="main noprint crew">Ask for time off</button>
@@ -174,6 +175,25 @@
     <div class="card">
       <h2>Decided</h2>
       <div id="decided"></div>
+    </div>
+  </section>
+
+  <section id="timeoff" hidden>
+    <div class="card">
+      <div class="actions"><h2 style="margin:0">Time off</h2><span class="grow"></span><button class="main" id="ask2">Ask for time off</button></div>
+      <p class="small soft">Everyone's time off from today on, so you can see who's already out. Only the manager approves.</p>
+    </div>
+    <div class="card">
+      <h2>Waiting</h2>
+      <div id="tpending"></div>
+    </div>
+    <div class="card">
+      <h2>Approved</h2>
+      <div id="tapproved"></div>
+    </div>
+    <div class="card" id="tdeniedcard">
+      <h2>Denied</h2>
+      <div id="tdenied"></div>
     </div>
   </section>
 
@@ -234,6 +254,7 @@
       <label>From <input type="date" name="first" required></label>
       <label>To <input type="date" name="last" required></label>
     </div>
+    <p class="warn" id="askwarn"></p>
     <label>Note for the manager <input name="reason" maxlength="500" placeholder="Optional"></label>
     <div class="actions">
       <span class="grow"></span>
@@ -376,6 +397,9 @@ async function loadWeek() {
     : '<span class="pill">Draft</span>';
   $('#publish').textContent = week.published ? (week.edited ? 'Post changes' : 'Posted') : 'Post week';
   $('#publish').disabled = !!week.published && !week.edited;
+  const asks = new Set(week.off.filter(o => o.status === 'pending').map(o => o.id)).size;
+  $('#approve').hidden = !asks;
+  $('#approve').textContent = asks > 1 ? `Approve all ${asks} requests` : 'Approve request';
   if (!week.staff.length) {
     $('#grid').innerHTML = '<tbody><tr><td class="empty" style="position:static">Add your staff on the Staff tab first.</td></tr></tbody>';
   } else grid($('#grid'), week, true);
@@ -400,20 +424,41 @@ function whoPicker(sel) {
 }
 for (const d of document.querySelectorAll('#askdlg, #takedlg')) d.querySelector('.cancel').onclick = () => d.close();
 
+// Everyone's time off, so staff see who's out before asking.
+let teamOff = [];
+async function loadTimeOff() {
+  [teamOff, week] = await Promise.all([api('/board/requests'), week ? week : api(`/board?monday=${monday}`)]);
+  const list = (status, el, none) => {
+    const os = teamOff.filter(o => o.status === status);
+    $(el).innerHTML = os.length ? os.map(o => `<div class="row"><div class="what"><b>${esc(o.name)}</b> · ${dates(o)}</div></div>`).join('') : `<p class="empty">${none}</p>`;
+    return os.length;
+  };
+  list('pending', '#tpending', 'Nothing waiting.');
+  list('approved', '#tapproved', 'No one is off.');
+  $('#tdeniedcard').hidden = !list('denied', '#tdenied', '');
+}
+
 const askf = $('#askdlg form');
-$('#ask').onclick = () => {
-  askf.reset(); whoPicker(askf.staff);
+const openAsk = () => act(async () => {
+  askf.reset(); whoPicker(askf.staff); $('#askwarn').textContent = '';
   askf.first.min = askf.last.min = today();
   $('#askdlg').showModal();
-};
-askf.addEventListener('input', e => { if (e.target === askf.first && (!askf.last.value || askf.last.value < askf.first.value)) askf.last.value = askf.first.value; });
+  teamOff = await api('/board/requests');
+});
+$('#ask').onclick = $('#ask2').onclick = openAsk;
+askf.addEventListener('input', e => {
+  if (e.target === askf.first && (!askf.last.value || askf.last.value < askf.first.value)) askf.last.value = askf.first.value;
+  const [a, b, me] = [askf.first.value, askf.last.value, Number(askf.staff.value)];
+  const out = a && b ? teamOff.filter(o => o.status !== 'denied' && o.staff !== me && o.first <= b && o.last >= a) : [];
+  $('#askwarn').textContent = out.length ? 'Also off then: ' + out.map(o => `${o.name} (${o.status === 'approved' ? 'approved' : 'asked'})`).join(', ') : '';
+});
 askf.addEventListener('submit', e => {
   e.preventDefault();
   act(async () => {
     localStorage.who = askf.staff.value;
     await api('/board/off', { method: 'POST', body: { staff: Number(askf.staff.value), first: askf.first.value, last: askf.last.value, reason: askf.reason.value } });
-    $('#askdlg').close(); toast('Sent. It shows on the schedule as asked off until the manager answers.');
-    await loadBoard();
+    $('#askdlg').close(); toast('Sent. It shows as asked off until the manager answers.');
+    await (location.hash === '#timeoff' ? loadTimeOff : loadBoard)();
   });
 });
 
@@ -427,6 +472,14 @@ takef.addEventListener('submit', e => {
     $('#takedlg').close(); toast("It's yours.");
     await loadBoard();
   });
+});
+
+$('#approve').onclick = () => act(async () => {
+  const names = [...new Set(week.off.filter(o => o.status === 'pending').map(o => week.staff.find(p => p.id === o.staff)?.name))];
+  if (!confirm(`Approve time off this week for ${names.join(', ')}? Their shifts those days open up for others to take.`)) return;
+  const r = await api('/week/approve', { method: 'POST', body: { monday } });
+  toast(`Approved ${r.approved}.`);
+  await loadWeek();
 });
 
 function setCount(n) {
@@ -674,12 +727,12 @@ $('#grid').classList.add(MANAGER ? 'edit' : 'board');
 
 const TABS = MANAGER
   ? { schedule: loadWeek, requests: loadRequests, usual: loadUsual, staff: loadStaff }
-  : { schedule: loadBoard };
+  : { schedule: loadBoard, timeoff: loadTimeOff };
 function show() {
   const tab = TABS[location.hash.slice(1)] ? location.hash.slice(1) : 'schedule';
-  $('#nav').innerHTML = MANAGER ? `<a href="#schedule">Schedule</a><a href="#requests">Requests<span class="count" hidden></span></a><a href="#usual">Usual week</a><a href="#staff">Staff</a>` : '';
+  $('#nav').innerHTML = MANAGER ? `<a href="#schedule">Schedule</a><a href="#requests">Requests<span class="count" hidden></span></a><a href="#usual">Usual week</a><a href="#staff">Staff</a>` : `<a href="#schedule">Schedule</a><a href="#timeoff">Time off</a>`;
   for (const a of document.querySelectorAll('#nav a')) a.classList.toggle('on', a.hash === '#' + tab);
-  for (const t of ['schedule', 'requests', 'usual', 'staff']) $('#' + t).hidden = t !== tab;
+  for (const t of ['schedule', 'timeoff', 'requests', 'usual', 'staff']) $('#' + t).hidden = t !== tab;
   act(async () => {
     await TABS[tab]();
     if (MANAGER && tab !== 'schedule' && tab !== 'requests') setCount((await api('/requests')).pending.length);

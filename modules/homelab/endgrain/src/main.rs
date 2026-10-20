@@ -94,6 +94,12 @@ async fn use_usual(State(app): State<App>, Json(b): Json<Monday>) -> Response {
     })
 }
 
+async fn approve_week(State(app): State<App>, Json(b): Json<Monday>) -> Response {
+    reply(&app, |s| {
+        s.approve_week(&b.monday).map(|n| json!({ "approved": n }))
+    })
+}
+
 async fn usual(State(app): State<App>) -> Response {
     reply(&app, |s| s.usual_week())
 }
@@ -164,6 +170,10 @@ async fn delete_off(State(app): State<App>, Path(id): Path<i64>) -> Response {
 
 async fn board(State(app): State<App>, Query(q): Query<Monday>) -> Response {
     reply(&app, |s| s.board(&q.monday))
+}
+
+async fn team_off(State(app): State<App>) -> Response {
+    reply(&app, |s| s.team_off())
 }
 
 async fn ask_off(State(app): State<App>, Json(b): Json<AddOff>) -> Response {
@@ -302,12 +312,14 @@ async fn main() {
         .route("/api/board", get(board))
         .route("/api/board/off", post(ask_off))
         .route("/api/board/take", post(take))
+        .route("/api/board/requests", get(team_off))
         .route_layer(middleware::from_fn_with_state(app.clone(), anyone));
     let routes = Router::new()
         .route("/api/week", get(week))
         .route("/api/week/copy", post(copy_week))
         .route("/api/week/publish", post(publish))
         .route("/api/week/usual", post(use_usual))
+        .route("/api/week/approve", post(approve_week))
         .route("/api/week/short", post(short_ok))
         .route("/api/usual", get(usual).put(save_default))
         .route("/api/usual/{id}", axum::routing::delete(delete_default))

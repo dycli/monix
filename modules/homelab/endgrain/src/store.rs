@@ -935,6 +935,25 @@ impl Store {
         Ok(())
     }
 
+    /// Approves every pending request that touches a week.
+    pub fn approve_week(&self, monday: &str) -> Result<usize> {
+        self.monday(monday)?;
+        let ids: Vec<i64> = self
+            .db
+            .prepare(
+                "SELECT id FROM requests WHERE status = 'pending'
+                   AND first <= date(?1, '+6 days') AND last >= ?1",
+            )?
+            .query_map([monday], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        let tx = self.db.unchecked_transaction()?;
+        for &id in &ids {
+            self.decide(id, "approved")?;
+        }
+        tx.commit()?;
+        Ok(ids.len())
+    }
+
     pub fn delete_off(&self, id: i64) -> Result<()> {
         let n = self
             .db
@@ -966,6 +985,21 @@ impl Store {
         w.pending = 0;
         w.usual.clear();
         Ok(w)
+    }
+
+    /// Everyone's time off from today on, for staff to plan around. The
+    /// reasons stay with the manager.
+    pub fn team_off(&self) -> Result<Vec<Off>> {
+        let mut q = self
+            .db
+            .prepare(&format!("{OFF} WHERE r.last >= ?1 ORDER BY r.first, r.id"))?;
+        let mut all: Vec<Off> = q
+            .query_map([self.today()?], off)?
+            .collect::<rusqlite::Result<_>>()?;
+        for o in &mut all {
+            o.reason.clear();
+        }
+        Ok(all)
     }
 
     /// A request for time off, waiting for the manager.
@@ -1331,6 +1365,35 @@ mod tests {
         let w = s.week(&monday).unwrap();
         assert_eq!(w.shifts.len(), 1);
         assert_eq!((w.shifts[0].staff, w.shifts[0].start), (b, 390));
+    }
+
+    #[test]
+    fn approving_a_week_takes_only_its_pending_requests() {
+        let s = store();
+        let a = add(&s, "Ana");
+        let monday = s.plus(&this_monday(&s), 7).unwrap();
+        let ask = |first: i64, last: i64| {
+            s.ask_off(
+                a,
+                &OffIn {
+                    first: s.plus(&monday, first).unwrap(),
+                    last: s.plus(&monday, last).unwrap(),
+                    reason: String::new(),
+                },
+            )
+            .unwrap()
+        };
+        // From the Sunday before, through the week, and the week after.
+        let (before, inside, after) = (ask(-1, 0), ask(3, 3), ask(7, 8));
+        let shift = put(&s, a, &s.plus(&monday, 3).unwrap());
+        assert_eq!(s.approve_week(&monday).unwrap(), 2);
+        let r = s.requests().unwrap();
+        assert_eq!(r.pending.iter().map(|o| o.id).collect::<Vec<_>>(), [after]);
+        assert!(r.decided.iter().any(|o| o.id == before));
+        assert!(r.decided.iter().any(|o| o.id == inside));
+        let w = s.week(&monday).unwrap();
+        assert!(w.shifts.iter().find(|h| h.id == shift).unwrap().open);
+        assert_eq!(s.approve_week(&monday).unwrap(), 0);
     }
 
     #[test]
