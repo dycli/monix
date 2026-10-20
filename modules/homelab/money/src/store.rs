@@ -16,6 +16,12 @@ CREATE TABLE IF NOT EXISTS items (
     access_token TEXT NOT NULL,
     cursor TEXT,
     created TEXT NOT NULL DEFAULT (datetime('now'))
+);
+-- Removed logins. Their rows stay in items: on the Trial plan a removed
+-- login keeps its slot, so the count of used slots still holds them.
+CREATE TABLE IF NOT EXISTS gone (
+    item_id TEXT PRIMARY KEY,
+    at TEXT NOT NULL DEFAULT (datetime('now'))
 );";
 
 const FINANCE: &str = "
@@ -172,11 +178,61 @@ impl Store {
     pub fn items(&self) -> Result<Vec<String>, String> {
         let mut q = self
             .vault
-            .prepare("SELECT item_id FROM items ORDER BY created")
+            .prepare(
+                "SELECT item_id FROM items WHERE item_id NOT IN (SELECT item_id FROM gone)
+                 ORDER BY created",
+            )
             .map_err(|e| e.to_string())?;
         q.query_map([], |r| r.get(0))
             .and_then(Iterator::collect)
             .map_err(|e| e.to_string())
+    }
+
+    /// Forgets a removed login: its token, and every row its accounts
+    /// brought, so nothing it held is counted.
+    pub fn remove(&mut self, item: &str) -> Result<(), String> {
+        let e = |e: rusqlite::Error| e.to_string();
+        let t = self.finance.transaction().map_err(e)?;
+        let mine = "(SELECT account_id FROM accounts WHERE item_id = ?1)";
+        t.execute(
+            &format!(
+                "DELETE FROM overrides WHERE transaction_id IN
+                 (SELECT transaction_id FROM transactions WHERE account_id IN {mine})"
+            ),
+            params![item],
+        )
+        .map_err(e)?;
+        for table in [
+            "transactions",
+            "holdings",
+            "credit",
+            "balances",
+            "not_recurring",
+        ] {
+            t.execute(
+                &format!("DELETE FROM {table} WHERE account_id IN {mine}"),
+                params![item],
+            )
+            .map_err(e)?;
+        }
+        t.execute("DELETE FROM accounts WHERE item_id = ?1", params![item])
+            .map_err(e)?;
+        t.execute("DELETE FROM items WHERE item_id = ?1", params![item])
+            .map_err(e)?;
+        t.commit().map_err(e)?;
+        self.vault
+            .execute(
+                "INSERT OR IGNORE INTO gone (item_id) VALUES (?1)",
+                params![item],
+            )
+            .and_then(|_| {
+                self.vault.execute(
+                    "UPDATE items SET access_token = '', cursor = NULL WHERE item_id = ?1",
+                    params![item],
+                )
+            })
+            .map(drop)
+            .map_err(e)
     }
 
     pub fn token(&self, item: &str) -> Result<(String, Option<String>), String> {
@@ -509,6 +565,18 @@ mod tests {
         let o = s.overview().unwrap();
         assert_eq!(o.as_array().unwrap().len(), 2);
         assert_eq!(o[0]["accounts"][0]["duplicate"], json!(true));
+
+        s.remove("i1").unwrap();
+        let o = s.overview().unwrap();
+        assert_eq!(o.as_array().unwrap().len(), 1);
+        assert_eq!(o[0]["accounts"][0]["duplicate"], json!(false));
+        let n: i64 = s
+            .finance
+            .query_row("SELECT count(*) FROM transactions", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0);
+        assert_eq!(s.items().unwrap(), ["i2"]);
+        assert_eq!(s.slots().unwrap(), 2, "a removed login keeps its slot");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -696,7 +696,15 @@ async function banks() {
       el("p", { className: "mid small", textContent: "The bank wants a fresh login." }),
       el("button", { className: "main", textContent: "Log in again", onclick: () => link({ item: i.id }) })) : null,
     i.status === "error" ? el("p", { className: "warn", textContent: i.error }) : null,
+    el("button", { className: "quiet small", style: "margin-top:8px", textContent: "Remove this login", onclick: (ev) => removeLogin(ev, i) }),
   )));
+}
+
+async function removeLogin(ev, i) {
+  const names = i.accounts.map((a) => `${a.name}${a.mask ? " ··" + a.mask : ""}`).join(", ");
+  if (!confirm(`Remove ${i.institution || "this login"} (${names})? Its accounts and their history leave the page. Its slot isn't given back.`)) return;
+  ev.target.disabled = true;
+  try { await api("/api/remove", { item: i.id }); await banks(); await load(); } catch (e) { $("#error").textContent = e.message; ev.target.disabled = false; }
 }
 
 async function link(ask) {

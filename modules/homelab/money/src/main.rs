@@ -500,6 +500,42 @@ async fn linked(State(app): State<Arc<App>>, Json(l): Json<Linked>) -> Response 
     }
 }
 
+#[derive(Deserialize)]
+struct Gone {
+    item: String,
+}
+
+/// Removes a login: Plaid stops pulling it, and its accounts leave the page.
+async fn remove(State(app): State<Arc<App>>, Json(g): Json<Gone>) -> Response {
+    // Not while a sync is writing the same login's rows.
+    let _one = app.syncing.lock().await;
+    let a = app.clone();
+    let done = tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let mut store = Store::open(&a.state)?;
+        if !store.items()?.contains(&g.item) {
+            return Err(format!("no login {}", g.item));
+        }
+        let (token, _) = store.token(&g.item)?;
+        match a
+            .plaid
+            .call("/item/remove", json!({ "access_token": token }))
+        {
+            Ok(_) => {}
+            // Already gone at Plaid: forget it here too.
+            Err(f) if f.code == "ITEM_NOT_FOUND" || f.code == "INVALID_ACCESS_TOKEN" => {}
+            Err(f) => return Err(f.to_string()),
+        }
+        eprintln!("money: removed {}", g.item);
+        store.remove(&g.item)
+    })
+    .await;
+    match done {
+        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Err(e)) => fail(StatusCode::BAD_REQUEST, e),
+        Err(e) => fail(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
 async fn sync_now(State(app): State<Arc<App>>) -> StatusCode {
     sync_all(app).await;
     StatusCode::NO_CONTENT
@@ -602,6 +638,7 @@ async fn main() {
         .route("/api/link", post(link))
         .route("/api/linked", post(linked))
         .route("/api/sync", post(sync_now))
+        .route("/api/remove", post(remove))
         .route("/api/sandbox/item", post(sandbox_item))
         .with_state(app);
     if let Some(unix) = handed_socket() {
