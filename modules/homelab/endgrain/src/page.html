@@ -106,7 +106,7 @@
     .card:has(#grid) { padding: 12px 8px; }
     .scroll { overflow-x: visible; }
     table.grid { min-width: 0; }
-    .grid th:first-child, .grid td:first-child { width: 54px; }
+    .grid th:first-child, .grid td:first-child { width: 66px; }
     .grid th:last-child, .grid td:last-child { display: none; }
     .grid th { padding: 2px 2px 6px; font-size: 10px; letter-spacing: .02em; text-align: center; }
     .grid th .date { font-size: 16px; }
@@ -151,9 +151,7 @@
         <button id="fill" class="noprint mgr">Use usual week</button>
         <button id="copy" class="noprint mgr">Copy last week</button>
         <button id="approve" class="noprint mgr" hidden></button>
-        <button id="print" class="noprint">Print</button>
         <button id="publish" class="main noprint mgr">Post week</button>
-        <button id="ask" class="main noprint crew">Ask for time off</button>
       </div>
       <p class="small soft crew" style="margin:-4px 0 10px">Tap a shift to ask for it off, or an empty day to ask to work it.</p>
       <div class="scroll"><table class="grid" id="grid"></table></div>
@@ -477,7 +475,7 @@ const openAsk = (staff, day) => act(async () => {
   teamOff = await api('/board/requests');
   askf.dispatchEvent(new Event('input'));
 });
-$('#ask').onclick = $('#ask2').onclick = () => openAsk();
+$('#ask2').onclick = () => openAsk();
 askf.addEventListener('input', e => {
   if (e.target === askf.first && (!askf.last.value || askf.last.value < askf.first.value)) askf.last.value = askf.first.value;
   const [a, b, me] = [askf.first.value, askf.last.value, Number(askf.staff.value)];
@@ -653,7 +651,6 @@ $('#publish').onclick = () => act(async () => {
   toast('Posted. Staff can see this week now.');
   await loadWeek();
 });
-$('#print').onclick = () => print();
 
 async function loadRequests() {
   const [r, staff] = await Promise.all([api('/requests'), api('/staff')]);
