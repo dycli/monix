@@ -261,8 +261,9 @@ pub fn rekind(kind: &str) -> String {
 }
 
 /// Status words a line may use only when its <input> has their stem: a
-/// cheap model carries statuses over from <chat> or makes work look further
-/// along than it was, and a later reader acts on them.
+/// cheap model carries statuses over from <chat>, making work look further
+/// along than it was, or less far ("UNBUILT" on work that went live), and a
+/// later reader acts on them.
 const STATUS: &[(&str, &str)] = &[
     ("live", "live"),
     ("deployed", "deploy"),
@@ -276,6 +277,19 @@ const STATUS: &[(&str, &str)] = &[
     ("unanswered", "answer"),
     ("blocked", "block"),
     ("done", "done"),
+    ("unbuilt", "buil"),
+    ("unstarted", "start"),
+    ("uncommitted", "commit"),
+    ("undeployed", "deploy"),
+    ("unpushed", "push"),
+];
+
+/// Words that are a status only after "not" ("NOT started"); alone they
+/// describe work too often to hold every use to the source.
+const NOT: &[(&str, &str)] = &[
+    ("started", "start"),
+    ("built", "buil"),
+    ("committed", "commit"),
 ];
 
 /// The status words in `line` whose stem <input> lacks.
@@ -284,13 +298,27 @@ fn unsourced(line: &str, step: &Step) -> Vec<String> {
         Step::Compress { msg, .. } => msg.to_lowercase(),
         Step::Merge { a, b, .. } => format!("{a}\n{b}").to_lowercase(),
     };
-    let mut words: Vec<String> = line
+    let all: Vec<String> = line
         .split(|c: char| !c.is_ascii_alphabetic())
+        .filter(|w| !w.is_empty())
         .map(str::to_lowercase)
-        .filter(|w| {
-            STATUS
-                .iter()
-                .any(|(word, stem)| w == word && !source.contains(stem))
+        .collect();
+    let stray = |table: &[(&str, &str)], w: &str| {
+        table
+            .iter()
+            .any(|(word, stem)| w == *word && !source.contains(stem))
+    };
+    let mut words: Vec<String> = all
+        .iter()
+        .enumerate()
+        .filter_map(|(n, w)| {
+            if stray(STATUS, w) {
+                Some(w.clone())
+            } else if n > 0 && all[n - 1] == "not" && stray(NOT, w) {
+                Some(format!("not {w}"))
+            } else {
+                None
+            }
         })
         .collect();
     words.sort();
@@ -304,6 +332,14 @@ pub fn resource(words: &[String]) -> String {
         "Status not in <input>: {}. Write the whole line again for the same <input>, saying what was done and leaving out any status <input> doesn't state.",
         words.join(", ")
     )
+}
+
+/// The node a step builds, `level/index`, as the journal names it.
+fn node(step: &Step) -> String {
+    match step {
+        Step::Compress { id, .. } => format!("0/{id}"),
+        Step::Merge { l, i, .. } => format!("{l}/{i}"),
+    }
 }
 
 /// Runs one compactor step to a line: the first answer, then retries in the
@@ -330,10 +366,7 @@ pub fn run(
         // cause against the tokens read (`usage.jsonl`, by level and index).
         eprintln!(
             "hippo: flight {} blocks={} hit={} beyond={} lapsed={} shared={} {} waited={}ms",
-            match step {
-                Step::Compress { id, .. } => format!("0/{id}"),
-                Step::Merge { l, i, .. } => format!("{l}/{i}"),
-            },
+            node(step),
             keys.len(),
             p.hit,
             p.beyond,
@@ -363,6 +396,27 @@ pub fn run(
             resource(&stray)
         };
         let done = !(over || wrong || !stray.is_empty());
+        if !done {
+            // How often each check sends a line back, for judging the
+            // compactor model by its journal.
+            eprintln!(
+                "hippo: retry {} try={} {}{}",
+                node(step),
+                tries.len() + 1,
+                if over {
+                    format!("over={}", line.len())
+                } else if wrong {
+                    "kind".into()
+                } else {
+                    "status".into()
+                },
+                if stray.is_empty() {
+                    String::new()
+                } else {
+                    format!(" words={}", stray.join(","))
+                }
+            );
+        }
         tries.push((line, wrong, stray.is_empty()));
         if done || tries.len() >= TRIES {
             break;
@@ -1204,6 +1258,22 @@ mod tests {
             unsourced("talk: `abc` done, live", &merge),
             ["done", "live"]
         );
+
+        // Stale "not yet" labels count too, but plain "built" doesn't.
+        let edit = Step::Compress {
+            id: 2,
+            msg: "tool: Edit App.tsx: added MarketsCard",
+        };
+        assert_eq!(
+            unsourced("tool: MarketsCard UNBUILT, cards NOT started", &edit),
+            ["not started", "unbuilt"]
+        );
+        assert!(unsourced("tool: built MarketsCard in App.tsx", &edit).is_empty());
+        let asked = Step::Compress {
+            id: 3,
+            msg: "user: build a markets card; it isn't started",
+        };
+        assert!(unsourced("user: markets card, NOT started, UNBUILT", &asked).is_empty());
 
         // Out of tries, a line with a stray status beats none at all.
         let stubborn: &'static Scripted = Box::leak(Box::new(Scripted(
