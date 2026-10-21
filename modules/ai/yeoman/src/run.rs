@@ -4,10 +4,11 @@
 //! assistant can send it on. This is how a picture becomes another kind,
 //! a table a chart, or a pile of files a zip.
 
-use crate::files::Library;
+use crate::files::{self, Library};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
+use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -55,8 +56,19 @@ pub fn run(
                 .path(name)
                 .ok_or_else(|| format!("There is no file called {name}."))?;
             let to = dir.join(name);
-            fs::copy(&from, &to).map_err(|e| format!("{name}: {e}"))?;
-            open(&to, 0o660)?;
+            // Made new, never through a link the computer left in its place.
+            let mut out = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&to)
+                .map_err(|e| format!("{name}: {e}"))?;
+            io::copy(
+                &mut fs::File::open(&from).map_err(|e| format!("{name}: {e}"))?,
+                &mut out,
+            )
+            .map_err(|e| format!("{name}: {e}"))?;
+            out.set_permissions(fs::Permissions::from_mode(0o660))
+                .map_err(|e| format!("{name}: {e}"))?;
             given.insert(to.clone(), stamp_of(&to)?);
         }
         let ran = call(url, &dir, language, code, seconds)?;
@@ -76,7 +88,8 @@ pub fn run(
                 over += 1;
                 continue;
             }
-            let data = fs::read(&path).map_err(|e| e.to_string())?;
+            let data =
+                files::read_inside(&dir, &path).map_err(|e| format!("{}: {e}", path.display()))?;
             let name = path.file_name().unwrap_or_default().to_string_lossy();
             kept.push(library.keep(&name, &data).map_err(|e| e.to_string())?);
         }

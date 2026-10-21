@@ -109,11 +109,11 @@ pub fn send(
         Some(_) => name.to_owned(),
         None => {
             let base = Path::new(name).file_name().ok_or("Which file?")?;
-            let from = desk
-                .map(|d| d.join(base))
-                .filter(|p| p.is_file())
-                .ok_or_else(|| format!("There is no file called {name}."))?;
-            let data = fs::read(&from).map_err(|e| format!("{}: {e}", from.display()))?;
+            let desk = desk.ok_or_else(|| format!("There is no file called {name}."))?;
+            let data = read_inside(desk, &desk.join(base)).map_err(|e| match e.kind() {
+                io::ErrorKind::NotFound => format!("There is no file called {name}."),
+                _ => format!("{name}: {e}"),
+            })?;
             library
                 .keep(&base.to_string_lossy(), &data)
                 .map_err(|e| e.to_string())?
@@ -127,6 +127,36 @@ pub fn send(
         .as_millis();
     fs::copy(&from, outbox.join(format!("{stamp}-{kept}"))).map_err(|e| e.to_string())?;
     Ok(kept)
+}
+
+/// Reads a plain file under `root` that the computer's code may have
+/// written. It shares the desk, so it could leave a link to a file of this
+/// host's, or a pipe that never ends: no link is followed, at the end or on
+/// the way, and only a regular file is read.
+pub fn read_inside(root: &Path, path: &Path) -> io::Result<Vec<u8>> {
+    use std::io::Read;
+    use std::os::fd::AsRawFd;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    let outside = || {
+        io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "not a plain file of the desk",
+        )
+    };
+    if !file.metadata()?.is_file() {
+        return Err(outside());
+    }
+    let real = fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))?;
+    if !real.starts_with(fs::canonicalize(root)?) {
+        return Err(outside());
+    }
+    let mut data = Vec::new();
+    file.read_to_end(&mut data)?;
+    Ok(data)
 }
 
 /// A name with no directory, no leading dot and nothing unprintable.
@@ -205,6 +235,29 @@ pub fn mime_of(name: &str, data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_desk_cannot_hand_over_what_it_only_points_at() {
+        let dir = std::env::temp_dir().join(format!("yeoman-desk-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let (desk, outbox) = (dir.join("desk"), dir.join("outbox"));
+        fs::create_dir_all(desk.join("sub")).unwrap();
+        fs::write(dir.join("secret"), b"host").unwrap();
+        fs::write(desk.join("shot.png"), b"png").unwrap();
+        std::os::unix::fs::symlink(dir.join("secret"), desk.join("link.png")).unwrap();
+        std::os::unix::fs::symlink(&dir, desk.join("up")).unwrap();
+        let fifo = std::ffi::CString::new(desk.join("pipe").into_os_string().into_encoded_bytes())
+            .unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+        assert_eq!(read_inside(&desk, &desk.join("shot.png")).unwrap(), b"png");
+        for bad in ["link.png", "up/secret", "pipe", "sub"] {
+            assert!(read_inside(&desk, &desk.join(bad)).is_err(), "{bad}");
+        }
+        let lib = Library::new(&dir);
+        assert!(send(&lib, Some(&desk), &outbox, "link.png").is_err());
+        assert!(lib.path("link.png").is_none());
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn keeps_by_plain_name_and_finds_by_words() {

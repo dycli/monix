@@ -30,6 +30,7 @@ webpki-roots = "1.0.9"
 axum = { version = "0.8", features = ["multipart"] }
 futures-util = "0.3"
 getrandom = "0.4"
+libc = "0.2"
 tower-http = { version = "0.6", features = ["fs", "set-header"] }
 tower-layer = "0.3"
 web-push-native = "0.5"

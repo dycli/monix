@@ -226,7 +226,8 @@ struct Page {
     /// The page's name, its path on the site: lowercase letters, digits
     /// and dashes, e.g. trip-plan.
     name: String,
-    /// The whole page, one HTML document; styles and scripts inline.
+    /// The whole page, one HTML document; styles and scripts inline. It runs
+    /// sandboxed: scripts work, but cookies and browser storage do not.
     html: String,
 }
 

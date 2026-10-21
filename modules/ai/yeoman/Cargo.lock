@@ -5100,6 +5100,7 @@ dependencies = [
  "chrono-tz",
  "futures-util",
  "getrandom 0.4.3",
+ "libc",
  "mail-parser",
  "matrix-sdk",
  "mime",

@@ -92,10 +92,25 @@ fn path(state: &Path, id: u64) -> PathBuf {
 
 /// Files a new act and returns its id.
 pub fn add(state: &Path, act: Act) -> Result<u64, String> {
-    let id = SystemTime::now()
+    let mut id = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_millis() as u64;
+    // Two acts in one millisecond, from the turn and the tools alike, each
+    // claim an id of their own: the first free one from now on.
+    let d = dir(state);
+    fs::create_dir_all(&d).map_err(|e| format!("{}: {e}", d.display()))?;
+    loop {
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path(state, id))
+        {
+            Ok(_) => break,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => id += 1,
+            Err(e) => return Err(format!("{}: {e}", d.display())),
+        }
+    }
     let p = Pending {
         id,
         act,
@@ -132,6 +147,10 @@ pub fn all(state: &Path) -> Result<Vec<Pending>, String> {
         let p = e.map_err(|e| format!("{}: {e}", d.display()))?.path();
         if p.extension().is_some_and(|x| x == "json") {
             let text = fs::read(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+            // Claimed by add, not yet written.
+            if text.is_empty() {
+                continue;
+            }
             v.push(serde_json::from_slice(&text).map_err(|e| format!("{}: {e}", p.display()))?);
         }
     }
@@ -172,6 +191,16 @@ mod tests {
         assert_eq!(by_event(&dir, "$e").unwrap().act, mail());
         remove(&dir, id).unwrap();
         assert!(all(&dir).unwrap().is_empty());
+    }
+
+    #[test]
+    fn acts_filed_at_once_keep_their_own_ids() {
+        let dir = tempdir();
+        let ids: Vec<u64> = (0..5).map(|_| add(&dir, mail()).unwrap()).collect();
+        let mut seen = ids.clone();
+        seen.dedup();
+        assert_eq!(seen.len(), 5);
+        assert_eq!(all(&dir).unwrap().len(), 5);
     }
 
     #[test]

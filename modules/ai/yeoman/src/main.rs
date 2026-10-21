@@ -1162,7 +1162,10 @@ async fn run() -> Result<(), String> {
             };
             let gate = (notify, gate);
             if let Err(e) = site::serve(&addr, root, served, &s, h, w, inbox, gate).await {
+                // Without its site the service only seems well; systemd
+                // should see it fail and restart it.
                 eprintln!("yeoman: {e}");
+                std::process::exit(1);
             }
         });
         // A verdict given on the page is told in Matrix too, where the

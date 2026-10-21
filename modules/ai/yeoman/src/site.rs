@@ -38,7 +38,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{broadcast, mpsc};
 use tower_http::services::{ServeDir, ServeFile};
-use tower_http::set_header::SetResponseHeaderLayer;
+use tower_http::set_header::{SetResponseHeader, SetResponseHeaderLayer};
 use tower_layer::Layer;
 
 use crate::push::{self, Push};
@@ -56,6 +56,8 @@ const HISTORY: u64 = 200;
 /// How long a reply read aloud stays cached.
 const SPEECH_KEEP: Duration = Duration::from_secs(30 * 24 * 3600);
 const SEND_MAX: usize = 32 * 1024;
+/// Readings under way at once.
+const SPEAKING_MAX: usize = 4;
 /// The most files one message carries.
 const FILES_MAX: usize = 10;
 /// The largest request to /api/send, all its files together: what the
@@ -406,7 +408,9 @@ pub type Notify = Box<
 #[derive(Default)]
 pub struct Gate {
     asks: Mutex<HashMap<String, Ask>>,
-    last: Mutex<Option<Instant>>,
+    /// When each address last asked: one browser's asking must not shut
+    /// out another's.
+    last: Mutex<HashMap<String, Instant>>,
 }
 
 struct Ask {
@@ -417,6 +421,17 @@ struct Ask {
 }
 
 impl Gate {
+    /// Whether `from` may ask now, counting it as asking if so.
+    fn may_ask(&self, from: &str) -> bool {
+        let mut last = self.last.lock().unwrap();
+        last.retain(|_, t| t.elapsed() < ASK_GAP);
+        if last.contains_key(from) {
+            return false;
+        }
+        last.insert(from.to_owned(), Instant::now());
+        true
+    }
+
     /// Takes the person's 👍 or 👎 on `event`; false if it asked nothing.
     pub fn answer(&self, event: &str, yes: bool) -> bool {
         let mut asks = self.asks.lock().unwrap();
@@ -686,6 +701,21 @@ pub struct Inbox {
     pub stop: Arc<AtomicBool>,
 }
 
+/// What show_page wrote, sandboxed: a page shares the chat's address, so
+/// unsandboxed its scripts could read the chat and act as the person. In
+/// the sandbox it has an origin of its own, which the session cookie
+/// (SameSite=Lax) never reaches.
+const PAGE_SANDBOX: &str =
+    "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads";
+
+fn pages_of(dir: PathBuf) -> SetResponseHeader<ServeDir, HeaderValue> {
+    SetResponseHeaderLayer::overriding(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(PAGE_SANDBOX),
+    )
+    .layer(ServeDir::new(dir))
+}
+
 /// Serves the chat page from `root` at `/`, the API, and every other path
 /// from `pages` (what show_page wrote) on `addr`, through the pages `web`.
 /// Requests to sign in go out through `notify`; their answers come back
@@ -788,7 +818,7 @@ pub async fn serve(
         .route("/api/wait", post(wait))
         .route("/api/push", get(push_key).post(push_add))
         .route("/api/push/drop", post(push_drop))
-        .fallback_service(ServeDir::new(pages))
+        .fallback_service(pages_of(pages))
         .with_state(site);
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -1076,6 +1106,10 @@ async fn speak(
         let mut speaking = site.speaking.lock().unwrap();
         if file.exists() || speaking.contains_key(&key) {
             return answer;
+        }
+        // Each reading holds a blocking thread and an xAI session.
+        if speaking.len() >= SPEAKING_MAX {
+            return StatusCode::TOO_MANY_REQUESTS.into_response();
         }
         let (tx, _) = tokio::sync::watch::channel(Sofar::default());
         speaking.insert(key.clone(), tx.clone());
@@ -1439,9 +1473,10 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
             Err(e) => return (e.status(), e.body_text()).into_response(),
         };
         match field.name() {
-            Some("text") => match field.text().await {
-                Ok(t) => text = t,
-                Err(e) => return (e.status(), e.body_text()).into_response(),
+            Some("text") => match capped(field, SEND_MAX).await.map(String::from_utf8) {
+                Ok(Ok(t)) => text = t,
+                Ok(Err(_)) => return StatusCode::BAD_REQUEST.into_response(),
+                Err(code) => return code.into_response(),
             },
             Some("file") => {
                 let name = field.file_name().unwrap_or("file").to_owned();
@@ -1484,6 +1519,22 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
     Json(serde_json::json!({ "id": id })).into_response()
+}
+
+/// A field's bytes, refused once past `max` rather than read whole first.
+async fn capped(
+    mut field: axum::extract::multipart::Field<'_>,
+    max: usize,
+) -> Result<Vec<u8>, StatusCode> {
+    let mut data = Vec::new();
+    loop {
+        match field.chunk().await {
+            Ok(Some(c)) if data.len() + c.len() <= max => data.extend_from_slice(&c),
+            Ok(Some(_)) => return Err(StatusCode::PAYLOAD_TOO_LARGE),
+            Ok(None) => return Ok(data),
+            Err(e) => return Err(e.status()),
+        }
+    }
 }
 
 /// The acts waiting for the person's word, oldest first.
@@ -1618,13 +1669,15 @@ async fn task_stop(State(site): State<Arc<Site>>, headers: HeaderMap) -> Respons
 
 /// A page asks to be let in: the person gets its code over Matrix, the
 /// page gets the code to show and a secret to wait with.
-async fn ask(State(site): State<Arc<Site>>) -> Response {
-    {
-        let mut last = site.gate.last.lock().unwrap();
-        if last.is_some_and(|t| t.elapsed() < ASK_GAP) {
-            return StatusCode::TOO_MANY_REQUESTS.into_response();
-        }
-        *last = Some(Instant::now());
+async fn ask(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    // nginx names the address (recommendedProxySettings); the site listens
+    // on loopback only, so no one else can.
+    let from = headers
+        .get("x-real-ip")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    if !site.gate.may_ask(from) {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
     }
     let (Ok(secret), Ok(code)) = (token(), code()) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -1834,6 +1887,14 @@ mod tests {
         assert_eq!(shown.len(), 3);
         assert_eq!(shown[1].1.as_deref(), Some("6:15 or 7:30?"));
         assert_eq!(shown[2], (None, None));
+    }
+
+    #[test]
+    fn one_browser_asking_shuts_out_only_itself() {
+        let gate = Gate::default();
+        assert!(gate.may_ask("100.64.0.1"));
+        assert!(!gate.may_ask("100.64.0.1"));
+        assert!(gate.may_ask("100.64.0.2"));
     }
 
     fn asked(gate: &Gate, secret: &str, event: &str) {

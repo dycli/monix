@@ -987,7 +987,17 @@
               locations =
                 (
                   site.members
-                  |> map (m: nameValuePair "/${m}/" { alias = "${pages}/${m}/"; })
+                  # Sandboxed as the yeoman serves them (PAGE_SANDBOX in
+                  # site.rs): a page here shares the chat's address.
+                  |> map (
+                    m:
+                    nameValuePair "/${m}/" {
+                      alias = "${pages}/${m}/";
+                      extraConfig = ''
+                        add_header Content-Security-Policy "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads" always;
+                      '';
+                    }
+                  )
                   |> lib.attrsets.listToAttrs
                 )
                 # Sign-in asks in the first one's Matrix room, whichever
