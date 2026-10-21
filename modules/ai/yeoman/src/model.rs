@@ -8,9 +8,9 @@ use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Read, Write};
 
 use crate::keep;
-use std::process::{Command, Stdio};
-use std::sync::Arc;
+use std::process::{ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -75,6 +75,59 @@ pub struct Run {
     /// Where each tool call and its result go as they happen, for a door
     /// that shows the work as well as the answer.
     pub steps: Option<Steps>,
+    /// Where the person's next words go while this turn runs.
+    pub steer: Option<Arc<Steer>>,
+}
+
+/// The way into the turn under way: words written here reach the model at
+/// its next step, as Claude Code takes a message typed while it works. It
+/// is open from the turn's first words until its answer is out.
+#[derive(Default)]
+pub struct Steer {
+    into: Mutex<Option<ChildStdin>>,
+}
+
+impl Steer {
+    /// Hands `text` to the turn under way; false when none will read it,
+    /// and it should wait its turn instead.
+    pub fn send(&self, text: &str) -> bool {
+        let mut into = self.into.lock().unwrap();
+        let Some(stdin) = into.as_mut() else {
+            return false;
+        };
+        let line = user(vec![json!({"type": "text", "text": text})]);
+        if stdin
+            .write_all(line.as_bytes())
+            .and_then(|()| stdin.flush())
+            .is_err()
+        {
+            *into = None;
+            return false;
+        }
+        true
+    }
+
+    /// Whether a turn is under way to take words.
+    pub fn running(&self) -> bool {
+        self.into.lock().unwrap().is_some()
+    }
+
+    fn open(&self, stdin: ChildStdin) {
+        *self.into.lock().unwrap() = Some(stdin);
+    }
+
+    /// Ends the input: the CLI exits once it has answered what it has.
+    fn close(&self) {
+        self.into.lock().unwrap().take();
+    }
+}
+
+/// One user message as a stream-json input line.
+fn user(content: Vec<Value>) -> String {
+    format!(
+        "{}\n",
+        json!({"type": "user", "message": {"role": "user", "content": content}})
+    )
 }
 
 pub type Steps = Arc<dyn Fn(Step) + Send + Sync>;
@@ -253,13 +306,22 @@ impl Model for Claude {
                                "data": B64.encode(data)}}),
         }));
         content.push(json!({"type": "text", "text": prompt}));
-        let line = json!({"type": "user", "message": {"role": "user", "content": content}});
+        let line = user(content);
         let mut stdin = child.stdin.take().unwrap();
-        let line = format!("{line}\n");
-        let writer = thread::spawn(move || stdin.write_all(line.as_bytes()));
+        // Written from a thread, as the files can outgrow the pipe; then,
+        // with a steer, the input stays open for the person's next words.
+        let steer = run.steer.clone();
+        let writer = thread::spawn(move || {
+            stdin.write_all(line.as_bytes())?;
+            if let Some(s) = steer {
+                s.open(stdin);
+            }
+            Ok::<_, std::io::Error>(())
+        });
         let stdout = child.stdout.take().unwrap();
         let keep = self.keep.clone();
         let steps = run.steps.clone();
+        let steer = run.steer.clone();
         let reader = thread::spawn(move || -> std::io::Result<(String, Option<String>)> {
             let mut out = String::new();
             // The reply's last computer tool, once it drives the computer.
@@ -279,6 +341,15 @@ impl Model for Claude {
                 if let Some(show) = &steps {
                     self::steps(&line).into_iter().for_each(|s| show(s));
                 }
+                // Words that came after the answer was out wait for the
+                // next turn; ones already written the CLI answers next.
+                if let Some(s) = &steer
+                    && line.contains(r#""result""#)
+                    && serde_json::from_str::<Value>(&line)
+                        .is_ok_and(|ev| ev.get("type").and_then(Value::as_str) == Some("result"))
+                {
+                    s.close();
+                }
                 out.push_str(&line);
                 out.push('\n');
             }
@@ -292,6 +363,9 @@ impl Model for Claude {
             }
             let stopped = run.stop.as_ref().is_some_and(|s| s.load(Ordering::Relaxed));
             if stopped || deadline.is_some_and(|d| Instant::now() > d) {
+                if let Some(s) = &run.steer {
+                    s.close();
+                }
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(if stopped {
@@ -303,6 +377,9 @@ impl Model for Claude {
             thread::sleep(Duration::from_millis(100));
         };
         let _ = writer.join();
+        if let Some(s) = &run.steer {
+            s.close();
+        }
         let (out, used) = reader.join().unwrap().map_err(|e| e.to_string())?;
         // A reply that ends by closing the browser lets it go; otherwise the
         // lease runs on from the reply's last use.
@@ -316,11 +393,23 @@ impl Model for Claude {
                 eprintln!("yeoman: {e}");
             }
         }
-        let result = out
+        // Words that reached the CLI just as an answer ended get one of
+        // their own: each result is an answer, the last one holding the
+        // call's usage.
+        let results: Vec<Value> = out
             .lines()
             .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-            .find(|ev| ev.get("type").and_then(Value::as_str) == Some("result"));
-        let ev = match result {
+            .filter(|ev| ev.get("type").and_then(Value::as_str) == Some("result"))
+            .collect();
+        let answers: Vec<&str> = results
+            .iter()
+            .filter(|ev| ev.get("is_error") != Some(&Value::Bool(true)))
+            .filter_map(|ev| ev.get("result").and_then(Value::as_str))
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .collect();
+        let answers = answers.join("\n\n");
+        let ev = match results.last() {
             Some(ev) => ev,
             None => {
                 let err = errors.join().unwrap_or_default();
@@ -341,10 +430,10 @@ impl Model for Claude {
             );
         }
         let text = ev.get("result").and_then(Value::as_str).unwrap_or("");
-        if ev.get("is_error") == Some(&Value::Bool(true)) {
+        if ev.get("is_error") == Some(&Value::Bool(true)) && answers.is_empty() {
             return Err(format!("claude: {}", tail(text)));
         }
-        Ok(text.trim().to_owned())
+        Ok(answers)
     }
 
     fn tools(&self) -> bool {

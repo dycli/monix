@@ -705,7 +705,8 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
 function Trailing({ typing, stop, cardOpen, close, call }: { typing: boolean; stop: () => Promise<void>; cardOpen: boolean; close: () => void; call?: () => void }) {
   const text = useAuiState((s) => s.composer.text);
   const round = "grid size-[38px] shrink-0 place-items-center rounded-full";
-  if (typing)
+  // Words typed while a turn runs join it, so Send stands in for Stop.
+  if (typing && !text.trim())
     return (
       <button type="button" onClick={() => void stop()} aria-label="Stop" title="Stop" className={`${round} border border-frame text-ink hover:bg-hover`}>
         <span className="size-3 rounded-[2px] bg-current" />

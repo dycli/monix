@@ -31,7 +31,7 @@ use book::Book;
 use chrono::Local;
 use door::{Door, Message, Typing, send_images};
 use hippo::Hippo;
-use model::{Attachment, Model, Run, Steps};
+use model::{Attachment, Model, Run, Steer, Steps};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -280,6 +280,7 @@ struct Turn {
     cards: bool,
     /// The question the task waits on, which this turn may answer.
     waiting: Option<String>,
+    steer: Option<Arc<Steer>>,
 }
 
 fn answer(
@@ -296,6 +297,7 @@ fn answer(
         steps,
         cards,
         waiting,
+        steer,
     } = turn;
     let view = hippo.view()?;
     // Photos and PDFs go to the model as they are; text is inlined.
@@ -447,6 +449,7 @@ fn answer(
             stop,
             endless,
             steps,
+            steer,
         },
     )?;
     if reply.is_empty() {
@@ -456,6 +459,34 @@ fn answer(
     Ok(reply)
 }
 
+/// Words the person sends while a turn runs join it, as Claude Code takes
+/// a message typed while it works; "stop" alone stops it. False when there
+/// is no turn to take them, or they bring files: then they wait their turn.
+async fn steered<D: Door>(
+    steer: &Steer,
+    stop: &AtomicBool,
+    hippo: &Arc<Hippo>,
+    msg: &Message<D>,
+) -> bool {
+    let text = msg.text.trim();
+    if !msg.files.is_empty() || text.is_empty() {
+        return false;
+    }
+    if text.eq_ignore_ascii_case("stop") && steer.running() {
+        stop.store(true, Ordering::Relaxed);
+        return true;
+    }
+    if !steer.send(&format!("(sent while you were working) {text}")) {
+        return false;
+    }
+    let (h, t) = (hippo.clone(), text.to_owned());
+    let logged = tokio::task::spawn_blocking(move || h.log("user", &t)).await;
+    if let Ok(Err(e)) = logged {
+        eprintln!("yeoman: {e}");
+    }
+    true
+}
+
 async fn reply<D: Door>(
     door: D,
     hippo: Arc<Hippo>,
@@ -463,6 +494,7 @@ async fn reply<D: Door>(
     msg: Message<D>,
     state: &Path,
     stop: Arc<AtomicBool>,
+    steer: Arc<Steer>,
 ) {
     // A stop asked for between turns is for none of them.
     stop.store(false, Ordering::Relaxed);
@@ -500,6 +532,7 @@ async fn reply<D: Door>(
                     steps: Some(steps),
                     cards: D::CARDS,
                     waiting,
+                    steer: Some(steer),
                     ..Turn::default()
                 },
             )
@@ -1050,6 +1083,8 @@ async fn run() -> Result<(), String> {
     let turn = Arc::new(tokio::sync::Mutex::new(()));
     // Stops the turn under way, whichever door it came from.
     let stop = Arc::new(AtomicBool::new(false));
+    // Carries the person's words into it.
+    let steer = Arc::new(Steer::default());
     if let (Ok(addr), Some(web)) = (var("YEOMAN_SITE"), web.clone()) {
         let (messages, mut from_web) = mpsc::unbounded_channel();
         let (verdicts, mut clicks) = mpsc::unbounded_channel();
@@ -1102,15 +1137,38 @@ async fn run() -> Result<(), String> {
             turn.clone(),
             stop.clone(),
         );
+        let (queue, mut queued) = mpsc::unbounded_channel();
+        let (sr, hr) = (steer.clone(), hippo.clone());
         tokio::spawn(async move {
             while let Some((door, msg)) = from_web.recv().await {
+                if !steered(&sr, &st, &hr, &msg).await {
+                    let _ = queue.send((door, msg));
+                }
+            }
+        });
+        let (st, sr) = (stop.clone(), steer.clone());
+        tokio::spawn(async move {
+            while let Some((door, msg)) = queued.recv().await {
                 let _turn = t.lock().await;
-                reply(door, h.clone(), m.clone(), msg, &s, st.clone()).await;
+                reply(door, h.clone(), m.clone(), msg, &s, st.clone(), sr.clone()).await;
             }
         });
     }
+    let (queue, mut queued) = mpsc::unbounded_channel();
+    let (st, sr, hr, wr) = (stop.clone(), steer.clone(), hippo.clone(), web.clone());
     tokio::spawn(async move {
         while let Some((door, msg)) = inbox.recv().await {
+            if steered(&sr, &st, &hr, &msg).await {
+                if let Some(w) = &wr {
+                    w.heard(&msg.id, &msg.text);
+                }
+            } else {
+                let _ = queue.send((door, msg));
+            }
+        }
+    });
+    tokio::spawn(async move {
+        while let Some((door, msg)) = queued.recv().await {
             let _turn = turn.lock().await;
             // The pages watch a Matrix turn as it happens: the words in,
             // the work, the answer.
@@ -1133,6 +1191,7 @@ async fn run() -> Result<(), String> {
                 msg,
                 &state,
                 stop.clone(),
+                steer.clone(),
             )
             .await;
         }
