@@ -132,12 +132,12 @@ function ThemeButton({ className = "" }: { className?: string }) {
 }
 
 type Persona = { unit: string; name: string };
-type Me = { personas: Persona[]; voice: string | null; voices: string[] };
+type Me = { name: string; personas: Persona[]; voice: string | null };
 
 // Who answers here, asked once for the switcher and the speak buttons.
 const ME: Promise<Me> = fetch("/api/me")
   .then((r) => (r.ok ? r.json() : Promise.reject()))
-  .catch(() => ({ personas: [], voice: null, voices: [] }));
+  .catch(() => ({ name: "", personas: [], voice: null }));
 
 function useMe() {
   const [me, setMe] = useState<Me | null>(null);
@@ -321,6 +321,15 @@ function Settings() {
   const voice = me?.voice;
   const [choice, setChoice] = useVoiceChoice();
   const [speed, setSpeed] = useVoiceSpeed();
+  const voices = useVoices(open && !!voice);
+  const [hearing, setHearing] = useState(false);
+  const picked = choice ?? voice;
+  const hear = () => {
+    if (hearing) return stop();
+    if (!picked) return;
+    setHearing(true);
+    play(`Hi, I'm ${me?.name}. This is how I sound.`, picked, () => setHearing(false));
+  };
   const row = "flex w-full items-center justify-between gap-6 px-4 py-2.5 text-left text-[15px] hover:bg-hover disabled:opacity-40 disabled:hover:bg-transparent";
   const note = "text-[13px] text-mid";
   return (
@@ -362,20 +371,39 @@ function Settings() {
               </button>
             )}
             {voice && (
-              <label className={row}>
-                Voice
-                <select
-                  value={choice ?? voice}
-                  onChange={(e) => setChoice(e.target.value === voice ? null : e.target.value)}
-                  className="bg-transparent text-right text-[13px] text-mid capitalize outline-none"
-                >
-                  {(me?.voices ?? []).map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-[15px]">
+                <label htmlFor="voice">Voice</label>
+                <span className="flex items-center gap-1">
+                  <select
+                    id="voice"
+                    value={picked ?? ""}
+                    onChange={(e) => {
+                      stop();
+                      setChoice(e.target.value === voice ? null : e.target.value);
+                    }}
+                    className="max-w-36 bg-transparent text-right text-[13px] text-mid capitalize outline-none"
+                  >
+                    {/* The assistant's own and the picked one stay listed while xAI's list loads, or if it fails. */}
+                    {[...new Set([voice!, ...(picked ? [picked] : []), ...voices.map((v) => v.id)])].map((id) => (
+                      <option key={id} value={id}>
+                        {voices.find((v) => v.id === id)?.name ?? id}
+                        {id === voice ? " (default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={hear}
+                    aria-label={hearing ? "Stop the sample" : "Hear this voice"}
+                    title={hearing ? "Stop the sample" : "Hear this voice"}
+                    className="grid size-7 place-items-center rounded-md text-mid hover:bg-hover hover:text-ink"
+                  >
+                    <svg viewBox="0 0 24 24" className={`size-[15px] ${hearing ? "animate-pulse" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      {hearing ? <rect x="6" y="6" width="12" height="12" rx="1.5" /> : <path d="m7 4 12 8-12 8z" />}
+                    </svg>
+                  </button>
+                </span>
+              </div>
             )}
             {voice && (
               <label className="block px-4 py-2.5 text-[15px]">
@@ -964,9 +992,10 @@ function stop() {
   stopping?.();
 }
 
-function speech(text: string) {
-  const voice = voiceChoice();
-  const id = `${voice}\n${text}`;
+const speechId = (text: string, voice: string | null) => `${voice}\n${text}`;
+
+function speech(text: string, voice: string | null) {
+  const id = speechId(text, voice);
   let url = spoken.get(id);
   if (!url) {
     url = fetch("/api/speak", {
@@ -980,6 +1009,47 @@ function speech(text: string) {
     url.catch(() => spoken.delete(id));
   }
   return url;
+}
+
+/** Plays `text` in `voice` alone, calling `done` when it ends, fails or is
+ * stopped: the sample in Settings. */
+async function play(text: string, voice: string, done: () => void) {
+  stop();
+  const end = () => {
+    if (stopping === end) stopping = null;
+    done();
+  };
+  stopping = end;
+  try {
+    const src = await speech(text, voice);
+    if (stopping !== end) return;
+    player.src = src;
+    player.playbackRate = voiceSpeed();
+    player.onended = end;
+    player.onerror = () => {
+      spoken.delete(speechId(text, voice));
+      end();
+    };
+    await player.play();
+  } catch {
+    if (stopping === end) end();
+  }
+}
+
+type Voice = { id: string; name: string };
+let voiceList: Promise<Voice[]> | null = null;
+
+/** xAI's voices, asked once `want` turns true; empty until then or if it fails. */
+function useVoices(want: boolean) {
+  const [voices, setVoices] = useState<Voice[]>([]);
+  useEffect(() => {
+    if (!want) return;
+    voiceList ??= fetch("/api/voices").then((r) => (r.ok ? r.json() : Promise.reject(r.status)));
+    voiceList.then(setVoices, () => {
+      voiceList = null;
+    });
+  }, [want]);
+  return voices;
 }
 
 /** Reads the answer aloud in the assistant's voice; pressed again, stops.
@@ -999,15 +1069,16 @@ function Speak() {
     };
     stopping = done;
     setState("loading");
+    const picked = voiceChoice();
     try {
-      const src = await speech(text);
+      const src = await speech(text, picked);
       if (stopping !== done) return;
       player.src = src;
       player.playbackRate = voiceSpeed();
       player.onended = done;
       // A reading cut off mid-play is not kept; the next press makes it afresh.
       player.onerror = () => {
-        spoken.delete(text);
+        spoken.delete(speechId(text, picked));
         done();
       };
       await player.play();
@@ -1016,7 +1087,7 @@ function Speak() {
     } catch {
       // A play cut short by Stop, or by another reading, is no failure.
       if (stopping !== done) return;
-      spoken.delete(text);
+      spoken.delete(speechId(text, picked));
       done();
     }
   };

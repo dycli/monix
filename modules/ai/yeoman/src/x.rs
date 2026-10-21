@@ -33,6 +33,7 @@ const SCOPE: &str = "openid profile email offline_access grok-cli:access api:acc
 const API: &str = "https://api.x.ai/v1/responses";
 const TTS_HOST: &str = "api.x.ai";
 const SECRETS: &str = "https://api.x.ai/v1/realtime/client_secrets";
+const VOICES: &str = "https://api.x.ai/v1/tts/voices";
 const IMAGES: &str = "https://api.x.ai/v1/images/generations";
 const IMAGE_MODEL: &str = "grok-imagine-image-2.0";
 /// The longest description the image tool sends.
@@ -40,11 +41,6 @@ const DRAW_MAX: usize = 4000;
 /// xAI's limit on one text to speak, in characters.
 pub const SPEAK_MAX: usize = 60_000;
 
-/// xAI's built-in voices, each good for reading aloud and for calls, as
-/// its text to speech docs list them; a page may pick any.
-pub const VOICES: [&str; 9] = [
-    "ara", "eve", "leo", "rex", "sal", "carina", "helix", "orion", "zagan",
-];
 const MODEL: &str = "grok-4.7";
 const TIMEOUT: Duration = Duration::from_secs(300);
 /// Refresh the access token this long before it expires.
@@ -71,8 +67,8 @@ pub struct Ask {
     pub to: Option<String>,
 }
 
-/// What the socket carries: text to speak, a voice pass, a picture to
-/// draw, or else a search.
+/// What the socket carries: text to speak, a voice pass, the voices, a
+/// picture to draw, or else a search.
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 enum Request {
@@ -83,6 +79,10 @@ enum Request {
     /// A pass to Grok Voice good for this many seconds.
     Secret {
         secret: u64,
+    },
+    /// xAI's built-in voices.
+    Voices {
+        voices: bool,
     },
     /// A picture from this description; the reply carries it as base64.
     Draw {
@@ -155,6 +155,19 @@ pub fn secret(sock: &Path, seconds: u64) -> Result<Value, String> {
     call(sock, &serde_json::to_vec(&ask).map_err(|e| e.to_string())?)
 }
 
+/// The site's side: xAI's built-in voices, `[{id, name}]`, good for
+/// reading aloud and for calls alike.
+pub fn voices(sock: &Path) -> Result<Value, String> {
+    let ask = Request::Voices { voices: true };
+    Ok(call(sock, &serde_json::to_vec(&ask).map_err(|e| e.to_string())?)?["voices"].take())
+}
+
+/// Whether `voice` could name one of xAI's voices: a built-in's name or a
+/// custom voice's 8-character id. Speech asks only for these.
+pub fn voice_ok(voice: &str) -> bool {
+    !voice.is_empty() && voice.len() <= 32 && voice.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
 /// One request over the socket; its reply, unless it is an error.
 fn call(sock: &Path, body: &[u8]) -> Result<Value, String> {
     let mut s = UnixStream::connect(sock).map_err(|e| format!("x: {e}"))?;
@@ -195,6 +208,7 @@ pub fn serve() -> Result<(), String> {
             return frame(out, kind, body.as_bytes()).map_err(|e| e.to_string());
         }
         Ok(Request::Secret { secret }) => client_secret(secret),
+        Ok(Request::Voices { .. }) => list_voices().map(|v| json!({ "voices": v })),
         Ok(Request::Draw { draw }) => imagine(&draw).map(|image| json!({ "image": image })),
         Err(e) => Err(e),
     };
@@ -262,7 +276,7 @@ fn tts(text: &str, voice: &str, out: &mut impl Write) -> Result<(), String> {
     if text.chars().count() > SPEAK_MAX {
         return Err(format!("Too long to speak: over {SPEAK_MAX} characters."));
     }
-    if voice.is_empty() || !voice.bytes().all(|b| b.is_ascii_alphanumeric()) {
+    if !voice_ok(voice) {
         return Err(format!("xai tts: bad voice {voice:?}"));
     }
     let token = token()?;
@@ -370,6 +384,36 @@ fn client_secret(seconds: u64) -> Result<Value, String> {
     }
     eprintln!("yeoman-x: voice pass for {seconds}s");
     Ok(json!({"value": reply["value"], "expires_at": reply["expires_at"]}))
+}
+
+/// xAI's built-in voices as `[{id, name}]`, in its order.
+fn list_voices() -> Result<Value, String> {
+    let token = token()?;
+    let mut resp = agent()
+        .get(VOICES)
+        .header("Authorization", &format!("Bearer {token}"))
+        .call()
+        .map_err(|e| format!("xai voices: {e}"))?;
+    let status = resp.status().as_u16();
+    let reply: Value = resp
+        .body_mut()
+        .read_json()
+        .map_err(|e| format!("xai voices: {status}: {e}"))?;
+    let Some(all) = reply["voices"].as_array() else {
+        let msg = reply["error"]["message"]
+            .as_str()
+            .or(reply["error"].as_str())
+            .unwrap_or("no voices");
+        return Err(format!("xai voices: {status}: {msg}"));
+    };
+    Ok(all
+        .iter()
+        .filter_map(|v| {
+            let id = v["voice_id"].as_str().filter(|id| voice_ok(id))?;
+            let name = v["name"].as_str().unwrap_or(id);
+            Some(json!({ "id": id, "name": name }))
+        })
+        .collect())
 }
 
 /// One picture from Grok Imagine, base64 as xAI sends it (a JPEG).

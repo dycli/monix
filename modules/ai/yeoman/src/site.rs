@@ -473,6 +473,8 @@ struct Site {
     x: Option<PathBuf>,
     /// Replies being read aloud now, by key.
     speaking: Mutex<HashMap<String, tokio::sync::watch::Sender<Sofar>>>,
+    /// xAI's voices as last asked, and when.
+    voices: Mutex<Option<(std::time::Instant, serde_json::Value)>>,
 }
 
 /// Who answers here, and every assistant the proxy serves on this host,
@@ -488,8 +490,6 @@ struct Who {
     /// The xAI voice replies are read aloud in: YEOMAN_VOICE, none when
     /// unset or without yeoman-x.
     voice: Option<String>,
-    /// The voices a page may read in instead, when it has a voice.
-    voices: &'static [&'static str],
 }
 
 #[derive(Serialize)]
@@ -509,7 +509,6 @@ impl Who {
             voice: std::env::var("YEOMAN_VOICE")
                 .ok()
                 .filter(|_| std::env::var_os("YEOMAN_X").is_some()),
-            voices: &crate::x::VOICES,
         }
     }
 }
@@ -774,6 +773,7 @@ pub async fn serve(
         index: root.join("index.html"),
         x: std::env::var_os("YEOMAN_X").map(PathBuf::from),
         speaking: Mutex::default(),
+        voices: Mutex::default(),
     });
     if let Some(push) = &site.push {
         tokio::spawn(ring(site.web.shown.subscribe(), push.clone()));
@@ -810,6 +810,7 @@ pub async fn serve(
         .route("/api/file/{name}", get(kept))
         .route("/api/speak", post(speak))
         .route("/api/speak/{key}", get(spoken))
+        .route("/api/voices", get(voices))
         .route("/api/call", post(call))
         .route("/api/call/end", post(call_end))
         .route("/api/events", get(events))
@@ -1110,7 +1111,7 @@ async fn speak(
         return StatusCode::NOT_FOUND.into_response();
     };
     let voice = match picked {
-        Some(v) if crate::x::VOICES.contains(&v.as_str()) => v,
+        Some(v) if crate::x::voice_ok(&v) => v,
         Some(_) => return StatusCode::BAD_REQUEST.into_response(),
         None => own,
     };
@@ -1240,6 +1241,36 @@ fn follow(
 /// How long a call's pass to Grok Voice lasts. It only opens the call,
 /// which runs on once open.
 const CALL_PASS: u64 = 120;
+
+/// How long xAI's voice list is trusted before it is asked again.
+const VOICES_FRESH: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+
+/// The voices the page may pick for reading aloud and calls, `[{id, name}]`,
+/// as xAI lists them; only where the assistant has a voice.
+async fn voices(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let (Some(sock), Some(_)) = (site.x.clone(), site.who.voice.as_ref()) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if let Some((at, list)) = &*site.voices.lock().unwrap()
+        && at.elapsed() < VOICES_FRESH
+    {
+        return Json(list.clone()).into_response();
+    }
+    match tokio::task::spawn_blocking(move || crate::x::voices(&sock)).await {
+        Ok(Ok(list)) => {
+            *site.voices.lock().unwrap() = Some((std::time::Instant::now(), list.clone()));
+            Json(list).into_response()
+        }
+        Ok(Err(e)) => {
+            eprintln!("yeoman: site voices: {e}");
+            (StatusCode::BAD_GATEWAY, e).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
 
 /// What the page needs to start a call: a pass to Grok Voice, the voice,
 /// and the instructions with the newest of the memory. Only where the
