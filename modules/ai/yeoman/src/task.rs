@@ -17,10 +17,6 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The most agents at work at once, so a spawn can't run away with the
-/// subscription.
-pub const MAX: usize = 4;
-
 /// The most of a tool's result an agent's log keeps; the model read it
 /// whole while it worked.
 const ECHO_MAX: usize = 4000;
@@ -67,12 +63,6 @@ fn put(p: &Path, text: &str) -> Result<(), String> {
 
 /// Starts an agent on `task`, returning its name.
 pub fn spawn(state: &Path, task: &str) -> Result<String, String> {
-    let at_work = working(state).len();
-    if at_work >= MAX {
-        return Err(format!(
-            "{at_work} agents are at work, the most at once; wait for a report."
-        ));
-    }
     fs::create_dir_all(root(state)).map_err(|e| e.to_string())?;
     let taken = |n: &str| root(state).join(n).exists();
     let name = (0..)
@@ -303,10 +293,6 @@ mod tests {
         cancel(&state, &b).unwrap();
         assert!(working(&state).iter().all(|(n, _)| n != &b));
         assert!(tell(&state, "../x", "hi").is_err() && cancel(&state, "Zed").is_err());
-        for t in ["c", "d", "e"] {
-            spawn(&state, t).unwrap();
-        }
-        assert!(spawn(&state, "one too many").is_err());
         fs::remove_dir_all(&state).unwrap();
     }
 }
