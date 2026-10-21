@@ -16,7 +16,7 @@
       inherit (lib) types;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe';
-      inherit (lib.modules) mkBefore mkIf;
+      inherit (lib.modules) mkBefore mkForce mkIf;
       inherit (lib.options) mkOption;
 
       cfg = config.media;
@@ -226,23 +226,22 @@
         systemd.services.calibre-web.serviceConfig = calibreWebFence;
 
         # The media group lets every service write the whole tree, so each
-        # unit is narrowed to the paths its job needs. SABnzbd and Bazarr
-        # also take the vendor preset, shipping no isolation of their own.
+        # unit is narrowed to the paths its job needs. SABnzbd also takes the
+        # vendor preset, shipping no isolation of its own.
         systemd.services.sabnzbd.serviceConfig =
           egressFence
           // hardened.vendor
           // {
             ReadWritePaths = singleton "${mediaRoot}/downloads";
           };
-        systemd.services.bazarr.serviceConfig =
-          egressFence
-          // hardened.vendor
-          // {
-            ReadWritePaths = [
-              "${mediaRoot}/library"
-              "/var/lib/bazarr" # its dataDir; the module declares no StateDirectory
-            ];
-          };
+        # Bazarr's module ships its own hardening but only ProtectSystem=full.
+        systemd.services.bazarr.serviceConfig = egressFence // {
+          ProtectSystem = mkForce "strict";
+          ReadWritePaths = [
+            "${mediaRoot}/library"
+            "/var/lib/bazarr" # its dataDir; the module declares no StateDirectory
+          ];
+        };
         systemd.services.sonarr.serviceConfig = egressFence // {
           ProtectSystem = "strict";
           ReadWritePaths = [
