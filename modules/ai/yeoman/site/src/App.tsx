@@ -1766,11 +1766,15 @@ function Screen({ url, shape = 16 / 9, on, driving, close, pane }: { url: string
   const link = "rounded-full px-3 py-1 hover:bg-hover hover:text-ink";
   return (
     <section
-      className={`rise overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift ${pane ? "my-4 mr-4 flex w-[58%] shrink-0 flex-col" : "mb-3"}`}
+      className={`rise overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift ${pane ? "my-4 mr-4 flex w-[58%] shrink-0 flex-col" : "mx-auto mb-3"}`}
+      // Inline, the card takes the width of the screen's own shape at no
+      // more than 42vh tall, so the frame fills it edge to edge and noVNC
+      // scales it with no bands.
+      style={pane ? undefined : { width: `min(100%, ${42 * shape}vh)` }}
       aria-label="The computer's screen"
     >
       <div className={`${bar} justify-between`}>
-        <span className="flex items-center gap-2 pl-2.5 font-medium text-ink/80">
+        <span className="flex min-w-0 items-center gap-2 truncate pl-2.5 font-medium text-ink/80">
           <span className="size-2 animate-pulse rounded-full bg-accent" /> On the computer
         </span>
         <span className="flex">
@@ -1793,10 +1797,8 @@ function Screen({ url, shape = 16 / 9, on, driving, close, pane }: { url: string
         <iframe
           src={`${url}${sep}view_only=1`}
           title="The computer's screen"
-          className={`block border-0 border-t border-hair bg-ink ${pane ? "min-h-0 w-full flex-1" : "mx-auto"}`}
-          // Inline, the frame takes the screen's own shape, as wide as fits
-          // under 42vh, so noVNC scales it with no bands.
-          style={pane ? undefined : { aspectRatio: shape, width: `min(100%, ${42 * shape}vh)` }}
+          className={`block w-full border-0 border-t border-hair bg-ink ${pane ? "min-h-0 flex-1" : ""}`}
+          style={pane ? undefined : { aspectRatio: shape }}
         />
       )}
     </section>
