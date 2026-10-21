@@ -7,7 +7,8 @@
   vncPort = 5900;
   # The nth screen page on the host's loopback, behind the proxy.
   screenPort = index: 6090 + index;
-  # Taller than 1080, and as common on laptops and office monitors.
-  screen = "1920x1200";
+  # 4:3, the tallest landscape shape: the most page per screenshot while a
+  # 1920-wide capture still scales down legibly for the model.
+  screen = "1920x1440";
   renderNode = "/dev/dri/renderD128";
 }
