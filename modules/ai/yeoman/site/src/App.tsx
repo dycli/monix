@@ -379,15 +379,14 @@ function Settings() {
                     value={picked ?? ""}
                     onChange={(e) => {
                       stop();
-                      setChoice(e.target.value === voice ? null : e.target.value);
+                      setChoice(e.target.value);
                     }}
                     className="max-w-36 bg-transparent text-right text-[13px] text-mid capitalize outline-none"
                   >
-                    {/* The assistant's own and the picked one stay listed while xAI's list loads, or if it fails. */}
-                    {[...new Set([voice!, ...(picked ? [picked] : []), ...voices.map((v) => v.id)])].map((id) => (
+                    {/* The shown voice stays listed while xAI's list loads, or if it fails. */}
+                    {[...new Set([...voices.map((v) => v.id), ...(picked ? [picked] : [])])].map((id) => (
                       <option key={id} value={id}>
                         {voices.find((v) => v.id === id)?.name ?? id}
-                        {id === voice ? " (default)" : ""}
                       </option>
                     ))}
                   </select>
