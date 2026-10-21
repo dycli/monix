@@ -1766,11 +1766,7 @@ function Screen({ url, shape = 16 / 9, on, driving, close, pane }: { url: string
   const link = "rounded-full px-3 py-1 hover:bg-hover hover:text-ink";
   return (
     <section
-      className={`rise overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift ${pane ? "my-4 mr-4 flex w-[58%] shrink-0 flex-col" : "mx-auto mb-3"}`}
-      // Inline, the card takes the width of the screen's own shape at no
-      // more than 42vh tall, so the frame fills it edge to edge and noVNC
-      // scales it with no bands.
-      style={pane ? undefined : { width: `min(100%, ${42 * shape}vh)` }}
+      className={`rise overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift ${pane ? "my-4 mr-4 flex w-[58%] shrink-0 flex-col" : "mb-3"}`}
       aria-label="The computer's screen"
     >
       <div className={`${bar} justify-between`}>
@@ -1798,7 +1794,10 @@ function Screen({ url, shape = 16 / 9, on, driving, close, pane }: { url: string
           src={`${url}${sep}view_only=1`}
           title="The computer's screen"
           className={`block w-full border-0 border-t border-hair bg-ink ${pane ? "min-h-0 flex-1" : ""}`}
-          style={pane ? undefined : { aspectRatio: shape }}
+          // Inline, the frame spans the card in the screen's own shape, so
+          // on a phone noVNC scales it with no bands; only a window too
+          // short for that caps it, and noVNC letterboxes.
+          style={pane ? undefined : { aspectRatio: shape, maxHeight: "55vh" }}
         />
       )}
     </section>
