@@ -44,6 +44,12 @@ pub enum Event {
     Unparsed(String),
 }
 
+/// A subagent's report as the timeline logs it, as Unii does: who sent it,
+/// its words, and how to open its whole chat.
+pub fn report(name: &str, text: &str) -> String {
+    format!("[{name}]\n{}\n\nFull chat: hippo zoom {name}", text.trim())
+}
+
 pub fn str_at<'a>(v: &'a Value, pointer: &str) -> Option<&'a str> {
     v.pointer(pointer).and_then(Value::as_str)
 }

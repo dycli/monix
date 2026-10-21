@@ -25,6 +25,8 @@ const USAGE: &str = "\
 Usage:
   hippo view               the whole history as one-line summaries
   hippo zoom <id> <n>      open line id+n; n = 1 prints message id whole
+  hippo zoom <agent> [at]  a subagent's whole chat (its report names it),
+                           a page from character at
   hippo date <id>          date and time of message id
   hippo search <regex>     search every message, word for word
   hippo tail <n>           the last n messages whole, as JSON lines
@@ -193,6 +195,13 @@ fn main() -> ExitCode {
             [addr, url] => door::run(addr, url, ask).map(|()| String::new()),
             _ => Err(USAGE.into()),
         },
+        // An agent's chat is read from its transcript, not the store.
+        "zoom" if rest.first().is_some_and(|a| a.parse::<u64>().is_err()) => {
+            let at = rest
+                .get(1)
+                .map_or(Ok(0), |a| a.parse().map_err(|_| USAGE.to_owned()));
+            at.and_then(|at| code::source::claude::agent(&sources().claude, &rest[0], at))
+        }
         "view" | "zoom" | "date" | "search" | "tail" | "chat" | "status" | "fold" | "pause"
         | "resume" => ask(cmd, rest),
         "help" | "-h" | "--help" => Ok(USAGE.into()),

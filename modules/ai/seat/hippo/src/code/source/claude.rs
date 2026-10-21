@@ -1,10 +1,15 @@
 //! Claude Code: `~/.claude/projects/<project>/<session>.jsonl`, one entry
 //! per line, one content block per assistant entry. Subagents write their
-//! own files one directory deeper; those are never read.
+//! own files one directory deeper, `<session>/subagents/agent-<id>.jsonl`:
+//! those stay out of the timeline, which gets only each one's report, and
+//! are read whole when asked for (`agent`).
 
-use super::{Event, Item, call_text, iso, runs_memory, str_at, text_of};
+use super::{Event, Item, call_text, iso, report, runs_memory, str_at, text_of};
+use crate::memory::mask::mask;
 use crate::memory::store::{Kind, Src};
 use serde_json::Value;
+use std::fs;
+use std::path::PathBuf;
 
 /// Top-level entry types that carry nothing for the log.
 const IGNORED: &[&str] = &[
@@ -45,15 +50,20 @@ fn interrupted(text: &str) -> bool {
 }
 
 pub fn parse(r: &Value, session: &str) -> Vec<Event> {
+    if r.get("isSidechain") == Some(&Value::Bool(true)) {
+        return Vec::new();
+    }
+    entry(r, session)
+}
+
+/// An entry of the seat's chat or of a subagent's.
+pub fn entry(r: &Value, session: &str) -> Vec<Event> {
     let mut out = Vec::new();
     let Some(ty) = str_at(r, "/type") else {
         out.push(Event::Unparsed("entry without a type".into()));
         return out;
     };
     let flag = |k: &str| r.get(k) == Some(&Value::Bool(true));
-    if flag("isSidechain") {
-        return out;
-    }
     if ty == "custom-title" || ty == "ai-title" {
         let title = str_at(r, "/customTitle")
             .or_else(|| str_at(r, "/aiTitle"))
@@ -116,6 +126,16 @@ pub fn parse(r: &Value, session: &str) -> Vec<Event> {
             }
         }
         "user" => {
+            // A subagent's report comes as a meta entry from it, beside the
+            // task notice that only points to it.
+            if r.pointer("/origin/handback") == Some(&Value::Bool(true)) {
+                let name = str_at(r, "/origin/from").unwrap_or("agent");
+                let text = str_at(r, "/origin/handbackReportText")
+                    .or_else(|| str_at(r, "/origin/body"))
+                    .unwrap_or("");
+                out.push(item(0, Kind::Work, report(name, text), false, None));
+                return out;
+            }
             if flag("isMeta") || flag("isCompactSummary") {
                 return out;
             }
@@ -225,10 +245,76 @@ pub fn parse(r: &Value, session: &str) -> Vec<Event> {
     out
 }
 
+/// Characters of a subagent's chat one zoom shows.
+const PAGE: usize = 20_000;
+
+/// A subagent's whole chat, `i|kind: text` per message as Unii shows one,
+/// from character `at`, a page at a time. `name` is its agent id.
+pub fn agent(roots: &[PathBuf], name: &str, at: usize) -> Result<String, String> {
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(format!("No agent {name}."));
+    }
+    let file = format!("agent-{name}.jsonl");
+    let found = roots
+        .iter()
+        .flat_map(|r| fs::read_dir(r).into_iter().flatten().flatten())
+        .flat_map(|project| fs::read_dir(project.path()).into_iter().flatten().flatten())
+        .map(|session| session.path().join("subagents").join(&file))
+        .find(|p| p.is_file())
+        .ok_or_else(|| format!("No agent {name}."))?;
+    let raw = fs::read_to_string(&found).map_err(|e| format!("{}: {e}", found.display()))?;
+    let mut lines = Vec::new();
+    for r in raw
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+    {
+        for e in entry(&r, name) {
+            if let Event::Item(it) = e {
+                lines.push(format!("{}|{}: {}", lines.len(), it.kind.name(), it.text));
+            }
+        }
+    }
+    let all = mask(&lines.join("\n\n"));
+    let chars: Vec<char> = all.chars().collect();
+    let from = at.min(chars.len());
+    let to = (from + PAGE).min(chars.len());
+    let mut out: String = chars[from..to].iter().collect();
+    if to < chars.len() {
+        out.push_str(&format!(
+            "\n\n(more from character {to} of {}: hippo zoom {name} {to})",
+            chars.len()
+        ));
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_subagents_report_is_work() {
+        let r = json!({
+            "type": "user", "isMeta": true, "isSidechain": false,
+            "uuid": "u2", "timestamp": "2026-10-21T12:05:00.000Z",
+            "message": {"role": "user", "content": "Another Claude session sent a message: ..."},
+            "origin": {"kind": "peer", "from": "a397cb89b04502782", "handback": true,
+                "body": "[Subagent hand-back] framed", "handbackReportText": "## Audit\nAll good."}
+        });
+        let events = parse(&r, "s");
+        let [Event::Item(it)] = events.as_slice() else {
+            panic!("{events:?}");
+        };
+        assert_eq!(it.kind, Kind::Work);
+        assert_eq!(
+            it.text,
+            "[a397cb89b04502782]\n## Audit\nAll good.\n\nFull chat: hippo zoom a397cb89b04502782"
+        );
+        let other = json!({"type": "user", "isMeta": true, "uuid": "u3",
+            "timestamp": "2026-10-21T12:05:00.000Z", "message": {"role": "user", "content": "x"}});
+        assert!(parse(&other, "s").is_empty());
+    }
 
     #[test]
     fn model_fallback_is_skipped() {

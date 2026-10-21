@@ -296,6 +296,7 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
                 "user" => Kind::User,
                 "talk" => Kind::Talk,
                 "note" => Kind::Note,
+                "work" => Kind::Work,
                 other => return Err(format!("Cannot log a {other} message.")),
             };
             let text = text.join(" ");

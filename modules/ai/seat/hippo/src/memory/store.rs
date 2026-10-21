@@ -17,6 +17,8 @@ pub enum Kind {
     Talk,
     Tool,
     Echo,
+    /// A subagent's report: `[Name]`, its words, and where its whole chat is.
+    Work,
     Note,
 }
 
@@ -27,6 +29,7 @@ impl Kind {
             Kind::Talk => "talk",
             Kind::Tool => "tool",
             Kind::Echo => "echo",
+            Kind::Work => "work",
             Kind::Note => "note",
         }
     }

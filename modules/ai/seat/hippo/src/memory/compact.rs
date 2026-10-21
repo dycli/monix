@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Version of the prompt below, stored on every node it builds.
-pub const PROMPT_VERSION: &str = "hippo-7";
+pub const PROMPT_VERSION: &str = "hippo-8";
 
 /// Tries per node to get under `NODE`; the shortest is kept.
 pub const TRIES: usize = 5;
@@ -24,8 +24,8 @@ You write the memory of Bridge, an AI agent that works for one user in many \
 chats at once, through tools and subagents. All its chats share one endless \
 timeline, and chats running side by side alternate in it turn by turn. Each \
 message has a kind: user (the user's words), talk (Bridge's replies), tool \
-(Bridge's tool calls), echo (tool results; a subagent's report comes back as \
-one), note (memories from before this timeline).
+(Bridge's tool calls), echo (tool results), work (a subagent's report, \
+starting \"[Name]\"), note (memories from before this timeline).
 
 Bridge sees its history only through these lines, inside <chat> tags, oldest \
 first:
@@ -243,7 +243,7 @@ fn kind_of(step: &Step) -> Option<&'static str> {
     KINDS.iter().find(|k| **k == word).copied()
 }
 
-const KINDS: [&str; 5] = ["user", "talk", "tool", "echo", "note"];
+const KINDS: [&str; 6] = ["user", "talk", "tool", "echo", "work", "note"];
 
 /// The leading word of `line`: its item tag, when it has one.
 fn tag(line: &str) -> &str {
