@@ -9,15 +9,21 @@
 //! draws pictures with Grok Imagine for the image tool (yeoman-image.py).
 
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
+use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs::{self, File};
 use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tungstenite::client::IntoClientRequest;
+use tungstenite::handshake::HandshakeError;
+use tungstenite::{Message, WebSocket};
 use ureq::Agent;
 
 const AUTH: &str = "https://auth.x.ai/oauth2";
@@ -25,7 +31,7 @@ const AUTH: &str = "https://auth.x.ai/oauth2";
 const CLIENT: &str = "b1a00492-073a-47ea-816f-4c329264a828";
 const SCOPE: &str = "openid profile email offline_access grok-cli:access api:access";
 const API: &str = "https://api.x.ai/v1/responses";
-const TTS: &str = "https://api.x.ai/v1/tts";
+const TTS_HOST: &str = "api.x.ai";
 const SECRETS: &str = "https://api.x.ai/v1/realtime/client_secrets";
 const IMAGES: &str = "https://api.x.ai/v1/images/generations";
 const IMAGE_MODEL: &str = "grok-imagine-image-2.0";
@@ -88,15 +94,51 @@ pub fn ask(sock: &Path, ask: &Ask) -> Result<String, String> {
         .ok_or_else(|| "x: no answer".into())
 }
 
-/// The site's side: `text` spoken in `voice`, as MP3.
-pub fn speak(sock: &Path, text: &str, voice: &str) -> Result<Vec<u8>, String> {
+/// The site's side: `text` spoken in `voice`, as MP3 handed to `each` a
+/// piece at a time while xAI makes it, so playing can start before the
+/// end is made. Ok once the whole of it has come.
+pub fn speak(
+    sock: &Path,
+    text: &str,
+    voice: &str,
+    mut each: impl FnMut(&[u8]),
+) -> Result<(), String> {
     let ask = Request::Speak {
         speak: text.into(),
         voice: voice.into(),
     };
-    let reply = call(sock, &serde_json::to_vec(&ask).map_err(|e| e.to_string())?)?;
-    let audio = reply["audio"].as_str().ok_or("x: no audio")?;
-    BASE64.decode(audio).map_err(|e| format!("x: {e}"))
+    let mut s = UnixStream::connect(sock).map_err(|e| format!("x: {e}"))?;
+    s.set_read_timeout(Some(TIMEOUT))
+        .map_err(|e| e.to_string())?;
+    s.write_all(&serde_json::to_vec(&ask).map_err(|e| e.to_string())?)
+        .and_then(|_| s.shutdown(std::net::Shutdown::Write))
+        .map_err(|e| format!("x: {e}"))?;
+    loop {
+        let mut head = [0; 5];
+        s.read_exact(&mut head)
+            .map_err(|e| format!("x: speech cut off: {e}"))?;
+        let mut body = vec![0; u32::from_be_bytes(head[1..].try_into().unwrap()) as usize];
+        s.read_exact(&mut body)
+            .map_err(|e| format!("x: speech cut off: {e}"))?;
+        match head[0] {
+            AUDIO => each(&body),
+            DONE => return Ok(()),
+            _ => return Err(format!("x: {}", String::from_utf8_lossy(&body))),
+        }
+    }
+}
+
+/// How speech comes over the socket: frames of a kind byte, a big-endian
+/// u32 length and that many bytes, ending in DONE or a failure's words.
+const AUDIO: u8 = b'a';
+const DONE: u8 = b'd';
+const FAILED: u8 = b'e';
+
+fn frame(out: &mut impl Write, kind: u8, body: &[u8]) -> std::io::Result<()> {
+    out.write_all(&[kind])?;
+    out.write_all(&(body.len() as u32).to_be_bytes())?;
+    out.write_all(body)?;
+    out.flush()
 }
 
 /// The site's side: a pass to Grok Voice for `seconds`, as xAI gives it,
@@ -136,7 +178,15 @@ pub fn serve() -> Result<(), String> {
     let reply = match serde_json::from_slice::<Request>(&body).map_err(|e| e.to_string()) {
         Ok(Request::Search(a)) => search(&a).map(|text| json!({ "ok": text })),
         Ok(Request::Speak { speak, voice }) => {
-            tts(&speak, &voice).map(|mp3| json!({ "audio": BASE64.encode(mp3) }))
+            let out = &mut std::io::stdout().lock();
+            let (kind, body) = match tts(&speak, &voice, out) {
+                Ok(()) => (DONE, String::new()),
+                Err(e) => {
+                    eprintln!("yeoman-x: {e}");
+                    (FAILED, e)
+                }
+            };
+            return frame(out, kind, body.as_bytes()).map_err(|e| e.to_string());
         }
         Ok(Request::Secret { secret }) => client_secret(secret),
         Ok(Request::Draw { draw }) => imagine(&draw).map(|image| json!({ "image": image })),
@@ -199,44 +249,97 @@ fn search(ask: &Ask) -> Result<String, String> {
     answer(&reply)
 }
 
-/// `text` spoken by xAI in `voice`. The reply is the MP3 itself, not the
-/// JSON the API reference shows.
-fn tts(text: &str, voice: &str) -> Result<Vec<u8>, String> {
+/// `text` spoken by xAI in `voice`, its MP3 framed onto `out` as it comes.
+/// The streaming endpoint is a WebSocket; the plain POST answers only once
+/// the whole is made, which for a long reply is a minute of silence.
+fn tts(text: &str, voice: &str, out: &mut impl Write) -> Result<(), String> {
     if text.chars().count() > SPEAK_MAX {
         return Err(format!("Too long to speak: over {SPEAK_MAX} characters."));
     }
-    let token = token()?;
-    let mut resp = agent()
-        .post(TTS)
-        .header("Authorization", &format!("Bearer {token}"))
-        .send_json(json!({"text": text, "voice_id": voice, "language": "en"}))
-        .map_err(|e| format!("xai tts: {e}"))?;
-    let status = resp.status().as_u16();
-    if status >= 400 {
-        let body = resp.body_mut().read_to_string().unwrap_or_default();
-        let msg = serde_json::from_str::<Value>(&body)
-            .ok()
-            .and_then(|v| {
-                v["error"]["message"]
-                    .as_str()
-                    .or(v["error"].as_str())
-                    .map(str::to_owned)
-            })
-            .unwrap_or(body);
-        return Err(format!("xai tts: {status}: {msg}"));
+    if voice.is_empty() || !voice.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        return Err(format!("xai tts: bad voice {voice:?}"));
     }
-    let mp3 = resp
-        .body_mut()
-        .with_config()
-        .limit(64 * 1024 * 1024)
-        .read_to_vec()
-        .map_err(|e| format!("xai tts: {e}"))?;
+    let token = token()?;
+    let mut ws = tts_socket(voice, &token)?;
+    let say = |ws: &mut Socket, m: Value| {
+        ws.send(Message::text(m.to_string()))
+            .map_err(|e| format!("xai tts: {e}"))
+    };
+    say(&mut ws, json!({"type": "text.delta", "delta": text}))?;
+    say(&mut ws, json!({"type": "text.done"}))?;
+    let mut bytes = 0;
+    loop {
+        let event = match ws.read().map_err(|e| format!("xai tts: {e}"))? {
+            Message::Text(t) => {
+                serde_json::from_str::<Value>(&t).map_err(|e| format!("xai tts: {e}"))?
+            }
+            Message::Close(why) => return Err(format!("xai tts: closed early: {why:?}")),
+            _ => continue,
+        };
+        match event["type"].as_str() {
+            Some("audio.delta") => {
+                let mp3 = BASE64
+                    .decode(event["delta"].as_str().unwrap_or_default())
+                    .map_err(|e| format!("xai tts: {e}"))?;
+                bytes += mp3.len();
+                frame(out, AUDIO, &mp3).map_err(|e| format!("yeoman-x: {e}"))?;
+            }
+            Some("audio.done") => break,
+            Some("error") => {
+                let msg = event["message"].as_str().unwrap_or("unknown error");
+                return Err(format!("xai tts: {msg}"));
+            }
+            _ => {}
+        }
+    }
+    let _ = ws.close(None);
     eprintln!(
-        "yeoman-x: spoke chars={} voice={voice} bytes={}",
-        text.chars().count(),
-        mp3.len()
+        "yeoman-x: spoke chars={} voice={voice} bytes={bytes}",
+        text.chars().count()
     );
-    Ok(mp3)
+    Ok(())
+}
+
+type Socket = WebSocket<StreamOwned<ClientConnection, TcpStream>>;
+
+/// The streaming text to speech socket, MP3 in `voice`, tuned for the
+/// first sound soonest.
+fn tts_socket(voice: &str, token: &str) -> Result<Socket, String> {
+    let roots = RootCertStore {
+        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+    };
+    let config = ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let conn = ClientConnection::new(Arc::new(config), TTS_HOST.try_into().unwrap())
+        .map_err(|e| format!("xai tts: {e}"))?;
+    let tcp = TcpStream::connect((TTS_HOST, 443)).map_err(|e| format!("xai tts: {e}"))?;
+    tcp.set_read_timeout(Some(TIMEOUT))
+        .and(tcp.set_write_timeout(Some(TIMEOUT)))
+        .map_err(|e| format!("xai tts: {e}"))?;
+    let mut ask = format!(
+        "wss://{TTS_HOST}/v1/tts?voice={voice}&language=en&codec=mp3&optimize_streaming_latency=1"
+    )
+    .into_client_request()
+    .map_err(|e| format!("xai tts: {e}"))?;
+    ask.headers_mut().insert(
+        "Authorization",
+        format!("Bearer {token}")
+            .parse()
+            .map_err(|_| "xai tts: bad token")?,
+    );
+    let (ws, _) = tungstenite::client(ask, StreamOwned::new(conn, tcp)).map_err(|e| match e {
+        HandshakeError::Failure(tungstenite::Error::Http(r)) => {
+            let body = r
+                .body()
+                .as_deref()
+                .map(String::from_utf8_lossy)
+                .unwrap_or_default();
+            format!("xai tts: {}: {body}", r.status())
+        }
+        e => format!("xai tts: {e}"),
+    })?;
+    Ok(ws)
 }
 
 /// A Grok Voice pass from xAI, at most an hour long.
@@ -572,5 +675,35 @@ mod tests {
         assert_eq!((l.access.as_str(), l.refresh.as_str()), ("a", "r"));
         assert!(granted(&json!({"error": "invalid_grant"}), Some("r")).is_err());
         assert!(granted(&json!({"access_token": "a"}), None).is_err());
+    }
+
+    #[test]
+    fn speech_comes_a_piece_at_a_time_and_says_how_it_ended() {
+        let dir = std::env::temp_dir().join(format!("yeoman-x-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let sock = dir.join("x.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let ends: [(u8, &[u8]); 2] = [(DONE, b""), (FAILED, b"xai tts: no")];
+        let serve = std::thread::spawn(move || {
+            for (kind, body) in ends {
+                let (mut s, _) = listener.accept().unwrap();
+                let mut ask = String::new();
+                s.read_to_string(&mut ask).unwrap();
+                assert!(ask.contains(r#""speak":"hi""#), "{ask}");
+                frame(&mut s, AUDIO, b"ID3").unwrap();
+                frame(&mut s, AUDIO, b"mp3").unwrap();
+                frame(&mut s, kind, body).unwrap();
+            }
+        });
+        let mut got = Vec::new();
+        assert_eq!(speak(&sock, "hi", "leo", |b| got.push(b.to_vec())), Ok(()));
+        assert_eq!(got, [b"ID3".to_vec(), b"mp3".to_vec()]);
+        assert_eq!(
+            speak(&sock, "hi", "leo", |_| {}),
+            Err("x: xai tts: no".into())
+        );
+        serve.join().unwrap();
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -33,6 +33,7 @@ getrandom = "0.4"
 tower-http = { version = "0.6", features = ["fs", "set-header"] }
 tower-layer = "0.3"
 web-push-native = "0.5"
+tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
 
 [profile.release]
 lto = "thin"

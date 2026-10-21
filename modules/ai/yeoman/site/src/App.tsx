@@ -901,7 +901,8 @@ function AssistantMessage() {
 }
 
 // One player for the page, so starting a reply stops the last; `stopping`
-// resets the button that was playing. Audio already fetched is kept by text.
+// resets the button that was playing. The site streams speech as xAI makes
+// it, so the player starts on the first piece; its address is kept by text.
 const player = new Audio();
 const spoken = new Map<string, Promise<string>>();
 let stopping: (() => void) | null = null;
@@ -919,8 +920,8 @@ function speech(text: string) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
     })
-      .then((r) => (r.ok ? r.blob() : Promise.reject(r.status)))
-      .then((b) => URL.createObjectURL(b));
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then(({ key }: { key: string }) => `/api/speak/${key}`);
     spoken.set(text, url);
     url.catch(() => spoken.delete(text));
   }
@@ -950,9 +951,15 @@ function Speak() {
       player.src = src;
       player.playbackRate = voiceSpeed();
       player.onended = done;
+      // A reading cut off mid-play is not kept; the next press makes it afresh.
+      player.onerror = () => {
+        spoken.delete(text);
+        done();
+      };
       await player.play();
       setState("playing");
     } catch {
+      spoken.delete(text);
       done();
     }
   };

@@ -449,6 +449,8 @@ struct Site {
     push: Option<Arc<Push>>,
     /// yeoman-x's socket, which reads replies aloud.
     x: Option<PathBuf>,
+    /// Replies being read aloud now, by key.
+    speaking: Mutex<HashMap<String, tokio::sync::watch::Sender<Sofar>>>,
 }
 
 /// Who answers here, and every assistant the proxy serves on this host,
@@ -731,6 +733,7 @@ pub async fn serve(
         who,
         index: root.join("index.html"),
         x: std::env::var_os("YEOMAN_X").map(PathBuf::from),
+        speaking: Mutex::default(),
     });
     if let Some(push) = &site.push {
         tokio::spawn(ring(site.web.shown.subscribe(), push.clone()));
@@ -766,6 +769,7 @@ pub async fn serve(
         .route("/api/said/{i}", get(said))
         .route("/api/file/{name}", get(kept))
         .route("/api/speak", post(speak))
+        .route("/api/speak/{key}", get(spoken))
         .route("/api/call", post(call))
         .route("/api/call/end", post(call_end))
         .route("/api/events", get(events))
@@ -1037,9 +1041,18 @@ struct Speak {
     text: String,
 }
 
-/// A reply read aloud, as MP3 in this assistant's voice. Kept by voice and
-/// text rather than message id, since a live reply's id is the door's and
-/// changes once it is in the history.
+/// A reply being read aloud: the MP3 so far, and how it ended once it has
+/// (true when whole). Every listener plays it from the start.
+#[derive(Default)]
+struct Sofar {
+    mp3: Vec<u8>,
+    end: Option<bool>,
+}
+
+/// Starts reading a reply aloud in this assistant's voice and answers its
+/// key, which `/api/speak/{key}` plays while xAI is still making it. Kept
+/// by voice and text rather than message id, since a live reply's id is
+/// the door's and changes once it is in the history.
 async fn speak(
     State(site): State<Arc<Site>>,
     headers: HeaderMap,
@@ -1055,29 +1068,119 @@ async fn speak(
     if text.is_empty() || text.chars().count() > crate::x::SPEAK_MAX {
         return StatusCode::BAD_REQUEST.into_response();
     }
+    let key = format!("{:016x}", speech_key(&voice, &text));
     let dir = site.state.join("speech");
-    let file = dir.join(format!("{:016x}.mp3", speech_key(&voice, &text)));
-    let mp3 = |b: Vec<u8>| ([(header::CONTENT_TYPE, "audio/mpeg")], b).into_response();
-    if let Ok(b) = fs::read(&file) {
-        return mp3(b);
-    }
-    match tokio::task::spawn_blocking(move || crate::x::speak(&sock, &text, &voice)).await {
-        Ok(Ok(b)) => {
+    let file = dir.join(format!("{key}.mp3"));
+    let answer = Json(serde_json::json!({ "key": key })).into_response();
+    let tx = {
+        let mut speaking = site.speaking.lock().unwrap();
+        if file.exists() || speaking.contains_key(&key) {
+            return answer;
+        }
+        let (tx, _) = tokio::sync::watch::channel(Sofar::default());
+        speaking.insert(key.clone(), tx.clone());
+        tx
+    };
+    let site = site.clone();
+    tokio::task::spawn_blocking(move || {
+        let made = crate::x::speak(&sock, &text, &voice, |b| {
+            tx.send_modify(|s| s.mp3.extend_from_slice(b));
+        });
+        // Only a whole reading is kept; a cut one is made afresh next time.
+        if let Err(e) = made.and_then(|()| {
             prune(&dir, SPEECH_KEEP);
-            if let Err(e) = fs::create_dir_all(&dir).and_then(|_| fs::write(&file, &b)) {
-                eprintln!("yeoman: site speak: {}: {e}", file.display());
-            }
-            mp3(b)
-        }
-        Ok(Err(e)) => {
+            let tmp = file.with_extension("part");
+            fs::create_dir_all(&dir)
+                .and_then(|_| fs::write(&tmp, &tx.borrow().mp3))
+                .and_then(|_| fs::rename(&tmp, &file))
+                .map_err(|e| format!("{}: {e}", file.display()))
+        }) {
             eprintln!("yeoman: site speak: {e}");
-            (StatusCode::BAD_GATEWAY, e).into_response()
+            tx.send_modify(|s| s.end = Some(false));
+        } else {
+            tx.send_modify(|s| s.end = Some(true));
         }
-        Err(e) => {
-            eprintln!("yeoman: site speak: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
+        site.speaking.lock().unwrap().remove(&key);
+    });
+    answer
+}
+
+/// A reply read aloud, as MP3: from the cache once whole, else as xAI
+/// makes it. nginx is told not to buffer, or the page would hear nothing
+/// until the end.
+async fn spoken(
+    State(site): State<Arc<Site>>,
+    axum::extract::Path(key): axum::extract::Path<String>,
+    req: axum::extract::Request,
+) -> Response {
+    if !site.signed(req.headers()) {
+        return StatusCode::UNAUTHORIZED.into_response();
     }
+    if key.len() != 16 || !key.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let rx = site
+        .speaking
+        .lock()
+        .unwrap()
+        .get(&key)
+        .map(|tx| tx.subscribe());
+    let Some(rx) = rx else {
+        let file = site.state.join("speech").join(format!("{key}.mp3"));
+        // ServeFile answers Range requests, which the player seeks with.
+        return match ServeFile::new(file).try_call(req).await {
+            Ok(r) => r.into_response(),
+            Err(_) => StatusCode::NOT_FOUND.into_response(),
+        };
+    };
+    (
+        [
+            (header::CONTENT_TYPE, "audio/mpeg"),
+            (header::CACHE_CONTROL, "no-store"),
+            (header::HeaderName::from_static("x-accel-buffering"), "no"),
+        ],
+        axum::body::Body::from_stream(follow(rx)),
+    )
+        .into_response()
+}
+
+/// A reading as one listener hears it: from the first byte, each new piece
+/// as it comes, then the end, or an error if it was cut. `done` once over.
+fn follow(
+    rx: tokio::sync::watch::Receiver<Sofar>,
+) -> impl futures_util::Stream<Item = std::io::Result<Vec<u8>>> {
+    futures_util::stream::unfold((rx, 0, false), |(mut rx, at, done)| async move {
+        if done {
+            return None;
+        }
+        let mut gone = false;
+        loop {
+            // Some(next piece, or None at the end); None to wait for more.
+            let step = {
+                let s = rx.borrow_and_update();
+                if s.mp3.len() > at {
+                    Some(Some(Ok(s.mp3[at..].to_vec())))
+                } else {
+                    match s.end {
+                        Some(true) => Some(None),
+                        // An error, not an end, so the player knows it was cut.
+                        Some(false) => Some(Some(Err(std::io::Error::other("speech cut")))),
+                        None if gone => Some(None),
+                        None => None,
+                    }
+                }
+            };
+            match step {
+                Some(Some(Ok(b))) => {
+                    let at = at + b.len();
+                    return Some((Ok(b), (rx, at, false)));
+                }
+                Some(Some(Err(e))) => return Some((Err(e), (rx, at, true))),
+                Some(None) => return None,
+                None => gone = rx.changed().await.is_err(),
+            }
+        }
+    })
 }
 
 /// How long a call's pass to Grok Voice lasts. It only opens the call,
@@ -1604,6 +1707,32 @@ mod tests {
             super::plain(md),
             "Weather\nCold today, see the map .\nWear a coat\n1. Bring tea\nquoted\nDay, High\nMon, 45"
         );
+    }
+
+    #[tokio::test]
+    async fn every_listener_hears_a_reading_whole_or_cut() {
+        use futures_util::StreamExt;
+        let (tx, _) = tokio::sync::watch::channel(super::Sofar::default());
+        let early = super::follow(tx.subscribe());
+        tx.send_modify(|s| s.mp3.extend_from_slice(b"ab"));
+        let late = super::follow(tx.subscribe());
+        let feed = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            tx.send_modify(|s| s.mp3.extend_from_slice(b"cd"));
+            tx.send_modify(|s| s.end = Some(true));
+        });
+        for heard in [early, late] {
+            let got: Vec<_> = heard.map(Result::unwrap).collect().await;
+            assert_eq!(got.concat(), b"abcd");
+        }
+        feed.await.unwrap();
+        let (tx, rx) = tokio::sync::watch::channel(super::Sofar::default());
+        tx.send_modify(|s| {
+            s.mp3.extend_from_slice(b"ab");
+            s.end = Some(false);
+        });
+        let got: Vec<_> = super::follow(rx).collect().await;
+        assert!(matches!(got.as_slice(), [Ok(_), Err(_)]));
     }
 
     #[test]
