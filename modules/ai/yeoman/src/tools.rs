@@ -13,6 +13,7 @@ use crate::house::House;
 use crate::keep;
 use crate::mail::{self, Account, Imap};
 use crate::media::Seerr;
+use crate::news::{self, News};
 use crate::pending::{self, Act};
 use crate::run;
 use crate::task;
@@ -56,6 +57,8 @@ struct Tools {
     pages: Option<(PathBuf, String)>,
     /// The household's film and show library (Seerr), when there is one.
     seerr: Option<Seerr>,
+    /// The feed reader (Miniflux), when there is a key for it.
+    news: Option<Arc<News>>,
     /// The household's CalDAV calendars, when there is a login.
     calendar: Option<Arc<Calendar>>,
     web: Arc<Web>,
@@ -236,6 +239,47 @@ struct Page {
 struct Title {
     /// A film or show title to look for.
     title: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct FeedUrl {
+    /// A feed's address, or a site's or Substack's, whose page names its feed.
+    url: String,
+    /// The category to file it under, by name; made if new. Leave out for
+    /// the default.
+    category: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct FeedId {
+    /// The feed's id, as news_feeds gives it.
+    feed_id: u64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct FeedSort {
+    /// The feed's id, as news_feeds gives it.
+    feed_id: u64,
+    /// Its new name.
+    title: Option<String>,
+    /// The category to move it to, by name; made if new.
+    category: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct EntryId {
+    /// The entry's id, as news_entries gives it.
+    id: u64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct EntryMark {
+    /// The entries' ids, as news_entries gives them.
+    ids: Vec<u64>,
+    /// true marks them read, false unread; leave out to keep.
+    read: Option<bool>,
+    /// true stars them, false unstars; leave out to keep.
+    starred: Option<bool>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -940,6 +984,54 @@ impl Tools {
         self.seerr()?.requests(count.unwrap_or(15))
     }
 
+    #[tool(
+        description = "The feeds followed, by category: id, title, site, unread count, and why a feed is failing when it is."
+    )]
+    fn news_feeds(&self) -> Result<String, String> {
+        self.news()?.feeds()
+    }
+
+    #[tool(
+        description = "Follow a feed: give the feed's address, or a site's or a Substack's and its feed is found."
+    )]
+    fn news_follow(&self, Parameters(f): Parameters<FeedUrl>) -> Result<String, String> {
+        self.news()?.follow(&f.url, f.category.as_deref())
+    }
+
+    #[tool(description = "Stop following a feed; its entries go with it.")]
+    fn news_unfollow(
+        &self,
+        Parameters(FeedId { feed_id }): Parameters<FeedId>,
+    ) -> Result<String, String> {
+        self.news()?.unfollow(feed_id)
+    }
+
+    #[tool(description = "Rename a feed or move it to another category.")]
+    fn news_sort(&self, Parameters(f): Parameters<FeedSort>) -> Result<String, String> {
+        self.news()?
+            .sort(f.feed_id, f.title.as_deref(), f.category.as_deref())
+    }
+
+    #[tool(
+        description = "Entries from the feeds, newest first: id, feed, title, author, when, link, minutes to read, starred, and the opening lines. Unread unless asked otherwise; `total` is how many match."
+    )]
+    fn news_entries(&self, Parameters(e): Parameters<news::Entries>) -> Result<String, String> {
+        self.news()?.entries(&e)
+    }
+
+    #[tool(description = "One entry whole, as text: its title, feed, author, date, link and body.")]
+    fn news_article(
+        &self,
+        Parameters(EntryId { id }): Parameters<EntryId>,
+    ) -> Result<String, String> {
+        self.news()?.article(id)
+    }
+
+    #[tool(description = "Mark entries read or unread, starred or not.")]
+    fn news_mark(&self, Parameters(m): Parameters<EntryMark>) -> Result<String, String> {
+        self.news()?.mark(&m.ids, m.read, m.starred)
+    }
+
     /// Search YouTube: title, channel, length, views and link per video.
     #[tool]
     fn youtube_search(
@@ -1169,6 +1261,12 @@ impl Tools {
             .ok_or("There is no calendar here.".into())
     }
 
+    fn news(&self) -> Result<&News, String> {
+        self.news
+            .as_deref()
+            .ok_or("There is no feed reader here.".into())
+    }
+
     fn seerr(&self) -> Result<&Seerr, String> {
         self.seerr
             .as_ref()
@@ -1302,6 +1400,16 @@ fn seerr() -> Result<Option<Seerr>, String> {
     Ok(Some(Seerr::new(url, key, person)))
 }
 
+/// The feed reader, when YEOMAN_NEWS names its key's file.
+fn news() -> Result<Option<News>, String> {
+    let Some(file) = std::env::var_os("YEOMAN_NEWS") else {
+        return Ok(None);
+    };
+    let key = fs::read_to_string(&file).map_err(|e| format!("reader key: {e}"))?;
+    let url = std::env::var("YEOMAN_MINIFLUX").map_err(|_| "YEOMAN_MINIFLUX is not set")?;
+    Ok(Some(News::new(url, key)))
+}
+
 /// Parallel's account key, when YEOMAN_SEARCH_KEY names its file.
 fn search_key() -> Result<Option<String>, String> {
     let Some(file) = std::env::var_os("YEOMAN_SEARCH_KEY") else {
@@ -1362,6 +1470,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
             .zip(std::env::var("YEOMAN_PAGES_URL").ok())
             .map(|(d, u)| (PathBuf::from(d), u)),
         seerr: seerr()?,
+        news: news()?.map(Arc::new),
         calendar: calendar()?.map(Arc::new),
         youtube: std::env::var_os("YEOMAN_YTDLP").map(|b| Arc::new(Youtube::new(PathBuf::from(b)))),
         x: std::env::var_os("YEOMAN_X").map(PathBuf::from),

@@ -319,6 +319,10 @@
             }
             // optionalAttrs (cfg.homeTokenFile != null) { YEOMAN_HOME = "1"; }
             // optionalAttrs (cfg.searchKeyFile != null) { YEOMAN_SEARCH_KEY = "${creds}/search"; }
+            // optionalAttrs (i.newsKeyFile != null) {
+              YEOMAN_NEWS = "${creds}/news";
+              YEOMAN_MINIFLUX = "http://127.0.0.1:${toString config.shipProxy.routes.news.port}";
+            }
             // optionalAttrs (cfg.requestsKeyFile != null) {
               YEOMAN_REQUESTS = "${creds}/requests";
               YEOMAN_SEERR = "http://127.0.0.1:${toString config.shipProxy.routes.q.port}";
@@ -589,6 +593,7 @@
                   "caldav:${cfg.calendarCredentialsFile}"
                 ]
                 ++ optional (i.mailCredentialsFile != null) "mail:${i.mailCredentialsFile}"
+                ++ optional (i.newsKeyFile != null) "news:${i.newsKeyFile}"
                 ++ optional (cfg.homeTokenFile != null) "home:${cfg.homeTokenFile}"
                 ++ optional (cfg.requestsKeyFile != null) "requests:${cfg.requestsKeyFile}"
                 ++ optional (cfg.searchKeyFile != null) "search:${cfg.searchKeyFile}";
@@ -676,6 +681,15 @@
                       agenix JSON file with the person's IMAP accounts:
                       [{"name", "username", "password"}, ...]; null for no
                       mail.
+                    '';
+                  };
+
+                  newsKeyFile = mkOption {
+                    type = types.nullOr types.str;
+                    default = null;
+                    description = ''
+                      agenix file holding a Miniflux API key, raw, for the
+                      person's feed reader (news.mod.nix); null for none.
                     '';
                   };
 
