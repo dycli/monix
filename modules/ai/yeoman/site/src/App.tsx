@@ -17,7 +17,7 @@ import {
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
-import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, type Card, type Hit, type Msg, type Task } from "./chat";
+import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, type Card, type Chat, type Hit, type Msg, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
 import { Bars, Call, SPEED, useVoiceSpeed, voiceSpeed } from "./call";
@@ -42,8 +42,9 @@ type Face =
 // `open` brings a deck back at a card; `redraw` resends the question that
 // led to an answer. Cards are never stored: by nature they go stale, so a
 // redraw is a fresh call.
-type Cards = { open: (key: string) => void; redraw: (msgId: string) => void };
-const CardCtx = createContext<Cards>({ open() {}, redraw() {} });
+/** `typing`: a turn is running, so the last exchange can't be redone yet. */
+type Cards = { open: (key: string) => void; redraw: (msgId: string) => void; typing: boolean };
+const CardCtx = createContext<Cards>({ open() {}, redraw() {}, typing: false });
 const useCards = () => useContext(CardCtx);
 
 // Which tool draws a card, by its name whichever server carries it.
@@ -514,7 +515,7 @@ function Download() {
   );
 }
 
-type Send = (text: string, files: File[]) => Promise<void>;
+type Send = Extract<Chat, { state: "ready" }>["send"];
 type Decide = (id: number, yes: boolean) => Promise<void>;
 
 type ThreadProps = {
@@ -611,13 +612,17 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
       open: show,
       redraw(msgId) {
         // Resend the question that led here — the person's last words before
-        // this answer — so the card is drawn afresh from current data.
+        // this answer — so the card is drawn afresh from current data. The
+        // last answer is replaced, as ChatGPT regenerates; an older one is
+        // asked again below, since replacing it would drop all that followed.
         const i = messages.findIndex((m) => m.id === msgId);
-        for (let j = i - 1; j >= 0; j--) if (messages[j].role === "user") return void send(messages[j].text, []);
+        const last = !typing && !messages.slice(i + 1).some((m) => m.role === "user");
+        for (let j = i - 1; j >= 0; j--) if (messages[j].role === "user") return void send(messages[j].text, [], last ? "again" : undefined);
       },
+      typing,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [messages, send],
+    [messages, send, typing],
   );
 
   const runtime = useExternalStoreRuntime({
@@ -632,6 +637,11 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
         if (open) close();
         await send(text, files);
       }
+    },
+    // Only the person's last message offers Edit (UserMessage).
+    onEdit: async (m: AppendMessage) => {
+      const text = m.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("\n");
+      if (text.trim()) await send(text, [], "edit");
     },
   });
   return (
@@ -773,8 +783,11 @@ function Time({ className = "" }: { className?: string }) {
 }
 
 // A person's words: framed at the right, as wide as the text. A pasted log
-// breaks anywhere rather than running off the page.
+// breaks anywhere rather than running off the page. Their last message, once
+// answered, can be edited in place; the new one replaces it and its answer.
 function UserMessage() {
+  const editing = useAuiState((s) => s.message.composer.isEditing);
+  if (editing) return <EditMessage />;
   return (
     <MessagePrimitive.Root className="rise group flex flex-col items-end gap-1.5">
       <div className="flex max-w-[min(82%,560px)] flex-wrap justify-end gap-1.5 empty:hidden">
@@ -786,7 +799,53 @@ function UserMessage() {
         <Reaction />
       </div>
       </MessagePrimitive.If>
-      <Time className="mt-1 mr-1" />
+      <div className="mt-1 mr-1 flex items-center gap-2">
+        <Time />
+        <Edit />
+      </div>
+    </MessagePrimitive.Root>
+  );
+}
+
+/** Pencil under the person's last message, while no turn runs. Files don't
+ * come along, so a message that brought some is asked about anew instead. */
+function Edit() {
+  const { typing } = useCards();
+  const editable = useAuiState((s) => {
+    const ms = s.thread.messages;
+    let last = ms.length - 1;
+    while (last >= 0 && ms[last].role !== "user") last--;
+    return last === s.message.index && !s.message.attachments?.length;
+  });
+  if (typing || !editable) return null;
+  return (
+    <ActionBarPrimitive.Root>
+      <ActionBarPrimitive.Edit
+        aria-label="Edit"
+        title="Edit"
+        className="grid size-7 place-items-center rounded-md text-soft opacity-0 transition-opacity group-hover:opacity-100 hover:bg-hover hover:text-ink max-sm:opacity-100"
+      >
+        <svg viewBox="0 0 24 24" className="size-[15px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+        </svg>
+      </ActionBarPrimitive.Edit>
+    </ActionBarPrimitive.Root>
+  );
+}
+
+// The message being edited, framed as the composer is; Enter sends, Escape
+// cancels.
+function EditMessage() {
+  return (
+    <MessagePrimitive.Root className="flex justify-end">
+      <ComposerPrimitive.Root className="flex w-[min(82%,560px)] flex-col gap-2 rounded-[20px] border border-frame bg-lift p-3 shadow-dock focus-within:border-soft">
+        <ComposerPrimitive.Input autoFocus className="max-h-[40vh] min-h-12 resize-none bg-transparent px-1.5 text-ink outline-none" />
+        <div className="flex justify-end gap-2">
+          <ComposerPrimitive.Cancel className="rounded-full px-3.5 py-1.5 text-sm text-mid hover:bg-hover hover:text-ink">Cancel</ComposerPrimitive.Cancel>
+          <ComposerPrimitive.Send className="rounded-full bg-ink px-3.5 py-1.5 text-sm text-paper disabled:opacity-40">Send</ComposerPrimitive.Send>
+        </div>
+      </ComposerPrimitive.Root>
     </MessagePrimitive.Root>
   );
 }

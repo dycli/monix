@@ -1267,10 +1267,19 @@ struct Line {
 
 /// The conversation for the page. hippo keeps a lone-emoji answer as a
 /// message, but it went out as a reaction, so it goes back on the person's
-/// message it answered.
+/// message it answered. An edited or asked-again message replaces the
+/// person's last one and all that followed it.
 fn lines(all: Vec<Said>) -> Vec<Line> {
     let mut out: Vec<Line> = Vec::new();
-    for said in all {
+    for mut said in all {
+        if said.kind == "user"
+            && let Some(text) = crate::redone(&said.text)
+        {
+            said.text = text.to_owned();
+            if let Some(last) = out.iter().rposition(|l| l.said.kind == "user") {
+                out.truncate(last);
+            }
+        }
         match said.kind.as_str() {
             "talk" if crate::is_reaction(&said.text) => {
                 if let Some(last) = out
@@ -1309,14 +1318,16 @@ async fn events(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
         .into_response()
 }
 
-/// The person's message, a form with `text` and maybe one `file`: answered
-/// like one from Matrix, through the pages. Answers the id the yeoman will
-/// react to.
+/// The person's message, a form with `text` and maybe some `file`s:
+/// answered like one from Matrix, through the pages. `redo` = "edit" or
+/// "again" makes it take the place of their last message. Answers the id the
+/// yeoman will react to.
 async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multipart) -> Response {
     if !site.signed(&headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     let mut text = String::new();
+    let mut redo = "";
     let mut files = Vec::new();
     loop {
         let field = match form.next_field().await {
@@ -1342,6 +1353,11 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
                     Err(e) => return (e.status(), e.body_text()).into_response(),
                 }
             }
+            Some("redo") => match field.text().await.as_deref() {
+                Ok("edit") => redo = crate::EDITED,
+                Ok("again") => redo = crate::AGAIN,
+                _ => return StatusCode::BAD_REQUEST.into_response(),
+            },
             // Follows the file it shows.
             Some("view") => match (field.bytes().await, files.last_mut()) {
                 (Ok(b), Some(f)) => f.view = Some(b.to_vec()),
@@ -1358,7 +1374,7 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
     let id = site.web.id();
     let msg = Message {
         id: id.clone(),
-        text: text.to_owned(),
+        text: format!("{redo}{text}"),
         files,
     };
     if site.messages.send((site.web.clone(), msg)).is_err() {
@@ -1626,6 +1642,34 @@ mod tests {
             .collect();
         // The second 👍 has no unanswered message of the person's, so it stays.
         assert_eq!(got, [(1, Some("👍")), (4, None), (5, None)]);
+    }
+
+    #[test]
+    fn a_redo_replaces_the_last_exchange() {
+        let out = lines(vec![
+            said(1, "user", "hi"),
+            said(2, "talk", "hello"),
+            said(3, "user", "weather?"),
+            said(4, "talk", "rain"),
+            said(5, "note", "(routine) x"),
+            said(6, "user", &format!("{}weather in Boston?", crate::EDITED)),
+            said(7, "talk", "sun"),
+            said(8, "user", &format!("{}weather in Boston?", crate::AGAIN)),
+            said(9, "talk", "clouds"),
+        ]);
+        let got: Vec<_> = out
+            .iter()
+            .map(|l| (l.said.i, l.said.text.as_str()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                (1, "hi"),
+                (2, "hello"),
+                (8, "weather in Boston?"),
+                (9, "clouds")
+            ]
+        );
     }
 
     #[test]

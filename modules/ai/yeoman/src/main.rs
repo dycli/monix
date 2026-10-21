@@ -499,6 +499,20 @@ fn keep(state: &Path, got: Vec<Fetched>) -> Vec<(String, bool, Option<Read>)> {
         .collect()
 }
 
+/// Marks a message that takes the place of the person's last one, as
+/// ChatGPT's edit and regenerate do. hippo only adds, so the mark tells the
+/// model, and the page's history, which exchange the message replaces.
+pub const EDITED: &str =
+    "(rewrote their last message: set aside the earlier one and your answer to it) ";
+pub const AGAIN: &str =
+    "(asked again: answer their last message afresh, setting aside your last answer) ";
+
+/// The message under its mark, when it replaces the person's last one.
+pub fn redone(text: &str) -> Option<&str> {
+    text.strip_prefix(EDITED)
+        .or_else(|| text.strip_prefix(AGAIN))
+}
+
 /// Words the person sends while a turn runs join it, as Claude Code takes
 /// a message typed while it works; "stop" alone stops it. False when there
 /// is no turn to take them, or they bring files: then they wait their turn.
@@ -509,7 +523,8 @@ async fn steered<D: Door>(
     msg: &Message<D>,
 ) -> bool {
     let text = msg.text.trim();
-    if !msg.files.is_empty() || text.is_empty() {
+    // A redo answers afresh; it can't fold into the answer it replaces.
+    if !msg.files.is_empty() || text.is_empty() || redone(&msg.text).is_some() {
         return false;
     }
     if text.eq_ignore_ascii_case("stop") && steer.running() {

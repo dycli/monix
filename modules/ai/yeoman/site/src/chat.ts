@@ -71,7 +71,8 @@ export type Chat =
       state: "ready";
       messages: Msg[];
       typing: boolean;
-      send: (text: string, files: File[]) => Promise<void>;
+      /** `redo` puts the message in place of the person's last one. */
+      send: (text: string, files: File[], redo?: "edit" | "again") => Promise<void>;
       stop: () => Promise<void>;
       cards: Card[];
       decide: (id: number, yes: boolean) => Promise<void>;
@@ -248,12 +249,17 @@ export function useChat(): Chat {
     };
   }, []);
 
-  const send = useCallback(async (text: string, files: File[]) => {
+  const send = useCallback(async (text: string, files: File[], redo?: "edit" | "again") => {
     const local = crypto.randomUUID();
     const shown = files.map((f) => ({ name: f.name, image: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined }));
-    setMessages((ms) => [...ms, { id: local, role: "user", text, files: shown, date: new Date() }]);
+    setMessages((ms) => {
+      // A redo takes the place of the last exchange, as the history will.
+      const at = redo ? ms.map((m) => m.role).lastIndexOf("user") : -1;
+      return [...(at < 0 ? ms : ms.slice(0, at)), { id: local, role: "user", text, files: shown, date: new Date() }];
+    });
     const body = new FormData();
     body.set("text", text);
+    if (redo) body.set("redo", redo);
     for (const f of files) {
       body.append("file", f);
       const view = views.get(f);
