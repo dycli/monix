@@ -57,6 +57,9 @@ type Shown =
   | { type: "task"; text: string | null; question: string | null }
   | { type: "browser"; open: boolean };
 
+/** The longest message text, in bytes, that /api/send takes (SEND_MAX in site.rs). */
+const SEND_MAX = 32 * 1024;
+
 const ROLE: Record<string, Msg["role"]> = { user: "user", talk: "assistant", note: "system" };
 
 // A draft as Matrix shows it (pending.rs `Act::show`), kept in hippo as talk;
@@ -120,6 +123,7 @@ export function useChat(): Chat {
       const waiting: Pending[] = w.ok ? await w.json() : [];
       const now: { text: string | null; question: string | null; screen: string | null; size?: string | null; browser?: boolean; typing?: boolean } | null = t.ok ? await t.json() : null;
       if (gone) return false;
+      const turning = !!now?.typing;
       if (now) {
         setScreen(now.screen ?? undefined);
         const [w, h] = (now.size ?? "").split("x").map(Number);
@@ -140,19 +144,36 @@ export function useChat(): Chat {
           reaction: m.reaction ?? undefined,
           date: new Date(m.date),
         }));
-        // hippo keeps no tools, and a phone resyncs each time the page comes
-        // back, so an answer found again by its words keeps the tools (and
-        // cards) this page saw.
+        // hippo keeps no tools and no photos, and a phone resyncs each time
+        // the page comes back, so an answer found again by its words keeps
+        // the tools (and cards) this page saw, and a message sent with files
+        // keeps their thumbnails; hippo logs it as "(sent a photo: …) words".
         for (const m of was) {
-          if (!m.tools || !m.text) continue;
           for (let j = now.length - 1; j >= 0; j--) {
-            if (now[j].role === "assistant" && !now[j].tools && now[j].text === m.text) {
-              now[j].tools = m.tools;
+            const h = now[j];
+            if (m.tools && m.text && h.role === "assistant" && !h.tools && h.text === m.text) {
+              h.tools = m.tools;
+              break;
+            }
+            if (m.files?.length && h.role === "user" && !h.files && h.text.startsWith("(sent ") && h.text.endsWith(m.text) && m.files.every((f) => h.text.includes(f.name))) {
+              Object.assign(h, { text: m.text, files: m.files });
               break;
             }
           }
         }
-        return now;
+        // The turn under way is not all in hippo yet: what this page has
+        // past hippo's newest message it knew (a message waiting its turn,
+        // the words and tools so far) stays until hippo has it too.
+        if (!turning) return now;
+        const known = was.map((m) => m.id.startsWith("h-")).lastIndexOf(true);
+        const newer = now.slice(now.findIndex((m) => m.id === was[known]?.id) + 1);
+        const kept = was.slice(known + 1).filter((m) => {
+          const j = newer.findIndex((h) => h.role === m.role && h.text === m.text);
+          if (j < 0) return true;
+          newer.splice(j, 1);
+          return false;
+        });
+        return [...now, ...kept];
       });
       setCards(waiting);
       setStatus("ready");
@@ -237,9 +258,13 @@ export function useChat(): Chat {
     };
     document.addEventListener("visibilitychange", shown);
     resync.current = () => void sync().catch(() => {});
+    // A first load that fails says why and keeps trying.
     sync().then(
       (ok) => ok && listen(),
-      (e) => setStatus(String(e)),
+      (e) => {
+        setStatus(`${e instanceof Error ? e.message : e}. Trying again…`);
+        again();
+      },
     );
     return () => {
       gone = true;
@@ -250,6 +275,12 @@ export function useChat(): Chat {
   }, []);
 
   const send = useCallback(async (text: string, files: File[], redo?: "edit" | "again") => {
+    // Words too long for a message go as a text file, read whole, as
+    // ChatGPT and Claude take a long paste.
+    if (new TextEncoder().encode(text).length > SEND_MAX) {
+      files = [...files, new File([text], "pasted.txt", { type: "text/plain" })];
+      text = "";
+    }
     const local = crypto.randomUUID();
     const shown = files.map((f) => ({ name: f.name, image: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined }));
     setMessages((ms) => {
@@ -265,10 +296,12 @@ export function useChat(): Chat {
       const view = views.get(f);
       if (view) body.append("view", view);
     }
-    const r = await fetch("/api/send", { method: "POST", body });
-    if (r.status === 401) return setStatus("signed-out");
-    if (!r.ok) {
+    const r = await fetch("/api/send", { method: "POST", body }).catch(() => undefined);
+    if (r?.status === 401) return setStatus("signed-out");
+    if (!r?.ok) {
       setMessages((ms) => ms.map((m) => (m.id === local ? { ...m, reaction: "⚠️" } : m)));
+      // A redo refused leaves the history as it was; the page shows that again.
+      if (redo) resync.current();
       return;
     }
     // The server's id, so a reaction finds the message.
@@ -278,27 +311,29 @@ export function useChat(): Chat {
 
   // The turn answers "(Stopped.)" over the stream.
   const stop = useCallback(async () => {
-    const r = await fetch("/api/stop", { method: "POST" });
-    if (r.status === 401) setStatus("signed-out");
+    const r = await fetch("/api/stop", { method: "POST" }).catch(() => undefined);
+    if (r?.status === 401) setStatus("signed-out");
   }, []);
 
   // The task ends on the yeoman's next tick, within half a minute.
   const stopTask = useCallback(async () => {
     setTask((k) => k && { ...k, stopping: true });
-    const r = await fetch("/api/task/stop", { method: "POST" });
-    if (r.status === 401) setStatus("signed-out");
+    const r = await fetch("/api/task/stop", { method: "POST" }).catch(() => undefined);
+    if (r?.status === 401) setStatus("signed-out");
+    // Not asked after all: the button comes back to try again.
+    else if (!r?.ok) setTask((k) => k && { ...k, stopping: false });
   }, []);
 
   // The keeper lets the browser go; the screen leaves with the news of it.
   const openBrowser = useCallback(async () => {
-    const r = await fetch("/api/browser/open", { method: "POST" });
-    if (r.status === 401) setStatus("signed-out");
-    else if (r.ok) setBrowser(true);
+    const r = await fetch("/api/browser/open", { method: "POST" }).catch(() => undefined);
+    if (r?.status === 401) setStatus("signed-out");
+    else if (r?.ok) setBrowser(true);
   }, []);
   const closeBrowser = useCallback(async () => {
-    const r = await fetch("/api/browser/close", { method: "POST" });
-    if (r.status === 401) setStatus("signed-out");
-    else if (r.ok) setBrowser(false);
+    const r = await fetch("/api/browser/close", { method: "POST" }).catch(() => undefined);
+    if (r?.status === 401) setStatus("signed-out");
+    else if (r?.ok) setBrowser(false);
   }, []);
 
   const decide = useCallback(async (id: number, yes: boolean) => {
@@ -307,12 +342,12 @@ export function useChat(): Chat {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id, yes }),
-    });
-    if (r.status === 401) return setStatus("signed-out");
+    }).catch(() => undefined);
+    if (r?.status === 401) return setStatus("signed-out");
     // Gone means decided already, here or in Matrix.
-    if (r.status === 404) return setCards((cs) => cs.filter((c) => c.id !== id));
+    if (r?.status === 404) return setCards((cs) => cs.filter((c) => c.id !== id));
     // Accepted: `settled` comes over the stream once it is carried out.
-    if (!r.ok) setCards((cs) => cs.map((c) => (c.id === id ? { ...c, busy: false, error: `That failed (${r.status}).` } : c)));
+    if (!r?.ok) setCards((cs) => cs.map((c) => (c.id === id ? { ...c, busy: false, error: r ? `That failed (${r.status}).` : "The yeoman couldn't be reached." } : c)));
   }, []);
 
   const refresh = useCallback(() => resync.current(), []);

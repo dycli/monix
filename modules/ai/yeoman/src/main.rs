@@ -897,9 +897,10 @@ async fn watches<D: Door>(
             }
         };
         if text != QUIET {
+            // The answer is in hippo, where the pages show it; sending it
+            // again would mean asking the model again on every tick.
             if let Err(e) = door.say(&text).await {
                 eprintln!("yeoman: watch {}: {e}", w.id);
-                continue;
             }
             if let (true, Some(h)) = (share, house) {
                 let note = format!("From {}'s shared watch \"{}\": {text}", h.person(), w.text);

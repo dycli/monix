@@ -957,8 +957,11 @@ function Speak() {
         done();
       };
       await player.play();
-      setState("playing");
+      // Stopped while it started: the stop has set the button already.
+      if (stopping === done) setState("playing");
     } catch {
+      // A play cut short by Stop, or by another reading, is no failure.
+      if (stopping !== done) return;
       spoken.delete(text);
       done();
     }
