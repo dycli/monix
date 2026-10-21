@@ -629,6 +629,34 @@ fn is_reaction(reply: &str) -> bool {
 /// household) to the model as one request and sends its answer, deleting
 /// the files only once that is sent; if the model fails, they go out word
 /// for word. Names starting with a dot are writes still in progress.
+/// A turn the yeoman starts itself, not the person: the door shows it
+/// typing while the model answers.
+async fn ask_alone<D: Door>(
+    door: &D,
+    hippo: &Arc<Hippo>,
+    model: &Arc<dyn Model>,
+    from: From,
+    said: String,
+) -> Result<String, String> {
+    let typing = Typing::start(door);
+    let (h, m) = (hippo.clone(), model.clone());
+    let answered = tokio::task::spawn_blocking(move || {
+        answer(&h, m.as_ref(), from, &said, Vec::new(), Turn::default())
+    })
+    .await
+    .unwrap_or_else(|e| Err(e.to_string()));
+    typing.stop().await;
+    answered
+}
+
+/// Keeps in hippo what the yeoman said outside a turn.
+async fn log_talk(hippo: &Arc<Hippo>, text: String) {
+    let hippo = hippo.clone();
+    if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await {
+        eprintln!("yeoman: {e}");
+    }
+}
+
 async fn drain(
     door: &impl Door,
     hippo: &Arc<Hippo>,
@@ -665,18 +693,12 @@ async fn drain(
         .collect();
     if !texts.is_empty() {
         let said = texts.join("\n\n");
-        let typing = Typing::start(door);
-        let (h, m, ask) = (hippo.clone(), model.clone(), said.clone());
-        let text = tokio::task::spawn_blocking(move || {
-            answer(&h, m.as_ref(), from, &ask, Vec::new(), Turn::default())
-        })
-        .await
-        .unwrap_or_else(|e| Err(e.to_string()))
-        .unwrap_or_else(|e| {
-            eprintln!("yeoman: {}: {e}", dir.display());
-            said
-        });
-        typing.stop().await;
+        let text = ask_alone(door, hippo, model, from, said.clone())
+            .await
+            .unwrap_or_else(|e| {
+                eprintln!("yeoman: {}: {e}", dir.display());
+                said
+            });
         if let Err(e) = door.say(&text).await {
             eprintln!("yeoman: {}: {e}", dir.display());
             return;
@@ -718,6 +740,8 @@ async fn remind<D: Door>(
     });
     let mut task = None;
     let mut tick = tokio::time::interval(Duration::from_secs(30));
+    // A tick held up by a long turn is not made up in a burst after it.
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut ticks = 0u64;
     loop {
         tick.tick().await;
@@ -755,22 +779,9 @@ async fn remind<D: Door>(
                 (Some(kept), _) => (kept.clone(), r.share),
                 (None, false) => (format!("Reminder: {}", r.text), false),
                 (None, true) => {
-                    let typing = Typing::start(&door);
-                    let (hippo, model, ask) = (hippo.clone(), model.clone(), r.text.clone());
-                    let answered = tokio::task::spawn_blocking(move || {
-                        answer(
-                            &hippo,
-                            model.as_ref(),
-                            From::Routine,
-                            &ask,
-                            Vec::new(),
-                            Turn::default(),
-                        )
-                    })
-                    .await
-                    .unwrap_or_else(|e| Err(e.to_string()));
+                    let answered =
+                        ask_alone(&door, &hippo, &model, From::Routine, r.text.clone()).await;
                     send_outbox(&door, &state.join("outbox")).await;
-                    typing.stop().await;
                     match answered {
                         Ok(text) => {
                             if let Err(e) = on_book(&state, |db| book::keep_answer(db, &r, &text)) {
@@ -801,12 +812,7 @@ async fn remind<D: Door>(
                     }
                 }
                 if !r.ask {
-                    let hippo = hippo.clone();
-                    let logged =
-                        tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await;
-                    if let Ok(Err(e)) = logged {
-                        eprintln!("yeoman: {e}");
-                    }
+                    log_talk(&hippo, text).await;
                 }
             }
             if let Err(e) = on_book(&state, |db| book::done(db, &r, now)) {
@@ -821,8 +827,8 @@ const WATCH_ITEMS: usize = 20;
 
 /// Fires the watches: every source a watch uses is read once, and each
 /// watch with new items that pass its tests gets one turn for all of them.
-/// The items count as told only once the door has the answer, so one that
-/// fails to send is tried again on the next look.
+/// The items count as told once answered, sent or not: the answer is in
+/// hippo either way.
 async fn watches<D: Door>(
     door: &D,
     hippo: &Arc<Hippo>,
@@ -874,21 +880,7 @@ async fn watches<D: Door>(
         fresh.truncate(WATCH_ITEMS);
         let quoted: Vec<String> = fresh.iter().map(watch::describe).collect();
         let said = format!("{}\n<items>\n{}\n</items>", w.text, quoted.join("\n"));
-        let typing = Typing::start(door);
-        let (h, m) = (hippo.clone(), model.clone());
-        let answered = tokio::task::spawn_blocking(move || {
-            answer(
-                &h,
-                m.as_ref(),
-                From::Watch,
-                &said,
-                Vec::new(),
-                Turn::default(),
-            )
-        })
-        .await
-        .unwrap_or_else(|e| Err(e.to_string()));
-        typing.stop().await;
+        let answered = ask_alone(door, hippo, model, From::Watch, said).await;
         let (text, share) = match answered {
             Ok(text) => (text, w.share),
             Err(e) => {
@@ -942,10 +934,7 @@ async fn tasks(
             return;
         }
         let _ = fs::remove_file(file);
-        let (hippo, text) = (hippo.clone(), text);
-        if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await {
-            eprintln!("yeoman: {e}");
-        }
+        log_talk(hippo, text).await;
     }
     if let Some((handle, stop)) = running {
         if task::cancelled(state) {
@@ -1017,10 +1006,7 @@ async fn show_pending(door: &impl Door, hippo: &Arc<Hippo>, state: &Path) {
         if let Err(e) = pending::save(state, &p) {
             eprintln!("yeoman: pending {}: {e}", p.id);
         }
-        let hippo = hippo.clone();
-        if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await {
-            eprintln!("yeoman: {e}");
-        }
+        log_talk(hippo, text).await;
     }
 }
 
@@ -1058,9 +1044,7 @@ async fn decide(door: impl Door, id: u64, yes: bool, state: PathBuf, hippo: Arc<
     if let Err(e) = door.settle(&p, &text, done).await {
         eprintln!("yeoman: pending {}: {e}", p.id);
     }
-    if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await {
-        eprintln!("yeoman: {e}");
-    }
+    log_talk(&hippo, text).await;
 }
 
 /// One change to the book in `state`.
@@ -1258,7 +1242,9 @@ async fn run() -> Result<(), String> {
     matrix::sync(&client).await
 }
 
-#[tokio::main]
+// One person's assistant: two threads carry its I/O, and the model, hippo
+// and the books run on the blocking pool.
+#[tokio::main(worker_threads = 2)]
 async fn main() -> ExitCode {
     // The homeserver is plain http on loopback, but reqwest panics
     // without a TLS provider installed.

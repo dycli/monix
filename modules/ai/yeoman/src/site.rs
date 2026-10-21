@@ -1789,6 +1789,38 @@ mod tests {
     }
 
     #[test]
+    fn only_a_live_session_signs_in() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("yeoman-sessions-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("sessions");
+        std::fs::write(&file, format!("old {}\n", super::unix() - 1)).unwrap();
+        let mut sessions = super::Sessions {
+            file: file.clone(),
+            mode: 0o640,
+        };
+        let token = sessions.start().unwrap();
+        assert!(sessions.valid(&token));
+        assert!(!sessions.valid("old"), "an ended session is let in");
+        assert!(!sessions.valid("forged"));
+        assert!(
+            !std::fs::read_to_string(&file).unwrap().contains("old "),
+            "ended sessions are kept"
+        );
+        assert_eq!(
+            std::fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+
+        let mut headers = axum::http::HeaderMap::new();
+        let cookie = format!("theme=dark; {}={token}; x=y", super::COOKIE);
+        headers.insert(axum::http::header::COOKIE, cookie.parse().unwrap());
+        assert_eq!(super::session(&headers), Some(token.as_str()));
+        assert_eq!(super::session(&axum::http::HeaderMap::new()), None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn speech_key_tells_voices_apart() {
         assert_eq!(
             super::speech_key("leo", "hi"),

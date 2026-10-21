@@ -15,8 +15,6 @@ import {
   type ToolCallMessagePartProps,
 } from "@assistant-ui/react";
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
-import { code } from "@streamdown/code";
-import { math } from "@streamdown/math";
 import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, type Card, type Chat, type Hit, type Msg, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
@@ -607,6 +605,10 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
+  // Read when a redraw is pressed, so the cards needn't all redraw on every
+  // word that streams in.
+  const now = useRef(messages);
+  now.current = messages;
   const api = useMemo<Cards>(
     () => ({
       open: show,
@@ -615,14 +617,16 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
         // this answer — so the card is drawn afresh from current data. The
         // last answer is replaced, as ChatGPT regenerates; an older one is
         // asked again below, since replacing it would drop all that followed.
+        const messages = now.current;
         const i = messages.findIndex((m) => m.id === msgId);
         const last = !typing && !messages.slice(i + 1).some((m) => m.role === "user");
         for (let j = i - 1; j >= 0; j--) if (messages[j].role === "user") return void send(messages[j].text, [], last ? "again" : undefined);
       },
       typing,
     }),
+    // `show` only sets state, so the first one serves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [messages, send, typing],
+    [send, typing],
   );
 
   const runtime = useExternalStoreRuntime({
@@ -850,13 +854,32 @@ function EditMessage() {
   );
 }
 
+type Plugins = Pick<typeof import("./plugins"), "code" | "math">;
+let plugins: Plugins | undefined;
+let loading: Promise<Plugins> | undefined;
+// A code fence, or what may open math.
+const NEEDS = /```|\$|\\[([]/;
+
+/** The code and math plugins once loaded, which the first text needing them starts. */
+function usePlugins(text: string) {
+  const [, loaded] = useState<Plugins>();
+  const needed = !plugins && NEEDS.test(text);
+  useEffect(() => {
+    if (!needed) return;
+    loading ??= import("./plugins").then(({ code, math }) => (plugins = { code, math }));
+    loading.then(loaded, () => (loading = undefined));
+  }, [needed]);
+  return plugins;
+}
+
 // A live answer is parsed as it streams, its unfinished markdown closed
 // for it, and shows a caret until the whole answer replaces it.
 function Text() {
   const { live } = useCustom();
+  const plugins = usePlugins(useAuiState((s) => s.message.content.map((p) => (p.type === "text" ? p.text : "")).join("")));
   return (
     <StreamdownTextPrimitive
-      plugins={{ code, math }}
+      plugins={plugins}
       mode={live ? "streaming" : "static"}
       containerClassName={live ? "writing" : undefined}
       lineNumbers={false}
