@@ -25,7 +25,10 @@ Item {
     // transientVisible by the close animation, so the popout keeps its one
     // control while it slides away.
     readonly property string flashOnly: transientMode !== "" && !hoverOpen
-        && !settingsOpen && !lowBatteryOpen ? transientMode : ""
+        && !settingsOpen ? transientMode : ""
+    // Low battery alone shows just the battery, like a flash would.
+    readonly property bool batteryOnly: lowBatteryOpen && !hoverOpen && !settingsOpen
+        && transientMode === ""
     readonly property bool popoutVisible: !detailVisible && BarModeService.activeMode === ""
         && (hoverOpen || transientVisible || settingsOpen || lowBatteryOpen)
     readonly property real mediaLead: media.visible ? media.width + gap : 0
@@ -136,15 +139,15 @@ Item {
             spacing: root.gap
 
             MediaTitle {
-                visible: root.flashOnly === "" && MediaState.available && text.length > 0
-                    && width > 0
+                visible: root.flashOnly === "" && !root.batteryOnly && MediaState.available
+                    && text.length > 0 && width > 0
                 maximumWidth: Math.max(0, root.popoutRoom - popout.fixedWidth - root.gap)
             }
 
             ControlBarMenu {
                 id: controlMenu
 
-                visible: root.flashOnly !== "profile"
+                visible: root.flashOnly !== "profile" && !root.batteryOnly
                 only: root.flashOnly
                 settingsOpen: root.settingsOpen
                 onSettingsRequested: section => {
@@ -165,8 +168,8 @@ Item {
                     ? "profile" : "battery"
                 profileLabel: PowerService.profilesAvailable
                     ? PowerService.profileName(PowerProfiles.profile) : "Power"
-                visible: PowerService.hasBattery
-                    && (root.flashOnly === "" || root.flashOnly === "profile")
+                visible: PowerService.hasBattery && (root.flashOnly === ""
+                    || root.flashOnly === "profile" || root.lowBatteryOpen)
 
                 MouseArea {
                     anchors.fill: parent
