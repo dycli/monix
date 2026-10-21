@@ -131,6 +131,13 @@
           done
           sleep 30
           broke=$(comm -13 <(echo "$before") <(failed))
+          # A timer's job runs on its own schedule, and the switch re-arms
+          # timers, so one can fire and fail inside this window for reasons
+          # of its own (fwupd-refresh while LVFS was down rolled back a sound
+          # deploy on 10-21). Its failure alert still reports it.
+          broke=$(for unit in $broke; do
+            [[ $(systemctl show -P TriggeredBy "$unit") == *.timer* ]] || echo "$unit"
+          done)
           [[ -z $broke ]] || healthy=0
           missing=""
           for unit in ${escapeShellArgs cfg.mustRun}; do

@@ -48,9 +48,9 @@
         mv "${spool}/.$name" "${spool}/$name"
       '';
 
-      # usage: ship-alert [--throttle-minutes N] < body
-      # Throttled bodies are dropped while an identical one was queued
-      # within N minutes.
+      # usage: ship-alert [--throttle-minutes N [--key K]] < body
+      # Throttled bodies are dropped while an identical one, or one with
+      # the same key, was queued within N minutes.
       shipAlert = pkgs.writeShellApplication {
         name = "ship-alert";
         runtimeInputs = [
@@ -59,11 +59,18 @@
         ];
         text = ''
           minutes=0
-          if [ "''${1:-}" = --throttle-minutes ]; then minutes=$2; fi
+          key=""
+          while [ $# -gt 0 ]; do
+            case $1 in
+              --throttle-minutes) minutes=$2 ;;
+              --key) key=$2 ;;
+            esac
+            shift 2
+          done
           body=$(head -c ${toString max})
           [ -n "$body" ] || exit 0
           if [ "$minutes" -gt 0 ]; then
-            mark=/var/lib/alerts/throttle-$(printf %s "$body" | sha256sum | cut -c1-16)
+            mark=/var/lib/alerts/throttle-$(printf %s "''${key:-$body}" | sha256sum | cut -c1-16)
             if [ -n "$(find "$mark" -mmin -"$minutes" 2>/dev/null)" ]; then exit 0; fi
             touch "$mark"
           fi
@@ -193,8 +200,11 @@
               unit="$1"
               case "$unit" in alert-*) exit 0 ;; esac
               tail=$(journalctl -u "$unit" -n 12 --no-pager -o cat || true)
+              # Keyed by unit, as each failure's log differs: a unit that
+              # keeps failing (fwupd-refresh hourly while LVFS was down on
+              # 10-21) alerts once per six hours, like SMART.
               printf '🔴 %s: %s failed\n%s' ${hostname} "$unit" "$tail" \
-                | ship-alert
+                | ship-alert --throttle-minutes 360 --key "failed $unit"
             '';
           };
 
