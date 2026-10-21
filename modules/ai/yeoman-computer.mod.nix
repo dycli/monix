@@ -15,6 +15,11 @@
 # <name>-screen.<domain>: noVNC through websockify to the guest's VNC;
 # the assistant gives the person the link when they must take over.
 #
+# The same guest runs the assistant's code: Python with the usual data
+# libraries and a shell with file converters, in a folder of the desk the
+# host fills with the files it needs and keeps what it writes. The runner
+# has no network and no sight of the browser's profile.
+#
 # Nothing of the household is in the guest: no tailnet, no store share,
 # no secret, no login but the ones the assistant makes on sites. Its
 # network is the internet only (yeoman-network.mod.nix).
@@ -68,6 +73,46 @@
               keeper = pkgs.writers.writePython3Bin "desk-keeper" {
                 libraries = singleton pkgs.python3Packages.mcp;
               } (readFile ./yeoman-computer/keeper.py);
+              runner = pkgs.writers.writePython3Bin "desk-runner" { } (readFile ./yeoman-computer/runner.py);
+              # What the code has to hand: the data libraries for Python,
+              # and converters for pictures, sound and film, documents and
+              # archives for the shell.
+              tools = [
+                (pkgs.python3.withPackages (
+                  ps: with ps; [
+                    matplotlib
+                    numpy
+                    openpyxl
+                    pandas
+                    pillow
+                    pillow-heif
+                    pypdf
+                    python-docx
+                    reportlab
+                  ]
+                ))
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.file
+                pkgs.findutils
+                pkgs.gawk
+                pkgs.gnugrep
+                pkgs.gnused
+                pkgs.gnutar
+                pkgs.gzip
+                pkgs.ffmpeg-headless
+                pkgs.imagemagick
+                pkgs.ghostscript
+                pkgs.jq
+                pkgs.p7zip
+                pkgs.pandoc
+                pkgs.poppler-utils
+                pkgs.qpdf
+                pkgs.unzip
+                pkgs.xz
+                pkgs.zip
+                pkgs.zstd
+              ];
               # The headless output starts at wlroots' 1280x720 whatever the
               # viewport, so it is sized to the screen before the browser opens.
               browse = pkgs.writeShellScript "desk-browse" ''
@@ -141,6 +186,7 @@
                 firewall.allowedTCPPorts = [
                   computers.mcpPort
                   computers.keepPort
+                  computers.runPort
                   computers.vncPort
                 ];
               };
@@ -159,6 +205,12 @@
                 group = "desk";
                 home = "/home/pc";
                 createHome = false;
+              };
+              # The code runs as a user of its own, not the browser's.
+              users.users.run = {
+                isSystemUser = true;
+                uid = 1001;
+                group = "desk";
               };
               systemd.tmpfiles.rules = singleton "d /home/pc 0700 pc desk -";
 
@@ -209,6 +261,33 @@
                   # a dropped session is simply opened again.
                   Restart = "always";
                   RestartSec = 3;
+                };
+              };
+              # systemd holds the socket, so the runner itself can live
+              # without a network.
+              systemd.sockets.desk-runner = {
+                wantedBy = singleton "sockets.target";
+                listenStreams = singleton (toString computers.runPort);
+              };
+              systemd.services.desk-runner = {
+                description = "Runs the assistant's code, with no network";
+                unitConfig.RequiresMountsFor = singleton computers.deskMount;
+                path = tools;
+                environment.DESK_RUNS = "${computers.deskMount}/${computers.runs}";
+                serviceConfig = {
+                  User = "run";
+                  Group = "desk";
+                  ExecStart = getExe runner;
+                  PrivateNetwork = true;
+                  PrivateTmp = true;
+                  ProtectHome = true;
+                  ProtectSystem = "strict";
+                  ReadWritePaths = singleton "${computers.deskMount}/${computers.runs}";
+                  NoNewPrivileges = true;
+                  # Room for a big picture or table, and the browser's
+                  # share of the guest left alone.
+                  MemoryMax = "2G";
+                  TasksMax = 256;
                 };
               };
               systemd.services.wayvnc = {
@@ -278,6 +357,7 @@
             owners
             |> map (n: [
               "d ${desk n} 2770 root ${computers.deskGroup} -"
+              "d ${desk n}/${computers.runs} 2770 root ${computers.deskGroup} -"
               "d ${config.microvm.stateDir}/${vm n} 0755 microvm kvm -"
             ])
             |> concatLists

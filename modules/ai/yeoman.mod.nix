@@ -306,6 +306,7 @@
             // optionalAttrs i.computer {
               YEOMAN_DESK = pc.desk;
               YEOMAN_KEEP = "http://${pc.addr}:${toString computers.keepPort}";
+              YEOMAN_RUN = "http://${pc.addr}:${toString computers.runPort}";
             }
             // optionalAttrs (cfg.homeTokenFile != null) { YEOMAN_HOME = "1"; }
             // optionalAttrs (cfg.searchKeyFile != null) { YEOMAN_SEARCH_KEY = "${creds}/search"; }

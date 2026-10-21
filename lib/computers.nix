@@ -35,6 +35,8 @@ in
   mcpPort = 8931;
   # The keeper's lease on the browser (yeoman-computer/keeper.py).
   keepPort = 8933;
+  # The runner of the assistant's code (yeoman-computer/runner.py).
+  runPort = 8934;
   vncPort = 5900;
   # The nth screen on the host's loopback, for the person's browser.
   screenPort = index: 6080 + index;
@@ -43,6 +45,8 @@ in
   # Each assistant's desk: screenshots and downloads out, uploads in.
   desks = "/var/lib/yeoman-desks";
   deskMount = "/desk";
+  # The desk's folder of runs, one folder each, made by the host.
+  runs = "runs";
   deskGroup = "yeoman-desk";
   deskGid = 3001;
 }

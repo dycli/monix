@@ -19,6 +19,7 @@ mod media;
 mod model;
 mod pending;
 mod push;
+mod run;
 mod site;
 mod task;
 mod tools;
@@ -110,7 +111,11 @@ on your desk, as do downloads; send_file it to {person} when they should \
 see it, and when you are stuck (a code, a captcha, a choice) send it and ask. The browser \
 closes half an hour after its last use, keeping its logins but not its \
 pages; computer_keep holds it open until {person} says to close it, and \
-computer_close closes it now.";
+computer_close closes it now. run_code runs Python or shell on it, \
+offline, with your files beside it: when {person} wants a file turned \
+into another kind (a HEIC photo to JPEG, a document to PDF, a folder of \
+files to a zip), or a table worked out or charted, do it there and \
+send_file the result.";
 
 /// Added when the computer's screen has a page the person can open.
 const SCREEN: &str = " When {person} must take the keyboard themselves (a captcha, a \

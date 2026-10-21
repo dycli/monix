@@ -14,6 +14,7 @@ use crate::keep;
 use crate::mail::{self, Account, Imap};
 use crate::media::Seerr;
 use crate::pending::{self, Act};
+use crate::run;
 use crate::task;
 use crate::watch::{self, Source, Test};
 use crate::weather::Weather;
@@ -48,6 +49,8 @@ struct Tools {
     desk: Option<PathBuf>,
     /// The computer's keeper, which leases the browser.
     keep: Option<String>,
+    /// The computer's runner of code.
+    run: Option<String>,
     /// The site's directory and its URL, when the assistant has one.
     pages: Option<(PathBuf, String)>,
     /// The household's film and show library (Seerr), when there is one.
@@ -188,6 +191,20 @@ struct MailRead {
     folder: Option<String>,
     /// The account, by name, when there is more than one.
     account: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct RunCode {
+    /// "python" or "shell" (bash).
+    language: String,
+    /// The code. It runs in a folder holding copies of `files`, with no
+    /// network; every file it writes there is kept as one of your files.
+    code: String,
+    /// Names of your files the code needs, copied in beside it by name.
+    #[serde(default)]
+    files: Vec<String>,
+    /// Seconds before it is stopped: 120 unless given, at most 300.
+    seconds: Option<u64>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -701,6 +718,35 @@ impl Tools {
             &name,
         )?;
         Ok(format!("{kept} goes out with your answer."))
+    }
+
+    #[tool(
+        description = "Run Python or shell code on your computer, for converting, making or reckoning with files: a picture to another kind or size (ImageMagick `magick`, HEIC too), sound and film (ffmpeg), documents (pandoc, pdftotext, qpdf, Ghostscript), archives (zip, unzip, 7z, tar), tables and charts (Python with pandas, matplotlib, openpyxl, Pillow, pypdf, python-docx, reportlab). Give the names of your files it needs; they sit beside it by name, and every file it writes is kept as yours, so send_file can send it. No network: it cannot fetch or install anything."
+    )]
+    fn run_code(
+        &self,
+        Parameters(RunCode {
+            language,
+            code,
+            files,
+            seconds,
+        }): Parameters<RunCode>,
+    ) -> Result<String, String> {
+        let (url, desk) = self
+            .run
+            .as_ref()
+            .zip(self.desk.as_ref())
+            .ok_or("There is no computer here.")?;
+        let seconds = seconds.unwrap_or(120).clamp(1, 300);
+        run::run(
+            url,
+            desk,
+            &Library::new(&self.dir),
+            &language,
+            &code,
+            &files,
+            seconds,
+        )
     }
 
     #[tool(
@@ -1297,6 +1343,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
         mail: mail()?,
         desk: std::env::var_os("YEOMAN_DESK").map(PathBuf::from),
         keep: std::env::var("YEOMAN_KEEP").ok(),
+        run: std::env::var("YEOMAN_RUN").ok(),
         pages: std::env::var("YEOMAN_PAGES")
             .ok()
             .zip(std::env::var("YEOMAN_PAGES_URL").ok())
