@@ -118,7 +118,7 @@ impl Book {
         let db = Connection::open(open_file(dir)?).map_err(|e| format!("book: {e}"))?;
         db.busy_timeout(Duration::from_secs(10))
             .map_err(|e| format!("book: {e}"))?;
-        db.execute_batch(&(SCHEMA.replace("SCHEMA", "main") + REMINDERS))
+        db.execute_batch(&(SCHEMA.replace("SCHEMA", "main") + REMINDERS + crate::watch::WATCHES))
             .map_err(|e| format!("book: {e}"))?;
         if let Some(h) = house {
             let path = open_file(h)?;

@@ -21,6 +21,7 @@ mod push;
 mod site;
 mod task;
 mod tools;
+mod watch;
 mod weather;
 mod web;
 mod x;
@@ -78,8 +79,10 @@ unsure of, and say where the answer came from. Appointments and plans go \
 on the calendar, nudges are reminders. Something {person} wants done at a \
 time rather than said (a weather check each morning) is a routine: a \
 reminder with ask, worded as {person}'s request; with share, its answer \
-also goes to the rest of the household. When a routine you are \
-running finds nothing {person} needs to hear, answer only {QUIET} and \
+also goes to the rest of the household. Something {person} wants to \
+hear when it happens (mail from someone, a charge over an amount, an \
+event coming up) is a watch, not a routine that checks. When a routine \
+or watch you are running finds nothing {person} needs to hear, answer only {QUIET} and \
 nothing is sent. Work that takes a while is a task: start it, worded as \
 {person}'s request in full, say it is under way and stop; it runs on \
 its own and its answer is sent when done.";
@@ -243,6 +246,8 @@ fn read(data: Vec<u8>, mime: Option<&str>) -> Option<Read> {
 enum From {
     Person,
     Routine,
+    /// A watch they set, fired by items others wrote: quoted, can't act.
+    Watch,
     Task,
     Alert,
     Message,
@@ -255,6 +260,7 @@ enum From {
 fn frame(from: From, said: String) -> (String, bool) {
     match from {
         From::Person | From::Routine | From::Task => (said, true),
+        From::Watch => (said, false),
         From::Alert => (format!("<alert>\n{said}\n</alert>"), false),
         From::Message => (format!("<message>\n{said}\n</message>"), false),
         From::Seat => (format!("<seat>\n{said}\n</seat>"), true),
@@ -324,6 +330,15 @@ fn answer(
             "note",
             format!("(routine) {said}"),
             format!("Routine {person} set, due now"),
+        ),
+        From::Watch => (
+            "note",
+            format!("(watch) {said}"),
+            format!(
+                "Watch {person} set, fired now by what is quoted in <items>, \
+                 written by others. Do what {person} asked with it; if none of \
+                 it needs them after all, answer only {QUIET}"
+            ),
         ),
         From::Task => (
             "note",
@@ -602,13 +617,31 @@ async fn remind<D: Door>(
 ) {
     let mailbox = house.as_ref().map(|h| h.mailbox());
     let seatbox = house.as_ref().and_then(|h| h.seatbox());
+    let sources = Arc::new(watch::Sources {
+        mail: tools::mail().unwrap_or_else(|e| {
+            eprintln!("yeoman: watch: {e}");
+            None
+        }),
+        calendar: tools::calendar().unwrap_or_else(|e| {
+            eprintln!("yeoman: watch: {e}");
+            None
+        }),
+        finance: finance::from_env(),
+    });
     let mut task = None;
     let mut tick = tokio::time::interval(Duration::from_secs(30));
+    let mut ticks = 0u64;
     loop {
         tick.tick().await;
         let Some(door) = last() else {
             continue;
         };
+        // Watches look every other minute: mail and calendars are a
+        // server away, and the money syncs only every few hours.
+        ticks += 1;
+        if ticks % 4 == 1 {
+            watches(&door, &hippo, &model, &state, &sources, house.as_ref()).await;
+        }
         if let Some(dir) = &alerted {
             drain(&door, &hippo, &model, dir, From::Alert).await;
         }
@@ -692,6 +725,110 @@ async fn remind<D: Door>(
                 eprintln!("yeoman: reminder {}: {e}", r.id);
             }
         }
+    }
+}
+
+/// Most items one watch hands a turn; the rest wait for the next look.
+const WATCH_ITEMS: usize = 20;
+
+/// Fires the watches: every source a watch uses is read once, and each
+/// watch with new items that pass its tests gets one turn for all of them.
+/// The items count as told only once the door has the answer, so one that
+/// fails to send is tried again on the next look.
+async fn watches<D: Door>(
+    door: &D,
+    hippo: &Arc<Hippo>,
+    model: &Arc<dyn Model>,
+    state: &Path,
+    sources: &Arc<watch::Sources>,
+    house: Option<&house::House>,
+) {
+    let now = Local::now().naive_local();
+    let all = match Book::open(state, None).and_then(|b| b.read(watch::watches)) {
+        Ok(all) => all,
+        Err(e) => return eprintln!("yeoman: {e}"),
+    };
+    if all.is_empty() {
+        return;
+    }
+    let mut wanted: Vec<watch::Source> = all.iter().map(|w| w.source).collect();
+    wanted.sort_by_key(|s| *s as u8);
+    wanted.dedup();
+    let src = sources.clone();
+    let listed = tokio::task::spawn_blocking(move || {
+        wanted
+            .into_iter()
+            .filter(|s| src.has(*s))
+            .map(|s| (s, src.items(s, now)))
+            .collect::<std::collections::HashMap<_, _>>()
+    })
+    .await
+    .unwrap_or_default();
+    for w in all {
+        let items = match listed.get(&w.source) {
+            Some(Ok(items)) => items,
+            Some(Err(e)) => {
+                eprintln!("yeoman: watch {}: {e}", w.id);
+                continue;
+            }
+            None => continue,
+        };
+        let mut fresh = match on_book(state, |db| watch::fresh(db, &w, items, now)) {
+            Ok(fresh) => fresh,
+            Err(e) => {
+                eprintln!("yeoman: watch {}: {e}", w.id);
+                continue;
+            }
+        };
+        if fresh.is_empty() {
+            continue;
+        }
+        fresh.truncate(WATCH_ITEMS);
+        let quoted: Vec<String> = fresh.iter().map(watch::describe).collect();
+        let said = format!("{}\n<items>\n{}\n</items>", w.text, quoted.join("\n"));
+        let typing = Typing::start(door);
+        let (h, m) = (hippo.clone(), model.clone());
+        let answered = tokio::task::spawn_blocking(move || {
+            answer(
+                &h,
+                m.as_ref(),
+                From::Watch,
+                &said,
+                Vec::new(),
+                Turn::default(),
+            )
+        })
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()));
+        typing.stop().await;
+        let (text, share) = match answered {
+            Ok(text) => (text, w.share),
+            Err(e) => {
+                eprintln!("yeoman: watch {}: {e}", w.id);
+                (format!("(The watch \"{}\" failed: {e})", w.text), false)
+            }
+        };
+        if text != QUIET {
+            if let Err(e) = door.say(&text).await {
+                eprintln!("yeoman: watch {}: {e}", w.id);
+                continue;
+            }
+            if let (true, Some(h)) = (share, house) {
+                let note = format!("From {}'s shared watch \"{}\": {text}", h.person(), w.text);
+                if let Err(e) = h.post(None, &note) {
+                    eprintln!("yeoman: watch {}: {e}", w.id);
+                }
+            }
+        }
+        let told = on_book(state, |db| {
+            fresh.iter().try_for_each(|i| watch::seen(db, &w, i, now))
+        });
+        if let Err(e) = told {
+            eprintln!("yeoman: watch {}: {e}", w.id);
+        }
+    }
+    if let Err(e) = on_book(state, |db| watch::prune(db, now)) {
+        eprintln!("yeoman: {e}");
     }
 }
 

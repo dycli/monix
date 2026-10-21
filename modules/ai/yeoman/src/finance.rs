@@ -17,6 +17,9 @@ const ROWS: usize = 200;
 /// The most transactions one answer lists; fewer when they won't fit.
 const LEDGER_ROWS: usize = 300;
 
+/// One row as named fields.
+pub type Fields = serde_json::Map<String, Value>;
+
 pub struct Finance {
     db: PathBuf,
 }
@@ -171,6 +174,38 @@ impl Finance {
         }
         rows.truncate(keep);
         Ok(answer(&rows))
+    }
+
+    /// The transactions dated `since` or later, filed as the money page
+    /// files them, each with a key that stays the same when the bank turns
+    /// a pending charge into a posted one under a new id.
+    pub fn recent(&self, since: &str) -> Result<Vec<(String, Fields)>, String> {
+        let c = self.open()?;
+        let mut s = c
+            .prepare(
+                "SELECT l.account_id || '/' || l.merchant || '/' || CAST(round(l.amount * 100) AS INTEGER)
+                        || '/' || coalesce(t.authorized_date, t.date),
+                        l.date, l.merchant, l.amount, l.category, l.kind, l.pending,
+                        a.name || coalesce(' ··' || a.mask, '')
+                 FROM ledger l
+                 JOIN transactions t ON t.transaction_id = l.transaction_id
+                 JOIN accounts a ON a.account_id = l.account_id
+                 WHERE l.date >= ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        s.query_map([since], |r| {
+            let mut f = serde_json::Map::new();
+            f.insert("date".into(), json!(r.get::<_, String>(1)?));
+            f.insert("merchant".into(), json!(r.get::<_, Option<String>>(2)?));
+            f.insert("amount".into(), json!(r.get::<_, f64>(3)?));
+            f.insert("category".into(), json!(r.get::<_, String>(4)?));
+            f.insert("kind".into(), json!(r.get::<_, String>(5)?));
+            f.insert("pending".into(), json!(r.get::<_, bool>(6)?));
+            f.insert("account".into(), json!(r.get::<_, Option<String>>(7)?));
+            Ok((r.get::<_, String>(0)?, f))
+        })
+        .and_then(Iterator::collect)
+        .map_err(|e| e.to_string())
     }
 
     /// The investment accounts: each one's value, what its holdings are
@@ -404,6 +439,10 @@ mod tests {
              CREATE TABLE holdings (account_id TEXT, security_id TEXT, quantity REAL,
                  price REAL, price_as_of TEXT, value REAL, cost_basis REAL);
              CREATE TABLE balances (account_id TEXT, date TEXT, current REAL);
+             CREATE TABLE transactions (transaction_id TEXT, date TEXT, authorized_date TEXT);
+             INSERT INTO transactions VALUES ('t1', '2026-10-02', NULL),
+                 ('t2', '2026-10-05', NULL), ('t3', '2026-10-06', '2026-10-04'),
+                 ('t4', '2026-10-07', NULL), ('t5', '2026-09-30', NULL);
              INSERT INTO items VALUES ('i', 'Fidelity');
              INSERT INTO accounts VALUES ('chk', 'i', 'Checking', '1', 'depository', 'checking', 900),
                  ('roth', 'i', 'Roth', '2', 'investment', 'roth', 1100),
@@ -449,6 +488,18 @@ mod tests {
                 .is_err()
         );
         assert!(f.transactions("Oct 1", "2026-10-01", None, None).is_err());
+
+        let recent = f.recent("2026-10-05").unwrap();
+        assert_eq!(recent.len(), 3);
+        let (key, shop) = recent
+            .iter()
+            .find(|r| r.1["merchant"] == "ShopRite")
+            .unwrap();
+        // The day the charge was made, which a pending charge and its
+        // posted twin share.
+        assert_eq!(key, "chk/ShopRite/8000/2026-10-04");
+        assert_eq!(shop["account"], "Checking ··1");
+        assert_eq!(shop["pending"], true);
 
         let m = f.markets().unwrap();
         assert_eq!(m["value"].as_f64(), Some(1600.0));

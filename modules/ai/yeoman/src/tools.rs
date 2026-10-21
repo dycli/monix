@@ -14,6 +14,7 @@ use crate::mail::{self, Account, Imap};
 use crate::media::Seerr;
 use crate::pending::{self, Act};
 use crate::task;
+use crate::watch::{self, Source, Test};
 use crate::weather::Weather;
 use crate::web::Web;
 use crate::x;
@@ -82,6 +83,32 @@ struct Remind {
     /// For a routine: also hand its answer to the rest of the household.
     #[serde(default)]
     share: bool,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct WatchFor {
+    source: Source,
+    /// Tests on the item's fields, all of which must pass; none to fire on
+    /// every item. Mail: account, from, subject. Money: merchant, amount
+    /// (spending positive, money in negative), category, kind, account,
+    /// pending. Calendar: summary, calendar, location, start, end.
+    #[serde(default)]
+    tests: Vec<Test>,
+    /// What to do when it fires, worded as their request, e.g. "tell me
+    /// what Gab wants"; the item comes with it.
+    text: String,
+    /// For calendar events: how many minutes before the start.
+    #[serde(default)]
+    before: i64,
+    /// Also hand its answer to the rest of the household.
+    #[serde(default)]
+    share: bool,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct WatchId {
+    /// The watch's id, as `watches` shows it.
+    id: u64,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -441,6 +468,47 @@ impl Tools {
             Ok(format!("Reminder {id} cancelled."))
         } else {
             Err(format!("No reminder {id}."))
+        }
+    }
+
+    #[tool(
+        description = "Watch for something as it comes: new mail, a new transaction, or a calendar event coming up. When an item passes the tests, you get the text with the item and send your answer, or nothing if it doesn't need them. Use it, not a routine, for \"tell me when\"."
+    )]
+    fn watch(&self, Parameters(w): Parameters<WatchFor>) -> Result<String, String> {
+        let there = match w.source {
+            Source::Mail => self.mail.is_some(),
+            Source::Money => self.finance.is_some(),
+            Source::Calendar => self.calendar.is_some(),
+        };
+        if !there {
+            return Err("That isn't connected here.".into());
+        }
+        if w.share {
+            self.household()?;
+        }
+        let id = self
+            .book()?
+            .change(|db| watch::watch(db, w.source, &w.tests, &w.text, w.before, w.share))?;
+        Ok(format!(
+            "Watch {id} set; it fires on what comes from now on."
+        ))
+    }
+
+    #[tool(description = "Show the watches set.")]
+    fn watches(&self) -> Result<String, String> {
+        let all = self.book()?.read(watch::watches)?;
+        if all.is_empty() {
+            return Ok("No watches.".into());
+        }
+        Ok(all.iter().map(|w| w.show() + "\n").collect())
+    }
+
+    #[tool(description = "Stop a watch.")]
+    fn unwatch(&self, Parameters(WatchId { id }): Parameters<WatchId>) -> Result<String, String> {
+        if self.book()?.change(|db| watch::unwatch(db, id))? {
+            Ok(format!("Watch {id} stopped."))
+        } else {
+            Err(format!("No watch {id}."))
         }
     }
 
@@ -1133,7 +1201,7 @@ fn search_key() -> Result<Option<String>, String> {
 }
 
 /// The calendars, when YEOMAN_CALDAV names the accounts file.
-fn calendar() -> Result<Option<Calendar>, String> {
+pub fn calendar() -> Result<Option<Calendar>, String> {
     let Some(file) = std::env::var_os("YEOMAN_CALDAV") else {
         return Ok(None);
     };
@@ -1154,7 +1222,7 @@ fn weather() -> Result<Option<Weather>, String> {
 }
 
 /// The mail, when YEOMAN_MAIL names the accounts file and YEOMAN_IMAP the server.
-fn mail() -> Result<Option<(String, Vec<Account>)>, String> {
+pub fn mail() -> Result<Option<(String, Vec<Account>)>, String> {
     let Some(file) = std::env::var_os("YEOMAN_MAIL") else {
         return Ok(None);
     };

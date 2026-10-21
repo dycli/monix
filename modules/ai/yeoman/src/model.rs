@@ -175,7 +175,8 @@ pub struct Claude {
 const ACTS: &str = "mcp__yeoman__remind,mcp__yeoman__cancel_reminder,mcp__yeoman__list_add,\
 mcp__yeoman__share_list,mcp__yeoman__list_remove,mcp__yeoman__tell,mcp__yeoman__draft_mail,mcp__yeoman__add_event,\
 mcp__yeoman__change_event,mcp__yeoman__cancel_event,mcp__image__make_image,mcp__yeoman__web_fetch,\
-mcp__computer,mcp__home,mcp__yeoman__media_request,mcp__yeoman__task";
+mcp__computer,mcp__home,mcp__yeoman__media_request,mcp__yeoman__task,mcp__yeoman__cancel_task,\
+mcp__yeoman__show_page,mcp__yeoman__money_change,mcp__yeoman__watch,mcp__yeoman__unwatch";
 
 /// The task's question, and the turn's answer to it.
 const ASK: &str = "mcp__yeoman__ask";
