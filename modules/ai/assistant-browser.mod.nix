@@ -78,6 +78,8 @@
             browser = {
               launchOptions = {
                 headless = false;
+                # Brave's nixpkgs wrapper does not pick Wayland on its own.
+                args = lib.lists.singleton "--ozone-platform=wayland";
                 ignoreDefaultArgs = lib.lists.singleton "--enable-automation";
               };
               contextOptions.viewport = null;
@@ -94,7 +96,6 @@
             install -d -m 0700 ${home n}/profile
             export WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1
             export WLR_RENDERER=gles2 WLR_RENDER_DRM_DEVICE=${browsers.renderNode}
-            export NIXOS_OZONE_WL=1
             # The profile goes by environment: the nixpkgs wrapper turns
             # on isolated mode, which refuses a profile, unless this is set.
             export PLAYWRIGHT_MCP_USER_DATA_DIR=${home n}/profile
