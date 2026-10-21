@@ -173,9 +173,11 @@ only through its own address on the seat plane.
 Its home is composed in Nix, and one set of managed settings applies to every
 launcher, Paseo included, so an agent started from a phone has the same rules
 as one in a terminal. It can push to this repo; only the captain switches a
-host onto a commit. For the web it drives Brave over MCP, either headless
-inside the fence or the visible one on a desktop, served over HTTP on the
-tailnet to Water alone.
+host onto a commit. For the web it drives a browser of its own over MCP: a
+visible Brave on a GPU-drawn screen on Water, under an account of its own
+with an internet-only fence, so sites see a real desktop browser on the home
+connection (`assistant-browser.mod.nix`). The captain watches or takes over
+at `bridge-screen`.
 
 ### hippo
 

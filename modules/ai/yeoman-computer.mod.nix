@@ -42,23 +42,7 @@
       inherit (lib) readFile types;
       inherit (lib.ship) computers;
 
-      # jwcrypto 1.5.7 rejects the short HMAC key in websockify's tests. Drop
-      # once the nixpkgs pin carries websockify past 0.13.0.
-      python3 = pkgs.python3.override {
-        packageOverrides = _: prev: {
-          websockify = prev.websockify.overridePythonAttrs (old: {
-            patches =
-              (old.patches or [ ])
-              ++ singleton (
-                pkgs.fetchpatch {
-                  url = "https://github.com/novnc/websockify/commit/f1e281d2c446380a0a8af7575a92b23ad65c6d4d.patch";
-                  hash = "sha256-l+j+baTDSEXhOajUKxaT21ET1iEnpiBHwysYnTt3ghk=";
-                }
-              );
-          });
-        };
-      };
-      novnc = pkgs.novnc.override { inherit python3; };
+      inherit (import ./novnc.nix pkgs) novnc websockify;
 
       indexed = computers.indexes config.yeoman.instances;
       owners = attrNames indexed;
@@ -398,7 +382,7 @@
                 after = singleton "network.target";
                 serviceConfig = lib.ship.hardened.vendor // {
                   DynamicUser = true;
-                  ExecStart = "${getExe' python3.pkgs.websockify "websockify"} --web ${novnc}/share/webapps/novnc 127.0.0.1:${toString (screenPort n)} ${addr n}:${toString computers.vncPort}";
+                  ExecStart = "${getExe' websockify "websockify"} --web ${novnc}/share/webapps/novnc 127.0.0.1:${toString (screenPort n)} ${addr n}:${toString computers.vncPort}";
                   Restart = "always";
                   RestartSec = 5;
                   IPAddressAllow = [

@@ -8,33 +8,20 @@
   ...
 }:
 let
-  # A headless Brave on the seat's own host, plus the desktops whose visible
-  # Brave the seat drives over HTTP on the tailnet (browser.mod.nix); each
-  # desktop admits Water alone at that door. Parallel's keyless search, the
-  # one the assistants use, answers in well under a second where the
-  # launchers' own search takes several and reads worse on technical
-  # lookups.
-  browserServers =
-    topology:
-    {
-      browser = {
-        command = "/run/current-system/sw/bin/kestrel-browser-headless";
-        args = [ ];
-      };
-      web.url = "https://search.parallel.ai/mcp";
-      cloudflare = {
-        command = "/run/current-system/sw/bin/kestrel-cloudflare-mcp";
-        args = [ ];
-      };
-    }
-    // (
-      topology.desktops
-      |> lib.attrsets.mapAttrs (
-        host: _: {
-          url = "http://${host}.${topology.tailnetDomain}:${toString topology.browserPort}/mcp";
-        }
-      )
-    );
+  # The seat's own browser on its host (assistant-browser.mod.nix), over HTTP
+  # on the browser's loopback address. Parallel's keyless search, the one the
+  # assistants use, answers in well under a second where the launchers' own
+  # search takes several and reads worse on technical lookups.
+  browserServers = {
+    browser.url = "http://${lib.ship.browsers.addr seatBrowser}:${toString lib.ship.browsers.mcpPort}/mcp";
+    web.url = "https://search.parallel.ai/mcp";
+    cloudflare = {
+      command = "/run/current-system/sw/bin/kestrel-cloudflare-mcp";
+      args = [ ];
+    };
+  };
+  # The seat's browser's index (lib/browsers.nix).
+  seatBrowser = 1;
 in
 {
   flake.homeModules.cockpit =
@@ -201,7 +188,7 @@ in
             baseURL = "http://${topology.seatInferenceAddr}:${toString osConfig.inference.port}/v1";
             models = osConfig.inference.openCodeModels;
             extraMcp =
-              browserServers topology
+              browserServers
               |> mapAttrs (
                 _: server:
                 if server ? url then
@@ -253,7 +240,7 @@ in
       ...
     }:
     let
-      inherit (lib.attrsets) attrValues mapAttrs;
+      inherit (lib.attrsets) mapAttrs;
       inherit (lib.lists) singleton;
       inherit (lib.strings) toJSON;
       inherit (lib.ship) fences topology;
@@ -342,17 +329,20 @@ in
         # Address filter on every process this user runs, both directions and
         # all interfaces, including the tailnet, which Tailscale ACLs cannot
         # restrict per-user. Filtering is port-blind, so admitting 127.0.0.1
-        # would expose every loopback service; llama-swap gets a dedicated
-        # seat-plane address instead. The desktops are admitted for their
-        # browser door, which is also port-blind: the seat can reach whatever
-        # a desktop serves on its tailnet address, and nothing else there.
+        # would expose every loopback service; llama-swap and the seat's
+        # browser get dedicated loopback addresses instead.
         systemd.slices."user-${toString seat.uid}".sliceConfig = {
           IPAddressAllow = [
             "127.0.0.53/32"
             "${topology.seatInferenceAddr}/32"
-          ]
-          ++ (topology.desktops |> attrValues |> map (a: "${a}/32"));
+            "${lib.ship.browsers.addr seatBrowser}/32"
+          ];
           IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
+        };
+
+        ship.browsers.${seat.user} = {
+          index = seatBrowser;
+          users = singleton seat.user;
         };
 
         # Must exist before the first session keys its project state to it.
@@ -387,7 +377,7 @@ in
           json.generate "claude-managed-settings.json" cfg.claudeSettings;
 
         seat.codexConfig.mcp_servers =
-          browserServers topology
+          browserServers
           |> mapAttrs (
             _: server:
             server
@@ -409,7 +399,7 @@ in
         seat.claudeSettings.permissions.allow = [ "Bash(switcharoo)" ];
         environment.etc."claude-code/managed-mcp.json".text = toJSON {
           mcpServers =
-            browserServers topology
+            browserServers
             |> mapAttrs (_: server: server // { type = if server ? url then "http" else "stdio"; });
         };
       };
