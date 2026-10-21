@@ -555,14 +555,23 @@ function Thread({ messages, typing, send, stop, cards, decide, tasks, stopTask, 
   // The deck fills the screen down to the top of what sits on the composer,
   // so it rises from behind it; measured, as the composer grows with text,
   // files and the tray.
+  // When the dock grows (the screen, a task, a card), the talk scrolls up
+  // by as much, so the dock pushes it up rather than covering it.
   const dock = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
   const [edge, setEdge] = useState(0);
   const measure = () => dock.current && setEdge(dock.current.getBoundingClientRect().top);
   useEffect(() => {
     const el = dock.current;
     if (!el) return;
     measure();
-    const o = new ResizeObserver(measure);
+    let height = el.offsetHeight;
+    const o = new ResizeObserver(() => {
+      const grew = el.offsetHeight - height;
+      height = el.offsetHeight;
+      if (grew > 0) viewport.current?.scrollBy({ top: grew, behavior: "instant" });
+      measure();
+    });
     o.observe(el);
     addEventListener("resize", measure);
     return () => {
@@ -670,7 +679,7 @@ function Thread({ messages, typing, send, stop, cards, decide, tasks, stopTask, 
         </header>
         {finding && <Search close={() => setFinding(false)} />}
         <div className="flex min-h-0 flex-1">
-        <ThreadPrimitive.Viewport className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        <ThreadPrimitive.Viewport ref={viewport} className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           <main className={`mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)] fades ${deck.length && !leaving ? "faded" : ""}`}>
             <ThreadPrimitive.Messages>
               {({ message }) =>
