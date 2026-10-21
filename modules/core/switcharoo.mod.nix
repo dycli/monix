@@ -120,7 +120,11 @@
           before=$(failed)
 
           healthy=1
-          "$system/bin/switch-to-configuration" test || healthy=0
+          # 4 means only that some unit failed, which the check below judges
+          # itself; anything else is a broken activation.
+          status=0
+          "$system/bin/switch-to-configuration" test || status=$?
+          ((status == 0 || status == 4)) || healthy=0
 
           # Let the jobs settle, then give restarting units time to fail. This
           # unit's own start job stays queued until the script exits, so it
