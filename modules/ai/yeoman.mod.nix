@@ -92,7 +92,12 @@
         ;
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib) types;
-      inherit (lib.ship) browsers fences computers topology;
+      inherit (lib.ship)
+        browsers
+        fences
+        computers
+        topology
+        ;
 
       cfg = config.yeoman;
 
@@ -688,7 +693,7 @@
                     type = types.nullOr types.str;
                     default = null;
                     description = ''
-                      agenix file holding a Miniflux API key, raw, for the
+                      File holding a Miniflux API key, raw (news.apiKeys makes one), for the
                       person's feed reader (news.mod.nix); null for none.
                     '';
                   };

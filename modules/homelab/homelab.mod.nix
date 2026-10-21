@@ -185,6 +185,7 @@
           alerts = true;
           computer = true;
           voice = "rex";
+          newsKeyFile = "/var/lib/news-keys/sokka";
         };
         suki = {
           person = "Gab";
@@ -200,6 +201,8 @@
           style = "You are Azula: sharp, imperious and unfiltered. Say what you think without hedging or moralizing.";
         };
       };
+
+      news.apiKeys = singleton "sokka";
 
       yeoman.sites.si = {
         name = "Hippo";
