@@ -155,6 +155,20 @@ pub enum Step {
     },
     /// More of the words being written, as they come.
     Text { text: String },
+    /// A subagent's whole answer to one message, kept in its log; steered
+    /// runs give one per message. Doors never see it.
+    Answer { text: String },
+}
+
+/// The answer in one stream-json line, when it ends a reply that didn't
+/// fail.
+fn answer(line: &str) -> Option<String> {
+    let ev = serde_json::from_str::<Value>(line).ok()?;
+    if ev["type"] != "result" || ev["is_error"] == true {
+        return None;
+    }
+    let text = ev["result"].as_str()?.trim();
+    (!text.is_empty()).then(|| text.to_owned())
 }
 
 /// The steps in one stream-json line: tool calls from the model, results
@@ -323,6 +337,7 @@ impl Model for Claude {
         let keep = self.keep.clone();
         let steps = run.steps.clone();
         let steer = run.steer.clone();
+        let sub = run.sub;
         let reader = thread::spawn(move || -> std::io::Result<(String, Option<String>)> {
             let mut out = String::new();
             // The reply's last computer tool, once it drives the computer.
@@ -350,6 +365,11 @@ impl Model for Claude {
                         .is_ok_and(|ev| ev.get("type").and_then(Value::as_str) == Some("result"))
                 {
                     s.close();
+                }
+                if let (true, Some(show)) = (sub, &steps)
+                    && let Some(text) = answer(&line)
+                {
+                    show(Step::Answer { text });
                 }
                 out.push_str(&line);
                 out.push('\n');
@@ -409,7 +429,14 @@ impl Model for Claude {
             .map(str::trim)
             .filter(|t| !t.is_empty())
             .collect();
-        let answers = answers.join("\n\n");
+        // A subagent reports only its last answer, as in Unii: words sent
+        // while it works replace what it said before, and its log keeps
+        // every answer for whoever reads the whole chat.
+        let answers = if run.sub {
+            answers.last().copied().unwrap_or_default().to_owned()
+        } else {
+            answers.join("\n\n")
+        };
         let ev = match results.last() {
             Some(ev) => ev,
             None => {
@@ -643,5 +670,20 @@ mod tests {
         assert!(steps(start).is_empty());
         assert!(steps(r#"{"type":"result","result":"hi"}"#).is_empty());
         assert!(steps("not json").is_empty());
+    }
+
+    #[test]
+    fn answer_from_stream() {
+        assert_eq!(
+            answer(r#"{"type":"result","result":" hi \n"}"#),
+            Some("hi".into())
+        );
+        assert_eq!(
+            answer(r#"{"type":"result","result":"no","is_error":true}"#),
+            None
+        );
+        assert_eq!(answer(r#"{"type":"result","result":"  "}"#), None);
+        assert_eq!(answer(r#"{"type":"assistant","result":"hi"}"#), None);
+        assert_eq!(answer("not json"), None);
     }
 }

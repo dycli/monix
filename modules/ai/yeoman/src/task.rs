@@ -140,6 +140,7 @@ pub fn step(state: &Path, name: &str, step: &crate::model::Step) {
             }
             ("echo", if *error { format!("(error) {t}") } else { t })
         }
+        Step::Answer { text } => ("talk", text.clone()),
         Step::Text { .. } => return,
     };
     if let Err(e) = push(state, name, kind, &text) {

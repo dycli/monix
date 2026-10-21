@@ -33,7 +33,7 @@ use book::Book;
 use chrono::Local;
 use door::{Door, Fetched, Message, Typing, send_outbox};
 use hippo::Hippo;
-use model::{Attachment, Model, Run, Steer, Steps};
+use model::{Attachment, Model, Run, Steer, Step, Steps};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -996,6 +996,9 @@ async fn watches<D: Door>(
 /// way into it for words told while it works.
 struct Running {
     handle: tokio::task::JoinHandle<Result<String, String>>,
+    /// Whether it had answered before this run, which makes this one a
+    /// reply to being told more.
+    replied: bool,
     stop: Arc<AtomicBool>,
     steer: Arc<Steer>,
 }
@@ -1035,17 +1038,9 @@ async fn work_on(
     }
     for name in ended {
         let run = running.remove(&name).unwrap();
-        let replied = task::log(state, &name)
-            .map(|l| l.iter().any(|l| l.kind == "talk"))
-            .unwrap_or(false);
-        let heading = format!("[{name}] {}", if replied { "reply" } else { "report" });
+        let heading = format!("[{name}] {}", if run.replied { "reply" } else { "report" });
         let (said, stopped) = match run.handle.await.unwrap_or_else(|e| Err(e.to_string())) {
-            Ok(text) => {
-                if let Err(e) = task::push(state, &name, "talk", &text) {
-                    eprintln!("yeoman: agent {name}: {e}");
-                }
-                (format!("{heading}\n{text}"), false)
-            }
+            Ok(text) => (format!("{heading}\n{text}"), false),
             Err(e) if e == "stopped" => (format!("[{name}] stopped"), true),
             Err(e) => {
                 eprintln!("yeoman: agent {name}: {e}");
@@ -1075,6 +1070,9 @@ async fn work_on(
         if running.contains_key(&name) || !task::take(state, &name) {
             continue;
         }
+        let replied = task::log(state, &name)
+            .map(|l| l.iter().any(|l| l.kind == "talk"))
+            .unwrap_or(false);
         let stop = Arc::new(AtomicBool::new(false));
         let steer = Arc::new(Steer::default());
         let (hippo, model, state) = (hippo.clone(), model.clone(), state.to_owned());
@@ -1091,7 +1089,9 @@ async fn work_on(
             let (s, w) = (state.clone(), who.clone());
             let steps: Steps = Arc::new(move |step| {
                 task::step(&s, &w, &step);
-                shown.agent_step(&w, step);
+                if !matches!(step, Step::Answer { .. }) {
+                    shown.agent_step(&w, step);
+                }
             });
             work(
                 &hippo,
@@ -1108,6 +1108,7 @@ async fn work_on(
             name,
             Running {
                 handle,
+                replied,
                 stop,
                 steer,
             },
