@@ -70,6 +70,19 @@
             unset DISPLAY
             exec ${getExe playwright} "$@"
           '';
+
+          # Playwright launches headless whenever Linux has no DISPLAY, so a
+          # Wayland-only browser must ask for a window. The page takes the
+          # window's size, and the automation banner and flag stay off.
+          settings = (pkgs.formats.json { }).generate "${user n}-browser.json" {
+            browser = {
+              launchOptions = {
+                headless = false;
+                ignoreDefaultArgs = lib.lists.singleton "--enable-automation";
+              };
+              contextOptions.viewport = null;
+            };
+          };
         in
         pkgs.writeShellApplication {
           name = "${user n}-desktop";
@@ -89,7 +102,7 @@
               --host ${addr n} --port ${toString innerMcpPort} \
               --allowed-hosts ${addr n},${addr n}:${toString browsers.mcpPort} \
               --browser chrome --executable-path ${getExe pkgs.brave} --sandbox \
-              --shared-browser-context \
+              --shared-browser-context --config ${settings} \
               --output-dir ${desk n}
           '';
         };
