@@ -19,8 +19,8 @@
     The view, loaded at session start and after each compaction, is the whole
     shared history (yours and parallel chats) as one-line summaries, oldest first.
     Each line `id+n|text` covers n messages from id, tagged by kind: user (the
-    captain's words), talk, tool, echo, note. Recent lines cover one message,
-    older lines more.
+    captain's words), talk, tool, echo, work (a subagent's report), note.
+    Recent lines cover one message, older lines more.
 
     - `hippo view` refreshes it; read every page, whole.
     - `hippo zoom <id> <n>` opens a line into its two halves; `n = 1` gives the
@@ -28,6 +28,8 @@
       mentions what you need. Before acting on or reporting a status (live,
       deployed, pushed, fixed, tested, answered), zoom its message or check the
       system itself.
+    - `hippo zoom <agent>` opens a subagent's whole chat, which its report
+      names.
     - `hippo search <regex>` searches every message word for word.
 
     ## Notes: bridge
