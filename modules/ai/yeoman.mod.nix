@@ -553,9 +553,19 @@
                 YEOMAN_SESSIONS = "${sitesDir}/${shared'}/sessions";
               }
               // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
+              # Watches read the mail, calendars and money here, not in
+              # the tools.
+              // {
+                YEOMAN_CALDAV = "${creds}/caldav";
+                YEOMAN_TZ = config.time.timeZone;
+              }
+              // optionalAttrs (cfg.financeDb != null) {
+                YEOMAN_FINANCE = cfg.financeDb;
+              }
               // optionalAttrs (i.mailCredentialsFile != null) {
                 YEOMAN_MAIL = "${creds}/mail";
                 YEOMAN_SMTP = cfg.smtpServer;
+                YEOMAN_IMAP = cfg.mailServer;
               };
             serviceConfig =
               sandbox
