@@ -7,8 +7,9 @@
   vncPort = 5900;
   # The nth screen page on the host's loopback, behind the proxy.
   screenPort = index: 6090 + index;
-  # 4:3, the tallest landscape shape: the most page per screenshot while a
-  # 1920-wide capture still scales down legibly for the model.
-  screen = "1920x1440";
+  # Square, for the most page per screenshot; 1920x1920 is still within the
+  # model's image limit unscaled. Brave reports the smallest common screen
+  # that holds the window (here 3840x2160), so the window never outsizes it.
+  screen = "1920x1920";
   renderNode = "/dev/dri/renderD128";
 }
