@@ -111,6 +111,12 @@
           route = "endgrain";
         }
         {
+          name = "News";
+          about = "Feeds and newsletters";
+          icon = "miniflux";
+          route = "news";
+        }
+        {
           name = "Money";
           about = "Spending and savings";
           icon = "";
