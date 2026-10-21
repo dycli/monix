@@ -1,11 +1,11 @@
-"""Hold the desktop's browser open while it is wanted.
+"""Hold an assistant's browser open while it is wanted.
 
 The Playwright MCP server shares one browser between its clients and
 closes it when the last one leaves; the assistant connects once per
 reply. While a lease runs this keeper holds a session of its own, so
 the browser and its pages live through a long task or a request to
 leave it open, and close once the lease ends. Leases arrive over plain
-HTTP on the guest's address: POST /hold?seconds=N (0 means until
+HTTP on the browser's address: POST /hold?seconds=N (0 means until
 released), POST /release, GET / for the state.
 """
 
@@ -106,10 +106,10 @@ async def answer(keeper: Keeper, reader, writer) -> None:
 
 
 async def main() -> None:
-    keeper = Keeper(os.environ["DESK_MCP"])
-    port = int(os.environ["DESK_KEEP_PORT"])
+    keeper = Keeper(os.environ["KEEP_MCP"])
+    host, port = os.environ["KEEP_ADDR"], int(os.environ["KEEP_PORT"])
     server = await asyncio.start_server(
-        lambda r, w: answer(keeper, r, w), "0.0.0.0", port
+        lambda r, w: answer(keeper, r, w), host, port
     )
     async with server:
         await server.serve_forever()

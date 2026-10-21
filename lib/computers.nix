@@ -1,4 +1,4 @@
-# The assistants' computers (yeoman-computer.mod.nix), their own network
+# The assistants' code runners (yeoman-computer.mod.nix), their own network
 # (yeoman-network.mod.nix) and the assistant that drives them
 # (yeoman.mod.nix) agree on these.
 lib:
@@ -32,17 +32,10 @@ in
     "1.1.1.1"
   ];
 
-  mcpPort = 8931;
-  # The keeper's lease on the browser (yeoman-computer/keeper.py).
-  keepPort = 8933;
   # The runner of the assistant's code (yeoman-computer/runner.py).
   runPort = 8934;
-  vncPort = 5900;
-  # The nth screen on the host's loopback, for the person's browser.
-  screenPort = index: 6080 + index;
-  screen = "1280x1024";
 
-  # Each assistant's desk: screenshots and downloads out, uploads in.
+  # Each assistant's desk, shared with its runner.
   desks = "/var/lib/yeoman-desks";
   deskMount = "/desk";
   # The desk's folder of runs, one folder each, made by the host.

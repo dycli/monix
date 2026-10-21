@@ -4,7 +4,11 @@
   # The nth browser's loopback address, where its MCP server and VNC listen.
   addr = index: "127.0.1.${toString (30 + index)}";
   mcpPort = 8931;
+  # The keeper's lease on the browser (assistant-browser/keeper.py).
+  keepPort = 8933;
   vncPort = 5900;
+  # Screenshots and downloads out, uploads in; shared with its drivers.
+  desk = name: "/var/lib/browsers/${name}/desk";
   # The nth screen page on the host's loopback, behind the proxy.
   screenPort = index: 6090 + index;
   # Square, for the most page per screenshot; 1920x1920 is still within the

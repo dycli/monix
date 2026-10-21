@@ -4,7 +4,10 @@
 # WebGL renderer is the tell a VM cannot hide). cage runs on a headless
 # wlroots output rendered on the GPU's render node, with Playwright MCP as
 # its one app; the server opens Brave when a client connects and closes it
-# when the last one leaves. wayvnc shows the same screen so the person can
+# when the last one leaves. An assistant that connects once per reply
+# leases the browser from a keeper, which holds a session of its own so
+# pages live between replies; `<name>-browser-reset` wipes the profile and
+# its logins. wayvnc shows the same screen so the person can
 # take over (captcha, two-factor) at <name>-screen.<domain>.
 #
 # Each browser runs as an account of its own, not the assistant's: it sees
@@ -36,7 +39,7 @@
       inherit (lib.meta) getExe getExe';
       inherit (lib.options) mkOption;
       inherit (lib.strings) concatStringsSep;
-      inherit (lib) types;
+      inherit (lib) readFile types;
       inherit (lib.ship) browsers fences;
 
       cfg = config.ship.browsers;
@@ -44,7 +47,7 @@
 
       user = n: "${n}-browser";
       home = n: "/var/lib/browsers/${n}";
-      desk = n: "${home n}/desk";
+      desk = browsers.desk;
       addr = n: browsers.addr cfg.${n}.index;
       runtime = n: "/run/${user n}";
       session = n: {
@@ -57,6 +60,36 @@
       innerVncPort = browsers.vncPort + 1;
 
       inherit (import ./novnc.nix pkgs) novnc websockify;
+      keeper = pkgs.writers.writePython3Bin "browser-keeper" {
+        libraries = singleton pkgs.python3Packages.mcp;
+      } (readFile ./assistant-browser/keeper.py);
+
+      reset =
+        n:
+        pkgs.writeShellApplication {
+          name = "${user n}-reset";
+          runtimeInputs = [
+            pkgs.coreutils
+            pkgs.systemd
+          ];
+          text = ''
+            systemctl stop ${user n}.service
+            rm -rf ${home n}/profile
+            install -d -m 0700 -o ${user n} -g ${user n} ${home n}/profile
+            systemctl start ${user n}.service
+            echo "${n}'s browser is reset"
+          '';
+        };
+
+      # The relay and keeper stand outside the browser's fence, on the
+      # host's loopback.
+      local = lib.ship.hardened.vendor // {
+        DynamicUser = true;
+        Restart = "always";
+        RestartSec = 2;
+        IPAddressAllow = "localhost";
+        IPAddressDeny = "any";
+      };
       playwright = import ./playwright-mcp.nix pkgs;
 
       desktop =
@@ -157,6 +190,8 @@
       };
 
       config = {
+        environment.systemPackages = map reset owners;
+
         users.users = listToAttrs (
           map (
             n:
@@ -242,12 +277,19 @@
                   ${relay browsers.vncPort innerVncPort}
                   wait -n
                 '';
-              serviceConfig = lib.ship.hardened.vendor // {
-                DynamicUser = true;
-                Restart = "always";
-                RestartSec = 2;
-                IPAddressAllow = "localhost";
-                IPAddressDeny = "any";
+              serviceConfig = local;
+            })
+            (nameValuePair "${user n}-keep" {
+              description = "Holds ${n}'s browser open while it has a lease";
+              wantedBy = singleton "multi-user.target";
+              after = singleton "${user n}-relay.service";
+              environment = {
+                KEEP_MCP = "http://${addr n}:${toString browsers.mcpPort}/mcp";
+                KEEP_ADDR = addr n;
+                KEEP_PORT = toString browsers.keepPort;
+              };
+              serviceConfig = local // {
+                ExecStart = getExe keeper;
               };
             })
             (nameValuePair "${n}-screen" {

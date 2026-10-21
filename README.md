@@ -357,33 +357,32 @@ the answer, or stays quiet when it has nothing new, so a daily price
 check speaks only when the price moves; hippo records the trigger as a
 routine, not as their words.
 
-Each assistant can have a computer of its own (`yeoman-computer.mod.nix`): a
-persistent microVM under cloud-hypervisor, with a desktop that only
-it touches. Brave runs full screen under cage on a headless wlroots output,
-and Playwright MCP, the same server the seat's browser tool uses, drives it
-over HTTP from the host, so the model works a page by its accessibility tree
-and takes a screenshot when it needs to look. The server closes its shared
-browser when the last client leaves, and the assistant connects once per
-reply, so a keeper in the guest holds a session of its own while the
-assistant has a lease on the browser: a reply that drives it takes one, each
-use renews it for half an hour, and the assistant can hold it open until told
-or close it now. The browser profile lives on a
-volume that survives reboots and rebuilds, so site logins made there stay
-there, and nothing of the household goes in: no tailnet, no store share, no
-secret. The guest's network (`yeoman-network.mod.nix`) is a host-only bridge
-with NAT: any public address, no private one, not the host, the LAN, the
-tailnet or another computer, while the host reaches each guest for its browser
-and screen. A folder shared over virtiofs is the desk: screenshots land there,
-and `show` copies one into the outbox so it goes out with the answer. The
-screen is also a page on the tailnet, `<name>-screen.<domain>`, noVNC through
-websockify to the guest's VNC, and the prompt tells the assistant to hand out
-the link when the person must take the keyboard (a captcha, a sign-in only they
-can do). On a turn an alert or a household message started, the computer is
-withheld like the other tools that act. `<name>-computer-reset` wipes the
-profile back to a clean desk. Browser actions are not gated: the VM holds no
-payment method or password manager, so the worst a page can do is what a
-logged-in site allows, and sending anything outward still goes through the
-draft-and-👍 path.
+Each assistant can have a browser of its own (`assistant-browser.mod.nix`),
+the same kind as the seat's: Brave under cage on Water's GPU, as an account of
+its own with an internet-only fence, driven over HTTP by Playwright MCP, so the
+model works a page by its accessibility tree and takes a screenshot when it
+needs to look. The server closes its shared browser when the last client
+leaves, and the assistant connects once per reply, so a keeper holds a session
+of its own while the assistant has a lease on the browser: a reply that drives
+it takes one, each use renews it for half an hour, and the assistant can hold
+it open until told or close it now. The profile keeps site logins;
+`<name>-browser-reset` wipes it. Screenshots and downloads land on the
+browser's desk, which the assistant shares, and `send_file` sends one with the
+answer. The screen is a page on the tailnet, `<name>-screen.<domain>`, noVNC
+through websockify to the browser's VNC, and the prompt tells the assistant to
+hand out the link when the person must take the keyboard (a captcha, a sign-in
+only they can do). On a turn an alert or a household message started, the
+browser is withheld like the other tools that act. Browser actions are not
+gated: the profile holds no payment method or password manager, so the worst a
+page can do is what a logged-in site allows, and sending anything outward
+still goes through the draft-and-👍 path.
+
+Code runs elsewhere: `run_code` hands it to a microVM under cloud-hypervisor
+(`yeoman-computer.mod.nix`) that runs it with no network, in a folder the host
+fills with the files it needs and keeps what it writes. Nothing of the
+household goes in: no tailnet, no store share, no secret, and the guest's own
+network (`yeoman-network.mod.nix`) is a host-only bridge with NAT to public
+addresses only.
 
 Work that takes a while is a task: the model starts it with the request
 worded as the person's, says it is under way, and stops; the bot runs it on

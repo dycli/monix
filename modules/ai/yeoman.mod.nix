@@ -31,8 +31,9 @@
 # sent to it without keeping them, and on the one instance that takes
 # them, reads the host's alerts from their spool and sends its own account
 # of them (alerts.mod.nix). An instance with `computer = true` also drives
-# a browser in a microVM of its own (yeoman-computer.mod.nix) over
-# Playwright MCP, reads its desk for screenshots, and can start a task:
+# a browser of its own on the host (assistant-browser.mod.nix) over
+# Playwright MCP, reads its desk for screenshots, runs code in a microVM
+# (yeoman-computer.mod.nix), and can start a task:
 # a turn of its own with no clock on it, run on the tick, for work that
 # outlives the message. Each has a site, `<n>.<domain>` on the tailnet
 # proxy: `show_page` writes a page of HTML there and hands back its link.
@@ -65,6 +66,7 @@
       inherit (lib.lists)
         singleton
         optional
+        optionals
         length
         head
         elem
@@ -84,12 +86,13 @@
         attrNames
         filterAttrs
         mapAttrs
+        mapAttrs'
         mapAttrsToList
         nameValuePair
         ;
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib) types;
-      inherit (lib.ship) fences computers topology;
+      inherit (lib.ship) browsers fences computers topology;
 
       cfg = config.yeoman;
 
@@ -98,6 +101,8 @@
       pages = "/var/lib/yeoman-pages";
       # Each shared site's sign-ins, in a directory its assistants' group owns.
       sitesDir = "/var/lib/yeoman-sites";
+      # After the seat's: an assistant's browser follows its runner's index.
+      browserIndex = n: 10 + (computers.indexes cfg.instances).${n};
       siteOf = n: findFirst (s: elem n cfg.sites.${s}.members) null (attrNames cfg.sites);
       host = sub: "https://${sub}.${config.shipProxy.domain}";
       households = {
@@ -287,6 +292,7 @@
           pc = optionalAttrs i.computer {
             addr = computers.addr (computers.indexes cfg.instances).${n};
             desk = "${computers.desks}/${n}";
+            browser = browsers.addr (browserIndex n);
           };
           # The assistant's site: pages it writes, served by the proxy.
           shared' = siteOf n;
@@ -304,9 +310,12 @@
               YEOMAN_PAGES_URL = site.url;
             }
             // optionalAttrs i.computer {
-              YEOMAN_DESK = pc.desk;
-              YEOMAN_KEEP = "http://${pc.addr}:${toString computers.keepPort}";
+              YEOMAN_DESK = browsers.desk n;
+              YEOMAN_KEEP = "http://${pc.browser}:${toString browsers.keepPort}";
               YEOMAN_RUN = "http://${pc.addr}:${toString computers.runPort}";
+              YEOMAN_RUNS = pc.desk;
+              YEOMAN_SCREEN = "${host "${n}-screen"}/vnc.html?autoconnect=1&resize=scale&show_dot=1";
+              YEOMAN_SCREEN_SIZE = browsers.screen;
             }
             // optionalAttrs (cfg.homeTokenFile != null) { YEOMAN_HOME = "1"; }
             // optionalAttrs (cfg.searchKeyFile != null) { YEOMAN_SEARCH_KEY = "${creds}/search"; }
@@ -353,10 +362,10 @@
               };
             }
             // optionalAttrs i.computer {
-              # Playwright MCP in the guest, driving its browser.
+              # Playwright MCP, driving its browser on the host.
               computer = {
                 type = "http";
-                url = "http://${pc.addr}:${toString computers.mcpPort}/mcp";
+                url = "http://${pc.browser}:${toString browsers.mcpPort}/mcp";
               };
             }
             // optionalAttrs (cfg.homeTokenFile != null) {
@@ -592,7 +601,10 @@
                   site.dir
                 ]
                 ++ optional i.alerts config.alerts.spool
-                ++ optional i.computer pc.desk
+                ++ optionals i.computer [
+                  pc.desk
+                  (browsers.desk n)
+                ]
                 ++ optional (shared' != null) "${sitesDir}/${shared'}";
               }
               // optionalAttrs i.web { SocketBindAllow = singleton "tcp:${toString (chatPort n)}"; }
@@ -603,8 +615,11 @@
                   ++ optional (shared' != null) "yeoman-${shared'}";
               }
               // optionalAttrs i.computer {
-                # Through the fence to its own computer, and into its desk.
-                IPAddressAllow = fence.IPAddressAllow ++ singleton pc.addr;
+                # Through the fence to its own runner and browser.
+                IPAddressAllow = fence.IPAddressAllow ++ [
+                  pc.addr
+                  pc.browser
+                ];
               };
           };
         };
@@ -893,6 +908,14 @@
             message = "yeoman: an instance belongs to one site at most.";
           }
         ];
+
+        ship.browsers = mapAttrs' (
+          n: _:
+          nameValuePair n {
+            index = browserIndex n;
+            users = singleton n;
+          }
+        ) (filterAttrs (_: i: i.computer) cfg.instances);
 
         # Sensors and the receiver write alerts in as root or the reader;
         # nobody else may, since what it posts its memory keeps.

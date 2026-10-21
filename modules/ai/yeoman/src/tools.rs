@@ -44,13 +44,14 @@ struct Tools {
     house: Option<Arc<House>>,
     /// The mail accounts and their IMAP server, when there is mail.
     mail: Option<(String, Vec<Account>)>,
-    /// The computer's desk, when there is a computer: where its
+    /// The browser's desk, when there is a computer: where its
     /// screenshots and downloads land.
     desk: Option<PathBuf>,
-    /// The computer's keeper, which leases the browser.
+    /// The browser's keeper, which leases it.
     keep: Option<String>,
-    /// The computer's runner of code.
+    /// The runner of code, and the folder it shares with the host.
     run: Option<String>,
+    runs: Option<PathBuf>,
     /// The site's directory and its URL, when the assistant has one.
     pages: Option<(PathBuf, String)>,
     /// The household's film and show library (Seerr), when there is one.
@@ -748,7 +749,7 @@ impl Tools {
         let (url, desk) = self
             .run
             .as_ref()
-            .zip(self.desk.as_ref())
+            .zip(self.runs.as_ref())
             .ok_or("There is no computer here.")?;
         let seconds = seconds.unwrap_or(120).clamp(1, 300);
         run::run(
@@ -1355,6 +1356,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
         desk: std::env::var_os("YEOMAN_DESK").map(PathBuf::from),
         keep: std::env::var("YEOMAN_KEEP").ok(),
         run: std::env::var("YEOMAN_RUN").ok(),
+        runs: std::env::var_os("YEOMAN_RUNS").map(PathBuf::from),
         pages: std::env::var("YEOMAN_PAGES")
             .ok()
             .zip(std::env::var("YEOMAN_PAGES_URL").ok())

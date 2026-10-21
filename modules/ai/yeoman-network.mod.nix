@@ -2,7 +2,7 @@
 # network, a host-only bridge with NAT to the internet and nothing else.
 # A computer reaches any public address and no private one: not the host,
 # the LAN, the tailnet or another computer; the host reaches each
-# computer for its browser (MCP) and screen (VNC). The forward chain is
+# computer for its runner. The forward chain is
 # closed by default, so nothing else on the host routes.
 { self, inputs, ... }:
 {

@@ -1,28 +1,11 @@
-# Each assistant's own computer: a persistent microVM with a desktop that
-# only it touches. Brave runs full screen under cage on a headless
-# wlroots output, driven by Playwright MCP over HTTP on the guest's
-# address, and wayvnc shows the same screen so the person can take over
-# (captcha, two-factor) from a viewer on the host. The MCP server shares
-# one browser between its clients and closes it when the last one leaves;
-# the assistant connects once per reply, so a keeper in the guest holds a
-# session of its own while the assistant has a lease on the browser: half
-# an hour past each use, or until told to let go. The browser profile
-# lives on a volume that survives reboots and rebuilds, so site logins
-# stay; `<name>-computer-reset` wipes it back to a clean desk. A folder
-# shared over virtiofs is the desk: screenshots and downloads land there
-# for the assistant on the host to read, and files the assistant leaves
-# there the browser can upload. The screen is a page on the tailnet,
-# <name>-screen.<domain>: noVNC through websockify to the guest's VNC;
-# the assistant gives the person the link when they must take over.
-#
-# The same guest runs the assistant's code: Python with the usual data
-# libraries and a shell with file converters, in a folder of the desk the
-# host fills with the files it needs and keeps what it writes. The runner
-# has no network and no sight of the browser's profile.
-#
-# Nothing of the household is in the guest: no tailnet, no store share,
-# no secret, no login but the ones the assistant makes on sites. Its
-# network is the internet only (yeoman-network.mod.nix).
+# Each assistant's computer for code: a microVM that runs Python with the
+# usual data libraries and a shell with file converters, in a folder of
+# the desk the host fills with the files it needs and keeps what it
+# writes. The runner has no network at all; the guest's own network is
+# the internet only (yeoman-network.mod.nix), and nothing of the
+# household is in it: no tailnet, no store share, no secret. The
+# assistant's browser is not here but on the host (assistant-browser.mod.nix),
+# where the GPU draws it.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.yeoman-computer;
@@ -36,13 +19,11 @@
     let
       inherit (lib.attrsets) attrNames listToAttrs nameValuePair;
       inherit (lib.lists) concatLists singleton;
-      inherit (lib.meta) getExe getExe';
+      inherit (lib.meta) getExe;
       inherit (lib.options) mkOption;
       inherit (lib.strings) fixedWidthString;
       inherit (lib) readFile types;
       inherit (lib.ship) computers;
-
-      inherit (import ./novnc.nix pkgs) novnc websockify;
 
       indexed = computers.indexes config.yeoman.instances;
       owners = attrNames indexed;
@@ -50,13 +31,7 @@
 
       vm = n: "${n}-pc";
       desk = n: "${computers.desks}/${n}";
-      screenPort = n: computers.screenPort indexed.${n};
-      screen = n: "${n}-screen";
-      screenUrl =
-        n: "https://${screen n}.${config.shipProxy.domain}/vnc.html?autoconnect=1&resize=scale&show_dot=1";
 
-      # The whole desktop inside: cage with the MCP server as its one app,
-      # which launches Brave into the same session.
       guest =
         n:
         let
@@ -66,15 +41,6 @@
           config =
             { pkgs, ... }:
             let
-              session = {
-                XDG_RUNTIME_DIR = "/run/desk";
-                WAYLAND_DISPLAY = "wayland-0";
-              };
-              playwright = import ./playwright-mcp.nix pkgs;
-              mcpUrl = "http://localhost:${toString computers.mcpPort}/mcp";
-              keeper = pkgs.writers.writePython3Bin "desk-keeper" {
-                libraries = singleton pkgs.python3Packages.mcp;
-              } (readFile ./yeoman-computer/keeper.py);
               runner = pkgs.writers.writePython3Bin "desk-runner" { } (readFile ./yeoman-computer/runner.py);
               # What the code has to hand: the data libraries for Python,
               # and converters for pictures, sound and film, documents and
@@ -115,46 +81,13 @@
                 pkgs.zip
                 pkgs.zstd
               ];
-              # The headless output starts at wlroots' 1280x720 whatever the
-              # viewport, so it is sized to the screen before the browser opens.
-              browse = pkgs.writeShellScript "desk-browse" ''
-                ${getExe pkgs.wlr-randr} --output HEADLESS-1 --custom-mode ${computers.screen}
-                exec ${getExe playwright} "$@"
-              '';
-              desktop = pkgs.writeShellApplication {
-                name = "desk";
-                runtimeInputs = [
-                  pkgs.cage
-                  pkgs.coreutils
-                ];
-                text = ''
-                  install -d -m 0700 /home/pc/profile
-                  # The headless wlroots backend needs no GPU or input
-                  # device; wayvnc supplies the keyboard and mouse.
-                  export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
-                  export NIXOS_OZONE_WL=1
-                  # The profile goes by environment: the nixpkgs wrapper turns
-                  # on isolated mode, which refuses a profile, unless this is set.
-                  export PLAYWRIGHT_MCP_USER_DATA_DIR=/home/pc/profile
-                  exec cage -- ${browse} \
-                    --host 0.0.0.0 --port ${toString computers.mcpPort} \
-                    --allowed-hosts ${addr n},${addr n}:${toString computers.mcpPort},localhost,localhost:${toString computers.mcpPort} \
-                    --browser chrome --executable-path ${getExe pkgs.brave} --sandbox \
-                    --shared-browser-context \
-                    --output-dir ${computers.deskMount} \
-                    --viewport-size ${computers.screen}
-                '';
-              };
             in
             {
-              # The same Brave as the desktop: its extras, telemetry and
-              # password manager off by policy.
-              imports = singleton self.nixosModules.brave;
-
               microvm = {
                 hypervisor = "cloud-hypervisor";
                 vcpu = 2;
-                mem = 4096;
+                # The runner's 2G and the guest's own.
+                mem = 2560;
                 interfaces = singleton {
                   type = "tap";
                   id = "pc-${n}";
@@ -165,12 +98,6 @@
                 storeOnDisk = true;
                 # systemd-notify from the guest.
                 vsock.cid = 200 + indexed.${n};
-                # Kept across starts: the browser profile with its logins.
-                volumes = singleton {
-                  image = "home.img";
-                  mountPoint = "/home/pc";
-                  size = 20480;
-                };
                 shares = singleton {
                   proto = "virtiofs";
                   tag = "desk";
@@ -185,12 +112,7 @@
                 useNetworkd = true;
                 useDHCP = false;
                 nameservers = computers.nameservers;
-                firewall.allowedTCPPorts = [
-                  computers.mcpPort
-                  computers.keepPort
-                  computers.runPort
-                  computers.vncPort
-                ];
+                firewall.allowedTCPPorts = singleton computers.runPort;
               };
               systemd.network.networks."20-lan" = {
                 matchConfig.Type = "ether";
@@ -201,23 +123,12 @@
               # virtiofs passes ids verbatim: the desk group is pinned to
               # the same gid on host and guest.
               users.groups.desk.gid = computers.deskGid;
-              users.users.pc = {
-                isNormalUser = true;
-                uid = 1000;
-                group = "desk";
-                home = "/home/pc";
-                createHome = false;
-              };
-              # The code runs as a user of its own, not the browser's.
               users.users.run = {
                 isSystemUser = true;
                 uid = 1001;
                 group = "desk";
               };
-              systemd.tmpfiles.rules = singleton "d /home/pc 0700 pc desk -";
-
-              # The browser's clock and locale match the house, as a real
-              # computer here would.
+              # The code's clock and locale match the house.
               time.timeZone = config.time.timeZone;
               i18n.defaultLocale = config.i18n.defaultLocale;
 
@@ -227,44 +138,6 @@
                 pkgs.noto-fonts-color-emoji
               ];
 
-              systemd.services.desk = {
-                description = "The desktop: Brave under cage, driven by Playwright MCP";
-                wantedBy = singleton "multi-user.target";
-                after = singleton "network.target";
-                unitConfig.RequiresMountsFor = [
-                  "/home/pc"
-                  computers.deskMount
-                ];
-                environment = session;
-                serviceConfig = {
-                  User = "pc";
-                  Group = "desk";
-                  RuntimeDirectory = "desk";
-                  RuntimeDirectoryMode = "0700";
-                  ExecStart = getExe desktop;
-                  Restart = "always";
-                  RestartSec = 3;
-                };
-              };
-              systemd.services.desk-keeper = {
-                description = "Holds the browser open while the assistant has a lease on it";
-                wantedBy = singleton "multi-user.target";
-                after = singleton "desk.service";
-                requires = singleton "desk.service";
-                environment = {
-                  DESK_MCP = mcpUrl;
-                  DESK_KEEP_PORT = toString computers.keepPort;
-                };
-                serviceConfig = {
-                  User = "pc";
-                  Group = "desk";
-                  ExecStart = getExe keeper;
-                  # The server listens a moment after the desktop starts, and
-                  # a dropped session is simply opened again.
-                  Restart = "always";
-                  RestartSec = 3;
-                };
-              };
               # systemd holds the socket, so the runner itself can live
               # without a network.
               systemd.sockets.desk-runner = {
@@ -286,27 +159,9 @@
                   ProtectSystem = "strict";
                   ReadWritePaths = singleton "${computers.deskMount}/${computers.runs}";
                   NoNewPrivileges = true;
-                  # Room for a big picture or table, and the browser's
-                  # share of the guest left alone.
+                  # Room for a big picture or table.
                   MemoryMax = "2G";
                   TasksMax = 256;
-                };
-              };
-              systemd.services.wayvnc = {
-                description = "The same screen over VNC, for the person to take over";
-                wantedBy = singleton "multi-user.target";
-                after = singleton "desk.service";
-                requires = singleton "desk.service";
-                environment = session;
-                serviceConfig = {
-                  User = "pc";
-                  Group = "desk";
-                  # cage offers only wlr-screencopy, over which wayvnc sends no
-                  # cursor image; -r paints the pointer into the frame instead.
-                  ExecStart = "${getExe pkgs.wayvnc} -r 0.0.0.0 ${toString computers.vncPort}";
-                  # The compositor's socket appears a moment after it starts.
-                  Restart = "always";
-                  RestartSec = 2;
                 };
               };
 
@@ -314,24 +169,6 @@
               services.getty.autologinUser = "root";
               system.stateVersion = "26.05";
             };
-        };
-
-      reset =
-        n:
-        pkgs.writeShellApplication {
-          name = "${n}-computer-reset";
-          runtimeInputs = [
-            pkgs.coreutils
-            pkgs.systemd
-          ];
-          text = ''
-            # Back to a clean desk: the profile volume goes, the guest
-            # recreates it blank on the next start.
-            systemctl stop 'microvm@${vm n}.service'
-            rm -f '${config.microvm.stateDir}/${vm n}/home.img'
-            systemctl start 'microvm@${vm n}.service'
-            echo "${n}'s computer is reset"
-          '';
         };
     in
     {
@@ -341,7 +178,7 @@
             options.computer = mkOption {
               type = types.bool;
               default = false;
-              description = "Whether the assistant has a computer of its own.";
+              description = "Whether the assistant has a browser and a computer for code of its own.";
             };
           }
         );
@@ -363,50 +200,6 @@
               "d ${config.microvm.stateDir}/${vm n} 0755 microvm kvm -"
             ])
             |> concatLists
-          );
-
-        environment.systemPackages = owners |> map reset;
-
-        # The screen: noVNC's page and its websocket on loopback, behind
-        # the proxy; the assistant hands out the link.
-        shipProxy.routes =
-          owners |> map (n: nameValuePair (screen n) { port = screenPort n; }) |> listToAttrs;
-        systemd.services =
-          (
-            owners
-            |> map (
-              n:
-              nameValuePair (screen n) {
-                description = "${n}'s screen over the tailnet";
-                wantedBy = singleton "multi-user.target";
-                after = singleton "network.target";
-                serviceConfig = lib.ship.hardened.vendor // {
-                  DynamicUser = true;
-                  ExecStart = "${getExe' websockify "websockify"} --web ${novnc}/share/webapps/novnc 127.0.0.1:${toString (screenPort n)} ${addr n}:${toString computers.vncPort}";
-                  Restart = "always";
-                  RestartSec = 5;
-                  IPAddressAllow = [
-                    "127.0.0.1"
-                    (addr n)
-                  ];
-                  IPAddressDeny = "any";
-                };
-              }
-            )
-            |> listToAttrs
-          )
-          // (
-            owners
-            |> map (
-              n:
-              nameValuePair n {
-                environment = {
-                  YEOMAN_SCREEN = screenUrl n;
-                  YEOMAN_SCREEN_SIZE = computers.screen;
-                };
-              }
-            )
-            |> listToAttrs
           );
       };
     };
