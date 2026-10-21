@@ -3,8 +3,8 @@
 //! with the login beside it, so a restart resumes the same device and the
 //! sync picks up where it stopped.
 
-use crate::door::{Door, Message};
-use crate::{Read, fits, pending, read};
+use crate::door::{Door, Fetched, Message};
+use crate::{pending, seen};
 use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::config::SyncSettings;
@@ -158,13 +158,22 @@ impl Door for Matrix {
             .map_err(|e| e.to_string())
     }
 
+    async fn file(&self, name: &str, data: Vec<u8>, mime: &str) -> Result<(), String> {
+        let kind: mime::Mime = mime.parse().unwrap_or(mime::APPLICATION_OCTET_STREAM);
+        self.0
+            .send_attachment(name, &kind, data, AttachmentConfig::new())
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     async fn typing(&self, on: bool) {
         let _ = self.0.typing_notice(on).await;
     }
 
     /// Downloads and decrypts a file, falling back to a photo's thumbnail
     /// when the original is too big.
-    async fn fetch(&self, file: &File) -> Result<(String, bool, Read), String> {
+    async fn fetch(&self, file: &File) -> Result<Fetched, String> {
         let client = self.0.client();
         let get = |source: &MediaSource| {
             let request = MediaRequestParameters {
@@ -177,24 +186,20 @@ impl Door for Matrix {
         let data = get(&file.source)
             .await
             .map_err(|e| format!("I couldn't download {}: {e}", file.name))?;
-        let unreadable = || {
-            format!(
-                "I can't read {}: only photos, PDFs and text files.",
-                file.name
-            )
-        };
-        let found = |r| (file.name.clone(), file.photo, r);
-        let r = read(data, file.mime.as_deref()).ok_or_else(unreadable)?;
-        if fits(&r) {
-            return Ok(found(r));
-        }
-        if let Some(thumb) = &file.thumbnail
-            && let Ok(data) = get(thumb).await
-            && let Some(r) = read(data, None).filter(fits)
+        // A photo too big to see is seen by its thumbnail, and kept whole.
+        let mut read = seen(&data, file.mime.as_deref());
+        if read.is_none()
+            && let Some(thumb) = &file.thumbnail
+            && let Ok(small) = get(thumb).await
         {
-            return Ok(found(r));
+            read = seen(&small, None);
         }
-        Err(format!("{} is too big for me to read.", file.name))
+        Ok(Fetched {
+            name: file.name.clone(),
+            photo: file.photo,
+            data,
+            read,
+        })
     }
 }
 
@@ -309,6 +314,26 @@ fn on_messages(
                     }),
                 ),
                 MessageType::File(f) => (
+                    f.caption().unwrap_or_default().to_owned(),
+                    Some(File {
+                        name: f.filename().to_owned(),
+                        photo: false,
+                        mime: f.info.as_ref().and_then(|x| x.mimetype.clone()),
+                        thumbnail: None,
+                        source: f.source,
+                    }),
+                ),
+                MessageType::Audio(f) => (
+                    f.caption().unwrap_or_default().to_owned(),
+                    Some(File {
+                        name: f.filename().to_owned(),
+                        photo: false,
+                        mime: f.info.as_ref().and_then(|x| x.mimetype.clone()),
+                        thumbnail: None,
+                        source: f.source,
+                    }),
+                ),
+                MessageType::Video(f) => (
                     f.caption().unwrap_or_default().to_owned(),
                     Some(File {
                         name: f.filename().to_owned(),

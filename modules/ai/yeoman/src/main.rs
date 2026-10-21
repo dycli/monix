@@ -8,6 +8,7 @@ mod book;
 mod calendar;
 mod call;
 mod door;
+mod files;
 mod finance;
 mod hippo;
 mod house;
@@ -29,7 +30,7 @@ mod youtube;
 
 use book::Book;
 use chrono::Local;
-use door::{Door, Message, Typing, send_images};
+use door::{Door, Fetched, Message, Typing, send_outbox};
 use hippo::Hippo;
 use model::{Attachment, Model, Run, Steer, Steps};
 use std::env;
@@ -105,8 +106,8 @@ and say so in a line when nothing needs them.";
 const COMPUTER: &str = "\n\nYou have a computer of your own: the computer tools drive its \
 browser, which keeps its own site logins. Use it for sites that need \
 signing in, forms, and whatever a search cannot answer. A screenshot lands \
-on your desk; show it to {person} when they should see the page, and when \
-you are stuck (a code, a captcha, a choice) show it and ask. The browser \
+on your desk, as do downloads; send_file it to {person} when they should \
+see it, and when you are stuck (a code, a captcha, a choice) send it and ask. The browser \
 closes half an hour after its last use, keeping its logins but not its \
 pages; computer_keep holds it open until {person} says to close it, and \
 computer_close closes it now.";
@@ -149,17 +150,20 @@ to a minute, so use the web for anything X does not add to.";
 /// A routine's whole answer when it has nothing to say; not sent.
 const QUIET: &str = "(nothing new)";
 
-/// Added always: files are read once and not kept.
-const FILES: &str = "\n\n{person} may send photos or files. You see them this once and \
-only your answer is remembered, so put what matters in it (dates, \
-amounts, names, places) along with whatever {person} asked.";
+/// Added always: files stay, though the model sees them only once.
+const FILES: &str = "\n\n{person} may send photos or files of any kind. Each is kept in \
+your files under the name the message gives: files finds them again, \
+read_file reads a kept text file, send_file sends one back. Photos, PDFs \
+and text you also see this once; the rest only by name. Only your answer \
+is remembered, so put what matters in it (dates, amounts, names, places) \
+along with whatever {person} asked.";
 
 /// The largest image the model takes, before base64.
 const IMAGE_MAX: usize = 3_750_000;
 /// The largest PDF the model takes, before base64.
 const PDF_MAX: usize = 24_000_000;
 /// The most of a text file inlined into the prompt.
-const TEXT_MAX: usize = 100_000;
+pub const TEXT_MAX: usize = 100_000;
 /// Longest alert sent; the rest is cut.
 const ALERT_MAX: usize = 4_000;
 
@@ -190,6 +194,11 @@ fn account(path: &str) -> Result<(String, String), String> {
             .ok_or_else(|| format!("{path}: no {k}"))
     };
     Ok((field("MATRIX_USER")?, field("MATRIX_PASSWORD")?))
+}
+
+/// What the model will see of a file, if it can read it and it fits.
+pub fn seen(data: &[u8], mime: Option<&str>) -> Option<Read> {
+    read(data.to_vec(), mime).filter(fits)
 }
 
 /// Whether the model takes a file this size.
@@ -288,7 +297,7 @@ fn answer(
     model: &dyn Model,
     from: From,
     text: &str,
-    files: Vec<(String, bool, Read)>,
+    files: Vec<(String, bool, Option<Read>)>,
     turn: Turn,
 ) -> Result<String, String> {
     let Turn {
@@ -300,18 +309,29 @@ fn answer(
         steer,
     } = turn;
     let view = hippo.view()?;
-    // Photos and PDFs go to the model as they are; text is inlined.
+    // Photos and PDFs go to the model as they are, as many as fit in one
+    // request; text is inlined; the rest it knows by name.
     let mut sent = Vec::new();
     let mut inline = String::new();
     let mut attached = Vec::new();
+    let mut room = PDF_MAX;
     for (name, photo, r) in files {
+        let r = r.filter(|r| match r {
+            Read::Model(Attachment::Image { data, .. } | Attachment::Pdf(data)) => room
+                .checked_sub(data.len())
+                .map(|left| room = left)
+                .is_some(),
+            Read::Text(_) => true,
+        });
         sent.push(format!(
-            "{} {name}",
-            if photo { "a photo:" } else { "a file:" }
+            "{} {name}{}",
+            if photo { "a photo:" } else { "a file:" },
+            if r.is_none() { ", kept unseen" } else { "" }
         ));
         match r {
-            Read::Model(a) => attached.push(a),
-            Read::Text(t) => {
+            None => {}
+            Some(Read::Model(a)) => attached.push(a),
+            Some(Read::Text(t)) => {
                 let t: String = t.chars().take(TEXT_MAX).collect();
                 inline.push_str(&format!("\n<file name=\"{name}\">\n{t}\n</file>"));
             }
@@ -459,6 +479,21 @@ fn answer(
     Ok(reply)
 }
 
+/// Keeps every file the person sent in the library, by the name the model
+/// will use for it, and hands on what the model sees of each.
+fn keep(state: &Path, got: Vec<Fetched>) -> Vec<(String, bool, Option<Read>)> {
+    let library = files::Library::new(state);
+    got.into_iter()
+        .map(|f| {
+            let name = library.keep(&f.name, &f.data).unwrap_or_else(|e| {
+                eprintln!("yeoman: keep {}: {e}", f.name);
+                f.name.clone()
+            });
+            (name, f.photo, f.read)
+        })
+        .collect()
+}
+
 /// Words the person sends while a turn runs join it, as Claude Code takes
 /// a message typed while it works; "stop" alone stops it. False when there
 /// is no turn to take them, or they bring files: then they wait their turn.
@@ -510,7 +545,7 @@ async fn reply<D: Door>(
             }
         }
     }
-    let file = failed.map_or(Ok(got), Err);
+    let file = failed.map_or(Ok(got), Err).map(|got| keep(state, got));
     let text = msg.text;
     let shown = door.clone();
     let waiting = task::question(state);
@@ -547,7 +582,7 @@ async fn reply<D: Door>(
             }
         }),
     };
-    send_images(&door, &state.join("outbox")).await;
+    send_outbox(&door, &state.join("outbox")).await;
     typing.stop().await;
     let sent = if is_reaction(&reply) {
         door.react(&msg.id, &reply).await
@@ -714,7 +749,7 @@ async fn remind<D: Door>(
                     })
                     .await
                     .unwrap_or_else(|e| Err(e.to_string()));
-                    send_images(&door, &state.join("outbox")).await;
+                    send_outbox(&door, &state.join("outbox")).await;
                     typing.stop().await;
                     match answered {
                         Ok(text) => {
@@ -907,7 +942,7 @@ async fn tasks(
                 format!("(The task failed: {e})")
             }
         };
-        send_images(door, &state.join("outbox")).await;
+        send_outbox(door, &state.join("outbox")).await;
         if let Err(e) = door.say(&text).await {
             eprintln!("yeoman: task: {e}");
         }

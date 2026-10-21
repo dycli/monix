@@ -71,6 +71,7 @@ const convert = (m: Msg): ThreadMessageLike => ({
     })),
     ...(m.text ? [{ type: "text" as const, text: m.text }] : []),
     ...(m.picture ? [{ type: "image" as const, image: m.picture }] : []),
+    ...(m.file ? [{ type: "file" as const, data: `/api/file/${encodeURIComponent(m.file)}`, mimeType: "", filename: m.file }] : []),
   ],
   attachments: m.files?.map((f, n) => ({
     id: `${m.id}-file-${n}`,
@@ -493,6 +494,26 @@ function Chip({ attachment: a, removable = false }: { attachment: Attachment; re
   );
 }
 
+/** A file the yeoman sent back: its card saves it. */
+function Download() {
+  const part = useAuiState((s) => (s.part.type === "file" ? s.part : null));
+  if (!part) return null;
+  const name = part.filename ?? "file";
+  return (
+    <a
+      href={part.data}
+      download={name}
+      className="my-1 flex w-fit max-w-full items-center gap-2.5 rounded-xl border border-hair bg-paper px-3 py-2 text-sm no-underline hover:bg-hover"
+    >
+      <span className="rounded-md bg-hair px-1.5 py-0.5 text-xs font-semibold text-mid uppercase">{name.includes(".") ? name.split(".").pop()?.slice(0, 4) : "file"}</span>
+      <span className="truncate text-ink">{name}</span>
+      <svg viewBox="0 0 24 24" className="size-4 shrink-0 text-mid" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14" />
+      </svg>
+    </a>
+  );
+}
+
 type Send = (text: string, files: File[]) => Promise<void>;
 type Decide = (id: number, yes: boolean) => Promise<void>;
 
@@ -804,6 +825,7 @@ function AssistantMessage() {
               Text,
               tools: { Fallback: Tool },
               Image: () => <MessagePartPrimitive.Image className="max-h-80 max-w-full rounded-lg border border-hair" />,
+              File: Download,
             }}
           />
         </div>

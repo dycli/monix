@@ -11,11 +11,12 @@
 //! browser that asked, with a cookie good for 30 days. Nothing travels
 //! between devices, and a session only ever goes to the page that asked.
 
-use crate::door::{Door, Message};
+use crate::door::{Door, Fetched, Message};
+use crate::files::{Library, mime_of};
 use crate::hippo::{Hippo, Said};
 use crate::model::{Attachment, Step};
 use crate::pending::{self, Pending};
-use crate::{Read, fits, read};
+use crate::{Read, seen};
 use crate::{keep, task};
 use axum::extract::{DefaultBodyLimit, Multipart, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
@@ -57,10 +58,10 @@ const SPEECH_KEEP: Duration = Duration::from_secs(30 * 24 * 3600);
 const SEND_MAX: usize = 32 * 1024;
 /// The most files one message carries.
 const FILES_MAX: usize = 10;
-/// The largest request to /api/send: the biggest PDF the model takes, the
-/// words and the form's framing. It bounds all the files together, which
-/// keeps the model's request under its limit too.
-const UPLOAD_MAX: usize = crate::PDF_MAX + SEND_MAX + 64 * 1024;
+/// The largest request to /api/send, all its files together: what the
+/// Cloudflare tunnel passes. Files stay whole to be kept and converted;
+/// the model sees only what fits its request (`answer`).
+const UPLOAD_MAX: usize = 100_000_000;
 
 /// What an open page is told, as one SSE event each.
 #[derive(Clone, Serialize)]
@@ -100,6 +101,10 @@ enum Shown {
     Picture {
         image: String,
         mime: &'static str,
+    },
+    /// A kept file sent back, fetched from `/api/file/{name}`.
+    File {
+        name: String,
     },
     Typing {
         on: bool,
@@ -262,21 +267,26 @@ impl Door for Web {
         Ok(())
     }
 
-    /// Already here: the page sent the bytes with the message. Photos
-    /// arrive shrunk by the page, so one too big is refused rather than
-    /// cut down.
-    async fn fetch(&self, file: &Upload) -> Result<(String, bool, Read), String> {
-        let r = read(file.data.clone(), file.mime.as_deref()).ok_or_else(|| {
-            format!(
-                "I can't read {}: only photos, PDFs and text files.",
-                file.name
-            )
-        })?;
-        if !fits(&r) {
-            return Err(format!("{} is too big for me to read.", file.name));
-        }
-        let photo = matches!(r, Read::Model(Attachment::Image { .. }));
-        Ok((file.name.clone(), photo, r))
+    /// Already here: the page sent the bytes with the message, and for a
+    /// photo too big or of a kind the model can't see, a JPEG to see.
+    async fn fetch(&self, file: &Upload) -> Result<Fetched, String> {
+        let read = match &file.view {
+            Some(view) => seen(view, Some("image/jpeg")),
+            None => seen(&file.data, file.mime.as_deref()),
+        };
+        let photo =
+            file.view.is_some() || matches!(read, Some(Read::Model(Attachment::Image { .. })));
+        Ok(Fetched {
+            name: file.name.clone(),
+            photo,
+            data: file.data.clone(),
+            read,
+        })
+    }
+
+    async fn file(&self, name: &str, _data: Vec<u8>, _mime: &str) -> Result<(), String> {
+        self.show(Shown::File { name: name.into() });
+        Ok(())
     }
 }
 
@@ -365,11 +375,15 @@ impl<D: Door> Door for Mirror<D> {
         self.door.settle(p, outcome, done).await
     }
 
-    fn fetch(
-        &self,
-        file: &Self::File,
-    ) -> impl Future<Output = Result<(String, bool, Read), String>> + Send {
+    fn fetch(&self, file: &Self::File) -> impl Future<Output = Result<Fetched, String>> + Send {
         self.door.fetch(file)
+    }
+
+    async fn file(&self, name: &str, data: Vec<u8>, mime: &str) -> Result<(), String> {
+        if let Some(w) = &self.web {
+            w.file(name, data.clone(), mime).await?;
+        }
+        self.door.file(name, data, mime).await
     }
 }
 
@@ -378,6 +392,8 @@ pub struct Upload {
     name: String,
     mime: Option<String>,
     data: Vec<u8>,
+    /// The page's JPEG of a photo the model can't take as it is.
+    view: Option<Vec<u8>>,
 }
 
 /// Asks the person by another door, answering the id of the message a
@@ -748,6 +764,7 @@ pub async fn serve(
         .route("/api/history", get(history))
         .route("/api/search", get(search))
         .route("/api/said/{i}", get(said))
+        .route("/api/file/{name}", get(kept))
         .route("/api/speak", post(speak))
         .route("/api/call", post(call))
         .route("/api/call/end", post(call_end))
@@ -944,6 +961,54 @@ fn hits(out: &str) -> Vec<Hit> {
 }
 
 /// One message whole, to open a search hit.
+/// A kept file, for the person to save: only by its exact kept name.
+async fn kept(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Some(path) = Library::new(&site.state).path(&name) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match tokio::fs::read(&path).await {
+        Ok(data) => {
+            let mime = mime_of(&name, &data);
+            // Saved, never shown in place: a kept HTML or SVG file is the
+            // person's data, not part of this site.
+            let saved = format!("attachment; filename*=UTF-8''{}", percent(&name));
+            (
+                [
+                    (header::CONTENT_TYPE, mime),
+                    (header::CONTENT_DISPOSITION, saved),
+                    (header::X_CONTENT_TYPE_OPTIONS, "nosniff".into()),
+                ],
+                data,
+            )
+                .into_response()
+        }
+        Err(e) => {
+            eprintln!("yeoman: file {name}: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// A name as RFC 5987 wants it in a header: unreserved bytes as they
+/// are, the rest as %XX.
+fn percent(name: &str) -> String {
+    name.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
 async fn said(
     State(site): State<Arc<Site>>,
     headers: HeaderMap,
@@ -1272,10 +1337,17 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
                         name,
                         mime,
                         data: b.to_vec(),
+                        view: None,
                     }),
                     Err(e) => return (e.status(), e.body_text()).into_response(),
                 }
             }
+            // Follows the file it shows.
+            Some("view") => match (field.bytes().await, files.last_mut()) {
+                (Ok(b), Some(f)) => f.view = Some(b.to_vec()),
+                (Ok(_), None) => return StatusCode::BAD_REQUEST.into_response(),
+                (Err(e), _) => return (e.status(), e.body_text()).into_response(),
+            },
             _ => {}
         }
     }

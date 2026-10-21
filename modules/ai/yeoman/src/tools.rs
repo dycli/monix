@@ -6,6 +6,7 @@
 
 use crate::book::{self, Book, Repeat, Shelf};
 use crate::calendar::{Calendar, Change, NewEvent};
+use crate::files::{self, Library};
 use crate::finance::{self, Finance, Ledger};
 use crate::hippo::Hippo;
 use crate::house::House;
@@ -190,10 +191,17 @@ struct MailRead {
 }
 
 #[derive(Deserialize, JsonSchema)]
-struct Show {
-    /// The screenshot's file name on the desk, as the screenshot tool
-    /// reported it.
-    file: String,
+struct FileName {
+    /// The file's name: as kept in your files, or on your computer's desk
+    /// as the screenshot or download reported it.
+    name: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct FileFind {
+    /// Words the name holds, any case; leave out for every file, newest
+    /// first.
+    words: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -634,11 +642,65 @@ impl Tools {
     }
 
     #[tool(
-        description = "Show your person a screenshot you took on your computer; it goes out with your answer."
+        description = "Your files: everything your person has sent you, and what you have sent them, kept by name. Lists the names, sizes and dates, newest first."
     )]
-    fn show(&self, Parameters(Show { file }): Parameters<Show>) -> Result<String, String> {
-        let desk = self.desk.as_ref().ok_or("There is no computer here.")?;
-        show(desk, &self.dir.join("outbox"), &file)
+    fn files(
+        &self,
+        Parameters(FileFind { words }): Parameters<FileFind>,
+    ) -> Result<String, String> {
+        let found = Library::new(&self.dir)
+            .find(words.as_deref().unwrap_or_default())
+            .map_err(|e| e.to_string())?;
+        if found.is_empty() {
+            return Ok("No files.".into());
+        }
+        let mut out = String::new();
+        for k in found.iter().take(100) {
+            let when = chrono::DateTime::<chrono::Local>::from(k.when).format(AT);
+            let _ = writeln!(out, "{} ({}, {when})", k.name, size(k.size));
+        }
+        if found.len() > 100 {
+            let _ = writeln!(
+                out,
+                "and {} older; give words to narrow it.",
+                found.len() - 100
+            );
+        }
+        Ok(out)
+    }
+
+    #[tool(description = "Read a kept text file (notes, CSV, Markdown, code) by its name.")]
+    fn read_file(
+        &self,
+        Parameters(FileName { name }): Parameters<FileName>,
+    ) -> Result<String, String> {
+        let path = Library::new(&self.dir)
+            .path(&name)
+            .ok_or_else(|| format!("There is no file called {name}."))?;
+        let data = fs::read(&path).map_err(|e| e.to_string())?;
+        let text = String::from_utf8(data).map_err(|_| format!("{name} is not text."))?;
+        let cut: String = text.chars().take(crate::TEXT_MAX).collect();
+        Ok(if cut.len() < text.len() {
+            format!("{cut}\n(cut: the rest is too long to read here)")
+        } else {
+            cut
+        })
+    }
+
+    #[tool(
+        description = "Send your person a file: one of your files by name, or a screenshot or download from your computer's desk, which is then kept too. It goes out with your answer."
+    )]
+    fn send_file(
+        &self,
+        Parameters(FileName { name }): Parameters<FileName>,
+    ) -> Result<String, String> {
+        let kept = files::send(
+            &Library::new(&self.dir),
+            self.desk.as_deref(),
+            &self.dir.join("outbox"),
+            &name,
+        )?;
+        Ok(format!("{kept} goes out with your answer."))
     }
 
     #[tool(
@@ -1124,22 +1186,13 @@ fn find(
 #[tool_handler(router = self.tool_router)]
 impl rmcp::ServerHandler for Tools {}
 
-/// Copies a screenshot from the desk into the outbox, where the answer's
-/// sender picks it up; the name alone counts, so no path leaves the desk.
-fn show(desk: &Path, outbox: &Path, file: &str) -> Result<String, String> {
-    let name = Path::new(file).file_name().ok_or("Which file?")?;
-    let from = desk.join(name);
-    if from.extension().is_none_or(|x| x != "png") {
-        return Err("Only a png screenshot can be shown.".into());
+/// A byte count as people read it.
+fn size(n: u64) -> String {
+    match n {
+        0..1_000 => format!("{n} B"),
+        1_000..1_000_000 => format!("{:.0} KB", n as f64 / 1e3),
+        _ => format!("{:.1} MB", n as f64 / 1e6),
     }
-    fs::create_dir_all(outbox).map_err(|e| e.to_string())?;
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_millis();
-    fs::copy(&from, outbox.join(format!("{stamp}.png")))
-        .map_err(|e| format!("{}: {e}", from.display()))?;
-    Ok("It goes out with your answer.".into())
 }
 
 /// Writes a page under its name: a dated copy that stays, and index.html
@@ -1285,22 +1338,6 @@ mod tests {
         assert!(publish(&dir, url, "Trip", "x").is_err());
         assert!(publish(&dir, url, "", "x").is_err());
         assert!(publish(&dir, url, "-x", "x").is_err());
-        fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn a_screenshot_is_shown_by_name_only_and_only_a_png() {
-        let dir = std::env::temp_dir().join(format!("yeoman-show-{}", std::process::id()));
-        let desk = dir.join("desk");
-        let outbox = dir.join("outbox");
-        fs::create_dir_all(&desk).unwrap();
-        fs::write(desk.join("page.png"), b"png").unwrap();
-        fs::write(desk.join("notes.txt"), b"text").unwrap();
-        assert!(show(&desk, &outbox, "/desk/page.png").is_ok());
-        assert_eq!(fs::read_dir(&outbox).unwrap().count(), 1);
-        assert!(show(&desk, &outbox, "notes.txt").is_err());
-        assert!(show(&desk, &outbox, "../page.png").is_ok());
-        assert!(show(&desk, &outbox, "missing.png").is_err());
         fs::remove_dir_all(&dir).unwrap();
     }
 }

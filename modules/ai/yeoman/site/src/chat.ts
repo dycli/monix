@@ -13,6 +13,8 @@ export type Msg = {
   plain?: boolean;
   /** A picture, as a data URL. */
   picture?: string;
+  /** A kept file sent back, saved from /api/file/{name}. */
+  file?: string;
   reaction?: string;
   date?: Date;
   /** Files sent with the message; `image` is a local URL to show one by. */
@@ -49,6 +51,7 @@ type Shown =
   | { type: "settled"; id: number; text: string; done: boolean }
   | { type: "react"; to: string; emoji: string }
   | { type: "picture"; image: string; mime: string }
+  | { type: "file"; name: string }
   | { type: "typing"; on: boolean }
   | { type: "step"; step: Step; task: boolean }
   | { type: "task"; text: string | null; question: string | null }
@@ -215,6 +218,9 @@ export function useChat(): Chat {
           case "picture":
             setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", picture: `data:${s.mime};base64,${s.image}`, date: new Date() }]);
             break;
+          case "file":
+            setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", file: s.name, date: new Date() }]);
+            break;
           case "typing":
             setTyping(s.on);
             // A turn that ended without an answer leaves its tools standing,
@@ -248,7 +254,11 @@ export function useChat(): Chat {
     setMessages((ms) => [...ms, { id: local, role: "user", text, files: shown, date: new Date() }]);
     const body = new FormData();
     body.set("text", text);
-    for (const f of files) body.append("file", f);
+    for (const f of files) {
+      body.append("file", f);
+      const view = views.get(f);
+      if (view) body.append("view", view);
+    }
     const r = await fetch("/api/send", { method: "POST", body });
     if (r.status === 401) return setStatus("signed-out");
     if (!r.ok) {
@@ -337,13 +347,17 @@ function step(ms: Msg[], s: Step): Msg[] {
 // The model reads photos up to 3.75 MB (IMAGE_MAX in main.rs) in JPEG, PNG,
 // GIF or WebP. A phone photo is often bigger, or HEIC, so the page redraws
 // it as a JPEG no longer than 2048 px on its long side, which the model
-// downscales to anyway.
+// downscales to anyway. That copy goes along as the photo's view; the
+// original is what the yeoman keeps.
+const views = new WeakMap<File, File>();
 const PHOTO_MAX = 3_500_000;
 const PHOTO_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
-async function fit(file: File): Promise<File> {
-  if (!file.type.startsWith("image/") || (file.size <= PHOTO_MAX && PHOTO_TYPES.includes(file.type))) return file;
-  const bitmap = await createImageBitmap(file);
+async function fit(file: File): Promise<File | undefined> {
+  if (!file.type.startsWith("image/") || (file.size <= PHOTO_MAX && PHOTO_TYPES.includes(file.type))) return;
+  // One the browser can't draw (a TIFF, a RAW) is kept unseen.
+  const bitmap = await createImageBitmap(file).catch(() => undefined);
+  if (!bitmap) return;
   const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height));
   const canvas = new OffscreenCanvas(Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
   canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
@@ -354,15 +368,16 @@ async function fit(file: File): Promise<File> {
 
 /** Holds a chosen file in the composer until it goes out with the message. */
 export const attachments: AttachmentAdapter = {
-  accept: "image/*,application/pdf,text/*",
+  accept: "*",
   async add({ file }) {
-    const fitted = await fit(file);
+    const view = await fit(file);
+    if (view) views.set(file, view);
     return {
       id: crypto.randomUUID(),
-      type: fitted.type.startsWith("image/") ? "image" : "document",
-      name: fitted.name,
-      contentType: fitted.type,
-      file: fitted,
+      type: file.type.startsWith("image/") ? "image" : "document",
+      name: file.name,
+      contentType: file.type,
+      file,
       status: { type: "requires-action", reason: "composer-send" },
     };
   },

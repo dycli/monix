@@ -948,8 +948,9 @@
               if i.web then
                 {
                   port = chatPort n;
-                  # Server-sent events stream as they come.
-                  proxyExtra = "proxy_buffering off;";
+                  # Server-sent events stream as they come; uploads may be
+                  # as big as the chat takes (UPLOAD_MAX in site.rs).
+                  proxyExtra = "proxy_buffering off; client_max_body_size 100m;";
                 }
               else
                 { root = "${pages}/${n}"; }
@@ -958,7 +959,7 @@
           // mapAttrs (s: site: {
             port = chatPort (head site.members);
             upstream = "http://$yeoman_${s}";
-            proxyExtra = "proxy_buffering off;";
+            proxyExtra = "proxy_buffering off; client_max_body_size 100m;";
           }) cfg.sites;
 
         # The persona cookie names a unit; anything else gets the first.

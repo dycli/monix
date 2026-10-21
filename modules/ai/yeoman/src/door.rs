@@ -2,6 +2,7 @@
 //! the web app next. The core answers, reminds and asks for approval
 //! through it without knowing which kind it is.
 
+use crate::files::mime_of;
 use crate::model::Step;
 use crate::pending::Pending;
 use crate::{Read, image_type};
@@ -30,6 +31,13 @@ pub trait Door: Clone + Send + Sync + 'static {
         data: Vec<u8>,
         mime: &'static str,
     ) -> impl Future<Output = Result<(), String>> + Send;
+    /// Sends a file the yeoman kept as `name`, for the person to save.
+    fn file(
+        &self,
+        name: &str,
+        data: Vec<u8>,
+        mime: &str,
+    ) -> impl Future<Output = Result<(), String>> + Send;
     fn typing(&self, on: bool) -> impl Future<Output = ()> + Send;
     /// Shows a tool call or its result while the answer is being worked
     /// out. Called from the model's reader thread, so it must not block.
@@ -56,12 +64,9 @@ pub trait Door: Clone + Send + Sync + 'static {
         let text = outcome.to_owned();
         async move { self.quote(&text).await.map(|_| ()) }
     }
-    /// Downloads a file the person sent: its name, whether it is a photo,
-    /// and what the model will see. Errors are what to tell the person.
-    fn fetch(
-        &self,
-        file: &Self::File,
-    ) -> impl Future<Output = Result<(String, bool, Read), String>> + Send;
+    /// Downloads a file the person sent, whole. Errors are what to tell
+    /// the person.
+    fn fetch(&self, file: &Self::File) -> impl Future<Output = Result<Fetched, String>> + Send;
 }
 
 /// What the person sent: words, and maybe a file.
@@ -111,31 +116,50 @@ impl<D: Door> Drop for Typing<D> {
     }
 }
 
-/// Sends the pictures `make_image` left in the outbox, oldest first,
-/// deleting each once sent; one that fails stays for the next answer.
-/// ChatGPT draws PNGs, Grok JPEGs.
-pub async fn send_images(door: &impl Door, outbox: &Path) {
+/// A file the person sent: its name, whether it came as a photo, its
+/// bytes, and what the model will see of it, if it can read it at all.
+pub struct Fetched {
+    pub name: String,
+    pub photo: bool,
+    pub data: Vec<u8>,
+    pub read: Option<Read>,
+}
+
+/// Sends what the turn left in the outbox, oldest first, deleting each
+/// once sent; one that fails stays for the next answer. `make_image`
+/// leaves `<stamp>.png` (ChatGPT) or `.jpg` (Grok), shown as pictures;
+/// `send_file` leaves `<stamp>-<name>`, a kept file sent by its name.
+pub async fn send_outbox(door: &impl Door, outbox: &Path) {
     let Ok(dir) = fs::read_dir(outbox) else {
         return;
     };
     let mut files: Vec<PathBuf> = dir
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|x| x == "png" || x == "jpg"))
+        .filter(|p| p.is_file())
         .collect();
     files.sort();
     for path in files {
-        let sent = match fs::read(&path) {
-            Ok(data) => match image_type(&data) {
+        let named = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.split_once('-'))
+            .map(|(_, name)| name.to_owned());
+        let sent = match (fs::read(&path), named) {
+            (Ok(data), Some(name)) => {
+                let mime = mime_of(&name, &data);
+                door.file(&name, data, &mime).await
+            }
+            (Ok(data), None) => match image_type(&data) {
                 Some(mime) => door.picture(data, mime).await,
                 None => Err("not an image".into()),
             },
-            Err(e) => Err(e.to_string()),
+            (Err(e), _) => Err(e.to_string()),
         };
         match sent {
             Ok(()) => {
                 let _ = fs::remove_file(&path);
             }
-            Err(e) => eprintln!("yeoman: picture {}: {e}", path.display()),
+            Err(e) => eprintln!("yeoman: outbox {}: {e}", path.display()),
         }
     }
 }
