@@ -10,8 +10,10 @@
 # Each browser runs as an account of its own, not the assistant's: it sees
 # its profile and its desk and nothing of the assistant, the household or
 # another browser. Its network is the internet only, plus its own loopback
-# address, where the MCP server and VNC listen; the assistant is admitted
-# to that address alone. The desk is shared with the assistant through the
+# address, where the MCP server and VNC listen. systemd's address fence
+# filters both directions, so it would drop a client connecting from any
+# other address; a relay takes the public ports and reconnects from the
+# browser's own address, the one peer the fence admits. The desk is shared with the assistant through the
 # browser's group: screenshots and downloads out, uploads in.
 { self, ... }:
 {
@@ -50,6 +52,10 @@
         WAYLAND_DISPLAY = "wayland-0";
       };
 
+      # Where the MCP server and VNC listen behind the relay.
+      innerMcpPort = browsers.mcpPort + 1;
+      innerVncPort = browsers.vncPort + 1;
+
       inherit (import ./novnc.nix pkgs) novnc websockify;
       playwright = import ./playwright-mcp.nix pkgs;
 
@@ -80,7 +86,7 @@
             # on isolated mode, which refuses a profile, unless this is set.
             export PLAYWRIGHT_MCP_USER_DATA_DIR=${home n}/profile
             exec cage -- ${browse} \
-              --host ${addr n} --port ${toString browsers.mcpPort} \
+              --host ${addr n} --port ${toString innerMcpPort} \
               --allowed-hosts ${addr n},${addr n}:${toString browsers.mcpPort} \
               --browser chrome --executable-path ${getExe pkgs.brave} --sandbox \
               --shared-browser-context \
@@ -197,13 +203,37 @@
               serviceConfig = confined n // fence n // {
                 # cage offers only wlr-screencopy, over which wayvnc sends
                 # no cursor image; -r paints the pointer into the frame.
-                ExecStart = "${getExe pkgs.wayvnc} -r ${addr n} ${toString browsers.vncPort}";
+                ExecStart = "${getExe pkgs.wayvnc} -r ${addr n} ${toString innerVncPort}";
                 # The compositor's socket appears a moment after it starts;
                 # a start that fails meanwhile reads as a failed deploy.
                 ExecStartPre = "${pkgs.bash}/bin/bash -c 'until [ -S ${runtime n}/wayland-0 ]; do sleep 0.2; done'";
                 TimeoutStartSec = 30;
                 Restart = "always";
                 RestartSec = 2;
+              };
+            })
+            (nameValuePair "${user n}-relay" {
+              description = "${n}'s browser ports, relayed from its own address";
+              wantedBy = singleton "multi-user.target";
+              after = singleton "network.target";
+              script =
+                let
+                  relay = outer: inner: ''
+                    ${getExe pkgs.socat} TCP-LISTEN:${toString outer},bind=${addr n},reuseaddr,fork \
+                      TCP:${addr n}:${toString inner},bind=${addr n} &
+                  '';
+                in
+                ''
+                  ${relay browsers.mcpPort innerMcpPort}
+                  ${relay browsers.vncPort innerVncPort}
+                  wait -n
+                '';
+              serviceConfig = lib.ship.hardened.vendor // {
+                DynamicUser = true;
+                Restart = "always";
+                RestartSec = 2;
+                IPAddressAllow = "localhost";
+                IPAddressDeny = "any";
               };
             })
             (nameValuePair "${n}-screen" {
