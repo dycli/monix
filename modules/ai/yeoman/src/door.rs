@@ -2,13 +2,16 @@
 //! the web app next. The core answers, reminds and asks for approval
 //! through it without knowing which kind it is.
 
-use crate::files::mime_of;
+use crate::files::{Library, mime_of};
+use crate::hippo::Hippo;
 use crate::model::Step;
 use crate::pending::Pending;
-use crate::{Read, image_type};
+use crate::{Read, image_type, log_talk};
+use chrono::Local;
 use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub trait Door: Clone + Send + Sync + 'static {
@@ -25,9 +28,10 @@ pub trait Door: Clone + Send + Sync + 'static {
     fn quote(&self, text: &str) -> impl Future<Output = Result<String, String>> + Send;
     /// Reacts to the message `to` with an emoji.
     fn react(&self, to: &str, emoji: &str) -> impl Future<Output = Result<(), String>> + Send;
-    /// Sends a picture of type `mime`.
+    /// Sends a picture of type `mime`, kept as `name`.
     fn picture(
         &self,
+        name: &str,
         data: Vec<u8>,
         mime: &'static str,
     ) -> impl Future<Output = Result<(), String>> + Send;
@@ -127,10 +131,14 @@ pub struct Fetched {
 
 /// Sends what the turn left in the outbox, oldest first, deleting each
 /// once sent; one that fails stays for the next answer. `make_image`
-/// leaves `<stamp>.png` (ChatGPT) or `.jpg` (Grok), shown as pictures;
-/// `send_file` leaves `<stamp>-<name>`, a kept file sent by its name.
-pub async fn send_outbox(door: &impl Door, outbox: &Path) {
-    let Ok(dir) = fs::read_dir(outbox) else {
+/// leaves `<stamp>.png` (ChatGPT) or `.jpg` (Grok), kept as a picture
+/// first; `send_file` leaves `<stamp>-<name>`, a kept file sent by its
+/// name. hippo logs each as "(sent a picture: name)" or "(sent a file:
+/// name)", as it logs what the person sends, so the page shows it again
+/// after a reload and a later turn knows it by name.
+pub async fn send_outbox(door: &impl Door, hippo: &Arc<Hippo>, state: &Path) {
+    let outbox = state.join("outbox");
+    let Ok(dir) = fs::read_dir(&outbox) else {
         return;
     };
     let mut files: Vec<PathBuf> = dir
@@ -147,17 +155,30 @@ pub async fn send_outbox(door: &impl Door, outbox: &Path) {
         let sent = match (fs::read(&path), named) {
             (Ok(data), Some(name)) => {
                 let mime = mime_of(&name, &data);
-                door.file(&name, data, &mime).await
+                door.file(&name, data, &mime)
+                    .await
+                    .map(|()| format!("(sent a file: {name})"))
             }
             (Ok(data), None) => match image_type(&data) {
-                Some(mime) => door.picture(data, mime).await,
+                Some(mime) => {
+                    let ext = mime.trim_start_matches("image/").replace("jpeg", "jpg");
+                    let called = format!("picture {}.{ext}", Local::now().format("%Y-%m-%d %H.%M"));
+                    match Library::new(state).keep(&called, &data) {
+                        Ok(name) => door
+                            .picture(&name, data, mime)
+                            .await
+                            .map(|()| format!("(sent a picture: {name})")),
+                        Err(e) => Err(e.to_string()),
+                    }
+                }
                 None => Err("not an image".into()),
             },
             (Err(e), _) => Err(e.to_string()),
         };
         match sent {
-            Ok(()) => {
+            Ok(line) => {
                 let _ = fs::remove_file(&path);
+                log_talk(hippo, line).await;
             }
             Err(e) => eprintln!("yeoman: outbox {}: {e}", path.display()),
         }

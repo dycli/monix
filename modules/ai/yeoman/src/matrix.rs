@@ -144,15 +144,10 @@ impl Door for Matrix {
             .map_err(|e| format!("send to {}: {e}", self.0.room_id()))
     }
 
-    async fn picture(&self, data: Vec<u8>, mime: &'static str) -> Result<(), String> {
+    async fn picture(&self, name: &str, data: Vec<u8>, mime: &'static str) -> Result<(), String> {
         let kind: mime::Mime = mime.parse().map_err(|e| format!("{mime}: {e}"))?;
         self.0
-            .send_attachment(
-                format!("picture.{}", kind.subtype()),
-                &kind,
-                data,
-                AttachmentConfig::new(),
-            )
+            .send_attachment(name, &kind, data, AttachmentConfig::new())
             .await
             .map(|_| ())
             .map_err(|e| e.to_string())

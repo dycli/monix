@@ -25,7 +25,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine;
-use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -99,10 +99,9 @@ enum Shown {
         to: String,
         emoji: String,
     },
-    /// An image of type `mime`, base64.
+    /// A picture kept as `name`, fetched from `/api/file/{name}`.
     Picture {
-        image: String,
-        mime: &'static str,
+        name: String,
     },
     /// A kept file sent back, fetched from `/api/file/{name}`.
     File {
@@ -226,11 +225,8 @@ impl Door for Web {
         Ok(())
     }
 
-    async fn picture(&self, data: Vec<u8>, mime: &'static str) -> Result<(), String> {
-        self.show(Shown::Picture {
-            image: STANDARD.encode(data),
-            mime,
-        });
+    async fn picture(&self, name: &str, _data: Vec<u8>, _mime: &'static str) -> Result<(), String> {
+        self.show(Shown::Picture { name: name.into() });
         Ok(())
     }
 
@@ -338,11 +334,11 @@ impl<D: Door> Door for Mirror<D> {
         self.door.react(to, emoji).await
     }
 
-    async fn picture(&self, data: Vec<u8>, mime: &'static str) -> Result<(), String> {
+    async fn picture(&self, name: &str, data: Vec<u8>, mime: &'static str) -> Result<(), String> {
         if let Some(w) = &self.web {
-            w.picture(data.clone(), mime).await?;
+            w.picture(name, Vec::new(), mime).await?;
         }
-        self.door.picture(data, mime).await
+        self.door.picture(name, data, mime).await
     }
 
     async fn typing(&self, on: bool) {

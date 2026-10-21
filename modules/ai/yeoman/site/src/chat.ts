@@ -11,7 +11,7 @@ export type Msg = {
   text: string;
   /** Shown word for word: a draft waiting for approval. */
   plain?: boolean;
-  /** A picture, as a data URL. */
+  /** A picture the yeoman sent, as a URL. */
   picture?: string;
   /** A kept file sent back, saved from /api/file/{name}. */
   file?: string;
@@ -52,7 +52,7 @@ type Shown =
   | { type: "pending"; pending: Pending }
   | { type: "settled"; id: number; text: string; done: boolean }
   | { type: "react"; to: string; emoji: string }
-  | { type: "picture"; image: string; mime: string }
+  | { type: "picture"; name: string }
   | { type: "file"; name: string }
   | { type: "typing"; on: boolean }
   | { type: "step"; step: Step; agent: string | null }
@@ -67,6 +67,11 @@ const ROLE: Record<string, Msg["role"]> = { user: "user", talk: "assistant", not
 // A draft as Matrix shows it (pending.rs `Act::show`), kept in hippo as talk;
 // on reload it is framed as it was.
 const DRAFT = /^Draft to [^\n]+\nSubject: [\s\S]*\n\n👍 sends it, 👎 drops it\.$/;
+/** How hippo logs a picture or file the yeoman sent (`send_outbox`). */
+const SENT = /^\(sent a (picture|file): (.+)\)$/;
+// Whole, since assistant-ui shows a picture only from an https: (or data:
+// or blob:) URL.
+const fileUrl = (name: string) => new URL(`/api/file/${encodeURIComponent(name)}`, location.href).href;
 
 export type Chat =
   | { state: "loading" }
@@ -138,14 +143,20 @@ export function useChat(): Chat {
         setTasks((ks) => atWork(ks, now.agents));
       }
       setMessages((was) => {
-        const now: Msg[] = said.map((m) => ({
-          id: `h-${m.i}`,
-          role: ROLE[m.kind],
-          text: m.text,
-          plain: m.kind === "talk" && DRAFT.test(m.text),
-          reaction: m.reaction ?? undefined,
-          date: new Date(m.date),
-        }));
+        const now: Msg[] = said.map((m) => {
+          // What the yeoman sent is kept, and hippo logs it by name.
+          const sent = m.kind === "talk" ? SENT.exec(m.text) : null;
+          return {
+            id: `h-${m.i}`,
+            role: ROLE[m.kind],
+            text: sent ? "" : m.text,
+            plain: m.kind === "talk" && DRAFT.test(m.text),
+            picture: sent?.[1] === "picture" ? fileUrl(sent[2]) : undefined,
+            file: sent?.[1] === "file" ? sent[2] : undefined,
+            reaction: m.reaction ?? undefined,
+            date: new Date(m.date),
+          };
+        });
         // hippo keeps no tools and no photos, and a phone resyncs each time
         // the page comes back, so an answer found again by its words keeps
         // the tools (and cards) this page saw, and a message sent with files
@@ -240,7 +251,7 @@ export function useChat(): Chat {
             setMessages((ms) => ms.map((m) => (m.id === s.to ? { ...m, reaction: s.emoji } : m)));
             break;
           case "picture":
-            setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", picture: `data:${s.mime};base64,${s.image}`, date: new Date() }]);
+            setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", picture: fileUrl(s.name), date: new Date() }]);
             break;
           case "file":
             setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", file: s.name, date: new Date() }]);

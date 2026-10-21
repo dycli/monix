@@ -648,6 +648,7 @@ async fn reply<D: Door>(
     let file = failed.map_or(Ok(got), Err).map(|got| keep(state, got));
     let text = msg.text;
     let shown = door.clone();
+    let kept = hippo.clone();
     let reply = match file {
         Err(e) => {
             eprintln!("yeoman: {e}");
@@ -679,7 +680,6 @@ async fn reply<D: Door>(
             }
         }),
     };
-    send_outbox(&door, &state.join("outbox")).await;
     typing.stop().await;
     let sent = if is_reaction(&reply) {
         door.react(&msg.id, &reply).await
@@ -689,6 +689,8 @@ async fn reply<D: Door>(
     if let Err(e) = sent {
         eprintln!("yeoman: {e}");
     }
+    // After the answer, as hippo has them.
+    send_outbox(&door, &kept, state).await;
 }
 
 /// Whether an answer is one emoji alone, sent as a reaction instead.
@@ -723,7 +725,7 @@ async fn ask_alone<D: Door>(
 }
 
 /// Keeps in hippo what the yeoman said outside a turn.
-async fn log_talk(hippo: &Arc<Hippo>, text: String) {
+pub async fn log_talk(hippo: &Arc<Hippo>, text: String) {
     let hippo = hippo.clone();
     if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await {
         eprintln!("yeoman: {e}");
@@ -858,7 +860,7 @@ async fn remind<D: Door>(
                 (None, true) => {
                     let answered =
                         ask_alone(&door, &hippo, &model, From::Routine, r.text.clone()).await;
-                    send_outbox(&door, &state.join("outbox")).await;
+                    send_outbox(&door, &hippo, &state).await;
                     match answered {
                         Ok(text) => {
                             if let Err(e) = on_book(&state, |db| book::keep_answer(db, &r, &text)) {
@@ -1059,7 +1061,7 @@ async fn work_on(
             continue;
         }
         let text = ask_alone(door, hippo, model, From::Work, said).await;
-        send_outbox(door, &state.join("outbox")).await;
+        send_outbox(door, hippo, state).await;
         match text {
             Ok(text) => {
                 if let Err(e) = door.say(&text).await {
