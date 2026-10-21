@@ -198,7 +198,10 @@
                 # cage offers only wlr-screencopy, over which wayvnc sends
                 # no cursor image; -r paints the pointer into the frame.
                 ExecStart = "${getExe pkgs.wayvnc} -r ${addr n} ${toString browsers.vncPort}";
-                # The compositor's socket appears a moment after it starts.
+                # The compositor's socket appears a moment after it starts;
+                # a start that fails meanwhile reads as a failed deploy.
+                ExecStartPre = "${pkgs.bash}/bin/bash -c 'until [ -S ${runtime n}/wayland-0 ]; do sleep 0.2; done'";
+                TimeoutStartSec = 30;
                 Restart = "always";
                 RestartSec = 2;
               };
