@@ -18,6 +18,22 @@ export function voiceSpeed(): number {
   return s ? clamp(s, SPEED.min, SPEED.max) : 1;
 }
 
+/** The voice picked in Settings, or null for the assistant's own. */
+export function voiceChoice(): string | null {
+  return localStorage.getItem("voice");
+}
+
+/** The picked voice, null for the assistant's own, and its setter. */
+export function useVoiceChoice(): [string | null, (v: string | null) => void] {
+  const [voice, setVoice] = useState(voiceChoice);
+  const set = (v: string | null) => {
+    if (v === null) localStorage.removeItem("voice");
+    else localStorage.setItem("voice", v);
+    setVoice(v);
+  };
+  return [voice, set];
+}
+
 /** The voice speed and its setter. */
 export function useVoiceSpeed(): [number, (s: number) => void] {
   const [speed, setSpeed] = useState(voiceSpeed);
@@ -176,7 +192,7 @@ export function Call({ name, ended }: { name: string; ended: () => void }) {
           JSON.stringify({
             type: "session.update",
             session: {
-              voice: pass.voice,
+              voice: voiceChoice() ?? pass.voice,
               instructions: pass.instructions,
               turn_detection: { type: "server_vad" },
               audio: { input: { ...audio, transcription: { model: "grok-transcribe" } }, output: { ...audio, speed: clamp(voiceSpeed(), 0.7, 1.5) } },

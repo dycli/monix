@@ -488,6 +488,8 @@ struct Who {
     /// The xAI voice replies are read aloud in: YEOMAN_VOICE, none when
     /// unset or without yeoman-x.
     voice: Option<String>,
+    /// The voices a page may read in instead, when it has a voice.
+    voices: &'static [&'static str],
 }
 
 #[derive(Serialize)]
@@ -507,6 +509,7 @@ impl Who {
             voice: std::env::var("YEOMAN_VOICE")
                 .ok()
                 .filter(|_| std::env::var_os("YEOMAN_X").is_some()),
+            voices: &crate::x::VOICES,
         }
     }
 }
@@ -1076,6 +1079,8 @@ async fn said(
 #[derive(Deserialize)]
 struct Speak {
     text: String,
+    /// One of the voices the page picked; else the assistant's own.
+    voice: Option<String>,
 }
 
 /// A reply being read aloud: the MP3 so far, and how it ended once it has
@@ -1093,13 +1098,21 @@ struct Sofar {
 async fn speak(
     State(site): State<Arc<Site>>,
     headers: HeaderMap,
-    Json(Speak { text }): Json<Speak>,
+    Json(Speak {
+        text,
+        voice: picked,
+    }): Json<Speak>,
 ) -> Response {
     if !site.signed(&headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    let (Some(sock), Some(voice)) = (site.x.clone(), site.who.voice.clone()) else {
+    let (Some(sock), Some(own)) = (site.x.clone(), site.who.voice.clone()) else {
         return StatusCode::NOT_FOUND.into_response();
+    };
+    let voice = match picked {
+        Some(v) if crate::x::VOICES.contains(&v.as_str()) => v,
+        Some(_) => return StatusCode::BAD_REQUEST.into_response(),
+        None => own,
     };
     let text = plain(&text);
     if text.is_empty() || text.chars().count() > crate::x::SPEAK_MAX {

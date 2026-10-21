@@ -39,6 +39,12 @@ const IMAGE_MODEL: &str = "grok-imagine-image-2.0";
 const DRAW_MAX: usize = 4000;
 /// xAI's limit on one text to speak, in characters.
 pub const SPEAK_MAX: usize = 60_000;
+
+/// xAI's built-in voices, each good for reading aloud and for calls, as
+/// its text to speech docs list them; a page may pick any.
+pub const VOICES: [&str; 9] = [
+    "ara", "eve", "leo", "rex", "sal", "carina", "helix", "orion", "zagan",
+];
 const MODEL: &str = "grok-4.7";
 const TIMEOUT: Duration = Duration::from_secs(300);
 /// Refresh the access token this long before it expires.

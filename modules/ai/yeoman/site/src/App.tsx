@@ -18,7 +18,7 @@ import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, type Card, type Chat, type Hit, type Msg, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
-import { Bars, Call, SPEED, useVoiceSpeed, voiceSpeed } from "./call";
+import { Bars, Call, SPEED, useVoiceChoice, useVoiceSpeed, voiceChoice, voiceSpeed } from "./call";
 
 type Args = ToolCallMessagePartProps["args"];
 
@@ -132,12 +132,12 @@ function ThemeButton({ className = "" }: { className?: string }) {
 }
 
 type Persona = { unit: string; name: string };
-type Me = { personas: Persona[]; voice: string | null };
+type Me = { personas: Persona[]; voice: string | null; voices: string[] };
 
 // Who answers here, asked once for the switcher and the speak buttons.
 const ME: Promise<Me> = fetch("/api/me")
   .then((r) => (r.ok ? r.json() : Promise.reject()))
-  .catch(() => ({ personas: [], voice: null }));
+  .catch(() => ({ personas: [], voice: null, voices: [] }));
 
 function useMe() {
   const [me, setMe] = useState<Me | null>(null);
@@ -317,7 +317,9 @@ function Settings() {
   // the bell's state is known before the menu first opens.
   const [bell, toggleBell] = usePush();
   const update = useUpdate();
-  const voice = useMe()?.voice;
+  const me = useMe();
+  const voice = me?.voice;
+  const [choice, setChoice] = useVoiceChoice();
   const [speed, setSpeed] = useVoiceSpeed();
   const row = "flex w-full items-center justify-between gap-6 px-4 py-2.5 text-left text-[15px] hover:bg-hover disabled:opacity-40 disabled:hover:bg-transparent";
   const note = "text-[13px] text-mid";
@@ -358,6 +360,22 @@ function Settings() {
                 Notifications
                 <span className={note}>{{ on: "On", off: "Off", denied: "Blocked" }[bell]}</span>
               </button>
+            )}
+            {voice && (
+              <label className={row}>
+                Voice
+                <select
+                  value={choice ?? voice}
+                  onChange={(e) => setChoice(e.target.value === voice ? null : e.target.value)}
+                  className="bg-transparent text-right text-[13px] text-mid capitalize outline-none"
+                >
+                  {(me?.voices ?? []).map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
             {voice && (
               <label className="block px-4 py-2.5 text-[15px]">
@@ -947,17 +965,19 @@ function stop() {
 }
 
 function speech(text: string) {
-  let url = spoken.get(text);
+  const voice = voiceChoice();
+  const id = `${voice}\n${text}`;
+  let url = spoken.get(id);
   if (!url) {
     url = fetch("/api/speak", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(voice ? { text, voice } : { text }),
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then(({ key }: { key: string }) => `/api/speak/${key}`);
-    spoken.set(text, url);
-    url.catch(() => spoken.delete(text));
+    spoken.set(id, url);
+    url.catch(() => spoken.delete(id));
   }
   return url;
 }
