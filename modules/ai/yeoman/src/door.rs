@@ -42,11 +42,11 @@ pub trait Door: Clone + Send + Sync + 'static {
     /// Shows a tool call or its result while the answer is being worked
     /// out. Called from the model's reader thread, so it must not block.
     fn step(&self, _step: Step) {}
-    /// The same for the task running on its own, apart from any turn.
-    fn task_step(&self, _step: Step) {}
-    /// The task under way and the question it waits on, if any. Called on
-    /// every tick, so a door shows only what changed.
-    fn task(&self, _now: Option<String>, _question: Option<String>) {}
+    /// The same for subagent `agent`, at work apart from any turn.
+    fn agent_step(&self, _agent: &str, _step: Step) {}
+    /// The subagents at work, by name, with their tasks. Called on every
+    /// tick, so a door shows only what changed.
+    fn agents(&self, _now: Vec<(String, String)>) {}
     /// Shows an act waiting for the person's word, returning the id a
     /// verdict on it answers. Matrix shows the draft word for word.
     fn ask(&self, p: &Pending) -> impl Future<Output = Result<String, String>> + Send {

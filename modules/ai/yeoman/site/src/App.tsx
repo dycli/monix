@@ -523,8 +523,8 @@ type ThreadProps = {
   stop: () => Promise<void>;
   cards: Card[];
   decide: Decide;
-  task: Task | null;
-  stopTask: () => Promise<void>;
+  tasks: Task[];
+  stopTask: (name: string) => Promise<void>;
   screen?: string;
   shape?: number;
   browser: boolean;
@@ -533,7 +533,7 @@ type ThreadProps = {
   refresh: () => void;
 };
 
-function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh }: ThreadProps) {
+function Thread({ messages, typing, send, stop, cards, decide, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh }: ThreadProps) {
   const [finding, setFinding] = useState(false);
   const [calling, setCalling] = useState(false);
   const voice = useMe()?.voice;
@@ -545,10 +545,10 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
   // The dots stand for work not yet shown; once words or tools arrive, they show it.
   const working = typing && !messages.at(-1)?.live;
   // The screen shows while the browser is open: from the moment the turn or
-  // the task drives it until the yeoman or the person closes it. On a wide
+  // an agent drives it until the yeoman or the person closes it. On a wide
   // screen it takes the right side, at a size worth reading.
   const last = messages.at(-1);
-  const driving = (!!last?.live && drives(last.tools)) || drives(task?.tools);
+  const driving = (!!last?.live && drives(last.tools)) || tasks.some((t) => drives(t.tools));
   const watching = !!screen && (browser || driving);
   const wide = useWide();
 
@@ -684,7 +684,9 @@ function Thread({ messages, typing, send, stop, cards, decide, task, stopTask, s
               {/* What waits or works above the composer scrolls as one, so the talk stays in view. */}
               <div className="max-h-[min(66vh,720px)] overflow-y-auto pt-2.5 empty:hidden">
                 {screen && !wide && <Screen url={screen} shape={shape} on={watching} driving={driving} close={closeBrowser} />}
-                {task && <TaskStrip task={task} stop={stopTask} />}
+                {tasks.map((t) => (
+                  <TaskStrip key={t.name} task={t} stop={() => stopTask(t.name)} />
+                ))}
                 <Tray cards={cards} decide={decide} />
               </div>
               <ThreadPrimitive.ScrollToBottom className="absolute -top-12 left-1/2 z-10 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-frame bg-lift text-mid shadow-lift hover:text-ink disabled:invisible">
@@ -1801,23 +1803,21 @@ function Screen({ url, shape = 16 / 9, on, driving, close, pane }: { url: string
   );
 }
 
-// The task running on its own, apart from the talk: what was asked, what it
-// is doing now, its work so far on a click, and Stop.
+// A subagent at work on its own, apart from the talk: its name and task,
+// what it is doing now, its work so far on a click, and Stop.
 function TaskStrip({ task, stop }: { task: Task; stop: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const now = task.tools.at(-1);
   const doing = task.words.trim() ? task.words.trim().split("\n").at(-1) : now ? `${toolName(now.name)} ${gist(now.input as Args)}` : "Starting";
   return (
-    <section className="rise relative mb-3 rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift" aria-label="The task under way">
-      <span className="absolute -top-[0.75em] left-3.5 rounded bg-lift px-1.5 text-xs font-semibold tracking-wide text-accent uppercase">
-        {task.question ? "Task · waiting on you" : "Task under way"}
-      </span>
+    <section className="rise relative mt-1.5 mb-3 rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift" aria-label={`${task.name} at work`}>
+      <span className="absolute -top-[0.75em] left-3.5 rounded bg-lift px-1.5 text-xs font-semibold tracking-wide text-accent uppercase">{task.name} at work</span>
       <div className="flex items-start gap-3 px-4 pt-3.5 pb-3">
         <button type="button" onClick={() => setOpen(!open)} className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left" aria-expanded={open}>
           <p className={`text-[14.5px] [overflow-wrap:anywhere] ${open ? "" : "line-clamp-2"}`}>{task.text || "A task"}</p>
           <p className="flex w-full items-center gap-2 text-[13px] text-mid">
-            {!task.question && <span className="size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-hair border-t-accent" />}
-            <span className="truncate">{task.question ?? doing}</span>
+            <span className="size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-hair border-t-accent" />
+            <span className="truncate">{doing}</span>
           </p>
         </button>
         <button

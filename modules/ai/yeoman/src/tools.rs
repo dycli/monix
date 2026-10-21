@@ -298,6 +298,23 @@ struct ChangeEvent {
 }
 
 #[derive(Deserialize, JsonSchema)]
+struct Tasks {
+    /// One task per subagent, each worded in full.
+    tasks: Vec<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ToAgent {
+    name: String,
+    message: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Agent {
+    name: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
 struct Uid {
     uid: String,
 }
@@ -383,11 +400,6 @@ struct Fetch {
 struct Count {
     /// How many of the latest to show; 15 if left out.
     count: Option<u64>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct Text {
-    text: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -1004,49 +1016,47 @@ impl Tools {
     }
 
     #[tool(
-        description = "Start a task: work that takes a while (several sites, a long search, something to fill in on your computer). Give it as your person's request, in full; it runs on its own and its answer is sent when done. Then tell them it is under way and stop."
+        description = "Start one subagent per task, in parallel, and return their names at once: for work that takes a while (several sites, a long search, something to fill in on the computer), or parts that can run side by side. Each one's report reaches you as a message \"[Name] report\" when it finishes; your person never sees it, so tell them what they need. A subagent sees your memory, but knows what you want only from its task: say all it needs."
     )]
-    fn task(&self, Parameters(Text { text }): Parameters<Text>) -> Result<String, String> {
-        task::start(&self.dir, &text)?;
-        Ok("Started. Say it is under way and stop; the answer is sent when it is done.".into())
-    }
-
-    #[tool(description = "Stop the task that is running.")]
-    fn cancel_task(&self) -> Result<String, String> {
-        task::cancel(&self.dir)?;
-        Ok("Stopping it.".into())
-    }
-
-    #[tool(
-        description = "In a task, tell your person something now rather than at the end: news worth the interruption. To ask them something, use ask."
-    )]
-    fn say(&self, Parameters(Text { text }): Parameters<Text>) -> Result<String, String> {
-        task::say(&self.dir, &text)?;
-        Ok("Said.".into())
-    }
-
-    #[tool(
-        description = "In a task, ask your person something only they can settle (a choice, a code, whether to go ahead) and wait for the answer, which this returns. Ask one clear question; they may take hours."
-    )]
-    async fn ask(&self, Parameters(Text { text }): Parameters<Text>) -> Result<String, String> {
-        task::ask(&self.dir, &text)?;
-        let waited = std::time::Instant::now();
-        while waited.elapsed() < task::ASK_WAIT {
-            if let Some(answer) = task::answered(&self.dir) {
-                return Ok(answer);
-            }
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    fn spawn(&self, Parameters(Tasks { tasks }): Parameters<Tasks>) -> Result<String, String> {
+        if tasks.is_empty() {
+            return Err("No tasks.".into());
         }
-        task::unask(&self.dir);
-        Err("No answer came. Carry on without it if you can; else end the task saying what is left.".into())
+        let mut names = Vec::new();
+        for t in &tasks {
+            match task::spawn(&self.dir, t) {
+                Ok(name) => names.push(name),
+                Err(e) if names.is_empty() => return Err(e),
+                Err(e) => return Ok(format!("Started {}; the rest not: {e}", names.join(", "))),
+            }
+        }
+        Ok(format!(
+            "Started {}. Each one's report will reach you as a message when it finishes.",
+            names.join(", ")
+        ))
     }
 
     #[tool(
-        description = "Pass your person's answer on to the task waiting on their question, in their words."
+        description = "Send a message to a subagent, by name. One at work reads it between its tool calls, and its report answers it; an idle one goes on from its chat, and its reply reaches you as a message \"[Name] reply\"."
     )]
-    fn task_answer(&self, Parameters(Text { text }): Parameters<Text>) -> Result<String, String> {
-        task::answer(&self.dir, &text)?;
-        Ok("Passed on; the task carries on.".into())
+    fn tell_agent(
+        &self,
+        Parameters(ToAgent { name, message }): Parameters<ToAgent>,
+    ) -> Result<String, String> {
+        task::tell(&self.dir, &name, &message)
+    }
+
+    #[tool(description = "Stop a subagent at work, by name.")]
+    fn cancel_task(&self, Parameters(Agent { name }): Parameters<Agent>) -> Result<String, String> {
+        task::cancel(&self.dir, &name)?;
+        Ok(format!("Stopping {name}."))
+    }
+
+    #[tool(
+        description = "A subagent's whole chat, by name: its task, every call it made and what came back, and its replies."
+    )]
+    fn agent_chat(&self, Parameters(Agent { name }): Parameters<Agent>) -> Result<String, String> {
+        Ok(task::chat(&task::log(&self.dir, &name)?))
     }
 
     /// The mail folders' names.

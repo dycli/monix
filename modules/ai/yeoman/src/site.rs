@@ -111,21 +111,27 @@ enum Shown {
     Typing {
         on: bool,
     },
-    /// A tool call or its result, while the answer is worked out; `task`
-    /// when it is the task's work, not the turn's.
+    /// A tool call or its result, while the answer is worked out; `agent`
+    /// names the subagent whose work it is, when it isn't the turn's.
     Step {
         step: Step,
-        task: bool,
+        agent: Option<String>,
     },
-    /// The task under way and the question it waits on; none when it ended.
-    Task {
-        text: Option<String>,
-        question: Option<String>,
+    /// The subagents at work, by name, with their tasks.
+    Agents {
+        agents: Vec<Agent>,
     },
     /// The computer's browser opened or closed.
     Browser {
         open: bool,
     },
+}
+
+/// A subagent at work, as a page shows it.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Agent {
+    name: String,
+    task: String,
 }
 
 /// The open pages, as a door.
@@ -134,8 +140,8 @@ pub struct Web {
     shown: broadcast::Sender<Shown>,
     ids: Arc<AtomicU64>,
     aside: bool,
-    /// The task as last shown, so a tick that changes nothing is silent.
-    task: Arc<Mutex<(Option<String>, Option<String>)>>,
+    /// The agents as last shown, so a tick that changes nothing is silent.
+    agents: Arc<Mutex<Vec<Agent>>>,
     /// Whether the computer's browser is open, as the keeper last said.
     browser: Arc<AtomicBool>,
     /// Whether a turn is under way, for a page that missed the news.
@@ -148,7 +154,7 @@ impl Web {
             shown: broadcast::channel(256).0,
             ids: Arc::new(AtomicU64::new(0)),
             aside: false,
-            task: Arc::default(),
+            agents: Arc::default(),
             browser: Arc::default(),
             typing: Arc::default(),
         }
@@ -229,20 +235,25 @@ impl Door for Web {
     }
 
     fn step(&self, step: Step) {
-        self.show(Shown::Step { step, task: false });
+        self.show(Shown::Step { step, agent: None });
     }
 
-    fn task_step(&self, step: Step) {
-        self.show(Shown::Step { step, task: true });
+    fn agent_step(&self, agent: &str, step: Step) {
+        self.show(Shown::Step {
+            step,
+            agent: Some(agent.into()),
+        });
     }
 
-    fn task(&self, text: Option<String>, question: Option<String>) {
-        let now = (text, question);
-        let mut last = self.task.lock().unwrap();
+    fn agents(&self, now: Vec<(String, String)>) {
+        let now: Vec<Agent> = now
+            .into_iter()
+            .map(|(name, task)| Agent { name, task })
+            .collect();
+        let mut last = self.agents.lock().unwrap();
         if *last != now {
             *last = now.clone();
-            let (text, question) = now;
-            self.show(Shown::Task { text, question });
+            self.show(Shown::Agents { agents: now });
         }
     }
 
@@ -348,18 +359,18 @@ impl<D: Door> Door for Mirror<D> {
         self.door.step(step);
     }
 
-    fn task_step(&self, step: Step) {
+    fn agent_step(&self, agent: &str, step: Step) {
         if let Some(w) = &self.web {
-            w.task_step(step.clone());
+            w.agent_step(agent, step.clone());
         }
-        self.door.task_step(step);
+        self.door.agent_step(agent, step);
     }
 
-    fn task(&self, text: Option<String>, question: Option<String>) {
+    fn agents(&self, now: Vec<(String, String)>) {
         if let Some(w) = &self.web {
-            w.task(text.clone(), question.clone());
+            w.agents(now.clone());
         }
-        self.door.task(text, question);
+        self.door.agents(now);
     }
 
     async fn ask(&self, p: &Pending) -> Result<String, String> {
@@ -811,7 +822,7 @@ pub async fn serve(
         .route("/api/decide", post(decide))
         .route("/api/stop", post(stop))
         .route("/api/task", get(task_now))
-        .route("/api/task/stop", post(task_stop))
+        .route("/api/agent/{name}/stop", post(agent_stop))
         .route("/api/browser/open", post(browser_open))
         .route("/api/browser/close", post(browser_close))
         .route("/api/ask", post(ask))
@@ -1638,16 +1649,18 @@ async fn browser_close(State(site): State<Arc<Site>>, headers: HeaderMap) -> Res
     }
 }
 
-/// The task under way, the question it waits on, and the computer's
-/// screen to watch it by, when the yeoman has one, whether its browser
-/// is open, and whether a turn is under way.
+/// The subagents at work, the computer's screen to watch them by, when
+/// the yeoman has one, whether its browser is open, and whether a turn is
+/// under way.
 async fn task_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
     if !site.signed(&headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     Json(serde_json::json!({
-        "text": task::running(&site.state),
-        "question": task::question(&site.state),
+        "agents": task::working(&site.state)
+            .into_iter()
+            .map(|(name, task)| Agent { name, task })
+            .collect::<Vec<_>>(),
         "screen": std::env::var("YEOMAN_SCREEN").ok(),
         "size": std::env::var("YEOMAN_SCREEN_SIZE").ok(),
         "browser": site.web.browser.load(Ordering::Relaxed),
@@ -1656,12 +1669,16 @@ async fn task_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response
     .into_response()
 }
 
-/// Stops the task on the next tick, as cancel_task does.
-async fn task_stop(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+/// Stops a subagent on the next tick, as cancel_task does.
+async fn agent_stop(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> Response {
     if !site.signed(&headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    match task::cancel(&site.state) {
+    match task::cancel(&site.state, &name) {
         Ok(()) => StatusCode::ACCEPTED.into_response(),
         Err(e) => (StatusCode::CONFLICT, e).into_response(),
     }
@@ -1905,20 +1922,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_task_is_shown_only_when_it_changes() {
+    fn agents_are_shown_only_when_they_change() {
         let web = Web::new();
         let mut seen = web.shown.subscribe();
-        web.task(Some("book Cure".into()), None);
-        web.aside().task(Some("book Cure".into()), None);
-        web.task(Some("book Cure".into()), Some("6:15 or 7:30?".into()));
-        web.task(None, None);
+        let ada = || ("Ada".to_owned(), "book Cure".to_owned());
+        web.agents(vec![ada()]);
+        web.aside().agents(vec![ada()]);
+        web.agents(vec![ada(), ("Basil".into(), "price flights".into())]);
+        web.agents(Vec::new());
         let mut shown = Vec::new();
-        while let Ok(Shown::Task { text, question }) = seen.try_recv() {
-            shown.push((text, question));
+        while let Ok(Shown::Agents { agents }) = seen.try_recv() {
+            shown.push(agents.len());
         }
-        assert_eq!(shown.len(), 3);
-        assert_eq!(shown[1].1.as_deref(), Some("6:15 or 7:30?"));
-        assert_eq!(shown[2], (None, None));
+        assert_eq!(shown, [1, 2, 0]);
     }
 
     #[test]

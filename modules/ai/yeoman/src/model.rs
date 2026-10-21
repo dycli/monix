@@ -66,12 +66,14 @@ pub fn from_env() -> Result<Box<dyn Model>, String> {
 /// The `claude` CLI in print mode: no built-in tools, no settings sources
 /// (so no hooks), no session saved; only the MCP servers in YEOMAN_MCP.
 /// How a turn runs: whether it may act, what stops it, and whether it
-/// has a clock on it (a task has none).
+/// has a clock on it (a subagent has none).
 #[derive(Clone, Default)]
 pub struct Run {
     pub acts: bool,
     pub stop: Option<Arc<AtomicBool>>,
     pub endless: bool,
+    /// A subagent's: it can't start or tell agents of its own.
+    pub sub: bool,
     /// Where each tool call and its result go as they happen, for a door
     /// that shows the work as well as the answer.
     pub steps: Option<Steps>,
@@ -228,12 +230,13 @@ pub struct Claude {
 const ACTS: &str = "mcp__yeoman__remind,mcp__yeoman__cancel_reminder,mcp__yeoman__list_add,\
 mcp__yeoman__share_list,mcp__yeoman__list_remove,mcp__yeoman__tell,mcp__yeoman__draft_mail,mcp__yeoman__add_event,\
 mcp__yeoman__change_event,mcp__yeoman__cancel_event,mcp__image__make_image,mcp__yeoman__web_fetch,\
-mcp__computer,mcp__home,mcp__yeoman__media_request,mcp__yeoman__task,mcp__yeoman__cancel_task,\
+mcp__computer,mcp__home,mcp__yeoman__media_request,mcp__yeoman__spawn,mcp__yeoman__tell_agent,mcp__yeoman__cancel_task,\
 mcp__yeoman__show_page,mcp__yeoman__money_change,mcp__yeoman__watch,mcp__yeoman__unwatch,mcp__yeoman__run_code";
 
-/// The task's question, and the turn's answer to it.
-const ASK: &str = "mcp__yeoman__ask";
-const ANSWER: &str = "mcp__yeoman__task_answer";
+/// The yeoman's own hold on its subagents, which they don't share: as in
+/// Unii, one level of agents.
+const BOSS: &str =
+    "mcp__yeoman__spawn,mcp__yeoman__tell_agent,mcp__yeoman__cancel_task,mcp__yeoman__agent_chat";
 
 impl Model for Claude {
     fn answer(
@@ -278,18 +281,16 @@ impl Model for Claude {
         if let Some((file, servers)) = &self.mcp {
             let allowed: Vec<String> = servers.iter().map(|s| format!("mcp__{s}")).collect();
             cmd.args(["--mcp-config", file, "--allowedTools", &allowed.join(",")]);
-            // A task asks and waits; a turn passes the answer on. Each the
-            // other way round would wait on itself.
-            let mut denied = vec![if run.endless { ANSWER } else { ASK }];
+            let mut denied = Vec::new();
+            if run.sub {
+                denied.push(BOSS);
+            }
             if !run.acts {
                 denied.push(ACTS);
             }
-            cmd.args(["--disallowedTools", &denied.join(",")]);
-        }
-        if run.endless {
-            // ask holds its call open until the person answers.
-            let ms = (crate::task::ASK_WAIT + Duration::from_secs(600)).as_millis();
-            cmd.env("MCP_TOOL_TIMEOUT", ms.to_string());
+            if !denied.is_empty() {
+                cmd.args(["--disallowedTools", &denied.join(",")]);
+            }
         }
         let mut child = cmd
             .stdin(Stdio::piped())

@@ -27,9 +27,11 @@ export type Msg = {
 
 export type Tool = { id: string; name: string; input: unknown; result?: string; error?: boolean };
 
-/** The task running on its own: its request, the question it waits on,
- * and its work so far. `stopping` once a stop is asked for. */
-export type Task = { text: string; question?: string; tools: Tool[]; words: string; stopping?: boolean };
+/** A subagent at work on its own: its name, its task, and its work so
+ * far. `stopping` once a stop is asked for. */
+export type Task = { name: string; text: string; tools: Tool[]; words: string; stopping?: boolean };
+
+type Agent = { name: string; task: string };
 
 type Step =
   | { type: "call"; id: string; name: string; input: unknown }
@@ -53,8 +55,8 @@ type Shown =
   | { type: "picture"; image: string; mime: string }
   | { type: "file"; name: string }
   | { type: "typing"; on: boolean }
-  | { type: "step"; step: Step; task: boolean }
-  | { type: "task"; text: string | null; question: string | null }
+  | { type: "step"; step: Step; agent: string | null }
+  | { type: "agents"; agents: Agent[] }
   | { type: "browser"; open: boolean };
 
 /** The longest message text, in bytes, that /api/send takes (SEND_MAX in site.rs). */
@@ -79,8 +81,8 @@ export type Chat =
       stop: () => Promise<void>;
       cards: Card[];
       decide: (id: number, yes: boolean) => Promise<void>;
-      task: Task | null;
-      stopTask: () => Promise<void>;
+      tasks: Task[];
+      stopTask: (name: string) => Promise<void>;
       /** The computer's screen, when the yeoman has one. */
       screen?: string;
       /** Its width over its height. */
@@ -98,7 +100,7 @@ export function useChat(): Chat {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [typing, setTyping] = useState(false);
   const [cards, setCards] = useState<Card[]>([]);
-  const [task, setTask] = useState<Task | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [screen, setScreen] = useState<string>();
   const [shape, setShape] = useState<number>();
   const [browser, setBrowser] = useState(false);
@@ -121,7 +123,7 @@ export function useChat(): Chat {
       const said: Said[] = await r.json();
       // The tray is extra: a chat without it still works.
       const waiting: Pending[] = w.ok ? await w.json() : [];
-      const now: { text: string | null; question: string | null; screen: string | null; size?: string | null; browser?: boolean; typing?: boolean } | null = t.ok ? await t.json() : null;
+      const now: { agents: Agent[]; screen: string | null; size?: string | null; browser?: boolean; typing?: boolean } | null = t.ok ? await t.json() : null;
       if (gone) return false;
       const turning = !!now?.typing;
       if (now) {
@@ -132,8 +134,8 @@ export function useChat(): Chat {
         // The end of a turn may have gone out while nothing listened.
         setTyping(!!now.typing);
         // The work so far went out over the stream; a page that missed it
-        // starts from the request.
-        setTask((k) => (now.text === null ? null : k?.text === now.text ? { ...k, question: now.question ?? undefined } : { text: now.text!, question: now.question ?? undefined, tools: [], words: "" }));
+        // starts from the task.
+        setTasks((ks) => atWork(ks, now.agents));
       }
       setMessages((was) => {
         const now: Msg[] = said.map((m) => ({
@@ -225,11 +227,11 @@ export function useChat(): Chat {
             if (s.done) setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: s.text, date: new Date() }]);
             break;
           case "step":
-            if (s.task) setTask((k) => taskStep(k, s.step));
+            if (s.agent !== null) setTasks((ks) => taskStep(ks, s.agent!, s.step));
             else setMessages((ms) => step(ms, s.step));
             break;
-          case "task":
-            setTask((k) => (s.text === null ? null : { ...(k?.text === s.text ? k : { tools: [], words: "" }), text: s.text, question: s.question ?? undefined }));
+          case "agents":
+            setTasks((ks) => atWork(ks, s.agents));
             break;
           case "browser":
             setBrowser(s.open);
@@ -315,13 +317,14 @@ export function useChat(): Chat {
     if (r?.status === 401) setStatus("signed-out");
   }, []);
 
-  // The task ends on the yeoman's next tick, within half a minute.
-  const stopTask = useCallback(async () => {
-    setTask((k) => k && { ...k, stopping: true });
-    const r = await fetch("/api/task/stop", { method: "POST" }).catch(() => undefined);
+  // The agent ends on the yeoman's next tick, within half a minute.
+  const stopTask = useCallback(async (name: string) => {
+    const stopping = (on: boolean) => setTasks((ks) => ks.map((k) => (k.name === name ? { ...k, stopping: on } : k)));
+    stopping(true);
+    const r = await fetch(`/api/agent/${encodeURIComponent(name)}/stop`, { method: "POST" }).catch(() => undefined);
     if (r?.status === 401) setStatus("signed-out");
     // Not asked after all: the button comes back to try again.
-    else if (!r?.ok) setTask((k) => k && { ...k, stopping: false });
+    else if (!r?.ok) stopping(false);
   }, []);
 
   // The keeper lets the browser go; the screen leaves with the news of it.
@@ -354,15 +357,25 @@ export function useChat(): Chat {
 
   if (status === "loading" || status === "signed-out") return { state: status };
   if (status !== "ready") return { state: "error", error: status };
-  return { state: "ready", messages, typing, send, stop, cards, decide, task, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh };
+  return { state: "ready", messages, typing, send, stop, cards, decide, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh };
 }
 
-// A task's steps before the page heard it started still belong to it.
-function taskStep(k: Task | null, s: Step): Task {
-  const t = k ?? { text: "", tools: [], words: "" };
-  if (s.type === "text") return { ...t, words: t.words + s.text };
-  if (s.type === "result") return { ...t, tools: t.tools.map((x) => (x.id === s.id ? { ...x, result: s.text, error: s.error } : x)) };
-  return { ...t, words: "", tools: [...t.tools, { id: s.id, name: s.name, input: s.input }] };
+// The agents at work now, each keeping the work the page has seen of it.
+function atWork(ks: Task[], agents: Agent[]): Task[] {
+  return agents.map((a) => ks.find((k) => k.name === a.name) ?? { name: a.name, text: a.task, tools: [], words: "" });
+}
+
+// An agent's steps before the page heard it started still belong to it.
+function taskStep(ks: Task[], name: string, s: Step): Task[] {
+  const k = ks.find((k) => k.name === name);
+  const t = k ?? { name, text: "", tools: [], words: "" };
+  const next =
+    s.type === "text"
+      ? { ...t, words: t.words + s.text }
+      : s.type === "result"
+        ? { ...t, tools: t.tools.map((x) => (x.id === s.id ? { ...x, result: s.text, error: s.error } : x)) }
+        : { ...t, words: "", tools: [...t.tools, { id: s.id, name: s.name, input: s.input }] };
+  return k ? ks.map((x) => (x === k ? next : x)) : [...ks, next];
 }
 
 /** Whether these tools drive the computer, so its screen is worth watching. */

@@ -34,6 +34,7 @@ use chrono::Local;
 use door::{Door, Fetched, Message, Typing, send_outbox};
 use hippo::Hippo;
 use model::{Attachment, Model, Run, Steer, Steps};
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -56,7 +57,8 @@ first, one line each. Recent lines hold a message nearly whole; older \
 lines cover more messages in fewer words. Each line starts with its \
 address (id+n: the n messages from id) and tags who spoke: user is \
 {person}, talk is you, note is a routine or an alert that came due, a \
-message passed on from the household, or a note from Bridge.";
+message passed on from the household, or a note from Bridge, and work is \
+the report of a subagent you started, beginning \"[Name]\".";
 
 /// Added when the model has no tools.
 const NO_TOOLS: &str = "\n\nWhen a line is too condensed to answer from, say what you \
@@ -85,9 +87,29 @@ also goes to the rest of the household. Something {person} wants to \
 hear when it happens (mail from someone, a charge over an amount, an \
 event coming up) is a watch, not a routine that checks. When a routine \
 or watch you are running finds nothing {person} needs to hear, answer only {QUIET} and \
-nothing is sent. Work that takes a while is a task: start it, worded as \
-{person}'s request in full, say it is under way and stop; it runs on \
-its own and its answer is sent when done.";
+nothing is sent.";
+
+/// Added for the yeoman, which runs the subagents.
+const AGENTS: &str = " Work that takes a while (several sites, a long \
+search, something to fill in on the computer) goes to subagents: spawn \
+them, say it is under way and stop; each one's report comes back to you, \
+and you tell {person} what they need of it.";
+
+/// Heads a subagent's system prompt, in place of the yeoman's own.
+const SUB: &str = "\
+You are a subagent of {name}, {person}'s household assistant. {name} gave \
+you a task: do it yourself, with your tools. Your first message holds \
+<chat>, {name}'s memory (every message between {name} and {person}, \
+oldest first, one line each; each line starts with its address id+n, \
+the n messages from id, and talk there is {name}), then <work>, your \
+chat with {name} so far as \"i|kind: text\" lines: what you are (note), \
+your task (user), and later all you did (tool, echo), replied (talk) \
+and were told (user). Use the memory as context only, and do what your \
+task says, not what {person}'s last message says, since {name} may have \
+given you just part of the work. Your final reply is your report to \
+{name}, who alone sees it: say what you did, what you found that the \
+task asks for, and what failed. {name} may send you more messages, even \
+while you work: answer the last.";
 
 /// Added when the door draws the calendar's events and the lists as cards.
 const CARDS: &str = "\n\n{person} sees what the events, list, mail, weather, \
@@ -262,7 +284,8 @@ enum From {
     Routine,
     /// A watch they set, fired by items others wrote: quoted, can't act.
     Watch,
-    Task,
+    /// A subagent's report, to the yeoman alone.
+    Work,
     Alert,
     Message,
     /// The ship's engineer, the model on the seat: trusted like the person.
@@ -273,7 +296,7 @@ enum From {
 /// seat's is quoted so the model knows who speaks, and keeps the tools.
 fn frame(from: From, said: String) -> (String, bool) {
     match from {
-        From::Person | From::Routine | From::Task => (said, true),
+        From::Person | From::Routine | From::Work => (said, true),
         From::Watch => (said, false),
         From::Alert => (format!("<alert>\n{said}\n</alert>"), false),
         From::Message => (format!("<message>\n{said}\n</message>"), false),
@@ -288,12 +311,8 @@ fn frame(from: From, said: String) -> (String, bool) {
 #[derive(Default)]
 struct Turn {
     stop: Option<Arc<AtomicBool>>,
-    /// No clock on it: a task.
-    endless: bool,
     steps: Option<Steps>,
     cards: bool,
-    /// The question the task waits on, which this turn may answer.
-    waiting: Option<String>,
     steer: Option<Arc<Steer>>,
 }
 
@@ -307,10 +326,8 @@ fn answer(
 ) -> Result<String, String> {
     let Turn {
         stop,
-        endless,
         steps,
         cards,
-        waiting,
         steer,
     } = turn;
     let view = hippo.view()?;
@@ -367,12 +384,13 @@ fn answer(
                  it needs them after all, answer only {QUIET}"
             ),
         ),
-        From::Task => (
-            "note",
-            format!("(task) {said}"),
+        From::Work => (
+            "work",
+            said.clone(),
             format!(
-                "Task {person} gave you, running now with no clock on it: see it \
-                 through, and answer with the outcome"
+                "From your subagent, which {person} doesn't see: tell \
+                 {person} what they need of it in your own words, or tell \
+                 the agent more"
             ),
         ),
         From::Alert => (
@@ -410,18 +428,34 @@ fn answer(
     let (said, acts) = frame(from, said);
     hippo.log(kind, &logged)?;
     // Here, not in the system prompt, which stays the same turn to turn.
-    let waiting = waiting
-        .map(|q| {
-            format!(
-                "\n\nYour task is waiting on {person}'s answer to: {q}\nIf this \
-                 answers it, pass it on with task_answer."
-            )
-        })
-        .unwrap_or_default();
     let prompt = format!(
-        "\nNow: {}{waiting}\n\n{who}: {said}{inline}",
-        Local::now().format("%Y-%m-%d %a %H:%M")
+        "\nNow: {}{}\n\n{who}: {said}{inline}",
+        Local::now().format("%Y-%m-%d %a %H:%M"),
+        at_work(model)
     );
+    let system = system(model, cards, PROMPT, &name, &person);
+    let reply = model.answer(
+        &system,
+        &view,
+        &prompt,
+        &files,
+        Run {
+            acts,
+            stop,
+            steps,
+            steer,
+            ..Run::default()
+        },
+    )?;
+    if reply.is_empty() {
+        return Err("the model answered nothing".into());
+    }
+    hippo.log("talk", &reply)?;
+    Ok(reply)
+}
+
+/// The system prompt under `head`: the yeoman's own, or a subagent's.
+fn system(model: &dyn Model, cards: bool, head: &str, name: &str, person: &str) -> String {
     let tools = if model.tools() { TOOLS } else { NO_TOOLS };
     // A per-instance line on tone, if the person wants one.
     let style = std::env::var("YEOMAN_STYLE")
@@ -459,20 +493,67 @@ fn answer(
         ""
     };
     let cards = if model.tools() && cards { CARDS } else { "" };
-    let system =
-        format!("{PROMPT}{style}{tools}{cards}{mail}{computer}{home}{requests}{pages}{x}{FILES}")
-            .replace("{name}", &name)
-            .replace("{person}", &person)
-            .replace("{QUIET}", QUIET);
+    let agents = if model.tools() && head == PROMPT {
+        AGENTS
+    } else {
+        ""
+    };
+    format!("{head}{style}{tools}{agents}{cards}{mail}{computer}{home}{requests}{pages}{x}{FILES}")
+        .replace("{name}", name)
+        .replace("{person}", person)
+        .replace("{QUIET}", QUIET)
+}
+
+/// The agents at work now, named at the start of each of the yeoman's
+/// turns: read from their files, so the list can't drift from the truth.
+fn at_work(model: &dyn Model) -> String {
+    let Some(state) = std::env::var_os("STATE_DIRECTORY").filter(|_| model.tools()) else {
+        return String::new();
+    };
+    let agents: Vec<String> = task::working(Path::new(&state))
+        .into_iter()
+        .map(|(name, task)| {
+            let gist: String = task.chars().take(80).collect();
+            format!("{name} ({gist})")
+        })
+        .collect();
+    match agents.is_empty() {
+        true => "\nAgents at work now: none.".into(),
+        false => format!("\nAgents at work now: {}.", agents.join(", ")),
+    }
+}
+
+/// One run of subagent `name`, from its whole log; its reply is its
+/// report, to the yeoman alone, so nothing here goes to hippo.
+fn work(
+    hippo: &Hippo,
+    model: &dyn Model,
+    state: &Path,
+    name: &str,
+    turn: Turn,
+) -> Result<String, String> {
+    let Turn {
+        stop, steps, steer, ..
+    } = turn;
+    let view = hippo.view()?;
+    let log = task::log(state, name)?;
+    let (yeoman, person) = (var("YEOMAN_NAME")?, var("YEOMAN_PERSON")?);
+    let system = system(model, false, SUB, &yeoman, &person);
+    let prompt = format!(
+        "\nNow: {}\n\n<work>\n{}\n</work>",
+        Local::now().format("%Y-%m-%d %a %H:%M"),
+        task::chat(&log)
+    );
     let reply = model.answer(
         &system,
         &view,
         &prompt,
-        &files,
+        &[],
         Run {
-            acts,
+            acts: true,
             stop,
-            endless,
+            endless: true,
+            sub: true,
             steps,
             steer,
         },
@@ -480,7 +561,6 @@ fn answer(
     if reply.is_empty() {
         return Err("the model answered nothing".into());
     }
-    hippo.log("talk", &reply)?;
     Ok(reply)
 }
 
@@ -568,7 +648,6 @@ async fn reply<D: Door>(
     let file = failed.map_or(Ok(got), Err).map(|got| keep(state, got));
     let text = msg.text;
     let shown = door.clone();
-    let waiting = task::question(state);
     let reply = match file {
         Err(e) => {
             eprintln!("yeoman: {e}");
@@ -586,9 +665,7 @@ async fn reply<D: Door>(
                     stop: Some(stop),
                     steps: Some(steps),
                     cards: D::CARDS,
-                    waiting,
                     steer: Some(steer),
-                    ..Turn::default()
                 },
             )
         })
@@ -625,10 +702,6 @@ fn is_reaction(reply: &str) -> bool {
         && reply.chars().any(|c| c >= '\u{2300}')
 }
 
-/// Hands what waits in `dir` (the host's alerts, or messages from the
-/// household) to the model as one request and sends its answer, deleting
-/// the files only once that is sent; if the model fails, they go out word
-/// for word. Names starting with a dot are writes still in progress.
 /// A turn the yeoman starts itself, not the person: the door shows it
 /// typing while the model answers.
 async fn ask_alone<D: Door>(
@@ -657,6 +730,10 @@ async fn log_talk(hippo: &Arc<Hippo>, text: String) {
     }
 }
 
+/// Hands what waits in `dir` (the host's alerts, or messages from the
+/// household) to the model as one request and sends its answer, deleting
+/// the files only once that is sent; if the model fails, they go out word
+/// for word. Names starting with a dot are writes still in progress.
 async fn drain(
     door: &impl Door,
     hippo: &Arc<Hippo>,
@@ -738,7 +815,7 @@ async fn remind<D: Door>(
         }),
         finance: finance::from_env(),
     });
-    let mut task = None;
+    let mut agents = HashMap::new();
     let mut tick = tokio::time::interval(Duration::from_secs(30));
     // A tick held up by a long turn is not made up in a burst after it.
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -764,8 +841,8 @@ async fn remind<D: Door>(
             drain(&door, &hippo, &model, dir, From::Seat).await;
         }
         show_pending(&door, &hippo, &state).await;
-        tasks(&door, &hippo, &model, &state, &mut task).await;
-        door.task(task::running(&state), task::question(&state));
+        work_on(&door, &hippo, &model, &state, &mut agents).await;
+        door.agents(task::working(&state));
         let now = Local::now().naive_local();
         let due = match Book::open(&state, None).and_then(|b| b.read(|db| book::due(db, now))) {
             Ok(due) => due,
@@ -913,73 +990,126 @@ async fn watches<D: Door>(
     }
 }
 
-/// The task in flight, if any, and the flag that stops it.
-type Running = (
-    tokio::task::JoinHandle<Result<String, String>>,
-    Arc<AtomicBool>,
-);
+/// A subagent's run in flight: the turn, the flag that stops it, and the
+/// way into it for words told while it works.
+struct Running {
+    handle: tokio::task::JoinHandle<Result<String, String>>,
+    stop: Arc<AtomicBool>,
+    steer: Arc<Steer>,
+}
 
-/// Starts the task that waits, passes on what the running one says,
-/// stops it when asked, and sends its answer when it ends.
-async fn tasks(
+/// Starts each subagent's waiting run, passes on what it is told, stops
+/// it when asked, and, when it ends, hands its report to the yeoman as a
+/// turn of its own; one stopped is only logged, as in Unii.
+async fn work_on(
     door: &impl Door,
     hippo: &Arc<Hippo>,
     model: &Arc<dyn Model>,
     state: &Path,
-    running: &mut Option<Running>,
+    running: &mut HashMap<String, Running>,
 ) {
-    for (file, text) in task::said(state) {
-        if let Err(e) = door.say(&text).await {
-            eprintln!("yeoman: task: {e}");
-            return;
+    let mut ended = Vec::new();
+    for (name, run) in running.iter() {
+        if task::cancelled(state, name) {
+            run.stop.store(true, Ordering::Relaxed);
         }
-        let _ = fs::remove_file(file);
-        log_talk(hippo, text).await;
+        for (file, text) in task::told(state, name) {
+            // Not yet reading: the words wait for the run to take them, or
+            // for the next one.
+            if !run
+                .steer
+                .send(&format!("(sent while you were working) {text}"))
+            {
+                break;
+            }
+            let _ = fs::remove_file(file);
+            if let Err(e) = task::push(state, name, "user", &text) {
+                eprintln!("yeoman: agent {name}: {e}");
+            }
+        }
+        if run.handle.is_finished() {
+            ended.push(name.clone());
+        }
     }
-    if let Some((handle, stop)) = running {
-        if task::cancelled(state) {
-            stop.store(true, Ordering::Relaxed);
-        }
-        if !handle.is_finished() {
-            return;
-        }
-        let (handle, _) = running.take().unwrap();
-        let text = match handle.await.unwrap_or_else(|e| Err(e.to_string())) {
-            Ok(text) => text,
-            Err(e) if e == "stopped" => "Stopped the task.".to_owned(),
+    for name in ended {
+        let run = running.remove(&name).unwrap();
+        let replied = task::log(state, &name)
+            .map(|l| l.iter().any(|l| l.kind == "talk"))
+            .unwrap_or(false);
+        let heading = format!("[{name}] {}", if replied { "reply" } else { "report" });
+        let (said, stopped) = match run.handle.await.unwrap_or_else(|e| Err(e.to_string())) {
+            Ok(text) => {
+                if let Err(e) = task::push(state, &name, "talk", &text) {
+                    eprintln!("yeoman: agent {name}: {e}");
+                }
+                (format!("{heading}\n{text}"), false)
+            }
+            Err(e) if e == "stopped" => (format!("[{name}] stopped"), true),
             Err(e) => {
-                eprintln!("yeoman: task: {e}");
-                format!("(The task failed: {e})")
+                eprintln!("yeoman: agent {name}: {e}");
+                (format!("{heading}\n(The run failed: {e})"), false)
             }
         };
-        send_outbox(door, &state.join("outbox")).await;
-        if let Err(e) = door.say(&text).await {
-            eprintln!("yeoman: task: {e}");
+        task::finish(state, &name);
+        if stopped {
+            let h = hippo.clone();
+            if let Ok(Err(e)) = tokio::task::spawn_blocking(move || h.log("work", &said)).await {
+                eprintln!("yeoman: {e}");
+            }
+            continue;
         }
-        task::finish(state);
-        return;
+        let text = ask_alone(door, hippo, model, From::Work, said).await;
+        send_outbox(door, &state.join("outbox")).await;
+        match text {
+            Ok(text) => {
+                if let Err(e) = door.say(&text).await {
+                    eprintln!("yeoman: agent {name}: {e}");
+                }
+            }
+            Err(e) => eprintln!("yeoman: agent {name}: {e}"),
+        }
     }
-    if let Some(text) = task::take(state) {
+    for (name, _) in task::working(state) {
+        if running.contains_key(&name) || !task::take(state, &name) {
+            continue;
+        }
         let stop = Arc::new(AtomicBool::new(false));
-        let (hippo, model, flag) = (hippo.clone(), model.clone(), stop.clone());
-        let shown = door.clone();
+        let steer = Arc::new(Steer::default());
+        let (hippo, model, state) = (hippo.clone(), model.clone(), state.to_owned());
+        let (shown, who, turn) = (
+            door.clone(),
+            name.clone(),
+            Turn {
+                stop: Some(stop.clone()),
+                steer: Some(steer.clone()),
+                ..Turn::default()
+            },
+        );
         let handle = tokio::task::spawn_blocking(move || {
-            let steps: Steps = Arc::new(move |s| shown.task_step(s));
-            answer(
+            let (s, w) = (state.clone(), who.clone());
+            let steps: Steps = Arc::new(move |step| {
+                task::step(&s, &w, &step);
+                shown.agent_step(&w, step);
+            });
+            work(
                 &hippo,
                 model.as_ref(),
-                From::Task,
-                &text,
-                Vec::new(),
+                &state,
+                &who,
                 Turn {
-                    stop: Some(flag),
-                    endless: true,
                     steps: Some(steps),
-                    ..Turn::default()
+                    ..turn
                 },
             )
         });
-        *running = Some((handle, stop));
+        running.insert(
+            name,
+            Running {
+                handle,
+                stop,
+                steer,
+            },
+        );
     }
 }
 
@@ -1067,8 +1197,8 @@ async fn run() -> Result<(), String> {
         sock: PathBuf::from(var("HIPPO_DIR")?).join("hippo.sock"),
     });
     let model: Arc<dyn Model> = model::from_env()?.into();
-    // A run in flight at the last stop is lost; a task still waiting runs.
-    task::finish(&state);
+    // Subagents cut short at the last stop go on from their logs.
+    task::resume(&state);
     let (messages, mut inbox) = mpsc::unbounded_channel();
     let (verdicts, mut thumbs) = mpsc::unbounded_channel();
     let client = matrix::open(
