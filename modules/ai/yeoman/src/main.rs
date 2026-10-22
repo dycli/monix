@@ -47,8 +47,9 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 const PROMPT: &str = "\
-You are {name}, {person}'s household assistant, over Matrix. Lead with the \
-answer, give it the length the question deserves, and stop. Use plain \
+You are {name}, {person}'s household assistant, on their chat page (and \
+over Matrix when they write there). Lead with the answer, give it the \
+length the question deserves, and stop. Use plain \
 words, no filler. Light markdown shows: bold, italics, `code`, links, \
 short lists and quotes; no headings or tables. Most answers need none. When an \
 emoji says it all (done, noted, thanks), answer with that one emoji \
@@ -1469,9 +1470,11 @@ async fn run() -> Result<(), String> {
     // One turn at a time, whichever door or tick it comes from: each
     // answer sees the one before it in its memory.
     let turns = Turns::default();
-    // Without Matrix the pages are the only door, and always there.
-    match (&client, w) {
-        (None, Some(w)) => tokio::spawn(remind(
+    // The pages are the door, and always there; their push rings the
+    // phone. Matrix is a side door: it hears answers to what came through
+    // it, not routines, alerts, mail or reports. Without pages, it is all.
+    match w {
+        Some(w) => tokio::spawn(remind(
             move || Some(w.clone()),
             hippo.clone(),
             model.clone(),
@@ -1480,13 +1483,8 @@ async fn run() -> Result<(), String> {
             house,
             turns.clone(),
         )),
-        (_, w) => tokio::spawn(remind(
-            move || {
-                last(&c, &s).map(|door| site::Mirror {
-                    door,
-                    web: w.clone(),
-                })
-            },
+        None => tokio::spawn(remind(
+            move || last(&c, &s),
             hippo.clone(),
             model.clone(),
             state.clone(),
@@ -1558,24 +1556,12 @@ async fn run() -> Result<(), String> {
                 std::process::exit(1);
             }
         });
-        // A verdict given on the page is told in Matrix too, where the
-        // draft was shown.
-        let (c, s, h, w) = (client.clone(), state.clone(), hippo.clone(), web.clone());
+        // A verdict given on the page is answered there; Matrix hears
+        // only of what came through it.
+        let (s, h, w) = (state.clone(), hippo.clone(), web.clone());
         tokio::spawn(async move {
             while let Some((id, yes)) = clicks.recv().await {
-                let (s, h) = (s.clone(), h.clone());
-                match last(&c, &s) {
-                    Some(door) => {
-                        let door = site::Mirror {
-                            door,
-                            web: Some(w.aside()),
-                        };
-                        tokio::spawn(decide(door, id, yes, s, h));
-                    }
-                    None => {
-                        tokio::spawn(decide(w.aside(), id, yes, s, h));
-                    }
-                }
+                tokio::spawn(decide(w.aside(), id, yes, s.clone(), h.clone()));
             }
         });
         let (s, h, m, t, st) = (
