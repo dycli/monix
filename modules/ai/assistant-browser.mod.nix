@@ -204,8 +204,7 @@
             }
           ) owners
           ++ concatMap (
-            n:
-            map (u: nameValuePair u { extraGroups = singleton (user n); }) cfg.${n}.users
+            n: map (u: nameValuePair u { extraGroups = singleton (user n); }) cfg.${n}.users
           ) owners
         );
         users.groups = listToAttrs (map (n: nameValuePair (user n) { }) owners);
@@ -231,17 +230,20 @@
               wantedBy = singleton "multi-user.target";
               after = singleton "network.target";
               environment = session n;
-              serviceConfig = confined n // fence n // {
-                RuntimeDirectory = user n;
-                RuntimeDirectoryMode = "0700";
-                ExecStart = getExe (desktop n);
-                Restart = "always";
-                RestartSec = 3;
-                # A runaway tab ends this browser, not the host's services.
-                MemoryHigh = "4G";
-                MemoryMax = "6G";
-                TasksMax = 2048;
-              };
+              serviceConfig =
+                confined n
+                // fence n
+                // {
+                  RuntimeDirectory = user n;
+                  RuntimeDirectoryMode = "0700";
+                  ExecStart = getExe (desktop n);
+                  Restart = "always";
+                  RestartSec = 3;
+                  # A runaway tab ends this browser, not the host's services.
+                  MemoryHigh = "4G";
+                  MemoryMax = "6G";
+                  TasksMax = 2048;
+                };
             })
             (nameValuePair "${user n}-vnc" {
               description = "${n}'s browser screen over VNC, for the person to take over";
@@ -249,17 +251,20 @@
               bindsTo = singleton "${user n}.service";
               after = singleton "${user n}.service";
               environment = session n;
-              serviceConfig = confined n // fence n // {
-                # cage offers only wlr-screencopy, over which wayvnc sends
-                # no cursor image; -r paints the pointer into the frame.
-                ExecStart = "${getExe pkgs.wayvnc} -r ${addr n} ${toString innerVncPort}";
-                # The compositor's socket appears a moment after it starts;
-                # a start that fails meanwhile reads as a failed deploy.
-                ExecStartPre = "${pkgs.bash}/bin/bash -c 'until [ -S ${runtime n}/wayland-0 ]; do sleep 0.2; done'";
-                TimeoutStartSec = 30;
-                Restart = "always";
-                RestartSec = 2;
-              };
+              serviceConfig =
+                confined n
+                // fence n
+                // {
+                  # cage offers only wlr-screencopy, over which wayvnc sends
+                  # no cursor image; -r paints the pointer into the frame.
+                  ExecStart = "${getExe pkgs.wayvnc} -r ${addr n} ${toString innerVncPort}";
+                  # The compositor's socket appears a moment after it starts;
+                  # a start that fails meanwhile reads as a failed deploy.
+                  ExecStartPre = "${pkgs.bash}/bin/bash -c 'until [ -S ${runtime n}/wayland-0 ]; do sleep 0.2; done'";
+                  TimeoutStartSec = 30;
+                  Restart = "always";
+                  RestartSec = 2;
+                };
             })
             (nameValuePair "${user n}-relay" {
               description = "${n}'s browser ports, relayed from its own address";
