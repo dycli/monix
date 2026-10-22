@@ -77,6 +77,16 @@ impl Hippo {
         }
     }
 
+    /// Drops what is older than `minutes`, oldest first; how many messages
+    /// went.
+    pub fn forget(&self, minutes: u64) -> Result<u64, String> {
+        let out = self.ask("forget", &[&minutes.to_string()])?;
+        out.split_whitespace()
+            .nth(1)
+            .and_then(|n| n.parse().ok())
+            .ok_or_else(|| format!("hippo forget: {out}"))
+    }
+
     /// Every message matching a case-insensitive regex, newest last.
     pub fn search(&self, regex: &str) -> Result<String, String> {
         self.ask("search", &[regex])

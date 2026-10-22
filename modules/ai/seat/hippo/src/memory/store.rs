@@ -212,7 +212,7 @@ pub fn read_jsonl<T: for<'de> Deserialize<'de>>(
     Ok(())
 }
 
-fn day_name(day: NaiveDate) -> String {
+pub fn day_name(day: NaiveDate) -> String {
     day.format("%Y-%m-%d.jsonl").to_string()
 }
 
@@ -314,6 +314,24 @@ impl Store {
         }
         self.torn = torn;
         Ok(())
+    }
+
+    /// Reads the log afresh from disk, keeping the writer's lock: after
+    /// `forget` rewrote it.
+    pub fn reload(&mut self) -> Result<(), String> {
+        self.days.clear();
+        self.index.clear();
+        self.seen.clear();
+        self.out = None;
+        self.chats.clear();
+        self.last.clear();
+        self.load()
+    }
+
+    /// How many messages, from the first, were sent before `cutoff` (Unix
+    /// seconds): what a memory that forgets lets go.
+    pub fn older(&self, cutoff: i64) -> u64 {
+        self.index.iter().take_while(|m| m.date < cutoff).count() as u64
     }
 
     fn index_msg(&mut self, m: &Msg, file: u32, off: u64, len: u32) {

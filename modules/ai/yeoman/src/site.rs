@@ -138,6 +138,8 @@ enum Shown {
     Asked {
         id: String,
     },
+    /// The oldest messages were forgotten: the history is read again.
+    Forgot,
 }
 
 /// A subagent at work, as a page shows it. One the seat's Agent call
@@ -206,6 +208,11 @@ impl Web {
             aside: true,
             ..self.clone()
         }
+    }
+
+    /// Tells the pages the oldest messages went.
+    pub fn forgot(&self) {
+        self.show(Shown::Forgot);
     }
 
     /// Shows what the person wrote by another door.
@@ -639,6 +646,9 @@ struct Who {
     /// The models the person may switch between (YEOMAN_MODELS); empty
     /// when the model is fixed.
     models: Vec<String>,
+    /// The windows, in minutes, the person may pick for forgetting; empty
+    /// for one that remembers.
+    forgets: Vec<u64>,
 }
 
 #[derive(Serialize)]
@@ -659,6 +669,10 @@ impl Who {
                 .ok()
                 .filter(|_| std::env::var_os("YEOMAN_X").is_some()),
             models: crate::model::choices(),
+            forgets: match std::env::var_os("YEOMAN_FORGET") {
+                Some(_) => crate::forget::CHOICES.to_vec(),
+                None => Vec::new(),
+            },
         }
     }
 }
@@ -965,6 +979,7 @@ pub async fn serve(
         .route("/api/speak/{key}", get(spoken))
         .route("/api/voices", get(voices))
         .route("/api/model", get(model_now).post(model_pick))
+        .route("/api/forget", get(forget_now).post(forget_pick))
         .route("/api/call", post(call))
         .route("/api/call/end", post(call_end))
         .route("/api/events", get(events))
@@ -2039,6 +2054,36 @@ async fn model_pick(
         return StatusCode::UNAUTHORIZED.into_response();
     }
     match crate::model::pick(&site.state, &p.model) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+    }
+}
+
+async fn forget_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    match crate::forget::window(&site.state) {
+        Some(m) => Json(serde_json::json!({ "minutes": m })).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct Window {
+    minutes: u64,
+}
+
+/// Sets how long it remembers; the next sweep, within a minute, uses it.
+async fn forget_pick(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    Json(w): Json<Window>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    match crate::forget::pick(&site.state, w.minutes) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
     }

@@ -147,12 +147,12 @@ function ThemeButton({ className = "" }: { className?: string }) {
 }
 
 type Persona = { unit: string; name: string };
-type Me = { name: string; personas: Persona[]; voice: string | null; models: string[] };
+type Me = { name: string; personas: Persona[]; voice: string | null; models: string[]; forgets: number[] };
 
 // Who answers here, asked once for the switcher and the speak buttons.
 const ME: Promise<Me> = fetch("/api/me")
   .then((r) => (r.ok ? r.json() : Promise.reject()))
-  .catch(() => ({ name: "", personas: [], voice: null, models: [] }));
+  .catch(() => ({ name: "", personas: [], voice: null, models: [], forgets: [] }));
 
 function useMe() {
   const [me, setMe] = useState<Me | null>(null);
@@ -402,6 +402,7 @@ function Settings() {
   const [speed, setSpeed] = useVoiceSpeed();
   const voices = useVoices(open && !!voice);
   const [model, pickModel] = useModel(open && !!me?.models.length);
+  const [forget, pickForget] = useForget(open && !!me?.forgets?.length);
   const [hearing, setHearing] = useState(false);
   const picked = choice ?? voice;
   const hear = () => {
@@ -514,6 +515,23 @@ function Settings() {
                   {[...new Set([...me.models, ...(model ? [model] : [])])].map((m) => (
                     <option key={m} value={m}>
                       {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {!!me?.forgets?.length && (
+              <div className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-[15px]">
+                <label htmlFor="forget">Forget after</label>
+                <select
+                  id="forget"
+                  value={forget ?? ""}
+                  onChange={(e) => pickForget(Number(e.target.value))}
+                  className="max-w-36 bg-transparent text-right text-[13px] text-mid outline-none"
+                >
+                  {me.forgets.map((m) => (
+                    <option key={m} value={m}>
+                      {forgetLabel(m)}
                     </option>
                   ))}
                 </select>
@@ -1176,6 +1194,32 @@ function useModel(want: boolean): [string | null, (m: string) => void] {
       .catch(() => setModel(was));
   };
   return [model, pick];
+}
+
+/** How long the chat remembers, in minutes, asked once `want` turns true,
+ * and a way to change it: older messages and files go, oldest first. */
+function useForget(want: boolean): [number | null, (m: number) => void] {
+  const [minutes, setMinutes] = useState<number | null>(null);
+  useEffect(() => {
+    if (!want) return;
+    fetch("/api/forget")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((v: { minutes: number }) => setMinutes(v.minutes), () => {});
+  }, [want]);
+  const pick = (m: number) => {
+    const was = minutes;
+    setMinutes(m);
+    fetch("/api/forget", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ minutes: m }) })
+      .then((r) => r.ok || Promise.reject(r.status))
+      .catch(() => setMinutes(was));
+  };
+  return [minutes, pick];
+}
+
+/** Minutes as the menu says them: "10 minutes", "3 hours", "1 week". */
+function forgetLabel(m: number) {
+  const [n, unit] = m % 10080 === 0 ? [m / 10080, "week"] : m % 1440 === 0 ? [m / 1440, "day"] : m % 60 === 0 ? [m / 60, "hour"] : [m, "minute"];
+  return `${n} ${unit}${n === 1 ? "" : "s"}`;
 }
 
 type Voice = { id: string; name: string };

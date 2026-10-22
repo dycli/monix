@@ -116,6 +116,16 @@ impl Tree {
             .collect()
     }
 
+    /// Every node built, as (level, index).
+    pub fn nodes(&self) -> impl Iterator<Item = (u8, u64)> + '_ {
+        self.levels.iter().enumerate().flat_map(|(l, lv)| {
+            lv.iter()
+                .enumerate()
+                .filter(|(_, s)| s.is_some())
+                .map(move |(i, _)| (l as u8, i as u64))
+        })
+    }
+
     pub fn get(&self, l: u8, i: u64) -> Result<Option<Node>, String> {
         let Some(s) = self.slot(l, i) else {
             return Ok(None);

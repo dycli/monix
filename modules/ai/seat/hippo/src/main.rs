@@ -39,6 +39,8 @@ Usage:
                            seat's PreCompact hook, before its context goes)
   hippo pause / resume     stop or restart the compactor's model calls;
                            logging goes on
+  hippo forget <minutes>    drop what is older, oldest first (chat mode: a
+                           memory that forgets, as amnesia's)
   hippo door <addr> <url>  serve the memory read-only as a remote MCP server
                            with OAuth, on <addr>, for apps reaching it at <url>
 Service and maintenance:
@@ -204,7 +206,7 @@ fn main() -> ExitCode {
             at.and_then(|at| code::source::claude::agent(&sources().claude, &rest[0], at))
         }
         "view" | "zoom" | "date" | "search" | "tail" | "chat" | "status" | "fold" | "pause"
-        | "resume" => ask(cmd, rest),
+        | "resume" | "forget" => ask(cmd, rest),
         "help" | "-h" | "--help" => Ok(USAGE.into()),
         _ => Err(USAGE.into()),
     };

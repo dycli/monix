@@ -74,7 +74,8 @@ type Shown =
   | { type: "agents"; agents: Agent[] }
   | { type: "browser"; open: boolean }
   | { type: "ask"; ask: Ask }
-  | { type: "asked"; id: string };
+  | { type: "asked"; id: string }
+  | { type: "forgot" };
 
 /** The longest message text, in bytes, that /api/send takes (SEND_MAX in site.rs). */
 const SEND_MAX = 32 * 1024;
@@ -288,6 +289,12 @@ export function useChat(): Chat {
             break;
           case "browser":
             setBrowser(s.open);
+            break;
+          case "forgot":
+            // The oldest went and the rest were numbered again: all of it
+            // is read afresh, the folds above too.
+            before = undefined;
+            sync().catch(() => {});
             break;
           case "react":
             setMessages((ms) => ms.map((m) => (m.id === s.to ? { ...m, reaction: s.emoji } : m)));

@@ -208,8 +208,8 @@
             "fable"
           ];
         };
-        # One-off questions: no Matrix, and everything forgotten after an
-        # idle hour.
+        # One-off questions: no Matrix, and each message forgotten an hour
+        # after it was said, unless the page sets another window.
         amnesia = {
           person = "Dylan";
           web = true;

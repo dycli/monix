@@ -7,7 +7,9 @@ use crate::code::Follow;
 use crate::code::live::Sources;
 use crate::memory::compact::Backend;
 use crate::memory::compactor::{Pump, Spent, pump};
-use crate::memory::store::{Draft, Kind, Store, chat_key, fmt_date};
+use crate::memory::store::{
+    Draft, Kind, Store, append_line, chat_key, day_name, fmt_date, parse_date,
+};
 use crate::memory::tree::{Tree, addr, flat};
 use crate::memory::view::{CONTEXT, PLACEHOLDER, UNBUILT, VIEW, View, head};
 use chrono::{DateTime, Local};
@@ -344,8 +346,98 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
             pump(shared, &mut c);
             Ok("Resumed.".into())
         }
+        // A memory that forgets (amnesia's): what is older than the minutes
+        // given goes, oldest first.
+        "forget" => {
+            let minutes = num(a, 0, "minutes")?;
+            let mut guard = core.lock().unwrap();
+            let out = forget(&mut guard, minutes);
+            pump(shared, &mut guard);
+            out
+        }
         other => Err(format!("Unknown command {other}.")),
     }
+}
+
+/// Drops the messages sent more than `minutes` ago and every summary that
+/// read them, and numbers the rest from 0 again: the log, the tree and both
+/// views are rewritten. A level-0 summary moves with its message; a merge
+/// moves only while it still covers a whole aligned span, the rest are
+/// built again as the views need them.
+fn forget(c: &mut Core, minutes: u64) -> Result<String, String> {
+    if c.follow.is_some() {
+        return Err("This memory follows transcripts; it forgets nothing.".into());
+    }
+    let cutoff = Local::now().timestamp() - (minutes * 60) as i64;
+    let k = c.store.older(cutoff);
+    if k == 0 {
+        return Ok("Forgot 0 messages.".into());
+    }
+    // A summary under way would land under its old number.
+    if !c.pump.busy.is_empty() {
+        return Ok("Forgot 0 messages: the compactor is busy, try again.".into());
+    }
+    let dir = c.store.dir.clone();
+    let (main, tree) = (dir.join("main"), dir.join("tree"));
+    let (main_new, tree_new) = (dir.join("main.new"), dir.join("tree.new"));
+    for d in [&main_new, &tree_new] {
+        let _ = fs::remove_dir_all(d);
+        fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
+    }
+    let mut out: Option<(chrono::NaiveDate, fs::File)> = None;
+    for i in k..c.store.len() {
+        let mut m = c.store.get(i)?;
+        m.i -= k;
+        let day = parse_date(&m.date).map_or(Local::now().date_naive(), |d| d.date_naive());
+        // Ids stay in file order: a day never goes back.
+        let day = out.as_ref().map_or(day, |(d, _)| day.max(*d));
+        if out.as_ref().is_none_or(|(d, _)| *d != day) {
+            let path = main_new.join(day_name(day));
+            let f = fs::File::create(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            out = Some((day, f));
+        }
+        let line = serde_json::to_string(&m).map_err(|e| e.to_string())?;
+        append_line(&mut out.as_mut().unwrap().1, &line)?;
+    }
+    let path = tree_new.join(day_name(Local::now().date_naive()));
+    let mut nodes = fs::File::create(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let kept: Vec<(u8, u64)> = c.tree.nodes().collect();
+    for (l, i) in kept {
+        let (s, n) = addr(l, i);
+        if s < k || !k.is_multiple_of(n) {
+            continue;
+        }
+        if let Some(mut node) = c.tree.get(l, i)? {
+            node.i = (s - k) / n;
+            let line = serde_json::to_string(&node).map_err(|e| e.to_string())?;
+            append_line(&mut nodes, &line)?;
+        }
+    }
+    // The old tree goes first: cut short anywhere after, the tree is
+    // missing or new and the log old or new, and a missing tree is only
+    // built again.
+    let gone = dir.join("tree.gone");
+    let _ = fs::remove_dir_all(&gone);
+    fs::rename(&tree, &gone).map_err(|e| e.to_string())?;
+    let main_gone = dir.join("main.gone");
+    let _ = fs::remove_dir_all(&main_gone);
+    fs::rename(&main, &main_gone).map_err(|e| e.to_string())?;
+    fs::rename(&main_new, &main).map_err(|e| e.to_string())?;
+    fs::rename(&tree_new, &tree).map_err(|e| e.to_string())?;
+    fs::remove_dir_all(&gone).map_err(|e| e.to_string())?;
+    fs::remove_dir_all(&main_gone).map_err(|e| e.to_string())?;
+    c.store.reload()?;
+    c.tree = Tree::open(&dir)?;
+    let len = c.store.len();
+    c.view = View::fold(&c.tree, len, c.budget);
+    c.context = View::fold(&c.tree, len, c.context_budget());
+    c.pump.lo.clear();
+    c.pump.parked.clear();
+    c.pump.failed.clear();
+    c.pages.clear();
+    c.fit(false);
+    publish(c)?;
+    Ok(format!("Forgot {k} messages; {len} left."))
 }
 
 /// How many of the captain's messages the chat's own block quotes.
@@ -810,6 +902,64 @@ mod tests {
         let mut c = Core::for_test(store, tree, View::default(), budget);
         c.sync();
         c
+    }
+
+    #[test]
+    fn forgetting_drops_the_oldest_and_renumbers_the_rest() {
+        let mut c = stalled("forget", 6, 50_000);
+        let old = Local::now() - chrono::Duration::hours(2);
+        // Messages 0-5 now; make 0-3 two hours old in the log itself.
+        let dir = c.store.dir.clone();
+        let day = fs::read_dir(dir.join("main"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let text: Vec<String> = fs::read_to_string(&day)
+            .unwrap()
+            .lines()
+            .map(|l| {
+                let mut m: crate::memory::store::Msg = serde_json::from_str(l).unwrap();
+                if m.i < 4 {
+                    m.date = fmt_date(&old);
+                }
+                serde_json::to_string(&m).unwrap()
+            })
+            .collect();
+        fs::write(&day, text.join("\n") + "\n").unwrap();
+        c.store.reload().unwrap();
+        c.tree
+            .save(Node {
+                l: 1,
+                i: 2,
+                size: 3,
+                text: "4-5".into(),
+                model: String::new(),
+                prompt: String::new(),
+            })
+            .unwrap();
+        c.tree
+            .save(Node {
+                l: 1,
+                i: 1,
+                size: 3,
+                text: "2-3".into(),
+                model: String::new(),
+                prompt: String::new(),
+            })
+            .unwrap();
+        assert_eq!(forget(&mut c, 60).unwrap(), "Forgot 4 messages; 2 left.");
+        assert_eq!(c.store.len(), 2);
+        assert!(c.store.get(0).unwrap().text.starts_with("message 4 "));
+        assert!(c.tree.text(0, 1).unwrap().unwrap().contains("message 5 "));
+        // 4-5 still covers a whole span, now 0-1; 2-3 read what went.
+        assert_eq!(c.tree.text(1, 0).unwrap().as_deref(), Some("4-5"));
+        assert!(!c.tree.built(1, 1) && !c.tree.built(0, 2));
+        assert_eq!(c.view.t, 2);
+        let reopened = Store::open(&dir, false).unwrap();
+        assert_eq!(reopened.len(), 2);
+        assert_eq!(forget(&mut c, 60).unwrap(), "Forgot 0 messages.");
     }
 
     #[test]

@@ -10,6 +10,7 @@ mod call;
 mod door;
 mod files;
 mod finance;
+mod forget;
 mod hippo;
 mod house;
 mod keep;
@@ -1311,6 +1312,20 @@ async fn run() -> Result<(), String> {
         env::var_os("YEOMAN_ALERTS").map(PathBuf::from),
         house::House::from_env(),
     ));
+    if env::var_os("YEOMAN_FORGET").is_some() {
+        let pages = env::var_os("YEOMAN_PAGES").map(PathBuf::from);
+        let w = web.clone();
+        tokio::spawn(forget::run(
+            state.clone(),
+            pages,
+            hippo.clone(),
+            move || {
+                if let Some(w) = &w {
+                    w.forgot();
+                }
+            },
+        ));
+    }
     let gate = Arc::new(site::Gate::default());
     let (s, h, g, w) = (state.clone(), hippo.clone(), gate.clone(), web.clone());
     tokio::spawn(async move {

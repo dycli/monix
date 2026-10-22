@@ -446,25 +446,7 @@
           # Matrix only with an account: without one, the site alone.
           matrix = i.credentialsEnvFile != null;
           models = optionalAttrs (i.models != [ ]) { YEOMAN_MODELS = concatStringsSep "," i.models; };
-          # Wipes the state, all but the push keys, once nothing has been
-          # said for forgetAfter minutes; the memory goes with it.
-          forget = pkgs.writeShellApplication {
-            name = "${n}-forget";
-            runtimeInputs = [
-              pkgs.findutils
-              pkgs.systemd
-            ];
-            text = ''
-              said=$(find ${state}/hippo -type f -print -quit 2>/dev/null || true)
-              recent=$(find ${state}/hippo -type f -mmin -${toString i.forgetAfter} -print -quit 2>/dev/null || true)
-              [ -n "$said" ] && [ -z "$recent" ] || exit 0
-              systemctl stop ${n}.service ${n}-hippo.service
-              find ${state} -mindepth 1 -maxdepth 1 ! -name vapid ! -name push.json -exec rm -rf {} +
-              find ${site.dir} -mindepth 1 -delete
-              systemctl start ${n}-hippo.service ${n}.service
-              echo "forgot everything"
-            '';
-          };
+          forget = optionalAttrs (i.forgetAfter != null) { YEOMAN_FORGET = toString i.forgetAfter; };
         in
         if i.seat then
           {
@@ -640,6 +622,7 @@
                   YEOMAN_MCP = toString mcp;
                 }
                 // models
+                // forget
                 // optionalAttrs matrix {
                   YEOMAN_HOMESERVER = "http://127.0.0.1:${toString config.matrix.port}";
                   YEOMAN_USERS = concatStringsSep "," i.users;
@@ -729,13 +712,6 @@
                 };
             };
 
-            "${n}-forget" = mkIf (i.forgetAfter != null) {
-              description = "${i.name} forgets, once idle";
-              serviceConfig = {
-                Type = "oneshot";
-                ExecStart = getExe forget;
-              };
-            };
           };
 
       alerted = attrNames (filterAttrs (_: i: i.alerts) cfg.instances);
@@ -890,8 +866,9 @@
                     default = null;
                     example = 60;
                     description = ''
-                      Minutes without a word after which it forgets
-                      everything: memory, files, pages; null = never.
+                      Minutes it remembers, until the person picks another
+                      window in the web chat: every minute, older messages,
+                      files and pages go, oldest first; null = never.
                     '';
                   };
 
@@ -1295,16 +1272,6 @@
           };
         };
 
-        systemd.timers = lib.attrsets.mapAttrs' (
-          n: _:
-          nameValuePair "${n}-forget" {
-            wantedBy = singleton "timers.target";
-            timerConfig = {
-              OnBootSec = "5min";
-              OnUnitActiveSec = "5min";
-            };
-          }
-        ) (filterAttrs (_: i: i.forgetAfter != null) cfg.instances);
 
         systemd.services = mkMerge (
           mapAttrsToList services cfg.instances
