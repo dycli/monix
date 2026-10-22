@@ -1030,11 +1030,14 @@ function usePlugins(text: string) {
 function Text() {
   const { live } = useCustom();
   const plugins = usePlugins(useAuiState((s) => s.message.content.map((p) => (p.type === "text" ? p.text : "")).join("")));
+  // Only the words still being written carry the caret, not those a call
+  // has since followed.
+  const end = useAuiState((s) => s.message.parts.at(-1)?.type === "text" && s.message.parts.at(-1) === s.part);
   return (
     <StreamdownTextPrimitive
       plugins={plugins}
       mode={live ? "streaming" : "static"}
-      containerClassName={live ? "writing" : undefined}
+      containerClassName={live && end ? "writing" : undefined}
       lineNumbers={false}
       controls={{ code: true, table: false }}
       linkSafety={{ enabled: false }}
@@ -1055,14 +1058,24 @@ function AssistantMessage() {
         </div>
       ) : (
         <div className="md">
-          <MessagePrimitive.Parts
-            components={{
-              Text,
-              tools: { Fallback: Tool },
-              Image: () => <MessagePartPrimitive.Image className="max-h-80 max-w-full rounded-lg border border-hair" />,
-              File: Download,
+          <MessagePrimitive.GroupedParts groupBy={byRun} indicator="never">
+            {({ part }) => {
+              switch (part.type) {
+                case "group-tools":
+                  return <ToolStack indices={part.indices} />;
+                case "text":
+                  return <Text />;
+                case "tool-call":
+                  return <Tool {...(part as unknown as ToolCallMessagePartProps)} />;
+                case "image":
+                  return <MessagePartPrimitive.Image className="max-h-80 max-w-full rounded-lg border border-hair" />;
+                case "file":
+                  return <Download />;
+                default:
+                  return null;
+              }
             }}
-          />
+          </MessagePrimitive.GroupedParts>
         </div>
       )}
       <Reaction />
@@ -1395,6 +1408,91 @@ function ToolLine({ toolName: name, args, result, isError }: ToolCallMessagePart
 }
 
 type Row = { name: string; args: Args | string | undefined; result: unknown; isError?: boolean; live?: boolean };
+
+// Calls that come back to back, with no words between them, gather into one
+// stack; a card stands on its own.
+const byRun = (part: { type: string; toolName?: string }) => (part.type === "tool-call" && !cardKind(part.toolName ?? "") ? (["group-tools"] as const) : null);
+
+type Call = { type: string; toolCallId: string; toolName: string; args: Args | string | undefined; result?: unknown; isError?: boolean };
+
+// What a stack did, in words: "Ran 4 commands, read 2 files".
+const DID: Record<string, [string, string, string]> = {
+  Bash: ["ran", "command", "commands"],
+  BashOutput: ["ran", "command", "commands"],
+  KillShell: ["ran", "command", "commands"],
+  Read: ["read", "file", "files"],
+  Edit: ["edited", "file", "files"],
+  MultiEdit: ["edited", "file", "files"],
+  NotebookEdit: ["edited", "file", "files"],
+  Write: ["wrote", "file", "files"],
+  Grep: ["ran", "search", "searches"],
+  Glob: ["ran", "search", "searches"],
+  ToolSearch: ["ran", "search", "searches"],
+  WebFetch: ["fetched", "page", "pages"],
+  WebSearch: ["searched the web", "time", "times"],
+  Agent: ["sent", "agent", "agents"],
+  Task: ["sent", "agent", "agents"],
+};
+
+function did(calls: Call[]): string {
+  const tally = new Map<string, [string, string, string, number]>();
+  for (const c of calls) {
+    const [verb, one, many] = DID[c.toolName] ?? ["used", "tool", "tools"];
+    const key = `${verb} ${many}`;
+    const t = tally.get(key) ?? [verb, one, many, 0];
+    t[3]++;
+    tally.set(key, t);
+  }
+  const said = [...tally.values()].map(([verb, one, many, n]) => `${verb} ${n} ${n === 1 ? one : many}`).join(", ");
+  return said.charAt(0).toUpperCase() + said.slice(1);
+}
+
+// A run of calls as one line that opens into their rows, each of which
+// opens in turn. While the run goes on, the call under way shows below the
+// line with its spinner, and each one done folds up into the line.
+function ToolStack({ indices }: { indices: readonly number[] }) {
+  const { live } = useCustom();
+  const parts = useAuiState((s) => s.message.parts) as readonly Call[];
+  const [open, setOpen] = useState(false);
+  const calls = indices.map((i) => parts[i]).filter((c) => c?.type === "tool-call");
+  const row = (c: Call, running: boolean) => <ToolRow key={c.toolCallId} name={c.toolName} args={c.args} result={c.result} isError={c.isError} live={running} />;
+  if (calls.length === 1) return row(calls[0], live);
+  const busy = calls.filter((c) => live && c.result === undefined);
+  const done = calls.filter((c) => !busy.includes(c));
+  const failed = done.filter((c) => c.isError).length;
+  const glyphs = [...new Set(done.map((c) => (TOOLS[c.toolName] ?? ["", "plug"])[1]))].slice(0, 3);
+  return (
+    <div className="not-prose my-2.5 text-[13.5px]">
+      {done.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          className="group/stack -mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2.5 rounded-lg px-1.5 py-1 text-left hover:bg-hover/50"
+        >
+          <span className="flex shrink-0">
+            {glyphs.map((g, k) => (
+              <span key={g} className={`grid size-[22px] place-items-center rounded-full border border-hair bg-lift ${k ? "-ml-2" : ""}`} style={{ zIndex: 3 - k }}>
+                <svg viewBox="0 0 24 24" className="size-3 text-mid" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  {GLYPHS[g]}
+                </svg>
+              </span>
+            ))}
+          </span>
+          <span key={done.length} className={`${live ? "absorb " : ""}min-w-0 truncate font-medium text-ink/80`}>
+            {did(done)}
+          </span>
+          {failed > 0 && <span className="shrink-0 text-xs text-accent">{failed} failed</span>}
+          <svg viewBox="0 0 24 24" className="ml-auto size-3.5 shrink-0 text-soft transition group-aria-expanded/stack:rotate-90" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        </button>
+      )}
+      {open && <div className="rise mt-1 ml-[10px] border-l border-hair pl-3.5">{done.map((c) => row(c, false))}</div>}
+      {busy.length > 0 && <div className={done.length ? "mt-1 ml-[10px] border-l border-hair pl-3.5" : ""}>{busy.map((c) => <div key={c.toolCallId} className="rise">{row(c, true)}</div>)}</div>}
+    </div>
+  );
+}
 
 function ToolRow({ name, args, result, isError, live }: Row) {
   const done = result !== undefined;
@@ -2201,8 +2299,8 @@ function TaskStrip({ task, stop }: { task: Task; stop: () => Promise<void> }) {
   const now = task.tools.at(-1);
   const doing = task.words.trim() ? task.words.trim().split("\n").at(-1) : now ? `${TOOLS[now.name]?.[0] ?? toolName(now.name)} ${about(now.name, now.input as Args)}` : "Starting";
   return (
-    <section className="rise relative mt-1.5 mb-3 rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift" aria-label={`${task.name} at work`}>
-      <span className="absolute -top-[0.75em] left-3.5 rounded bg-lift px-1.5 text-xs font-semibold tracking-wide text-accent uppercase">{task.name} at work</span>
+    <section className="rise relative mt-1.5 mb-3 rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift" aria-label={`${task.name} working`}>
+      <span className="absolute -top-[0.75em] left-3.5 rounded bg-lift px-1.5 text-xs font-semibold tracking-wide text-accent uppercase">{task.name} working</span>
       <div className="flex items-start gap-3 px-4 pt-3.5 pb-3">
         <button type="button" onClick={() => setOpen(!open)} className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left" aria-expanded={open}>
           <p className={`text-[14.5px] [overflow-wrap:anywhere] ${open ? "" : "line-clamp-2"}`}>{task.text || "A task"}</p>

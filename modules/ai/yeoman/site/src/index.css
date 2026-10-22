@@ -257,6 +257,17 @@ html {
   animation: rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
+/* A call done folds up into its stack's line, which gives a small nod. */
+@keyframes absorb {
+  from {
+    opacity: 0.4;
+    transform: translateY(5px);
+  }
+}
+.absorb {
+  animation: absorb 0.36s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
 /* A card slides up from behind the composer while the talk fades back
    behind it; closing runs the same way down. */
 .faded {
@@ -337,6 +348,7 @@ html {
 }
 @media (prefers-reduced-motion: reduce) {
   .rise,
+  .absorb,
   .writing > :last-child::after,
   .writing > div > :last-child::after {
     animation: none;
