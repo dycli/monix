@@ -592,8 +592,10 @@ function fromHistory(said: Said[]): Msg[] {
     }
     if (m.kind === "work") {
       // A subagent's report as hippo keeps it, `[id]\n{report}\n\nFull chat: …`.
+      // A yeoman agent's (`[Ada] report\n…`) has no call to join: the
+      // model passes it on in its own words.
       const [, id, report] = /^\[(\w+)\]\n([\s\S]*?)(?:\n\nFull chat: hippo zoom \w+)?$/.exec(m.text) ?? [];
-      const call = out.flatMap((o) => o.tools ?? []).reverse().find((t) => t.agent === id);
+      const call = id && out.flatMap((o) => o.tools ?? []).reverse().find((t) => t.agent === id);
       if (call) call.report = report.trim();
       continue;
     }

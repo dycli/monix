@@ -572,10 +572,11 @@ function Settings() {
 
 function Dots() {
   return (
-    <div className="flex h-6 items-center gap-1" aria-label="Typing">
+    <div className="flex h-6 items-center gap-1" aria-label="Thinking">
       {[0, 150, 300].map((d) => (
         <span key={d} className="size-1.5 animate-bounce rounded-full bg-soft" style={{ animationDelay: `${d}ms` }} />
       ))}
+      <span className="ml-1.5 text-[13px] text-soft">Thinking</span>
     </div>
   );
 }
@@ -732,8 +733,12 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
   const [agent, setAgent] = useState<{ call: string; agent?: string; title?: string }>();
   const agents = useMemo<Agents>(() => ({ tasks, open: (call, agent, title) => setAgent({ call, agent, title }) }), [tasks]);
   const leave = useRef<number>(undefined);
-  // The dots stand for work not yet shown; once words or tools arrive, they show it.
-  const working = typing && !messages.at(-1)?.live;
+  // The dots show for as long as the turn runs, as Claude Code's spinner
+  // does, so a pause mid-turn doesn't look finished; a running call spins
+  // in its stack instead, and a question waiting on the person isn't work.
+  const live = messages.at(-1)?.live ? messages.at(-1) : undefined;
+  const running = !!live?.tools?.some((t) => t.result === undefined && !t.error);
+  const working = typing && !asks.length && !running;
   // The screen shows while the browser is open: from the moment the turn or
   // an agent drives it until the yeoman or the person closes it. On a wide
   // screen it takes the right side, at a size worth reading.
@@ -2379,8 +2384,9 @@ function Screen({ url, shape = 16 / 9, on, driving, close, pane }: { url: string
 // A subagent's name: the Agent call's description, or a yeoman agent's own.
 const nameOf = (t: Task) => t.title || t.name;
 
-// Each subagent at work is a dot at the bottom left, above the composer,
-// as in Victor's chat; a tap opens its page.
+// Each subagent at work is a chip at the bottom left, above the composer,
+// as in Victor's chat: its name and the start of its task; a tap opens its
+// page.
 function AgentDots({ tasks, open }: { tasks: Task[]; open: (name: string) => void }) {
   const on = tasks.filter((t) => !t.done);
   if (!on.length) return null;
@@ -2391,14 +2397,17 @@ function AgentDots({ tasks, open }: { tasks: Task[]; open: (name: string) => voi
           key={t.name}
           type="button"
           onClick={() => open(t.name)}
-          title={`${nameOf(t)}: working`}
-          className="rise flex h-7 max-w-[15rem] items-center gap-2 rounded-full border border-hair bg-lift px-2.5 text-[12.5px] text-mid shadow-lift hover:text-ink max-sm:max-w-[10rem]"
+          title={`${nameOf(t)}: ${t.text}`}
+          className="rise flex h-7 max-w-[22rem] items-center gap-2 rounded-full border border-hair bg-lift px-2.5 text-[12.5px] text-mid shadow-lift hover:text-ink max-sm:max-w-[15rem]"
         >
           <span className="relative grid size-2.5 shrink-0 place-items-center">
             <span className="absolute size-2.5 animate-ping rounded-full bg-accent/40 motion-reduce:hidden" />
             <span className="size-2 rounded-full bg-accent" />
           </span>
-          <span className="truncate">{nameOf(t)}</span>
+          <span className="truncate">
+            <span className="font-medium text-ink">{nameOf(t)}</span>
+            {t.text && <span className="text-soft"> · {t.text.split("\n")[0].replaceAll("`", "")}</span>}
+          </span>
         </button>
       ))}
     </div>
