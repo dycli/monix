@@ -46,9 +46,12 @@
 # well, its tools withheld on quoted turns like the rest that act.
 #
 # The instances share a household directory their common group can write:
-# shared lists, and a mailbox each. "Tell Gab ..." leaves a message in hers,
-# and her assistant passes it on in its own words; sharing a list leaves
-# one too. Memories stay apart; only what is handed over crosses. The
+# shared lists, and a mailbox each. A message goes only to those it names,
+# one or several: an assistant by its name, or a person by theirs, which
+# reaches the assistant that is their door. "Tell Gab ..." leaves a message
+# in her door's mailbox, and it passes it on in its own words; sharing a
+# list, routine or watch leaves one with each named. There is no sending to
+# everyone. Memories stay apart; only what is handed over crosses. The
 # ship's seat is in the household as Bridge: `tell` from the seat leaves a
 # note an instance drains on its tick, marked as the engineer's, and an
 # instance's `tell` to Bridge appends to `seat/inbox`, which the seat's
@@ -111,12 +114,15 @@
       browserIndex = n: 10 + (computers.indexes cfg.instances).${n};
       siteOf = n: findFirst (s: elem n cfg.sites.${s}.members) null (attrNames cfg.sites);
       host = sub: "https://${sub}.${config.shipProxy.domain}";
-      # Each person's door to the household; their other assistants stay out,
-      # so a share or a note to the person reaches them once.
-      members = filterAttrs (_: i: i.household) cfg.instances;
+      # Who is in the household, as house.rs reads it: unit=Name=Person, and
+      # =door on the one a message to the person goes to.
       households = {
         YEOMAN_HOUSE = house;
-        YEOMAN_PEOPLE = concatStringsSep "," (mapAttrsToList (n: i: "${n}=${i.person}") members);
+        YEOMAN_MEMBERS = concatStringsSep "," (
+          mapAttrsToList (
+            n: i: "${n}=${i.name}=${i.person}${lib.strings.optionalString i.door "=door"}"
+          ) cfg.instances
+        );
         # The ship's seat is in the household by this name (house.rs).
         YEOMAN_SEAT = "Bridge";
       };
@@ -128,7 +134,7 @@
         name = "tell";
         runtimeInputs = singleton yeoman;
         text = ''
-          export YEOMAN_HOUSE=${house} YEOMAN_PEOPLE=${lib.strings.escapeShellArg households.YEOMAN_PEOPLE}
+          export YEOMAN_HOUSE=${house} YEOMAN_MEMBERS=${lib.strings.escapeShellArg households.YEOMAN_MEMBERS}
           exec yeoman tell "$@"
         '';
       };
@@ -310,7 +316,7 @@
             url = if shared' == null then host n else "${host shared'}/${n}";
           };
           shared =
-            optionalAttrs i.household households
+            households
             // {
               YEOMAN_UNIT = n;
               YEOMAN_USAGE = "/run/usage.sock";
@@ -690,8 +696,8 @@
                   RestartSec = 10;
                   ReadWritePaths = [
                     site.dir
+                    house
                   ]
-                  ++ optional i.household house
                   ++ optional i.alerts config.alerts.spool
                   ++ optionals i.computer [
                     pc.desk
@@ -875,13 +881,14 @@
                     '';
                   };
 
-                  household = mkOption {
+                  door = mkOption {
                     type = types.bool;
                     default = true;
                     description = ''
-                      Whether it is its person's door to the household: the
-                      shared lists, and notes to and from the others'
-                      assistants. One per person.
+                      Whether it is its person's door: a message or share
+                      sent to the person by name reaches this assistant.
+                      One per person; every assistant has its own mailbox
+                      either way, reached by its name.
                     '';
                   };
 
@@ -1062,8 +1069,16 @@
             message = "yeoman: an instance needs Matrix or web on, and the seat can't forget.";
           }
           {
-            assertion = lib.lists.allUnique (mapAttrsToList (_: i: i.person) members);
-            message = "yeoman: a person has one assistant in the household at most.";
+            assertion = lib.lists.allUnique (
+              mapAttrsToList (_: i: i.person) (filterAttrs (_: i: i.door) cfg.instances)
+            );
+            message = "yeoman: a person has one door at most.";
+          }
+          {
+            assertion = lib.lists.allUnique (
+              [ "bridge" ] ++ mapAttrsToList (_: i: lib.strings.toLower i.name) cfg.instances
+            );
+            message = "yeoman: assistants need different names, none of them Bridge.";
           }
           {
             assertion = lib.lists.allUnique inSites;
@@ -1269,7 +1284,7 @@
             group = "yeoman-household";
             mode = "2770";
           };
-        }) members
+        }) cfg.instances
         // lib.attrsets.mapAttrs' (n: _: {
           name = "${house}/seat/${n}";
           value.d = {
@@ -1277,7 +1292,7 @@
             group = "yeoman-household";
             mode = "2770";
           };
-        }) members;
+        }) cfg.instances;
 
         systemd.sockets.yeoman-image = {
           description = "Pictures for the household assistants";

@@ -88,9 +88,10 @@ struct Remind {
     /// (check the mail, look at the calendar) and sends its answer.
     #[serde(default)]
     ask: bool,
-    /// For a routine: also hand its answer to the rest of the household.
+    /// For a routine: also hand its answer to these, each by name (an
+    /// assistant, or a person, whose assistant passes it on).
     #[serde(default)]
-    share: bool,
+    share_with: Vec<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -108,9 +109,10 @@ struct WatchFor {
     /// For calendar events: how many minutes before the start.
     #[serde(default)]
     before: i64,
-    /// Also hand its answer to the rest of the household.
+    /// Also hand its answer to these, each by name (an assistant, or a
+    /// person, whose assistant passes it on).
     #[serde(default)]
-    share: bool,
+    share_with: Vec<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -131,22 +133,28 @@ struct Items {
     list: String,
     /// One entry per item.
     items: Vec<String>,
-    /// For a new list: share it with the household.
+    /// Share the list with these, each by name (an assistant, or a
+    /// person, whose assistant passes it on): it becomes the household's,
+    /// and they hear what was added. Leave out to keep it to yourselves.
     #[serde(default)]
-    shared: bool,
+    with: Vec<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
-struct Name {
+struct ShareList {
     /// The list's name.
     list: String,
+    /// Who to share it with, each by name: a person (their assistant
+    /// passes it on) or an assistant.
+    with: Vec<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct Tell {
-    /// Who it is for, by first name, or Bridge for the ship's engineer;
-    /// leave out for everyone in the household.
-    to: Option<String>,
+    /// Who it is for, one or several: a person by first name (their
+    /// assistant passes it on), an assistant by its name, or Bridge for the
+    /// ship's engineer.
+    to: Vec<String>,
     /// What to pass on, as your person put it.
     text: String,
 }
@@ -506,9 +514,13 @@ impl Tools {
     fn remind(&self, Parameters(r): Parameters<Remind>) -> Result<String, String> {
         let at = NaiveDateTime::parse_from_str(&r.at, AT)
             .map_err(|_| format!("`at` must be YYYY-MM-DD HH:MM, not {}", r.at))?;
+        let share = if r.ask { r.share_with } else { Vec::new() };
+        if !share.is_empty() {
+            self.household()?.check(&share)?;
+        }
         let id = self
             .book()?
-            .change(|db| book::remind(db, at, &r.text, r.repeat, r.ask, r.ask && r.share))?;
+            .change(|db| book::remind(db, at, &r.text, r.repeat, r.ask, &share))?;
         Ok(format!(
             "Reminder {id} set for {}.",
             at.format("%a %Y-%m-%d %H:%M")
@@ -527,8 +539,8 @@ impl Tools {
                 r.at.format("%a %Y-%m-%d %H:%M"),
                 r.text
             );
-            if r.share {
-                out.push_str(" (shared routine)");
+            if !r.share_with.is_empty() {
+                let _ = write!(out, " (routine shared with {})", r.share_with.join(", "));
             } else if r.ask {
                 out.push_str(" (routine)");
             }
@@ -566,12 +578,12 @@ impl Tools {
         if !there {
             return Err("That isn't connected here.".into());
         }
-        if w.share {
-            self.household()?;
+        if !w.share_with.is_empty() {
+            self.household()?.check(&w.share_with)?;
         }
         let id = self
             .book()?
-            .change(|db| watch::watch(db, w.source, &w.tests, &w.text, w.before, w.share))?;
+            .change(|db| watch::watch(db, w.source, &w.tests, &w.text, w.before, &w.share_with))?;
         Ok(format!(
             "Watch {id} set; it fires on what comes from now on."
         ))
@@ -596,23 +608,20 @@ impl Tools {
     }
 
     #[tool(
-        description = "Add items to a list, making the list if it is new; a shared list is the household's, and the others hear of it."
+        description = "Add items to a list, making the list if it is new. Name people or assistants in `with` to share it with them: it becomes the household's and they hear what was added; no one else is told."
     )]
     fn list_add(
         &self,
-        Parameters(Items {
-            list,
-            items,
-            shared,
-        }): Parameters<Items>,
+        Parameters(Items { list, items, with }): Parameters<Items>,
     ) -> Result<String, String> {
+        let shared = !with.is_empty();
         if shared {
-            self.household()?;
+            self.household()?.check(&with)?;
         }
         let shelves = self.shelves();
-        let (items, shelf, fresh) = self.book()?.change(|db| {
+        let added: Vec<String> = items.clone();
+        let (items, shelf) = self.book()?.change(|db| {
             let found = find(db, &shelves, &list)?;
-            let fresh = found.is_none() && shared;
             let (shelf, mut l) = match found {
                 Some(found) => found,
                 None if shared => (Shelf::House, Vec::new()),
@@ -623,20 +632,30 @@ impl Tools {
                     l.push(i);
                 }
             }
+            // Shared with someone, a list of the person's own moves to
+            // the household's.
+            if shared && shelf == Shelf::Own {
+                book::set_list(db, Shelf::Own, &list, &[])?;
+                book::set_list(db, Shelf::House, &list, &l)?;
+                return Ok((l, Shelf::House));
+            }
             book::set_list(db, shelf, &list, &l)?;
-            Ok((l, shelf, fresh))
+            Ok((l, shelf))
         })?;
-        if fresh {
-            self.announce(&list, &format!("{list}: {}", items.join(", ")))?;
+        if shared {
+            self.announce(&with, &list, &added, &items)?;
         }
         Ok(card(&list, shelf, &items, &[]))
     }
 
     #[tool(
-        description = "Share one of your person's lists with the household; the others hear of it."
+        description = "Share one of your person's lists with those named (people or assistants): it becomes the household's and they hear of it; no one else is told."
     )]
-    fn share_list(&self, Parameters(Name { list }): Parameters<Name>) -> Result<String, String> {
-        self.household()?;
+    fn share_list(
+        &self,
+        Parameters(ShareList { list, with }): Parameters<ShareList>,
+    ) -> Result<String, String> {
+        self.household()?.check(&with)?;
         let out = self.book()?.change(|db| {
             if book::list(db, Shelf::House, &list)?.is_some() {
                 return Ok(Err(format!("The household already has a list {list}.")));
@@ -648,7 +667,7 @@ impl Tools {
             book::set_list(db, Shelf::Own, &list, &[])?;
             Ok(Ok(items))
         })??;
-        self.announce(&list, &format!("{list}: {}", out.join(", ")))?;
+        self.announce(&with, &list, &[], &out)?;
         Ok(card(&list, Shelf::House, &out, &[]))
     }
 
@@ -708,11 +727,14 @@ impl Tools {
     }
 
     #[tool(
-        description = "Pass a message to someone else in the household (or everyone), their assistant tells them; or leave a note for Bridge, the ship's engineer."
+        description = "Pass a message to one or more in the household, each by name: a person (their assistant tells them), an assistant, or Bridge, the ship's engineer. It goes only to those named."
     )]
     fn tell(&self, Parameters(Tell { to, text }): Parameters<Tell>) -> Result<String, String> {
         let house = self.house.as_ref().ok_or("There is no household here.")?;
-        let who = house.post(to.as_deref(), &format!("From {}: {text}", house.person()))?;
+        let who = house.post(
+            &to,
+            &format!("From {} (through {}): {text}", house.person(), house.name()),
+        )?;
         Ok(format!("Left for {}.", who.join(" and ")))
     }
 
@@ -1293,13 +1315,27 @@ impl Tools {
         v
     }
 
-    fn announce(&self, list: &str, out: &str) -> Result<(), String> {
-        let house = self.house.as_ref().ok_or("There is no household here.")?;
+    /// Tells those `with` names of a list shared with them: what was
+    /// added, and all it holds.
+    fn announce(
+        &self,
+        with: &[String],
+        list: &str,
+        added: &[String],
+        all: &[String],
+    ) -> Result<(), String> {
+        let house = self.household()?;
+        let added = if added.is_empty() {
+            String::new()
+        } else {
+            format!(" Added: {}.", added.join(", "))
+        };
         house.post(
-            None,
+            with,
             &format!(
-                "{} shared a list, {list}, with the household. {out}",
-                house.person()
+                "{} shared the list {list} with you.{added} It holds: {}.",
+                house.person(),
+                all.join(", ")
             ),
         )?;
         Ok(())

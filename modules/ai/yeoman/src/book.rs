@@ -28,7 +28,7 @@ create table if not exists reminders (
     text text not null,
     repeat text,
     ask integer not null default 0,
-    share integer not null default 0,
+    share_with text not null default '[]',
     answer text
 );
 ";
@@ -59,8 +59,8 @@ pub struct Reminder {
     /// A routine: at `at`, the yeoman carries out `text` as a request and sends
     /// its answer, instead of sending `text` itself.
     pub ask: bool,
-    /// A routine whose answer also goes to the rest of the household.
-    pub share: bool,
+    /// For a routine: who else its answer goes to, each by name.
+    pub share_with: Vec<String>,
     /// A routine's answer, kept until it is delivered.
     pub answer: Option<String>,
 }
@@ -95,6 +95,38 @@ impl Repeat {
     }
 }
 
+/// A book from before sharing named anyone kept `share`, a flag for "the
+/// rest of the household": its rows go to the others' doors by name, and
+/// the flag goes. Remove once every book has opened past it (after
+/// 2026-11-30).
+fn shared_by_name(db: &Connection, table: &str, others: &[String]) -> rusqlite::Result<()> {
+    let old: bool = db.query_row(
+        &format!("select count(*) from pragma_table_info('{table}') where name = 'share'"),
+        [],
+        |r| r.get(0),
+    )?;
+    if !old {
+        return Ok(());
+    }
+    let tx = db.unchecked_transaction()?;
+    let has: bool = tx.query_row(
+        &format!("select count(*) from pragma_table_info('{table}') where name = 'share_with'"),
+        [],
+        |r| r.get(0),
+    )?;
+    if !has {
+        tx.execute_batch(&format!(
+            "alter table {table} add column share_with text not null default '[]'"
+        ))?;
+    }
+    tx.execute(
+        &format!("update {table} set share_with = ?1 where share != 0"),
+        [serde_json::to_string(others).unwrap()],
+    )?;
+    tx.execute_batch(&format!("alter table {table} drop column share"))?;
+    tx.commit()
+}
+
 pub struct Book {
     db: Connection,
 }
@@ -120,6 +152,12 @@ impl Book {
             .map_err(|e| format!("book: {e}"))?;
         db.execute_batch(&(SCHEMA.replace("SCHEMA", "main") + REMINDERS + crate::watch::WATCHES))
             .map_err(|e| format!("book: {e}"))?;
+        let others = house::House::from_env()
+            .map(|h| h.others())
+            .unwrap_or_default();
+        for table in ["reminders", "watches"] {
+            shared_by_name(&db, table, &others).map_err(|e| format!("book: {e}"))?;
+        }
         if let Some(h) = house {
             let path = open_file(h)?;
             db.execute("attach ?1 as house", [path.to_string_lossy()])
@@ -160,12 +198,17 @@ fn row(r: &rusqlite::Row) -> rusqlite::Result<Reminder> {
         text: r.get(2)?,
         repeat: repeat.as_deref().and_then(Repeat::parse),
         ask: r.get(4)?,
-        share: r.get(5)?,
+        share_with: names(&r.get::<_, String>(5)?),
         answer: r.get(6)?,
     })
 }
 
-const COLUMNS: &str = "id, at, text, repeat, ask, share, answer";
+const COLUMNS: &str = "id, at, text, repeat, ask, share_with, answer";
+
+/// Names as a column keeps them, a JSON array.
+pub fn names(s: &str) -> Vec<String> {
+    serde_json::from_str(s).unwrap_or_default()
+}
 
 pub fn remind(
     db: &Connection,
@@ -173,16 +216,16 @@ pub fn remind(
     text: &str,
     repeat: Option<Repeat>,
     ask: bool,
-    share: bool,
+    share_with: &[String],
 ) -> rusqlite::Result<u64> {
     db.execute(
-        "insert into reminders (at, text, repeat, ask, share) values (?1, ?2, ?3, ?4, ?5)",
+        "insert into reminders (at, text, repeat, ask, share_with) values (?1, ?2, ?3, ?4, ?5)",
         params![
             at.format(AT).to_string(),
             text,
             repeat.map(Repeat::name),
             ask,
-            share
+            serde_json::to_string(share_with).unwrap()
         ],
     )?;
     Ok(db.last_insert_rowid() as u64)
@@ -302,20 +345,39 @@ mod tests {
     }
 
     #[test]
+    fn an_old_share_goes_to_the_others_by_name() {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "create table reminders (id integer primary key, at text not null,
+                text text not null, repeat text, ask integer not null default 0,
+                share integer not null default 0, answer text);
+             insert into reminders (at, text, share) values ('2026-10-23 08:00', 'a', 1);
+             insert into reminders (at, text, share) values ('2026-10-23 08:00', 'b', 0);",
+        )
+        .unwrap();
+        let others = ["Suki".to_string()];
+        shared_by_name(&db, "reminders", &others).unwrap();
+        shared_by_name(&db, "reminders", &others).unwrap();
+        let rows = reminders(&db).unwrap();
+        assert_eq!(rows[0].share_with, ["Suki"]);
+        assert!(rows[1].share_with.is_empty());
+    }
+
+    #[test]
     fn due_stays_until_done_then_one_offs_go_and_repeats_move() {
         let d = dir("due");
         let mut b = Book::open(&d, None).unwrap();
         b.change(|db| {
-            remind(db, t("2026-10-08 09:00"), "once", None, false, false)?;
+            remind(db, t("2026-10-08 09:00"), "once", None, false, &[])?;
             remind(
                 db,
                 t("2026-10-01 18:00"),
                 "weekly",
                 Some(Repeat::Weekly),
                 true,
-                false,
+                &[],
             )?;
-            remind(db, t("2026-10-09 09:00"), "later", None, false, false)
+            remind(db, t("2026-10-09 09:00"), "later", None, false, &[])
         })
         .unwrap();
         let now = t("2026-10-08 12:00");

@@ -198,8 +198,8 @@
         # after it was said, unless the page sets another window.
         amnesia = {
           person = "Dylan";
-          # Sokka is Dylan's door to the household.
-          household = false;
+          # Sokka is Dylan's door: a message to Dylan goes there.
+          door = false;
           web = true;
           forgetAfter = 60;
           models = [
@@ -211,8 +211,8 @@
         };
         azula = {
           person = "Dylan";
-          # Sokka is Dylan's door to the household.
-          household = false;
+          # Sokka is Dylan's door: a message to Dylan goes there.
+          door = false;
           users = singleton "@dylan:chat.su.is";
           localModel = "qwen3.8-27b-uncensored-q4-k-m";
           style = "You are Azula: sharp, imperious and unfiltered. Say what you think without hedging or moralizing.";

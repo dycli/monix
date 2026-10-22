@@ -121,8 +121,9 @@ Search the web for current or local facts and for anything you are \
 unsure of, and say where the answer came from. Appointments and plans go \
 on the calendar, nudges are reminders. Something {person} wants done at a \
 time rather than said (a weather check each morning) is a routine: a \
-reminder with ask, worded as {person}'s request; with share, its answer \
-also goes to the rest of the household. Something {person} wants to \
+reminder with ask, worded as {person}'s request; to share its answer, \
+name who with share_with. Messages, shared lists, routines and watches go \
+only to those named; there is no sending to everyone. Something {person} wants to \
 hear when it happens (mail from someone, a charge over an amount, an \
 event coming up) is a watch, not a routine that checks. When a routine \
 or watch you are running finds nothing {person} needs to hear, answer only {QUIET} and \
@@ -1048,8 +1049,8 @@ async fn remind<D: Door>(
         };
         for r in due {
             let (text, share) = match (&r.answer, r.ask) {
-                (Some(kept), _) => (kept.clone(), r.share),
-                (None, false) => (format!("Reminder: {}", r.text), false),
+                (Some(kept), _) => (kept.clone(), r.share_with.clone()),
+                (None, false) => (format!("Reminder: {}", r.text), Vec::new()),
                 (None, true) => {
                     let answered =
                         ask_alone(&door, &hippo, &model, &turn, From::Routine, r.text.clone())
@@ -1060,11 +1061,14 @@ async fn remind<D: Door>(
                             if let Err(e) = on_book(&state, |db| book::keep_answer(db, &r, &text)) {
                                 eprintln!("yeoman: routine {}: {e}", r.id);
                             }
-                            (text, r.share)
+                            (text, r.share_with.clone())
                         }
                         Err(e) => {
                             eprintln!("yeoman: routine {}: {e}", r.id);
-                            (format!("(The routine \"{}\" failed: {e})", r.text), false)
+                            (
+                                format!("(The routine \"{}\" failed: {e})", r.text),
+                                Vec::new(),
+                            )
                         }
                     }
                 }
@@ -1074,13 +1078,13 @@ async fn remind<D: Door>(
                     eprintln!("yeoman: reminder {}: {e}", r.id);
                     continue;
                 }
-                if let (true, Some(h)) = (share, &house) {
+                if let (false, Some(h)) = (share.is_empty(), &house) {
                     let note = format!(
                         "From {}'s shared routine \"{}\": {text}",
                         h.person(),
                         r.text
                     );
-                    if let Err(e) = h.post(None, &note) {
+                    if let Err(e) = h.post(&share, &note) {
                         eprintln!("yeoman: routine {}: {e}", r.id);
                     }
                 }
@@ -1156,10 +1160,13 @@ async fn watches<D: Door>(
         let said = format!("{}\n<items>\n{}\n</items>", w.text, quoted.join("\n"));
         let answered = ask_alone(door, hippo, model, turn, From::Watch, said).await;
         let (text, share) = match answered {
-            Ok(text) => (text, w.share),
+            Ok(text) => (text, w.share_with.clone()),
             Err(e) => {
                 eprintln!("yeoman: watch {}: {e}", w.id);
-                (format!("(The watch \"{}\" failed: {e})", w.text), false)
+                (
+                    format!("(The watch \"{}\" failed: {e})", w.text),
+                    Vec::new(),
+                )
             }
         };
         if text != QUIET {
@@ -1168,9 +1175,9 @@ async fn watches<D: Door>(
             if let Err(e) = door.say(&text).await {
                 eprintln!("yeoman: watch {}: {e}", w.id);
             }
-            if let (true, Some(h)) = (share, house) {
+            if let (false, Some(h)) = (share.is_empty(), house) {
                 let note = format!("From {}'s shared watch \"{}\": {text}", h.person(), w.text);
-                if let Err(e) = h.post(None, &note) {
+                if let Err(e) = h.post(&share, &note) {
                     eprintln!("yeoman: watch {}: {e}", w.id);
                 }
             }

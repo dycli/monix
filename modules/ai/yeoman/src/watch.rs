@@ -22,7 +22,7 @@ create table if not exists watches (
     tests text not null,
     text text not null,
     before integer not null default 0,
-    share integer not null default 0,
+    share_with text not null default '[]',
     primed integer not null default 0
 );
 create table if not exists watch_seen (
@@ -116,7 +116,8 @@ pub struct Watch {
     pub text: String,
     /// Minutes ahead of an item's time it fires: for calendar events.
     pub before: i64,
-    pub share: bool,
+    /// Who else its answer goes to, each by name.
+    pub share_with: Vec<String>,
     /// Whether the items there were when it was set are already counted.
     primed: bool,
 }
@@ -140,8 +141,8 @@ impl Watch {
             out.push_str(&format!(", {} min ahead", self.before));
         }
         out.push_str(&format!(": {}", self.text));
-        if self.share {
-            out.push_str(" (shared)");
+        if !self.share_with.is_empty() {
+            out.push_str(&format!(" (shared with {})", self.share_with.join(", ")));
         }
         out
     }
@@ -162,50 +163,53 @@ pub fn watch(
     tests: &[Test],
     text: &str,
     before: i64,
-    share: bool,
+    share_with: &[String],
 ) -> rusqlite::Result<u64> {
     db.execute(
-        "insert into watches (source, tests, text, before, share) values (?1, ?2, ?3, ?4, ?5)",
+        "insert into watches (source, tests, text, before, share_with) values (?1, ?2, ?3, ?4, ?5)",
         params![
             source.name(),
             serde_json::to_string(tests).unwrap(),
             text,
             before.max(0),
-            share
+            serde_json::to_string(share_with).unwrap()
         ],
     )?;
     Ok(db.last_insert_rowid() as u64)
 }
 
 pub fn watches(db: &Connection) -> rusqlite::Result<Vec<Watch>> {
-    db.prepare("select id, source, tests, text, before, share, primed from watches order by id")?
-        .query_map([], |r| {
-            let source: String = r.get(1)?;
-            let tests: String = r.get(2)?;
-            Ok((
-                source,
-                tests,
-                r.get(0)?,
-                r.get(3)?,
-                r.get(4)?,
-                r.get(5)?,
-                r.get(6)?,
-            ))
-        })?
-        .map(|row| {
-            let (source, tests, id, text, before, share, primed) = row?;
-            Ok(Source::parse(&source).map(|source| Watch {
-                id,
-                source,
-                tests: serde_json::from_str(&tests).unwrap_or_default(),
-                text,
-                before,
-                share,
-                primed,
-            }))
-        })
-        .filter_map(Result::transpose)
-        .collect()
+    db.prepare(
+        "select id, source, tests, text, before, share_with, primed from watches order by id",
+    )?
+    .query_map([], |r| {
+        let source: String = r.get(1)?;
+        let tests: String = r.get(2)?;
+        Ok((
+            source,
+            tests,
+            r.get(0)?,
+            r.get(3)?,
+            r.get(4)?,
+            r.get(5)?,
+            r.get(6)?,
+        ))
+    })?
+    .map(|row| {
+        let (source, tests, id, text, before, share, primed): (String, String, _, _, _, String, _) =
+            row?;
+        Ok(Source::parse(&source).map(|source| Watch {
+            id,
+            source,
+            tests: serde_json::from_str(&tests).unwrap_or_default(),
+            text,
+            before,
+            share_with: crate::book::names(&share),
+            primed,
+        }))
+    })
+    .filter_map(Result::transpose)
+    .collect()
 }
 
 pub fn unwatch(db: &Connection, id: u64) -> rusqlite::Result<bool> {
@@ -425,7 +429,7 @@ mod tests {
             op: Op::Over,
             value: "200".into(),
         }];
-        let id = watch(&db, Source::Money, &big, "tell me", 0, false).unwrap();
+        let id = watch(&db, Source::Money, &big, "tell me", 0, &[]).unwrap();
         let w = || {
             watches(&db)
                 .unwrap()
@@ -460,7 +464,7 @@ mod tests {
     #[test]
     fn an_event_fires_its_minutes_ahead_even_if_it_was_listed_when_set() {
         let db = db();
-        let id = watch(&db, Source::Calendar, &[], "remind me", 15, false).unwrap();
+        let id = watch(&db, Source::Calendar, &[], "remind me", 15, &[]).unwrap();
         let w = || {
             watches(&db)
                 .unwrap()
