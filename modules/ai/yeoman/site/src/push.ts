@@ -17,7 +17,7 @@ function b64url(buf: ArrayBuffer | null): string {
 }
 
 async function key(): Promise<string | null> {
-  const r = await fetch("/api/push");
+  const r = await fetch("api/push");
   return r.ok ? r.text() : null;
 }
 
@@ -32,7 +32,7 @@ async function subscribe(reg: ServiceWorkerRegistration): Promise<boolean> {
     sub = null;
   }
   sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: k });
-  const r = await fetch("/api/push", {
+  const r = await fetch("api/push", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(sub.toJSON()),
@@ -46,6 +46,8 @@ export function usePush(): [Bell, () => void] {
 
   useEffect(() => {
     if (!supported) return;
+    // From the root even in a pane of the split, so one worker, and one
+    // subscription, serves every assistant on the host.
     navigator.serviceWorker
       .register("/sw.js")
       .then(async (r) => {
@@ -64,7 +66,7 @@ export function usePush(): [Bell, () => void] {
       if (bell === "on") {
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
-          await fetch("/api/push/drop", {
+          await fetch("api/push/drop", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ endpoint: sub.endpoint }),

@@ -99,7 +99,7 @@ const DRAFT = /^Draft to [^\n]+\nSubject: [\s\S]*\n\n👍 sends it, 👎 drops i
 const SENT = /^\(sent a (picture|file): (.+)\)$/;
 // Whole, since assistant-ui shows a picture only from an https: (or data:
 // or blob:) URL.
-const fileUrl = (name: string) => new URL(`/api/file/${encodeURIComponent(name)}`, location.href).href;
+const fileUrl = (name: string) => new URL(`api/file/${encodeURIComponent(name)}`, location.href).href;
 
 export type Chat =
   | { state: "loading" }
@@ -156,7 +156,7 @@ export function useChat(): Chat {
     // History from hippo, again on every reconnect and return to the page:
     // what the stream carried while nothing listened is in hippo by then.
     const sync = async (): Promise<boolean> => {
-      const [r, w, t, a] = await Promise.all([fetch("/api/history"), fetch("/api/pending"), fetch("/api/task"), fetch("/api/asks")]);
+      const [r, w, t, a] = await Promise.all([fetch("api/history"), fetch("api/pending"), fetch("api/task"), fetch("api/asks")]);
       if (r.status === 401) {
         setStatus("signed-out");
         return false;
@@ -169,7 +169,7 @@ export function useChat(): Chat {
         before = start;
         if (start === 0) setPast([]);
         else
-          fetch(`/api/past?before=${start}`)
+          fetch(`api/past?before=${start}`)
             .then((r) => (r.ok ? r.json() : Promise.reject()))
             .then((p: Part[]) => !gone && start === before && setPast(p))
             // Asked again on the next sync.
@@ -274,7 +274,7 @@ export function useChat(): Chat {
       }, 3000);
     };
     const listen = () => {
-      events = new EventSource("/api/events");
+      events = new EventSource("api/events");
       let opened = false;
       events.onopen = () => {
         if (opened) sync().catch(() => {});
@@ -365,19 +365,19 @@ export function useChat(): Chat {
     if (!c) return false;
     const note = (said: string) => setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "system", text: said, date: new Date() }]);
     if (c.name === "stop") {
-      const r = await fetch("/api/stop", { method: "POST" }).catch(() => undefined);
+      const r = await fetch("api/stop", { method: "POST" }).catch(() => undefined);
       if (r?.status === 401) setStatus("signed-out");
     } else if (c.name === "model") {
       const [now, me] = await Promise.all([
-        fetch("/api/model").then((r) => r.json() as Promise<{ model: string }>).catch(() => undefined),
-        fetch("/api/me").then((r) => r.json() as Promise<{ models: string[] }>).catch(() => undefined),
+        fetch("api/model").then((r) => r.json() as Promise<{ model: string }>).catch(() => undefined),
+        fetch("api/me").then((r) => r.json() as Promise<{ models: string[] }>).catch(() => undefined),
       ]);
       const choices = me?.models ?? [];
       const want = arg.trim().toLowerCase();
       if (!want) note(`Running on ${now?.model || "the default model"}.${choices.length ? ` /model ${choices.join(", /model ")} switches.` : ""}`);
       else if (want === now?.model) note(`Already on ${want}.`);
       else {
-        const r = await fetch("/api/model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: want }) }).catch(() => undefined);
+        const r = await fetch("api/model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: want }) }).catch(() => undefined);
         if (r?.status === 401) return setStatus("signed-out"), true;
         note(r?.ok ? `Switched to ${want}, from the next turn on.` : `No model ${want}.${choices.length ? ` The choices are ${choices.join(", ")}.` : ""}`);
       }
@@ -414,7 +414,7 @@ export function useChat(): Chat {
       const view = views.get(f);
       if (view) body.append("view", view);
     }
-    const r = await fetch("/api/send", { method: "POST", body }).catch(() => undefined);
+    const r = await fetch("api/send", { method: "POST", body }).catch(() => undefined);
     if (r?.status === 401) return setStatus("signed-out");
     if (!r?.ok) {
       setMessages((ms) => ms.map((m) => (m.id === local ? { ...m, reaction: "⚠️" } : m)));
@@ -429,7 +429,7 @@ export function useChat(): Chat {
 
   // The turn answers "(Stopped.)" over the stream.
   const stop = useCallback(async () => {
-    const r = await fetch("/api/stop", { method: "POST" }).catch(() => undefined);
+    const r = await fetch("api/stop", { method: "POST" }).catch(() => undefined);
     if (r?.status === 401) setStatus("signed-out");
   }, []);
 
@@ -437,7 +437,7 @@ export function useChat(): Chat {
   const stopTask = useCallback(async (name: string) => {
     const stopping = (on: boolean) => setTasks((ks) => ks.map((k) => (k.name === name ? { ...k, stopping: on } : k)));
     stopping(true);
-    const r = await fetch(`/api/agent/${encodeURIComponent(name)}/stop`, { method: "POST" }).catch(() => undefined);
+    const r = await fetch(`api/agent/${encodeURIComponent(name)}/stop`, { method: "POST" }).catch(() => undefined);
     if (r?.status === 401) setStatus("signed-out");
     // Not asked after all: the button comes back to try again.
     else if (!r?.ok) stopping(false);
@@ -445,19 +445,19 @@ export function useChat(): Chat {
 
   // The keeper lets the browser go; the screen leaves with the news of it.
   const openBrowser = useCallback(async () => {
-    const r = await fetch("/api/browser/open", { method: "POST" }).catch(() => undefined);
+    const r = await fetch("api/browser/open", { method: "POST" }).catch(() => undefined);
     if (r?.status === 401) setStatus("signed-out");
     else if (r?.ok) setBrowser(true);
   }, []);
   const closeBrowser = useCallback(async () => {
-    const r = await fetch("/api/browser/close", { method: "POST" }).catch(() => undefined);
+    const r = await fetch("api/browser/close", { method: "POST" }).catch(() => undefined);
     if (r?.status === 401) setStatus("signed-out");
     else if (r?.ok) setBrowser(false);
   }, []);
 
   const decide = useCallback(async (id: number, yes: boolean) => {
     setCards((cs) => cs.map((c) => (c.id === id ? { ...c, busy: true, error: undefined } : c)));
-    const r = await fetch("/api/decide", {
+    const r = await fetch("api/decide", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id, yes }),
@@ -471,7 +471,7 @@ export function useChat(): Chat {
 
   const reply = useCallback(async (id: string, yes: boolean, answers?: Answers) => {
     setAsks((as) => as.map((a) => (a.id === id ? { ...a, busy: true } : a)));
-    const r = await fetch("/api/answer", {
+    const r = await fetch("api/answer", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id, yes, answers }),
@@ -803,26 +803,26 @@ export async function search(words: string): Promise<{ hits: Hit[]; more: boolea
       .split(/\s+/)
       .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
       .join(".*");
-  const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+  const r = await fetch(`api/search?q=${encodeURIComponent(q)}`);
   if (r.ok) return r.json();
   return { error: `Search failed (${r.status}).` };
 }
 
 /** One message whole. */
 export async function said(i: number): Promise<string | undefined> {
-  const r = await fetch(`/api/said/${i}`);
+  const r = await fetch(`api/said/${i}`);
   return r.ok ? r.text() : undefined;
 }
 
 /** A line of the past opened: its two halves, or for one message the message whole and who said it. */
 export async function zoom(id: number, n: number): Promise<{ parts: Part[] } | { kind: string; text: string } | undefined> {
-  const r = await fetch(`/api/zoom/${id}/${n}`);
+  const r = await fetch(`api/zoom/${id}/${n}`);
   return r.ok ? r.json() : undefined;
 }
 
 /** Asks to be let in; the yeoman posts the code to Matrix for a 👍. */
 export async function askToSignIn(): Promise<{ code: string; secret: string } | { error: string }> {
-  const r = await fetch("/api/ask", { method: "POST" });
+  const r = await fetch("api/ask", { method: "POST" });
   if (r.ok) return r.json();
   if (r.status === 429) return { error: "A request went out less than a minute ago. Check Matrix, or try again shortly." };
   return { error: `That failed (${r.status}).` };
@@ -831,7 +831,7 @@ export async function askToSignIn(): Promise<{ code: string; secret: string } | 
 /** Waits for the answer: true once signed in, false when refused or too old. */
 export async function waitToSignIn(secret: string): Promise<boolean> {
   for (;;) {
-    const r = await fetch("/api/wait", {
+    const r = await fetch("api/wait", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ secret }),

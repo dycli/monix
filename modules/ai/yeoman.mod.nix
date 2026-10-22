@@ -1214,11 +1214,25 @@
                   )
                   |> lib.attrsets.listToAttrs
                 )
+                # Each at /@<unit>/ besides, the prefix stripped, so the
+                # split view can show two at once: the cookie picks only one.
+                // (
+                  site.members
+                  |> map (
+                    m:
+                    nameValuePair "/@${m}/" {
+                      proxyPass = "http://127.0.0.1:${toString (chatPort m)}/";
+                      extraConfig = "proxy_buffering off; client_max_body_size 100m;";
+                    }
+                  )
+                  |> lib.attrsets.listToAttrs
+                )
                 # Sign-in asks in the first one's Matrix room, whichever
                 # assistant the page shows; the session it grants is shared.
                 // {
                   "= /api/ask".proxyPass = first;
                   "= /api/wait".proxyPass = first;
+                  "~ ^/@[^/]+/api/(ask|wait)$".proxyPass = "${first}/api/$1";
                 };
             }
           );

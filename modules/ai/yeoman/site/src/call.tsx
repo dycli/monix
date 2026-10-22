@@ -144,7 +144,7 @@ export function Call({ name, ended }: { name: string; ended: () => void }) {
       setState(why ? { error: why } : "ended");
       const done = () => (why || quiet ? undefined : ended());
       if (!said.length) return done();
-      fetch("/api/call/end", {
+      fetch("api/call/end", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ lines: said, minutes: Math.max(1, Math.round((Date.now() - began) / 60000)) }),
@@ -166,7 +166,7 @@ export function Call({ name, ended }: { name: string; ended: () => void }) {
       speaker.play().catch((e) => console.warn("call speaker:", e));
       const [stream, pass] = await Promise.all([
         navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }),
-        fetch("/api/call", { method: "POST" }).then(async (r) => {
+        fetch("api/call", { method: "POST" }).then(async (r) => {
           if (!r.ok) throw new Error(r.status === 404 ? `${name} has no voice.` : `The call failed to start (${r.status}).`);
           return r.json() as Promise<{ secret: string; voice: string; instructions: string }>;
         }),

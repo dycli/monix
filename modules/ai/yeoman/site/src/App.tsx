@@ -21,6 +21,7 @@ import { usePinchText } from "./pinch";
 import { askToSignIn, attachments, COMMANDS, SEND_MAX, drives, fromAgentChat, POINTER, quiet, said, search, useChat, waitToSignIn, zoom, type Answers, type Ask, type Card, type Chat, type Hit, type Msg, type Part, type Question, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
+import { BESIDE, openSplit, PANE, Panes, tell } from "./split";
 import { Bars, Call, SPEED, useVoiceChoice, useVoiceSpeed, voiceChoice, voiceSpeed } from "./call";
 
 type Args = ToolCallMessagePartProps["args"];
@@ -86,7 +87,7 @@ const convert = (m: Msg): ThreadMessageLike => ({
     ]),
     ...(m.text && !quiet(m.text, m.live) ? [{ type: "text" as const, text: m.text }] : []),
     ...(m.picture ? [{ type: "image" as const, image: m.picture }] : []),
-    ...(m.file ? [{ type: "file" as const, data: `/api/file/${encodeURIComponent(m.file)}`, mimeType: "", filename: m.file }] : []),
+    ...(m.file ? [{ type: "file" as const, data: `api/file/${encodeURIComponent(m.file)}`, mimeType: "", filename: m.file }] : []),
   ],
   attachments: m.files?.map((f, n) => ({
     id: `${m.id}-file-${n}`,
@@ -151,7 +152,7 @@ type Persona = { unit: string; name: string };
 type Me = { name: string; personas: Persona[]; voice: string | null; models: string[]; forgets: number[] };
 
 // Who answers here, asked once for the switcher and the speak buttons.
-const ME: Promise<Me> = fetch("/api/me")
+const ME: Promise<Me> = fetch("api/me")
   .then((r) => (r.ok ? r.json() : Promise.reject()))
   .catch(() => ({ name: "", personas: [], voice: null, models: [], forgets: [] }));
 
@@ -188,13 +189,17 @@ function useMenu() {
 }
 
 /** The assistant's name; where others share the host, a press lists them
- * and picking one sets the cookie the proxy routes by and reloads. */
+ * and picking one sets the cookie the proxy routes by and reloads. In a pane
+ * of the split the window around it swaps the pane; at /@<unit>/ it goes to
+ * the other's address. */
 function Switcher() {
   const personas = useMe()?.personas ?? [];
   const [open, setOpen, ref] = useMenu();
   const name = <span className="font-serif text-[22px] tracking-[-0.01em]">{NAME}</span>;
   if (personas.length < 2) return name;
   const pick = (p: Persona) => {
+    if (PANE) return tell({ split: "pick", unit: p.unit });
+    if (location.pathname.startsWith("/@")) return location.assign(`/@${p.unit}/`);
     document.cookie = `persona=${p.unit}; Path=/; Max-Age=31536000; Secure; SameSite=Lax`;
     location.reload();
   };
@@ -224,6 +229,28 @@ function Switcher() {
         </>
       )}
     </div>
+  );
+}
+
+/** Splits the window between this assistant and another, on a wide screen
+ * where others share the host; in a pane, closes it, leaving the other. */
+function SplitButton() {
+  const personas = useMe()?.personas ?? [];
+  const wide = useWide();
+  if (PANE)
+    return (
+      <HeaderButton label="Close this pane" onClick={() => tell({ split: "close" })}>
+        <path d="M18 6 6 18M6 6l12 12" />
+      </HeaderButton>
+    );
+  if (!wide || personas.length < 2) return null;
+  const here = personas.find((p) => p.name === NAME) ?? personas[0];
+  const other = personas.find((p) => p !== here)!;
+  return (
+    <HeaderButton label="Split the window" onClick={() => openSplit([here.unit, other.unit])}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M12 4v16" />
+    </HeaderButton>
   );
 }
 
@@ -386,7 +413,7 @@ function useUpdate() {
       if (document.visibilityState !== "visible" || Date.now() - last < 60_000) return;
       last = Date.now();
       try {
-        const html = await (await fetch("/", { cache: "no-store" })).text();
+        const html = await (await fetch("./", { cache: "no-store" })).text();
         const now = /<script type="module"[^>]*src="([^"]+)"/.exec(html)?.[1];
         if (BUILD && now && now !== BUILD) setReady(true);
       } catch {
@@ -597,7 +624,8 @@ function SignIn() {
       return setBusy(false);
     }
     setCode(asked.code);
-    if (await waitToSignIn(asked.secret)) return location.reload();
+    // The whole window: the other pane of a split shares the session.
+    if (await waitToSignIn(asked.secret)) return window.top!.location.reload();
     setCode(undefined);
     setSaid("Not let in. Ask again if that was a mistake.");
     setBusy(false);
@@ -910,6 +938,9 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
     <AssistantRuntimeProvider runtime={runtime}>
      <CardCtx.Provider value={api}>
      <AgentCtx.Provider value={agents}>
+      {/* On a wide screen a subagent's work opens beside the talk, as the
+          split view's second pane; on a phone, over it. */}
+      <Panes start={BESIDE.start()} keep={BESIDE.keep}>
       <ThreadPrimitive.Root className="flex h-full flex-col">
         <header className="relative z-20 flex h-[57px] shrink-0 items-center justify-between border-b border-hair bg-paper px-[max(20px,env(safe-area-inset-left))] max-sm:h-[51px] max-sm:px-3.5">
           <Switcher />
@@ -924,7 +955,9 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
                 <path d="M8 20h8M12 16v4" />
               </HeaderButton>
             )}
+            {!PANE && <SplitButton />}
             <Settings />
+            {PANE && <SplitButton />}
           </div>
         </header>
         {finding && <Search close={() => setFinding(false)} />}
@@ -979,9 +1012,11 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
             }}
           />
         )}
-        {agent && <AgentPage {...agent} tasks={tasks} stop={stopTask} close={() => setAgent(undefined)} />}
+        {agent && !wide && <AgentPage {...agent} tasks={tasks} stop={stopTask} close={() => setAgent(undefined)} />}
         {deck.length > 0 && <Deck key={deck[0].key} faces={deck} start={open!} leaving={leaving} edge={edge} close={close} />}
       </ThreadPrimitive.Root>
+      {agent && wide && <AgentPage key={agent.call} {...agent} side tasks={tasks} stop={stopTask} close={() => setAgent(undefined)} />}
+      </Panes>
      </AgentCtx.Provider>
      </CardCtx.Provider>
     </AssistantRuntimeProvider>
@@ -1300,13 +1335,13 @@ function speech(text: string, voice: string | null) {
   const id = speechId(text, voice);
   let url = spoken.get(id);
   if (!url) {
-    url = fetch("/api/speak", {
+    url = fetch("api/speak", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(voice ? { text, voice } : { text }),
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then(({ key }: { key: string }) => `/api/speak/${key}`);
+      .then(({ key }: { key: string }) => `api/speak/${key}`);
     spoken.set(id, url);
     url.catch(() => spoken.delete(id));
   }
@@ -1344,14 +1379,14 @@ function useModel(want: boolean): [string | null, (m: string) => void] {
   const [model, setModel] = useState<string | null>(null);
   useEffect(() => {
     if (!want) return;
-    fetch("/api/model")
+    fetch("api/model")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((v: { model: string }) => setModel(v.model), () => {});
   }, [want]);
   const pick = (m: string) => {
     const was = model;
     setModel(m);
-    fetch("/api/model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: m }) })
+    fetch("api/model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: m }) })
       .then((r) => r.ok || Promise.reject(r.status))
       .catch(() => setModel(was));
   };
@@ -1364,14 +1399,14 @@ function useForget(want: boolean): [number | null, (m: number) => void] {
   const [minutes, setMinutes] = useState<number | null>(null);
   useEffect(() => {
     if (!want) return;
-    fetch("/api/forget")
+    fetch("api/forget")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((v: { minutes: number }) => setMinutes(v.minutes), () => {});
   }, [want]);
   const pick = (m: number) => {
     const was = minutes;
     setMinutes(m);
-    fetch("/api/forget", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ minutes: m }) })
+    fetch("api/forget", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ minutes: m }) })
       .then((r) => r.ok || Promise.reject(r.status))
       .catch(() => setMinutes(was));
   };
@@ -1392,7 +1427,7 @@ function useVoices(want: boolean) {
   const [voices, setVoices] = useState<Voice[]>([]);
   useEffect(() => {
     if (!want) return;
-    voiceList ??= fetch("/api/voices").then((r) => (r.ok ? r.json() : Promise.reject(r.status)));
+    voiceList ??= fetch("api/voices").then((r) => (r.ok ? r.json() : Promise.reject(r.status)));
     voiceList.then(setVoices, () => {
       voiceList = null;
     });
@@ -2448,7 +2483,7 @@ function Note() {
 }
 
 // Whether the window is wide enough for the screen to sit beside the talk.
-function useWide() {
+export function useWide() {
   const query = "(min-width: 1024px)";
   const [wide, setWide] = useState(() => matchMedia(query).matches);
   useEffect(() => {
@@ -2616,14 +2651,14 @@ function AgentFrame({ toolCallId, args, result, isError, artifact }: ToolCallMes
 // in order, live while it works. One the page no longer holds, after a
 // reload, comes from hippo, which keeps every subagent's chat. Only the
 // yeoman's own agents can be stopped.
-function AgentPage({ call, agent, title, tasks, stop, close }: { call: string; agent?: string; title?: string; tasks: Task[]; stop: (name: string) => Promise<void>; close: () => void }) {
+function AgentPage({ call, agent, title, side, tasks, stop, close }: { call: string; agent?: string; title?: string; side?: boolean; tasks: Task[]; stop: (name: string) => Promise<void>; close: () => void }) {
   const task = tasks.find((t) => t.name === call);
   const [kept, setKept] = useState<Pick<Task, "text" | "tools" | "words"> | null>();
   const fetching = !!agent && !task?.tools.length;
   useEffect(() => {
     if (!fetching) return;
     let on = true;
-    fetch(`/api/agent/${encodeURIComponent(agent!)}/chat`)
+    fetch(`api/agent/${encodeURIComponent(agent!)}/chat`)
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { text: string } | null) => on && setKept(j ? fromAgentChat(j.text) : null))
       .catch(() => on && setKept(null));
@@ -2631,11 +2666,13 @@ function AgentPage({ call, agent, title, tasks, stop, close }: { call: string; a
       on = false;
     };
   }, [fetching, agent]);
+  // Escape leaves the page over the talk; beside it, the talk may want the key.
   useEffect(() => {
+    if (side) return;
     const key = (e: KeyboardEvent) => e.key === "Escape" && close();
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
-  }, [close]);
+  }, [close, side]);
   const work = task?.tools.length || !kept ? task : { ...task, ...kept };
   const live = !!task && !task.done;
   const md = (text: string) => (
@@ -2644,14 +2681,14 @@ function AgentPage({ call, agent, title, tasks, stop, close }: { call: string; a
     </Streamdown>
   );
   return (
-    <div className="rise fixed inset-0 z-30 flex flex-col bg-paper" role="dialog" aria-label={title ?? (task ? nameOf(task) : "Agent")}>
+    <div className={`flex flex-col bg-paper ${side ? "h-full" : "rise fixed inset-0 z-30"}`} role={side ? "complementary" : "dialog"} aria-label={title ?? (task ? nameOf(task) : "Agent")}>
       <header className="flex h-[57px] shrink-0 items-center gap-1.5 border-b border-hair px-[max(12px,env(safe-area-inset-left))] max-sm:h-[51px]">
-        <button type="button" onClick={close} aria-label="Back to the talk" title="Back" className="grid size-9 shrink-0 place-items-center rounded-full text-mid hover:bg-hover hover:text-ink">
+        {!side && <button type="button" onClick={close} aria-label="Back to the talk" title="Back" className="grid size-9 shrink-0 place-items-center rounded-full text-mid hover:bg-hover hover:text-ink">
           <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <path d="m15 18-6-6 6-6" />
           </svg>
-        </button>
-        <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold">
+        </button>}
+        <h2 className={`min-w-0 flex-1 truncate text-[15px] font-semibold ${side ? "pl-2" : ""}`}>
           {title ?? (task ? nameOf(task) : "Agent")}
           <span className="font-normal text-mid"> · {live ? "working" : "done"}</span>
         </h2>
@@ -2659,6 +2696,11 @@ function AgentPage({ call, agent, title, tasks, stop, close }: { call: string; a
           <button type="button" onClick={() => void stop(task.name)} disabled={task.stopping} className="h-9 shrink-0 rounded-full px-4 text-[14px] text-mid hover:bg-hover hover:text-ink disabled:opacity-50">
             {task.stopping ? "Stopping" : "Stop"}
           </button>
+        )}
+        {side && (
+          <HeaderButton label="Close its work" onClick={close}>
+            <path d="M18 6 6 18M6 6l12 12" />
+          </HeaderButton>
         )}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
