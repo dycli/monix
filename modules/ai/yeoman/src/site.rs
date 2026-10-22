@@ -1276,22 +1276,15 @@ async fn past(
     }
 }
 
-/// The view's lines that end by `before`; one that runs past it is opened
-/// until its halves don't, so nothing shows twice.
+/// The view's lines that start before `before`, as the yeoman sees them.
+/// One that runs past it stays whole, as UniiChat draws its view: opening
+/// it to fit would stack one line of each size above the talk, which is
+/// nothing the yeoman reads, though its tail repeats the history's start.
 fn past_parts(h: &crate::hippo::Hippo, before: u64) -> Result<Vec<Part>, String> {
-    let mut out = Vec::new();
-    let mut todo: Vec<Part> = parts(&h.view()?);
-    todo.reverse();
-    while let Some(p) = todo.pop() {
-        if p.id + p.n <= before {
-            out.push(p);
-        } else if p.id < before {
-            let mut halves = parts(&h.zoom(p.id, p.n)?);
-            halves.reverse();
-            todo.extend(halves);
-        }
-    }
-    Ok(out)
+    Ok(parts(&h.view()?)
+        .into_iter()
+        .filter(|p| p.id < before)
+        .collect())
 }
 
 /// hippo's `id+n|text` lines. A run of messages not yet summarized comes
@@ -2530,7 +2523,7 @@ mod tests {
     }
 
     #[test]
-    fn the_past_stops_where_the_history_starts() {
+    fn the_past_is_the_view_up_to_the_history_whole_lines() {
         use std::io::{BufRead, BufReader, Write};
         use std::os::unix::net::UnixListener;
         let sock = std::env::temp_dir().join(format!("yeoman-past-{}.sock", std::process::id()));
@@ -2538,11 +2531,7 @@ mod tests {
         let listener = UnixListener::bind(&sock).unwrap();
         let server = std::thread::spawn(move || {
             let mut asked = Vec::new();
-            for out in [
-                "<chat>\n0+8|a\n8+8|b\n16+1|c\n</chat>",
-                "8+4|b1\n12+4|b2",
-                "12+2|b21\n14+2|b22",
-            ] {
+            for out in ["<chat>\n0+8|a\n8+8|b\n16+1|c\n</chat>"] {
                 let (mut c, _) = listener.accept().unwrap();
                 let mut line = String::new();
                 BufReader::new(c.try_clone().unwrap())
@@ -2563,21 +2552,10 @@ mod tests {
             .into_iter()
             .map(|p| (p.id, p.n, p.text))
             .collect();
-        assert_eq!(
-            got,
-            [
-                (0, 8, "a".into()),
-                (8, 4, "b1".into()),
-                (12, 2, "b21".into())
-            ]
-        );
+        assert_eq!(got, [(0, 8, "a".into()), (8, 8, "b".into())]);
         assert_eq!(
             server.join().unwrap(),
-            [
-                r#"{"args":["whole"],"cmd":"view"}"#,
-                r#"{"args":["8","8"],"cmd":"zoom"}"#,
-                r#"{"args":["12","4"],"cmd":"zoom"}"#
-            ]
+            [r#"{"args":["whole"],"cmd":"view"}"#]
         );
         std::fs::remove_file(sock).unwrap();
     }
