@@ -65,6 +65,21 @@
           MemoryHigh = "14G";
           MemoryMax = "18G";
         };
+        # Builds and the agents that start them share one budget, so
+        # together they can't take the memory the desktop and services
+        # need: on 2026-10-22 two flake checks, six rustc and the chats
+        # filled RAM and zram and froze the host. Past MemoryHigh the slice
+        # slows; past MemoryMax the kernel kills its largest process (a
+        # rustc or an evaluator), not the host. Swap is capped because zram
+        # spends RAM too.
+        systemd.slices.work.sliceConfig = {
+          MemoryHigh = "17G";
+          MemoryMax = "20G";
+          MemorySwapMax = "4G";
+        };
+        systemd.services.nix-daemon.serviceConfig.Slice = "work.slice";
+        systemd.services.raava.serviceConfig.Slice = "work.slice";
+
         # The chats' own cargo and evaluators run in paseo, outside the
         # daemon's fence; on 2026-10-17 paseo peaked at 16G with 11G in zram.
         # MemoryHigh only slows it past 12G; no MemoryMax, so a chat is
@@ -73,6 +88,7 @@
         # runs. A new paseo takes over at the next manual restart or boot.
         systemd.services.paseo = {
           serviceConfig.MemoryHigh = "12G";
+          serviceConfig.Slice = "work.slice";
           restartIfChanged = false;
         };
 
