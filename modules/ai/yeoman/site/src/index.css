@@ -151,7 +151,9 @@ html {
     overflow-wrap: anywhere;
     text-wrap: pretty;
   }
-  .md :where(p, ul, ol, pre, blockquote, table):not(.not-prose *) {
+  /* Tables sit in streamdown's own spaced wrapper; a margin of theirs
+     shows as a blank band inside its border. */
+  .md :where(p, ul, ol, pre, blockquote):not(.not-prose *) {
     margin: 0 0 0.85em;
   }
   .md > :last-child,
@@ -179,6 +181,9 @@ html {
     border: 0;
     border-bottom: 1px solid var(--hair);
     background: none;
+  }
+  .md :where(tbody tr:last-child > td) {
+    border-bottom: 0;
   }
 }
 .md [data-streamdown="blockquote"],

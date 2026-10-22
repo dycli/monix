@@ -309,6 +309,22 @@ impl Web {
                 ..Turn::default()
             };
         }
+        // The words stream in a few letters at a time: they join the
+        // words before them, so a long answer doesn't use up the record.
+        if let (
+            Shown::Step {
+                step: Step::Text { text },
+                agent: None,
+            },
+            Some(Shown::Step {
+                step: Step::Text { text: before },
+                agent: None,
+            }),
+        ) = (s, t.shown.last_mut())
+        {
+            before.push_str(text);
+            return;
+        }
         if t.shown.len() < TURN_KEPT {
             t.shown.push(s.clone());
         }
@@ -2596,6 +2612,43 @@ mod tests {
             shown.push(agents.len());
         }
         assert_eq!(shown, [1, 2, 0]);
+    }
+
+    #[test]
+    fn a_turns_words_keep_as_one_step_between_calls() {
+        let web = Web::new();
+        let text = |t: &str| Shown::Step {
+            step: Step::Text { text: t.into() },
+            agent: None,
+        };
+        web.sent("web-1", "how big?");
+        for t in ["Let me ", "look."] {
+            web.show(text(t));
+        }
+        web.show(Shown::Step {
+            step: Step::Call {
+                id: "t1".into(),
+                name: "Bash".into(),
+                input: Value::Null,
+            },
+            agent: None,
+        });
+        for t in ["Big", "."] {
+            web.show(text(t));
+        }
+        let turn = web.turn.lock().unwrap().clone();
+        let words: Vec<_> = turn
+            .shown
+            .iter()
+            .filter_map(|s| match s {
+                Shown::Step {
+                    step: Step::Text { text },
+                    ..
+                } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!((turn.shown.len(), words), (4, vec!["Let me look.", "Big."]));
     }
 
     #[test]

@@ -17,7 +17,7 @@ import {
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { Streamdown } from "streamdown";
 import { usePinchText } from "./pinch";
-import { askToSignIn, attachments, drives, fromAgentChat, POINTER, said, search, useChat, waitToSignIn, zoom, type Answers, type Ask, type Card, type Chat, type Hit, type Msg, type Part, type Question, type Task } from "./chat";
+import { askToSignIn, attachments, drives, fromAgentChat, POINTER, quiet, said, search, useChat, waitToSignIn, zoom, type Answers, type Ask, type Card, type Chat, type Hit, type Msg, type Part, type Question, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
 import { Bars, Call, SPEED, useVoiceChoice, useVoiceSpeed, voiceChoice, voiceSpeed } from "./call";
@@ -83,7 +83,7 @@ const convert = (m: Msg): ThreadMessageLike => ({
         artifact: t.agent || t.report ? { agent: t.agent, report: t.report } : undefined,
       },
     ]),
-    ...(m.text ? [{ type: "text" as const, text: m.text }] : []),
+    ...(m.text && !quiet(m.text, m.live) ? [{ type: "text" as const, text: m.text }] : []),
     ...(m.picture ? [{ type: "image" as const, image: m.picture }] : []),
     ...(m.file ? [{ type: "file" as const, data: `/api/file/${encodeURIComponent(m.file)}`, mimeType: "", filename: m.file }] : []),
   ],
@@ -2417,17 +2417,32 @@ function AgentFrame({ toolCallId, args, result, isError, artifact }: ToolCallMes
   const said = report ?? (out !== undefined && !launched && !isError && !POINTER.test(out) ? out : undefined);
   const working = task ? !task.done : live && said === undefined && !isError;
   const name = description || "Agent";
+  // The model passes the report on in its own words right after, so a
+  // long one shows its start here and opens whole on a press.
+  const [whole, setWhole] = useState(false);
+  const [long, setLong] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const b = box.current;
+    if (b && !whole) setLong(b.scrollHeight > b.clientHeight + 4);
+  }, [said, whole]);
   return (
-    <div className="relative my-5 rounded-[14px] border-[1.25px] border-edge">
+    <div className="relative my-5 rounded-[14px] border-[1.25px] border-edge first:mt-2">
       <span className="absolute -top-[0.75em] left-3.5 flex items-center gap-1.5 bg-paper px-1.5 text-xs font-semibold tracking-wide text-mid uppercase">
         {working && <span className="size-1.5 animate-pulse rounded-full bg-accent" />}
         {name}
       </span>
       <div className="px-5 pt-3.5 pb-1 text-[14.5px]">
         {said ? (
-          <Streamdown mode="static" lineNumbers={false} controls={{ code: true, table: false }} linkSafety={{ enabled: false }}>
-            {said}
-          </Streamdown>
+          <div
+            ref={box}
+            onClick={() => long && !whole && setWhole(true)}
+            className={whole ? "" : `max-h-[8.5em] overflow-hidden ${long ? "cursor-pointer [mask-image:linear-gradient(to_bottom,black_55%,transparent)]" : ""}`}
+          >
+            <Streamdown mode="static" lineNumbers={false} controls={{ code: true, table: false }} linkSafety={{ enabled: false }}>
+              {said}
+            </Streamdown>
+          </div>
         ) : isError ? (
           <p className="text-accent [overflow-wrap:anywhere]">{out}</p>
         ) : (
@@ -2437,7 +2452,12 @@ function AgentFrame({ toolCallId, args, result, isError, artifact }: ToolCallMes
           </p>
         )}
       </div>
-      <div className="flex justify-end px-3 pb-2">
+      <div className="flex justify-end gap-1 px-3 pb-2">
+        {long && (
+          <button type="button" onClick={() => setWhole(!whole)} className="rounded-full px-2.5 py-1 text-[12.5px] text-soft hover:bg-hover hover:text-ink">
+            {whole ? "Less" : "Whole report"}
+          </button>
+        )}
         <button type="button" onClick={() => open(toolCallId, agent, name)} className="rounded-full px-2.5 py-1 text-[12.5px] text-soft hover:bg-hover hover:text-ink">
           Its work ›
         </button>

@@ -75,7 +75,12 @@ For work that should go on apart from this chat, start agents with spawn: \
 each is a Claude Code of its own with all your tools and rules, which \
 outlives Stop and restarts; its report comes to you as a message, and \
 {person} sees its work as it goes. Claude Code's Agent tool is for help \
-within one turn.";
+within one turn.
+
+Each background job's news wakes you, and each reply you write reaches \
+{person} as a message of its own. When the news adds nothing they don't \
+already have from you (a second notice about an agent whose report you \
+passed on, a job stopping as expected), your whole reply is NO_REPLY.";
 
 /// A seat agent's words in place of SUB.
 const SEAT_AGENT: &str = "\

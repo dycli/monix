@@ -281,7 +281,17 @@ fn answer(line: &str) -> Option<String> {
         return None;
     }
     let text = ev["result"].as_str()?.trim();
-    (!text.is_empty()).then(|| text.to_owned())
+    said(text).then(|| text.to_owned())
+}
+
+/// A seat's whole answer to a background job's news that tells the person
+/// nothing new (OpenClaw's convention): asked for an empty reply, the model
+/// writes one saying it is silent instead.
+pub const QUIET: &str = "NO_REPLY";
+
+/// Whether an answer is one to pass on.
+fn said(text: &str) -> bool {
+    !text.is_empty() && text != QUIET
 }
 
 /// How many background jobs run, when the line says it changed.
@@ -686,7 +696,7 @@ impl Model for Claude {
             .filter(|ev| ev.get("is_error") != Some(&Value::Bool(true)))
             .filter_map(|ev| ev.get("result").and_then(Value::as_str))
             .map(str::trim)
-            .filter(|t| !t.is_empty())
+            .filter(|t| said(t))
             .collect();
         // A subagent reports only its last answer, as in Unii: words sent
         // while it works replace what it said before, and its log keeps
@@ -996,6 +1006,7 @@ mod tests {
             None
         );
         assert_eq!(answer(r#"{"type":"result","result":"  "}"#), None);
+        assert_eq!(answer(r#"{"type":"result","result":"NO_REPLY\n"}"#), None);
         assert_eq!(answer(r#"{"type":"assistant","result":"hi"}"#), None);
         assert_eq!(answer("not json"), None);
     }

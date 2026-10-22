@@ -566,6 +566,12 @@ function step(ms: Msg[], s: Step): Msg[] {
 // the page shows them as the person wrote them, and so knows them again.
 const STEERED = /^\(sent while you were working\) /;
 
+// A seat answers a background job's news that tells the person nothing new
+// with this alone (OpenClaw's convention); the yeoman never sends it, and
+// the page hides it, and while it streams in, its start.
+const QUIET = "NO_REPLY";
+export const quiet = (text: string, live = false) => (live ? QUIET.startsWith(text.trim()) : text.trim() === QUIET);
+
 function fromHistory(said: Said[]): Msg[] {
   const out: Msg[] = [];
   for (const m of said) {
@@ -605,6 +611,7 @@ function fromHistory(said: Said[]): Msg[] {
       if (open) Object.assign(open, { result: m.text, agent: agentOf(m.text) });
       continue;
     }
+    if (m.kind === "talk" && quiet(m.text)) continue;
     // The answer after the calls, once.
     if (m.kind === "talk" && turn?.tools && !turn.text && !SENT.test(m.text) && !DRAFT.test(m.text)) {
       Object.assign(turn, { text: m.text, date: new Date(m.date) });
