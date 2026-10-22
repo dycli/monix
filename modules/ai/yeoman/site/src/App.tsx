@@ -15,7 +15,7 @@ import {
   type ToolCallMessagePartProps,
 } from "@assistant-ui/react";
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
-import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, type Card, type Chat, type Hit, type Msg, type Task } from "./chat";
+import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, zoom, type Card, type Chat, type Hit, type Msg, type Part, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
 import { Bars, Call, SPEED, useVoiceChoice, useVoiceSpeed, voiceChoice, voiceSpeed } from "./call";
@@ -199,7 +199,7 @@ function HeaderButton({ label, onClick, children }: { label: string; onClick: ()
   );
 }
 
-const WHO: Record<string, string> = { user: "You", talk: NAME, note: "Note" };
+const WHO: Record<string, string> = { user: "You", talk: NAME, note: "Note", work: "Agent" };
 
 // Search over everything hippo keeps, not only the messages on the page: a
 // sheet over the chat with the hits newest first; a hit opens to the whole
@@ -263,6 +263,69 @@ function Search({ close }: { close: () => void }) {
               </button>
             ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// What came before the history, as the yeoman itself sees it: hippo's view,
+// drawn as UniiChat draws it. Each line folds many messages into one
+// summary and opens into the two lines it was made from, down to a message
+// whole.
+function Past({ parts }: { parts: Part[] }) {
+  return (
+    <section aria-label="Earlier" className="flex flex-col gap-0.5 border-b border-hair pb-3">
+      <p className="px-3 pb-1 text-[12.5px] text-soft">Earlier, as {NAME} remembers it</p>
+      {parts.map((p) => (
+        <Fold key={`${p.id}+${p.n}`} part={p} />
+      ))}
+    </section>
+  );
+}
+
+type Opened = Awaited<ReturnType<typeof zoom>> | "failed";
+
+/** One line of the past: shut, its summary; open, its halves or its message. */
+function Fold({ part }: { part: Part }) {
+  const [open, setOpen] = useState(false);
+  // Kept once read: a summary never changes, but one not made yet is asked again.
+  const [inside, setInside] = useState<Opened>();
+  const toggle = async () => {
+    if (open) return setOpen(false);
+    setOpen(true);
+    if (inside && inside !== "failed" && !("parts" in inside && inside.parts.some((p) => p.text.startsWith("(not summarized")))) return;
+    setInside((await zoom(part.id, part.n)) ?? "failed");
+  };
+  const size = <span className="shrink-0 pt-px font-mono text-[11.5px] text-soft">{part.n}x</span>;
+  if (!open) {
+    return (
+      <button type="button" onClick={() => void toggle()} aria-expanded={false} className="flex gap-2.5 rounded-xl px-3 py-1.5 text-left hover:bg-hover">
+        {size}
+        <span className="text-[14px] leading-snug text-mid [overflow-wrap:anywhere]">{part.text.replace(/\*\*|`/g, "")}</span>
+      </button>
+    );
+  }
+  return (
+    <div className="flex flex-col">
+      <button type="button" onClick={() => void toggle()} aria-expanded className="flex gap-2.5 rounded-xl px-3 py-1 text-left text-[12.5px] text-soft hover:bg-hover hover:text-mid">
+        <span className="font-mono">▾ {part.n}x</span>
+        <span>fold</span>
+      </button>
+      <div className="ml-[22px] flex flex-col gap-0.5 border-l border-hair pl-1.5">
+        {!inside ? (
+          <div className="px-3">
+            <Dots />
+          </div>
+        ) : inside === "failed" ? (
+          <p className="px-3 py-1.5 text-[14px] text-mid">Couldn't open it.</p>
+        ) : "parts" in inside ? (
+          inside.parts.map((p) => <Fold key={`${p.id}+${p.n}`} part={p} />)
+        ) : (
+          <div className="px-3 py-1.5">
+            <div className="text-xs font-semibold text-mid">{WHO[inside.kind] ?? inside.kind}</div>
+            <div className="mt-0.5 text-[14.5px] whitespace-pre-wrap [overflow-wrap:anywhere]">{inside.text}</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -576,9 +639,10 @@ type ThreadProps = {
   closeBrowser: () => Promise<void>;
   openBrowser: () => Promise<void>;
   refresh: () => void;
+  past: Part[];
 };
 
-function Thread({ messages, typing, send, stop, cards, decide, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh }: ThreadProps) {
+function Thread({ messages, typing, send, stop, cards, decide, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past }: ThreadProps) {
   const [finding, setFinding] = useState(false);
   const [calling, setCalling] = useState(false);
   const voice = useMe()?.voice;
@@ -726,6 +790,7 @@ function Thread({ messages, typing, send, stop, cards, decide, tasks, stopTask, 
         <div className="flex min-h-0 flex-1">
         <ThreadPrimitive.Viewport ref={viewport} className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           <main className={`mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)] fades ${deck.length && !leaving ? "faded" : ""}`}>
+            {past.length > 0 && <Past parts={past} />}
             <ThreadPrimitive.Messages>
               {({ message }) =>
                 message.role === "user" ? <UserMessage /> : message.role === "assistant" ? <AssistantMessage /> : <Note />

@@ -807,6 +807,8 @@ pub async fn serve(
         .route("/api/history", get(history))
         .route("/api/search", get(search))
         .route("/api/said/{i}", get(said))
+        .route("/api/past", get(past))
+        .route("/api/zoom/{id}/{n}", get(zoom))
         .route("/api/file/{name}", get(kept))
         .route("/api/speak", post(speak))
         .route("/api/speak/{key}", get(spoken))
@@ -946,6 +948,139 @@ async fn history(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response 
     }
 }
 
+/// A line of hippo's view: messages `id..id+n`, folded into one summary.
+#[derive(Debug, PartialEq, Serialize)]
+struct Part {
+    id: u64,
+    n: u64,
+    text: String,
+}
+
+#[derive(Deserialize)]
+struct Before {
+    before: u64,
+}
+
+/// What came before the history: the yeoman's own view of it, as the
+/// lines that end by message `before`, each opened by `/api/zoom`. The
+/// page draws them as UniiChat does, folded blocks over the talk.
+async fn past(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    axum::extract::Query(Before { before }): axum::extract::Query<Before>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let h = site.hippo.clone();
+    match tokio::task::spawn_blocking(move || past_parts(&h, before)).await {
+        Ok(Ok(parts)) => Json(parts).into_response(),
+        Ok(Err(e)) => {
+            eprintln!("yeoman: site past: {e}");
+            StatusCode::BAD_GATEWAY.into_response()
+        }
+        Err(e) => {
+            eprintln!("yeoman: site past: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// The view's lines that end by `before`; one that runs past it is opened
+/// until its halves don't, so nothing shows twice.
+fn past_parts(h: &crate::hippo::Hippo, before: u64) -> Result<Vec<Part>, String> {
+    let mut out = Vec::new();
+    let mut todo: Vec<Part> = parts(&h.view()?);
+    todo.reverse();
+    while let Some(p) = todo.pop() {
+        if p.id + p.n <= before {
+            out.push(p);
+        } else if p.id < before {
+            let mut halves = parts(&h.zoom(p.id, p.n)?);
+            halves.reverse();
+            todo.extend(halves);
+        }
+    }
+    Ok(out)
+}
+
+/// hippo's `id+n|text` lines. A run of messages not yet summarized comes
+/// as one line whose span needn't be a node of the tree, so it is cut into
+/// the nodes that tile it, which `zoom` opens.
+fn parts(out: &str) -> Vec<Part> {
+    let mut all = Vec::new();
+    for l in out.lines() {
+        let Some((at, text)) = l.split_once('|') else {
+            continue;
+        };
+        let Some((Ok(id), Ok(n))) = at.split_once('+').map(|(i, n)| (i.parse(), n.parse())) else {
+            continue;
+        };
+        for (id, n) in tiles(id, n) {
+            all.push(Part {
+                id,
+                n,
+                text: text.to_owned(),
+            });
+        }
+    }
+    all
+}
+
+/// The fewest tree nodes covering messages `id..id+n`: each as large as
+/// its start allows.
+fn tiles(mut id: u64, n: u64) -> Vec<(u64, u64)> {
+    let end = id + n;
+    let mut out = Vec::new();
+    while id < end {
+        let mut size = if id == 0 {
+            1 << 62
+        } else {
+            1 << id.trailing_zeros()
+        };
+        while id + size > end {
+            size /= 2;
+        }
+        out.push((id, size));
+        id += size;
+    }
+    out
+}
+
+/// A line of the view opened: its two halves, or for one message the
+/// message whole and who said it.
+async fn zoom(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    axum::extract::Path((id, n)): axum::extract::Path<(u64, u64)>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let h = site.hippo.clone();
+    match tokio::task::spawn_blocking(move || h.zoom(id, n)).await {
+        Ok(Ok(out)) if n == 1 => match whole(&out) {
+            Some((kind, text)) => {
+                Json(serde_json::json!({ "kind": kind, "text": text })).into_response()
+            }
+            None => StatusCode::BAD_GATEWAY.into_response(),
+        },
+        Ok(Ok(out)) => Json(serde_json::json!({ "parts": parts(&out) })).into_response(),
+        Ok(Err(_)) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            eprintln!("yeoman: site zoom: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// One message as zoom gives it, `{i}+1|{kind}[ [chat]]: {text}`.
+fn whole(out: &str) -> Option<(&str, &str)> {
+    let (_, m) = out.split_once('|')?;
+    let (head, text) = m.split_once(": ")?;
+    Some((head.split(' ').next()?, text))
+}
+
 #[derive(Deserialize)]
 struct Query {
     q: String,
@@ -1064,8 +1199,7 @@ async fn said(
     }
     let h = site.hippo.clone();
     match tokio::task::spawn_blocking(move || h.zoom(i, 1)).await {
-        // `{i}+1|{kind}[ [chat]]: {text}`
-        Ok(Ok(out)) => match out.split_once('|').and_then(|(_, m)| m.split_once(": ")) {
+        Ok(Ok(out)) => match whole(&out) {
             Some((_, text)) => text.to_owned().into_response(),
             None => StatusCode::BAD_GATEWAY.into_response(),
         },
@@ -1887,6 +2021,78 @@ mod tests {
             super::speech_key("leo", "hi"),
             super::speech_key("ara", "hi")
         );
+    }
+
+    #[test]
+    fn view_lines_become_tree_nodes() {
+        assert_eq!(super::tiles(0, 8), [(0, 8)]);
+        assert_eq!(super::tiles(5, 7), [(5, 1), (6, 2), (8, 4)]);
+        let p = super::parts("<chat>\n0+4|old: a|b\n4+1|x\n5+3|(not summarized)\n</chat>\nnote");
+        let got: Vec<_> = p.iter().map(|p| (p.id, p.n, p.text.as_str())).collect();
+        assert_eq!(
+            got,
+            [
+                (0, 4, "old: a|b"),
+                (4, 1, "x"),
+                (5, 1, "(not summarized)"),
+                (6, 2, "(not summarized)")
+            ]
+        );
+        assert_eq!(
+            super::whole("7+1|talk [door]: hi: there"),
+            Some(("talk", "hi: there"))
+        );
+        assert_eq!(super::whole("7+1|user: hi"), Some(("user", "hi")));
+    }
+
+    #[test]
+    fn the_past_stops_where_the_history_starts() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::os::unix::net::UnixListener;
+        let sock = std::env::temp_dir().join(format!("yeoman-past-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&sock);
+        let listener = UnixListener::bind(&sock).unwrap();
+        let server = std::thread::spawn(move || {
+            let mut asked = Vec::new();
+            for out in [
+                "<chat>\n0+8|a\n8+8|b\n16+1|c\n</chat>",
+                "8+4|b1\n12+4|b2",
+                "12+2|b21\n14+2|b22",
+            ] {
+                let (mut c, _) = listener.accept().unwrap();
+                let mut line = String::new();
+                BufReader::new(c.try_clone().unwrap())
+                    .read_line(&mut line)
+                    .unwrap();
+                asked.push(line.trim().to_owned());
+                let reply = serde_json::json!({"ok": true, "out": out}).to_string() + "\n";
+                c.write_all(reply.as_bytes()).unwrap();
+            }
+            asked
+        });
+        let h = crate::hippo::Hippo { sock: sock.clone() };
+        let got: Vec<_> = super::past_parts(&h, 14)
+            .unwrap()
+            .into_iter()
+            .map(|p| (p.id, p.n, p.text))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                (0, 8, "a".into()),
+                (8, 4, "b1".into()),
+                (12, 2, "b21".into())
+            ]
+        );
+        assert_eq!(
+            server.join().unwrap(),
+            [
+                r#"{"args":["whole"],"cmd":"view"}"#,
+                r#"{"args":["8","8"],"cmd":"zoom"}"#,
+                r#"{"args":["12","4"],"cmd":"zoom"}"#
+            ]
+        );
+        std::fs::remove_file(sock).unwrap();
     }
 
     fn said(i: u64, kind: &str, text: &str) -> Said {

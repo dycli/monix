@@ -46,6 +46,9 @@ export type Card = Pending & { busy?: boolean; error?: string };
 
 type Said = { i: number; kind: string; text: string; date: string; reaction: string | null };
 
+/** A line of the yeoman's view of its past: messages `id` to `id+n`, folded into one summary. */
+export type Part = { id: number; n: number; text: string };
+
 type Shown =
   | { type: "said"; id: string; text: string; plain: boolean; aside: boolean }
   | { type: "heard"; id: string; text: string }
@@ -98,6 +101,8 @@ export type Chat =
       openBrowser: () => Promise<void>;
       /** Reads the conversation afresh from hippo, as after a call. */
       refresh: () => void;
+      /** What came before the history, folded as the yeoman sees it; empty while it loads. */
+      past: Part[];
     };
 
 export function useChat(): Chat {
@@ -109,6 +114,7 @@ export function useChat(): Chat {
   const [screen, setScreen] = useState<string>();
   const [shape, setShape] = useState<number>();
   const [browser, setBrowser] = useState(false);
+  const [past, setPast] = useState<Part[]>([]);
   const resync = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -116,6 +122,8 @@ export function useChat(): Chat {
     let retry: number | undefined;
     let ready = false;
     let gone = false;
+    // Where the past was last asked to end: it changes only as the history moves on.
+    let before: number | undefined;
     // History from hippo, again on every reconnect and return to the page:
     // what the stream carried while nothing listened is in hippo by then.
     const sync = async (): Promise<boolean> => {
@@ -126,6 +134,20 @@ export function useChat(): Chat {
       }
       if (!r.ok) throw new Error(`History failed: ${r.status}`);
       const said: Said[] = await r.json();
+      // Apart, since hippo may first wait for its summaries to settle.
+      const start = said[0]?.i ?? 0;
+      if (start !== before) {
+        before = start;
+        if (start === 0) setPast([]);
+        else
+          fetch(`/api/past?before=${start}`)
+            .then((r) => (r.ok ? r.json() : Promise.reject()))
+            .then((p: Part[]) => !gone && start === before && setPast(p))
+            // Asked again on the next sync.
+            .catch(() => {
+              if (start === before) before = undefined;
+            });
+      }
       // The tray is extra: a chat without it still works.
       const waiting: Pending[] = w.ok ? await w.json() : [];
       const now: { agents: Agent[]; screen: string | null; size?: string | null; browser?: boolean; typing?: boolean } | null = t.ok ? await t.json() : null;
@@ -368,7 +390,7 @@ export function useChat(): Chat {
 
   if (status === "loading" || status === "signed-out") return { state: status };
   if (status !== "ready") return { state: "error", error: status };
-  return { state: "ready", messages, typing, send, stop, cards, decide, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh };
+  return { state: "ready", messages, typing, send, stop, cards, decide, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past };
 }
 
 // The agents at work now, each keeping the work the page has seen of it.
@@ -474,6 +496,12 @@ export async function search(words: string): Promise<{ hits: Hit[]; more: boolea
 export async function said(i: number): Promise<string | undefined> {
   const r = await fetch(`/api/said/${i}`);
   return r.ok ? r.text() : undefined;
+}
+
+/** A line of the past opened: its two halves, or for one message the message whole and who said it. */
+export async function zoom(id: number, n: number): Promise<{ parts: Part[] } | { kind: string; text: string } | undefined> {
+  const r = await fetch(`/api/zoom/${id}/${n}`);
+  return r.ok ? r.json() : undefined;
 }
 
 /** Asks to be let in; the yeoman posts the code to Matrix for a 👍. */
