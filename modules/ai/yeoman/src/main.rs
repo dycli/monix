@@ -431,15 +431,7 @@ fn answer(
                  it needs them after all, answer only {QUIET}"
             ),
         ),
-        From::Work => (
-            "work",
-            said.clone(),
-            format!(
-                "From your subagent, which {person} doesn't see: tell \
-                 {person} what they need of it in your own words, or tell \
-                 the agent more"
-            ),
-        ),
+        From::Work => ("work", said.clone(), from_agent(&person)),
         From::Alert => (
             "note",
             format!("(alert) {said}"),
@@ -804,15 +796,26 @@ fn is_reaction(reply: &str) -> bool {
         && reply.chars().any(|c| c >= '\u{2300}')
 }
 
+/// What keeps turns one at a time, whichever door or tick starts them,
+/// and carries words into the one under way.
+#[derive(Clone, Default)]
+struct Turns {
+    lock: Arc<tokio::sync::Mutex<()>>,
+    steer: Arc<Steer>,
+}
+
 /// A turn the yeoman starts itself, not the person: the door shows it
 /// typing while the model answers.
 async fn ask_alone<D: Door>(
     door: &D,
     hippo: &Arc<Hippo>,
     model: &Arc<dyn Model>,
+    turn: &Turns,
     from: From,
     said: String,
 ) -> Result<String, String> {
+    // One turn at a time: a person's under way finishes first.
+    let _turn = turn.lock.lock().await;
     let typing = Typing::start(door);
     let (h, m) = (hippo.clone(), model.clone());
     // The seat's work shows as it happens, as on a person's turn.
@@ -853,6 +856,7 @@ async fn drain(
     door: &impl Door,
     hippo: &Arc<Hippo>,
     model: &Arc<dyn Model>,
+    turn: &Turns,
     dir: &Path,
     from: From,
 ) {
@@ -885,7 +889,7 @@ async fn drain(
         .collect();
     if !texts.is_empty() {
         let said = texts.join("\n\n");
-        let text = ask_alone(door, hippo, model, from, said.clone())
+        let text = ask_alone(door, hippo, model, turn, from, said.clone())
             .await
             .unwrap_or_else(|e| {
                 eprintln!("yeoman: {}: {e}", dir.display());
@@ -916,6 +920,7 @@ async fn remind<D: Door>(
     state: PathBuf,
     alerted: Option<PathBuf>,
     house: Option<house::House>,
+    turn: Turns,
 ) {
     let mailbox = house.as_ref().map(|h| h.mailbox());
     let seatbox = house.as_ref().and_then(|h| h.seatbox());
@@ -944,19 +949,28 @@ async fn remind<D: Door>(
         // server away, and the money syncs only every few hours.
         ticks += 1;
         if ticks % 4 == 1 {
-            watches(&door, &hippo, &model, &state, &sources, house.as_ref()).await;
+            watches(
+                &door,
+                &hippo,
+                &model,
+                &turn,
+                &state,
+                &sources,
+                house.as_ref(),
+            )
+            .await;
         }
         if let Some(dir) = &alerted {
-            drain(&door, &hippo, &model, dir, From::Alert).await;
+            drain(&door, &hippo, &model, &turn, dir, From::Alert).await;
         }
         if let Some(dir) = &mailbox {
-            drain(&door, &hippo, &model, dir, From::Message).await;
+            drain(&door, &hippo, &model, &turn, dir, From::Message).await;
         }
         if let Some(dir) = &seatbox {
-            drain(&door, &hippo, &model, dir, From::Seat).await;
+            drain(&door, &hippo, &model, &turn, dir, From::Seat).await;
         }
         show_pending(&door, &hippo, &state).await;
-        work_on(&door, &hippo, &model, &state, &mut agents).await;
+        work_on(&door, &hippo, &model, &turn, &state, &mut agents).await;
         door.agents(task::working(&state));
         let now = Local::now().naive_local();
         let due = match Book::open(&state, None).and_then(|b| b.read(|db| book::due(db, now))) {
@@ -972,7 +986,8 @@ async fn remind<D: Door>(
                 (None, false) => (format!("Reminder: {}", r.text), false),
                 (None, true) => {
                     let answered =
-                        ask_alone(&door, &hippo, &model, From::Routine, r.text.clone()).await;
+                        ask_alone(&door, &hippo, &model, &turn, From::Routine, r.text.clone())
+                            .await;
                     send_outbox(&door, &hippo, &state).await;
                     match answered {
                         Ok(text) => {
@@ -1025,6 +1040,7 @@ async fn watches<D: Door>(
     door: &D,
     hippo: &Arc<Hippo>,
     model: &Arc<dyn Model>,
+    turn: &Turns,
     state: &Path,
     sources: &Arc<watch::Sources>,
     house: Option<&house::House>,
@@ -1072,7 +1088,7 @@ async fn watches<D: Door>(
         fresh.truncate(WATCH_ITEMS);
         let quoted: Vec<String> = fresh.iter().map(watch::describe).collect();
         let said = format!("{}\n<items>\n{}\n</items>", w.text, quoted.join("\n"));
-        let answered = ask_alone(door, hippo, model, From::Watch, said).await;
+        let answered = ask_alone(door, hippo, model, turn, From::Watch, said).await;
         let (text, share) = match answered {
             Ok(text) => (text, w.share),
             Err(e) => {
@@ -1116,6 +1132,35 @@ struct Running {
     steer: Arc<Steer>,
 }
 
+/// What the model is told of a subagent's report.
+fn from_agent(person: &str) -> String {
+    format!(
+        "From your subagent, which {person} doesn't see: tell {person} what \
+         they need of it in your own words, or tell the agent more"
+    )
+}
+
+/// Hands a subagent's report to the turn under way, tagged as the seat's
+/// hippo knows a report; false when no turn is running to take it.
+async fn steered_report(hippo: &Arc<Hippo>, turn: &Turns, said: &str) -> bool {
+    let Ok(person) = var("YEOMAN_PERSON") else {
+        return false;
+    };
+    let told = format!(
+        "<agent-report>\n{said}\n</agent-report>\n\n{}.",
+        from_agent(&person)
+    );
+    if !turn.steer.send(&told) {
+        return false;
+    }
+    // Off the seat, hippo learns it here; on it, from the tag in the chat.
+    let (h, said) = (hippo.clone(), said.to_owned());
+    if let Ok(Err(e)) = tokio::task::spawn_blocking(move || h.log("work", &said)).await {
+        eprintln!("yeoman: {e}");
+    }
+    true
+}
+
 /// Starts each subagent's waiting run, passes on what it is told, stops
 /// it when asked, and, when it ends, hands its report to the yeoman as a
 /// turn of its own; one stopped is only logged, as in Unii.
@@ -1123,6 +1168,7 @@ async fn work_on(
     door: &impl Door,
     hippo: &Arc<Hippo>,
     model: &Arc<dyn Model>,
+    turn: &Turns,
     state: &Path,
     running: &mut HashMap<String, Running>,
 ) {
@@ -1168,7 +1214,12 @@ async fn work_on(
             }
             continue;
         }
-        let text = ask_alone(door, hippo, model, From::Work, said).await;
+        // A report that comes while a turn runs joins it, as Claude Code
+        // hands a background agent's notice to the turn under way.
+        if steered_report(hippo, turn, &said).await {
+            continue;
+        }
+        let text = ask_alone(door, hippo, model, turn, From::Work, said).await;
         send_outbox(door, hippo, state).await;
         match text {
             Ok(text) => {
@@ -1342,6 +1393,9 @@ async fn run() -> Result<(), String> {
         env::var_os("YEOMAN_ALERTS").map(PathBuf::from),
         house::House::from_env(),
     );
+    // One turn at a time, whichever door or tick it comes from: each
+    // answer sees the one before it in its memory.
+    let turns = Turns::default();
     // Without Matrix the pages are the only door, and always there.
     match (&client, w) {
         (None, Some(w)) => tokio::spawn(remind(
@@ -1351,6 +1405,7 @@ async fn run() -> Result<(), String> {
             state.clone(),
             alerts,
             house,
+            turns.clone(),
         )),
         (_, w) => tokio::spawn(remind(
             move || {
@@ -1364,6 +1419,7 @@ async fn run() -> Result<(), String> {
             state.clone(),
             alerts,
             house,
+            turns.clone(),
         )),
     };
     if env::var_os("YEOMAN_FORGET").is_some() {
@@ -1398,13 +1454,9 @@ async fn run() -> Result<(), String> {
             tokio::spawn(decide(door, p.id, yes, s.clone(), h.clone()));
         }
     });
-    // One turn at a time, whichever door it comes from: each answer sees
-    // the one before it in its memory.
-    let turn = Arc::new(tokio::sync::Mutex::new(()));
+    let (turn, steer) = (turns.lock.clone(), turns.steer.clone());
     // Stops the turn under way, whichever door it came from.
     let stop = Arc::new(AtomicBool::new(false));
-    // Carries the person's words into it.
-    let steer = Arc::new(Steer::default());
     if let (Ok(addr), Some(web)) = (var("YEOMAN_SITE"), web.clone()) {
         let (messages, mut from_web) = mpsc::unbounded_channel();
         let (verdicts, mut clicks) = mpsc::unbounded_channel();
