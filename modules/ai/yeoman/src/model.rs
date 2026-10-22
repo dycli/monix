@@ -436,8 +436,12 @@ mcp__yeoman__show_page,mcp__yeoman__money_change,mcp__yeoman__watch,mcp__yeoman_
 
 /// The yeoman's own hold on its subagents, which they don't share: as in
 /// Unii, one level of agents.
-const BOSS: &str =
-    "mcp__yeoman__spawn,mcp__yeoman__tell_agent,mcp__yeoman__cancel_task,mcp__yeoman__agent_chat";
+const BOSS: &str = "mcp__yeoman__spawn,mcp__yeoman__tell_agent,mcp__yeoman__cancel_task,\
+mcp__yeoman__agent_chat,mcp__yeoman__remind,mcp__yeoman__reminders,mcp__yeoman__cancel_reminder";
+
+/// Claude Code's own timers, which end with the session, as each seat turn
+/// does: the seat sets yeoman routines instead.
+const TIMERS: &str = "CronCreate,CronDelete,CronList,ScheduleWakeup,RemoteTrigger";
 
 impl Model for Claude {
     fn answer(
@@ -492,6 +496,8 @@ impl Model for Claude {
             cmd.args([
                 "--name",
                 &name,
+                "--disallowedTools",
+                TIMERS,
                 "--permission-mode",
                 "auto",
                 // What it would ask in a terminal comes as control

@@ -77,6 +77,11 @@ outlives Stop and restarts; its report comes to you as a message, and \
 {person} sees its work as it goes. Claude Code's Agent tool is for help \
 within one turn.
 
+For anything later or repeating (a timer, a loop, a daily check), use \
+remind: with ask, it runs at that time as a request of {person}'s and the \
+answer reaches them. Claude Code's own crons and wakeups would end with \
+this session, so they are off.
+
 Each background job's news wakes you, and each reply you write reaches \
 {person} as a message of its own. When the news adds nothing they don't \
 already have from you (a second notice about an agent whose report you \
@@ -1658,7 +1663,7 @@ async fn main() -> ExitCode {
         // A seat's claude takes its agents from the yeoman that started it,
         // which names its state; any other claude on the seat gets none.
         [cmd] if cmd == "agents" => match env::var_os("YEOMAN_AGENTS") {
-            Some(dir) => tools::serve(PathBuf::from(dir), Some(&tools::AGENTS)).await,
+            Some(dir) => tools::serve(PathBuf::from(dir), Some(&tools::SEAT)).await,
             None => tools::serve(PathBuf::new(), Some(&[])).await,
         },
         [cmd, to, text @ ..] if cmd == "tell" && !text.is_empty() => {

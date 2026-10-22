@@ -1451,7 +1451,17 @@ pub fn mail() -> Result<Option<(String, Vec<Account>)>, String> {
 }
 
 /// The tools that start, tell, stop and read subagents.
-pub const AGENTS: [&str; 4] = ["spawn", "tell_agent", "cancel_task", "agent_chat"];
+/// What a seat's claude gets of the yeoman: its agents, and its reminders
+/// and routines, which outlive the turn as Claude Code's own timers can't.
+pub const SEAT: [&str; 7] = [
+    "spawn",
+    "tell_agent",
+    "cancel_task",
+    "agent_chat",
+    "remind",
+    "reminders",
+    "cancel_reminder",
+];
 
 /// Serves the tools, or with `only` just those named.
 pub async fn serve(dir: PathBuf, only: Option<&[&str]>) -> Result<(), String> {

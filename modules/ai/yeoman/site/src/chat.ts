@@ -204,11 +204,12 @@ export function useChat(): Chat {
         // The last turn as the yeoman showed it, for when hippo hasn't got
         // it: a seat's turn reaches hippo only once it ends, so a page
         // loaded meanwhile would lose the person's words and the calls.
-        // hippo has it once it holds a message of the person's from then on.
+        // hippo has it once it holds the turn's prompt: the person's words,
+        // or the note a routine's or a report's turn begins with.
         const record = turnRecord;
         if (record?.shown.length) {
           const newer = now.filter((m) => (m.date?.getTime() ?? 0) >= record.start - 1000);
-          if (!turning && newer.some((m) => m.role === "user")) return now;
+          if (!turning && newer.some((m) => m.role === "user" || m.role === "system")) return now;
           let shown = record.shown.reduce(onto, [] as Msg[]);
           if (!turning) shown = shown.flatMap((m) => (!m.live ? [m] : m.tools ? [{ ...m, text: "", live: false }] : []));
           const kept = shown.filter((m) => {
@@ -567,6 +568,23 @@ const STEERED = /^\(sent while you were working\) /;
 const QUIET = "NO_REPLY";
 export const quiet = (text: string, live = false) => (live ? QUIET.startsWith(text.trim()) : text.trim() === QUIET);
 
+// What a seat is told by its routines, watches, alerts and messages comes
+// as words from the person, framed by the yeoman (main.rs, `who`); the page
+// shows each as the note the yeoman logged for it.
+const FRAMED: [RegExp, string][] = [
+  [/^Routine \S+ set, due now: ([\s\S]*)$/, "routine"],
+  [/^Watch \S+ set, fired now [\s\S]*?answer only [^:]*: ([\s\S]*)$/, "watch"],
+  [/^Alerts from the hosts' sensors[\s\S]*?say so in one line: ([\s\S]*)$/, "alert"],
+  [/^Passed on from the household[\s\S]*?through you: ([\s\S]*)$/, "message"],
+  [/^From Bridge, the ship's engineer[\s\S]*?what you did: ([\s\S]*)$/, "seat"],
+];
+const framed = (text: string) => {
+  for (const [re, kind] of FRAMED) {
+    const m = re.exec(text);
+    if (m) return `(${kind}) ${m[1]}`;
+  }
+};
+
 function fromHistory(said: Said[]): Msg[] {
   const out: Msg[] = [];
   for (const m of said) {
@@ -615,6 +633,11 @@ function fromHistory(said: Said[]): Msg[] {
       continue;
     }
     // What the yeoman sent is kept, and hippo logs it by name.
+    const note = m.kind === "user" ? framed(m.text) : undefined;
+    if (note) {
+      out.push({ id: `h-${m.i}`, role: "system", text: note, date: new Date(m.date) });
+      continue;
+    }
     const sent = m.kind === "talk" ? SENT.exec(m.text) : null;
     out.push({
       id: `h-${m.i}`,

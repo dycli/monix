@@ -296,6 +296,18 @@ impl Web {
                 t.ended = true;
                 return;
             }
+            // A turn no one's words began (a routine, a report) begins
+            // here, before its prompt reaches hippo, so a page loading later
+            // knows hippo's prompt and calls for this turn's own.
+            Shown::Typing { on: true } => {
+                if t.ended || t.start == 0 {
+                    *t = Turn {
+                        start: unix_ms(),
+                        ..Turn::default()
+                    };
+                }
+                return;
+            }
             Shown::Heard { .. }
             | Shown::Step { agent: None, .. }
             | Shown::Said { aside: false, .. }
@@ -303,7 +315,7 @@ impl Web {
             | Shown::File { .. } => {}
             _ => return,
         }
-        if t.ended || t.shown.is_empty() {
+        if t.ended || t.start == 0 {
             *t = Turn {
                 start: unix_ms(),
                 ..Turn::default()
