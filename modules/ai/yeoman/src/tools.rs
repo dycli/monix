@@ -1503,9 +1503,11 @@ pub fn mail() -> Result<Option<(String, Vec<Account>)>, String> {
 }
 
 /// The tools that start, tell, stop and read subagents.
-/// What a seat's claude gets of the yeoman: its agents, and its reminders
-/// and routines, which outlive the turn as Claude Code's own timers can't.
-pub const SEAT: [&str; 7] = [
+/// What a seat's claude gets of the yeoman: its agents, its reminders
+/// and routines, which outlive the turn as Claude Code's own timers can't,
+/// and X, which Claude Code's own web tools can't read.
+pub const SEAT: [&str; 8] = [
+    "x_search",
     "spawn",
     "tell_agent",
     "cancel_task",
