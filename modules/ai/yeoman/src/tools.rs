@@ -731,15 +731,7 @@ impl Tools {
         description = "How much of each AI subscription's limits (Claude, ChatGPT/Codex, OpenCode Go) is used, and when each resets."
     )]
     fn usage(&self) -> Result<String, String> {
-        let sock = std::env::var("YEOMAN_USAGE").map_err(|_| "No usage service here.")?;
-        let mut out = String::new();
-        UnixStream::connect(&sock)
-            .and_then(|mut s| {
-                s.set_read_timeout(Some(Duration::from_secs(60)))?;
-                s.read_to_string(&mut out)
-            })
-            .map_err(|e| format!("usage: {e}"))?;
-        Ok(out)
+        usage()
     }
 
     #[tool(
@@ -1500,6 +1492,20 @@ pub fn mail() -> Result<Option<(String, Vec<Account>)>, String> {
     let text = fs::read_to_string(&file).map_err(|e| format!("mail accounts: {e}"))?;
     let host = std::env::var("YEOMAN_IMAP").map_err(|_| "YEOMAN_IMAP is not set")?;
     Ok(Some((host, mail::accounts(&text)?)))
+}
+
+/// The usage service's report (usage.mod.nix), written for people: a line
+/// per window, then who used it. Each read asks every provider afresh.
+pub fn usage() -> Result<String, String> {
+    let sock = std::env::var("YEOMAN_USAGE").map_err(|_| "No usage service here.")?;
+    let mut out = String::new();
+    UnixStream::connect(&sock)
+        .and_then(|mut s| {
+            s.set_read_timeout(Some(Duration::from_secs(60)))?;
+            s.read_to_string(&mut out)
+        })
+        .map_err(|e| format!("usage: {e}"))?;
+    Ok(out)
 }
 
 /// The tools that start, tell, stop and read subagents.

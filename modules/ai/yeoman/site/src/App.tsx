@@ -4,7 +4,6 @@ import {
   AssistantRuntimeProvider,
   AttachmentPrimitive,
   ComposerPrimitive,
-  MessagePartPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
   useAui,
@@ -17,7 +16,7 @@ import {
 } from "@assistant-ui/react";
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { Streamdown } from "streamdown";
-import { usePinchText } from "./pinch";
+import { usePinchText, useTextSize } from "./pinch";
 import { askToSignIn, attachments, COMMANDS, SEND_MAX, drives, fromAgentChat, POINTER, quiet, said, search, useChat, waitToSignIn, zoom, type Answers, type Ask, type Card, type Chat, type Hit, type Msg, type Part, type Question, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
@@ -110,7 +109,62 @@ export function App() {
   if (chat.state === "loading") return <Solo><Dots /></Solo>;
   if (chat.state === "signed-out") return <SignIn />;
   if (chat.state === "error") return <Solo><p className="text-mid">{chat.error}</p></Solo>;
-  return <Thread {...chat} />;
+  return (
+    <>
+      <Thread {...chat} />
+      <Viewer />
+    </>
+  );
+}
+
+/** A picture opened large, from wherever it was tapped. */
+const VIEW = "view-picture";
+const view = (src: string) => window.dispatchEvent(new CustomEvent(VIEW, { detail: src }));
+
+/** The picture opened large over a dimmed page, fit to the screen, as a
+ * phone's gallery shows one: a tap anywhere, Escape, or a swipe down on a
+ * phone puts it away. */
+function Viewer() {
+  const [src, setSrc] = useState<string>();
+  const [drag, setDrag] = useState(0);
+  const from = useRef<number>(undefined);
+  useEffect(() => {
+    const open = (e: Event) => setSrc((e as CustomEvent<string>).detail);
+    window.addEventListener(VIEW, open);
+    return () => window.removeEventListener(VIEW, open);
+  }, []);
+  useEffect(() => {
+    if (!src) return;
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setSrc(undefined);
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [src]);
+  if (!src) return null;
+  const close = () => {
+    setSrc(undefined);
+    setDrag(0);
+  };
+  return (
+    <div
+      role="dialog"
+      aria-label="Picture"
+      onClick={close}
+      onTouchStart={(e) => (from.current = e.touches.length === 1 ? e.touches[0].clientY : undefined)}
+      onTouchMove={(e) => from.current !== undefined && setDrag(Math.max(0, e.touches[0].clientY - from.current))}
+      onTouchEnd={() => {
+        from.current = undefined;
+        if (drag > 90) close();
+        else setDrag(0);
+      }}
+      style={{ background: `rgb(0 0 0 / ${0.82 * (1 - Math.min(drag, 300) / 400)})` }}
+      className="fixed inset-0 z-50 grid place-items-center p-[max(12px,env(safe-area-inset-top))_12px_max(12px,env(safe-area-inset-bottom))]"
+    >
+      <img src={src} alt="" style={{ transform: `translateY(${drag}px)` }} className={`max-h-full max-w-full rounded-lg object-contain shadow-lift ${drag ? "" : "transition-transform"}`} />
+      <button type="button" onClick={close} aria-label="Close" className="absolute top-[max(10px,env(safe-area-inset-top))] right-3 grid size-10 place-items-center rounded-full bg-black/40 text-[22px] leading-none text-white">
+        ×
+      </button>
+    </div>
+  );
 }
 
 /** A page with one thing on it, centred high, as UniiChat's sign-in. */
@@ -443,6 +497,7 @@ async function reload() {
 function Settings() {
   const [open, setOpen, ref] = useMenu();
   const [theme, toggleTheme] = useTheme();
+  const [px, setPx, bounds] = useTextSize();
   // Mounted with the header, not the menu, so the worker registers and
   // the bell's state is known before the menu first opens.
   const [bell, toggleBell] = usePush();
@@ -488,6 +543,20 @@ function Settings() {
               Theme
               <span className={note}>{theme === "dark" ? "Dark" : "Light"}</span>
             </button>
+            {/* The pinch's size, by the pixel, for a desktop and for anyone
+                who'd rather not pinch. */}
+            <div className="flex w-full items-center justify-between gap-3 px-4 py-1.5 text-[15px]">
+              Text size
+              <span className="flex items-center gap-1">
+                <button type="button" onClick={() => setPx(px - 1)} disabled={px <= bounds.min} aria-label="Smaller text" className="grid size-7 place-items-center rounded-full text-mid hover:bg-hover hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent">
+                  −
+                </button>
+                <span className={`${note} w-10 text-center tabular-nums`}>{px}px</span>
+                <button type="button" onClick={() => setPx(px + 1)} disabled={px >= bounds.max} aria-label="Larger text" className="grid size-7 place-items-center rounded-full text-mid hover:bg-hover hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent">
+                  +
+                </button>
+              </span>
+            </div>
             {bell !== "unsupported" && (
               <button
                 type="button"
@@ -740,7 +809,9 @@ function Chip({ attachment: a, removable = false }: { attachment: Attachment; re
   return (
     <AttachmentPrimitive.Root className="relative w-fit">
       {picture ? (
-        <img src={picture} alt={a.name} className={`rounded-xl border border-hair object-cover ${removable ? "size-16" : "max-h-72 max-w-full"}`} />
+        <button type="button" onClick={() => view(picture)} aria-label={`Open ${a.name}`} className="block cursor-zoom-in">
+          <img src={picture} alt={a.name} className={`rounded-xl border border-hair object-cover ${removable ? "size-16" : "max-h-72 max-w-full"}`} />
+        </button>
       ) : (
         <div className="flex max-w-60 items-center gap-2 rounded-xl border border-hair bg-paper px-3 py-2 text-sm">
           <span className="rounded-md bg-hair px-1.5 py-0.5 text-xs font-semibold text-mid uppercase">{a.name.split(".").pop()?.slice(0, 4)}</span>
@@ -756,6 +827,17 @@ function Chip({ attachment: a, removable = false }: { attachment: Attachment; re
         </AttachmentPrimitive.Remove>
       )}
     </AttachmentPrimitive.Root>
+  );
+}
+
+/** A picture the yeoman sent; a tap opens it large. */
+function Picture() {
+  const image = useAuiState((s) => (s.part.type === "image" ? s.part.image : null));
+  if (!image) return null;
+  return (
+    <button type="button" onClick={() => view(image)} aria-label="Open the picture" className="block cursor-zoom-in">
+      <img src={image} alt="" className="max-h-80 max-w-full rounded-lg border border-hair" />
+    </button>
   );
 }
 
@@ -805,6 +887,7 @@ type ThreadProps = {
 
 function Thread({ messages, typing, send, stop, cards, decide, asks, reply, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past }: ThreadProps) {
   usePinchText();
+  const usage = useUsage(typing);
   const [finding, setFinding] = useState(false);
   const [calling, setCalling] = useState(false);
   const voice = useMe()?.voice;
@@ -994,6 +1077,7 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
                 <div className="flex items-end gap-1.5">
                 <AddMenu />
                 <SlashInput />
+                <UsageRings limits={usage} />
                 <Trailing typing={typing} stop={stop} cardOpen={!!deck.length && !leaving} close={close} call={voice ? () => setCalling(true) : undefined} />
                 </div>
                 </ComposerPrimitive.AttachmentDropzone>
@@ -1171,7 +1255,8 @@ function UserMessage() {
         <Time className="mb-1.5 shrink-0" />
         <Edit />
         <MessagePrimitive.If hasContent>
-        <div className="relative w-fit max-w-[min(82%,560px)] rounded-[20px_20px_6px_20px] border-[1.25px] border-edge px-[17px] py-2.5 whitespace-pre-wrap [overflow-wrap:anywhere] [text-wrap:wrap]">
+        {/* By night the pale ink edge glares; the composer's frame line is enough. */}
+        <div className="relative w-fit max-w-[min(82%,560px)] rounded-[20px_20px_6px_20px] border-[1.25px] border-edge dark:border-frame px-[17px] py-2.5 whitespace-pre-wrap [overflow-wrap:anywhere] [text-wrap:wrap]">
           <MessagePrimitive.Parts />
           <Reaction />
         </div>
@@ -1285,7 +1370,7 @@ function AssistantMessage() {
                 case "tool-call":
                   return <Tool {...(part as unknown as ToolCallMessagePartProps)} />;
                 case "image":
-                  return <MessagePartPrimitive.Image className="max-h-80 max-w-full rounded-lg border border-hair" />;
+                  return <Picture />;
                 case "file":
                   return <Download />;
                 default:
@@ -1391,6 +1476,102 @@ function useModel(want: boolean): [string | null, (m: string) => void] {
       .catch(() => setModel(was));
   };
   return [model, pick];
+}
+
+/** One limit window of a subscription (site.rs `Limit`). */
+type Limit = { account: string; window: string; pct: number; resets: string };
+
+/** Claude's windows, asked on opening, every few minutes, and when a turn
+ * ends, since that is when they move. The server keeps a read five
+ * minutes, as each asks every provider afresh. */
+function useUsage(typing: boolean): Limit[] {
+  const [limits, setLimits] = useState<Limit[]>([]);
+  useEffect(() => {
+    if (typing) return;
+    const ask = () =>
+      fetch("/api/usage")
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+        .then((v: Limit[]) => setLimits(v.filter((l) => l.account === "claude")), () => {});
+    ask();
+    const every = setInterval(ask, 5 * 60_000);
+    return () => clearInterval(every);
+  }, [typing]);
+  return limits;
+}
+
+/** How full a ring is drawn: muted, ink from 70%, the red pencil past 90%,
+ * as Paseo colours its context meter. */
+const fill = (pct: number) => (pct > 90 ? "var(--accent)" : pct >= 70 ? "var(--ink)" : "var(--mid)");
+
+/** Two rings by the send button, after Paseo's context meter: the week
+ * outside, the five hours inside, so the slower, larger limit frames the
+ * one that refills. A hover on a desktop or a tap on a phone shows each
+ * with its reset. */
+function UsageRings({ limits }: { limits: Limit[] }) {
+  const [open, setOpen, ref] = useMenu();
+  const mouse = useRef(false);
+  const week = limits.find((l) => l.window === "week");
+  const hours = limits.find((l) => l.window === "5h");
+  if (!week && !hours) return null;
+  const ring = (l: Limit | undefined, r: number) => {
+    const round = 2 * Math.PI * r;
+    const pct = Math.min(100, Math.max(0, l?.pct ?? 0));
+    return (
+      <g key={r}>
+        <circle cx={11} cy={11} r={r} fill="none" stroke="var(--hair)" strokeWidth={2} />
+        {l && pct > 0 && (
+          <circle cx={11} cy={11} r={r} fill="none" stroke={fill(pct)} strokeWidth={2} strokeLinecap="round" strokeDasharray={round} strokeDashoffset={round - (pct / 100) * round} transform="rotate(-90 11 11)" />
+        )}
+      </g>
+    );
+  };
+  const rows: [string, Limit | undefined][] = [
+    ["5 hours", hours],
+    ["Week", week],
+  ];
+  const label = rows
+    .filter(([, l]) => l)
+    .map(([name, l]) => `${name} ${l!.pct}%`)
+    .join(", ");
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        aria-label={`Claude use: ${label}`}
+        aria-expanded={open}
+        onPointerEnter={(e) => {
+          mouse.current = e.pointerType === "mouse";
+          if (mouse.current) setOpen(true);
+        }}
+        onPointerLeave={(e) => e.pointerType === "mouse" && setOpen(false)}
+        onPointerDown={(e) => (mouse.current = e.pointerType === "mouse")}
+        // A mouse opened it on the way in; only a touch toggles it.
+        onClick={() => mouse.current || setOpen(!open)}
+        className="grid h-[38px] w-7 place-items-center rounded-full hover:bg-hover"
+      >
+        <svg viewBox="0 0 22 22" className="size-[22px]" aria-hidden>
+          {ring(week, 9.5)}
+          {ring(hours, 5.5)}
+        </svg>
+      </button>
+      {open && (
+        <div role="tooltip" className="absolute right-0 bottom-full z-30 mb-2 w-max rounded-[14px] border-[1.25px] border-edge bg-lift px-4 py-2.5 text-[13px] shadow-lift">
+          <p className="mb-1 text-[15px] text-ink">Claude use</p>
+          {rows.map(
+            ([name, l]) =>
+              l && (
+                <p key={name} className="flex justify-between gap-5 text-mid">
+                  <span>
+                    {name} <span className="text-ink tabular-nums">{l.pct}%</span>
+                  </span>
+                  <span className="tabular-nums">resets {l.resets}</span>
+                </p>
+              ),
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** How long the chat remembers, in minutes, asked once `want` turns true,

@@ -743,6 +743,8 @@ struct Site {
     speaking: Mutex<HashMap<String, tokio::sync::watch::Sender<Sofar>>>,
     /// xAI's voices as last asked, and when.
     voices: Mutex<Option<(std::time::Instant, serde_json::Value)>>,
+    /// The subscription windows as last read, and when.
+    usage: Mutex<Option<(std::time::Instant, Vec<Limit>)>>,
 }
 
 /// Who answers here, and every assistant the proxy serves on this host,
@@ -1059,6 +1061,7 @@ pub async fn serve(
         x: std::env::var_os("YEOMAN_X").map(PathBuf::from),
         speaking: Mutex::default(),
         voices: Mutex::default(),
+        usage: Mutex::default(),
     });
     if let Some(push) = &site.push {
         tokio::spawn(ring(site.web.shown.subscribe(), push.clone()));
@@ -1099,6 +1102,7 @@ pub async fn serve(
         .route("/api/speak", post(speak))
         .route("/api/speak/{key}", get(spoken))
         .route("/api/voices", get(voices))
+        .route("/api/usage", get(usage))
         .route("/api/model", get(model_now).post(model_pick))
         .route("/api/forget", get(forget_now).post(forget_pick))
         .route("/api/call", post(call))
@@ -1704,6 +1708,65 @@ async fn voices(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
         Ok(Err(e)) => {
             eprintln!("yeoman: site voices: {e}");
             (StatusCode::BAD_GATEWAY, e).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// Each usage read asks every provider afresh, so one is kept a while.
+const USAGE_FRESH: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// One limit window of a subscription, as the composer's rings draw it.
+#[derive(Clone, Serialize, Debug, PartialEq)]
+struct Limit {
+    account: String,
+    window: String,
+    pct: u32,
+    resets: String,
+}
+
+/// The window lines of the usage report (`claude  5h  3%  resets Thu Oct
+/// 22 23:19`); the shares under each, and accounts that couldn't be read,
+/// are left out, as the rings show only how full each window is.
+fn limits(text: &str) -> Vec<Limit> {
+    text.lines()
+        .filter_map(|line| {
+            let mut w = line.split_whitespace();
+            let (account, window, pct) = (w.next()?, w.next()?, w.next()?);
+            let pct = pct.strip_suffix('%')?.parse().ok()?;
+            (w.next()? == "resets").then(|| Limit {
+                account: account.into(),
+                window: window.into(),
+                pct,
+                resets: w.collect::<Vec<_>>().join(" "),
+            })
+        })
+        .collect()
+}
+
+/// How full each subscription window is. A failed read keeps the last
+/// good one.
+async fn usage(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    if let Some((at, list)) = &*site.usage.lock().unwrap()
+        && at.elapsed() < USAGE_FRESH
+    {
+        return Json(list.clone()).into_response();
+    }
+    match tokio::task::spawn_blocking(crate::tools::usage).await {
+        Ok(Ok(text)) => {
+            let list = limits(&text);
+            *site.usage.lock().unwrap() = Some((std::time::Instant::now(), list.clone()));
+            Json(list).into_response()
+        }
+        Ok(Err(e)) => {
+            eprintln!("yeoman: site usage: {e}");
+            match &*site.usage.lock().unwrap() {
+                Some((_, list)) => Json(list.clone()).into_response(),
+                None => (StatusCode::BAD_GATEWAY, e).into_response(),
+            }
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
@@ -2659,6 +2722,24 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn usage_keeps_the_windows_and_drops_the_rest() {
+        let got = limits(concat!(
+            "claude  5h      3%  resets Thu Oct 22 23:19\n",
+            "        korra 63% (memory 2%) · raava 37% · $10 at API prices\n",
+            "codex   2 free full resets unused\n",
+            "go      unknown (HTTPError: HTTP Error 401: Unauthorized)\n",
+            "claude  week   27%  resets Sun Oct 25 17:59\n",
+        ));
+        let w = |window: &str, pct, resets: &str| Limit {
+            account: "claude".into(),
+            window: window.into(),
+            pct,
+            resets: resets.into(),
+        };
+        assert_eq!(got, [w("5h", 3, "Thu Oct 22 23:19"), w("week", 27, "Sun Oct 25 17:59")]);
+    }
 
     #[test]
     fn agents_are_shown_only_when_they_change() {
