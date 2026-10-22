@@ -108,8 +108,8 @@ pub struct Run {
     pub acts: bool,
     pub stop: Option<Arc<AtomicBool>>,
     pub endless: bool,
-    /// A subagent's: it can't start or tell agents of its own.
-    pub sub: bool,
+    /// A subagent's, by its name: it can't start or tell agents of its own.
+    pub sub: Option<String>,
     /// Where each tool call and its result go as they happen, for a door
     /// that shows the work as well as the answer.
     pub steps: Option<Steps>,
@@ -452,8 +452,28 @@ impl Model for Claude {
             "--verbose",
         ]);
         if self.seat {
-            // Every turn its own session, all under one name.
-            let name = seat_name();
+            // Every turn its own session, all under one name. An agent's
+            // runs keep no session: its log in the yeoman's state is its
+            // chat, and hippo hears of it only through its report.
+            let name = match &run.sub {
+                Some(agent) => {
+                    cmd.arg("--no-session-persistence");
+                    format!("{} {agent}", seat_name())
+                }
+                None => seat_name(),
+            };
+            // The seat's agents come through the host's managed MCP server
+            // `yeoman agents`, which finds this yeoman's state here; one
+            // level, as in Unii.
+            match (&run.sub, std::env::var_os("STATE_DIRECTORY")) {
+                (None, Some(state)) => {
+                    cmd.env("YEOMAN_AGENTS", state)
+                        .args(["--allowedTools", BOSS]);
+                }
+                _ => {
+                    cmd.env_remove("YEOMAN_AGENTS");
+                }
+            }
             cmd.args([
                 "--name",
                 &name,
@@ -493,7 +513,7 @@ impl Model for Claude {
             let allowed: Vec<String> = servers.iter().map(|s| format!("mcp__{s}")).collect();
             cmd.args(["--mcp-config", file, "--allowedTools", &allowed.join(",")]);
             let mut denied = Vec::new();
-            if run.sub {
+            if run.sub.is_some() {
                 denied.push(BOSS);
             }
             if !run.acts {
@@ -541,7 +561,7 @@ impl Model for Claude {
         let keep = self.keep.clone();
         let steps = run.steps.clone();
         let steer = run_steer.clone();
-        let sub = run.sub;
+        let sub = run.sub.is_some();
         let seat = self.seat;
         let asker = run.ask.clone();
         // The asks still waiting on the person, withdrawn when the turn ends.
@@ -671,7 +691,7 @@ impl Model for Claude {
         // A subagent reports only its last answer, as in Unii: words sent
         // while it works replace what it said before, and its log keeps
         // every answer for whoever reads the whole chat.
-        let answers = if run.sub {
+        let answers = if run.sub.is_some() {
             answers.last().copied().unwrap_or_default().to_owned()
         } else {
             answers.join("\n\n")

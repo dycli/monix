@@ -1450,18 +1450,28 @@ pub fn mail() -> Result<Option<(String, Vec<Account>)>, String> {
     Ok(Some((host, mail::accounts(&text)?)))
 }
 
-pub async fn serve(dir: PathBuf) -> Result<(), String> {
+/// The tools that start, tell, stop and read subagents.
+pub const AGENTS: [&str; 4] = ["spawn", "tell_agent", "cancel_task", "agent_chat"];
+
+/// Serves the tools, or with `only` just those named.
+pub async fn serve(dir: PathBuf, only: Option<&[&str]>) -> Result<(), String> {
     let hippo = std::env::var("HIPPO_DIR").map_err(|_| "HIPPO_DIR is not set")?;
     let hippo = Hippo {
         sock: PathBuf::from(hippo).join("hippo.sock"),
         seat: None,
     };
-    let tools = Tools {
+    // With `only`, none of the services: the settings in the environment
+    // may be the caller's (a seat's claude), not a yeoman's tools'.
+    let full = only.is_none();
+    let mut tools = Tools {
         dir,
-        web: Arc::new(Web::new(hippo.clone(), search_key()?)),
+        web: Arc::new(Web::new(
+            hippo.clone(),
+            if full { search_key()? } else { None },
+        )),
         hippo,
-        house: House::from_env().map(Arc::new),
-        mail: mail()?,
+        house: House::from_env().filter(|_| full).map(Arc::new),
+        mail: if full { mail()? } else { None },
         desk: std::env::var_os("YEOMAN_DESK").map(PathBuf::from),
         keep: std::env::var("YEOMAN_KEEP").ok(),
         run: std::env::var("YEOMAN_RUN").ok(),
@@ -1470,16 +1480,27 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
             .ok()
             .zip(std::env::var("YEOMAN_PAGES_URL").ok())
             .map(|(d, u)| (PathBuf::from(d), u)),
-        seerr: seerr()?,
-        news: news()?.map(Arc::new),
-        calendar: calendar()?.map(Arc::new),
+        seerr: if full { seerr()? } else { None },
+        news: if full { news()?.map(Arc::new) } else { None },
+        calendar: if full {
+            calendar()?.map(Arc::new)
+        } else {
+            None
+        },
         youtube: std::env::var_os("YEOMAN_YTDLP").map(|b| Arc::new(Youtube::new(PathBuf::from(b)))),
         x: std::env::var_os("YEOMAN_X").map(PathBuf::from),
-        weather: weather()?.map(Arc::new),
-        finance: finance::from_env().map(Arc::new),
-        ledger: finance::ledger_from_env().map(Arc::new),
+        weather: if full { weather()?.map(Arc::new) } else { None },
+        finance: finance::from_env().filter(|_| full).map(Arc::new),
+        ledger: finance::ledger_from_env().filter(|_| full).map(Arc::new),
         tool_router: Tools::tool_router(),
     };
+    if let Some(only) = only {
+        for t in tools.tool_router.list_all() {
+            if !only.contains(&t.name.as_ref()) {
+                tools.tool_router.remove_route(&t.name);
+            }
+        }
+    }
     let running = tools
         .serve(rmcp::transport::stdio())
         .await

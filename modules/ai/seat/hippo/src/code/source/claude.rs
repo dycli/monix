@@ -45,6 +45,14 @@ fn injected(text: &str) -> bool {
     .any(|p| t.starts_with(p))
 }
 
+/// A report from one of a yeoman seat's agents, which the yeoman hands the
+/// seat as its prompt, tagged: the agent's words, not the captain's.
+fn agent_report(text: &str) -> Option<String> {
+    let rest = text.trim_start().strip_prefix("<agent-report>")?;
+    let (said, _) = rest.split_once("</agent-report>")?;
+    Some(said.trim().to_owned())
+}
+
 fn interrupted(text: &str) -> bool {
     text.starts_with("[Request interrupted by user")
 }
@@ -141,7 +149,9 @@ pub fn entry(r: &Value, session: &str) -> Vec<Event> {
             }
             match r.pointer("/message/content").unwrap_or(&Value::Null) {
                 Value::String(s) => {
-                    if s.trim_start().starts_with("<task-notification>") {
+                    if let Some(said) = agent_report(s) {
+                        out.push(item(0, Kind::Work, said, false, None));
+                    } else if s.trim_start().starts_with("<task-notification>") {
                         out.push(item(0, Kind::Echo, s.clone(), false, None));
                     } else if interrupted(s) {
                         out.push(Event::TurnEnd);
@@ -158,7 +168,9 @@ pub fn entry(r: &Value, session: &str) -> Vec<Event> {
                         match str_at(b, "/type") {
                             Some("text") => {
                                 let t = str_at(b, "/text").unwrap_or("");
-                                if interrupted(t) {
+                                if let Some(said) = agent_report(t) {
+                                    out.push(item(k, Kind::Work, said, false, None));
+                                } else if interrupted(t) {
                                     out.push(Event::TurnEnd);
                                 } else if !injected(t) && !t.trim().is_empty() {
                                     said.push(t.to_owned());
@@ -314,6 +326,23 @@ mod tests {
         let other = json!({"type": "user", "isMeta": true, "uuid": "u3",
             "timestamp": "2026-10-21T12:05:00.000Z", "message": {"role": "user", "content": "x"}});
         assert!(parse(&other, "s").is_empty());
+    }
+
+    #[test]
+    fn a_seat_agents_report_is_work() {
+        let said = "<agent-report>\n[Ada] report\nDone.\n</agent-report>\n\nFrom your subagent.";
+        let r = json!({
+            "type": "user", "uuid": "u4", "timestamp": "2026-10-22T12:05:00.000Z",
+            "message": {"role": "user", "content": [{"type": "text", "text": said}]}
+        });
+        let events = parse(&r, "s");
+        let [Event::Item(it)] = events.as_slice() else {
+            panic!("{events:?}");
+        };
+        assert_eq!(
+            (it.kind, it.text.as_str()),
+            (Kind::Work, "[Ada] report\nDone.")
+        );
     }
 
     #[test]

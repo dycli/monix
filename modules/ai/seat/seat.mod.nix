@@ -259,6 +259,11 @@ in
           default = { };
           description = "Claude Code managed settings, for every launcher.";
         };
+        claudeMcp = lib.options.mkOption {
+          inherit (json) type;
+          default = { };
+          description = "Claude Code's managed MCP servers beyond the browsers, for every launcher.";
+        };
         codexConfig = lib.options.mkOption {
           inherit (toml) type;
           default = { };
@@ -400,7 +405,8 @@ in
         environment.etc."claude-code/managed-mcp.json".text = toJSON {
           mcpServers =
             browserServers
-            |> mapAttrs (_: server: server // { type = if server ? url then "http" else "stdio"; });
+            |> mapAttrs (_: server: server // { type = if server ? url then "http" else "stdio"; })
+            |> (servers: servers // config.seat.claudeMcp);
         };
       };
     };

@@ -69,7 +69,25 @@ You are {name}: Bridge, the ship's engineer, answering {person} in {name}, \
 a web chat they may read on their phone, not a terminal. Every message \
 starts a fresh session: what came before is in the hippo view, and in \
 hippo. {person} sees your tool calls as they happen and your final \
-message as the answer; markdown shows.";
+message as the answer; markdown shows.
+
+For work that should go on apart from this chat, start agents with spawn: \
+each is a Claude Code of its own with all your tools and rules, which \
+outlives Stop and restarts; its report comes to you as a message, and \
+{person} sees its work as it goes. Claude Code's Agent tool is for help \
+within one turn.";
+
+/// A seat agent's words in place of SUB.
+const SEAT_AGENT: &str = "\
+You are {agent}, an agent {name} started: Bridge, the ship's engineer, \
+working for {person} apart from the chat. Every run starts a fresh \
+session: what came before is in the hippo view, and in hippo. Your own \
+work so far is in <work>, as \"i|kind: text\" lines: what you are (note), \
+your task (user), and later all you did (tool, echo), replied (talk) and \
+were told (user). Do what your task says. Change a repository only in a \
+worktree of your own. Your final reply is your report to {name}, who \
+alone sees it: what you did, what you found, what failed and what is \
+left. {name} may send you more, even while you work: answer the last.";
 
 /// Added when the model has no tools.
 const NO_TOOLS: &str = "\n\nWhen a line is too condensed to answer from, say what you \
@@ -460,6 +478,8 @@ fn answer(
     // The seat's words come as a person's do in Claude Code: bare.
     let prompt = match (model.seat(), from) {
         (true, From::Person) => format!("{said}{inline}"),
+        // hippo knows a report by its tag, and logs it as work.
+        (true, From::Work) => format!("<agent-report>\n{said}\n</agent-report>\n\n{who}."),
         (true, _) => format!("{who}: {said}{inline}"),
         (false, _) => format!(
             "\nNow: {}{}\n\n{who}: {said}{inline}",
@@ -581,15 +601,21 @@ fn work(
     let Turn {
         stop, steps, steer, ..
     } = turn;
-    let view = hippo.view()?;
     let log = task::log(state, name)?;
     let (yeoman, person) = (var("YEOMAN_NAME")?, var("YEOMAN_PERSON")?);
-    let system = system(model, false, SUB, &yeoman, &person);
-    let prompt = format!(
-        "\nNow: {}\n\n<work>\n{}\n</work>",
-        Local::now().format("%Y-%m-%d %a %H:%M"),
-        task::chat(&log)
-    );
+    let work = format!("<work>\n{}\n</work>", task::chat(&log));
+    // The seat brings its own memory and clock.
+    let (system, view, prompt) = if model.seat() {
+        let system = SEAT_AGENT
+            .replace("{agent}", name)
+            .replace("{name}", &yeoman)
+            .replace("{person}", &person);
+        (system, String::new(), work)
+    } else {
+        let now = Local::now().format("%Y-%m-%d %a %H:%M");
+        let system = system(model, false, SUB, &yeoman, &person);
+        (system, hippo.view()?, format!("\nNow: {now}\n\n{work}"))
+    };
     let reply = model.answer(
         &system,
         &view,
@@ -599,7 +625,7 @@ fn work(
             acts: true,
             stop,
             endless: true,
-            sub: true,
+            sub: Some(name.to_owned()),
             steps,
             steer,
             ask: None,
@@ -789,8 +815,21 @@ async fn ask_alone<D: Door>(
 ) -> Result<String, String> {
     let typing = Typing::start(door);
     let (h, m) = (hippo.clone(), model.clone());
+    // The seat's work shows as it happens, as on a person's turn.
+    let shown = door.clone();
+    let steps: Option<Steps> = model.seat().then(|| {
+        Arc::new(move |s| {
+            if !matches!(s, Step::Answer { .. }) {
+                shown.step(s)
+            }
+        }) as Steps
+    });
     let answered = tokio::task::spawn_blocking(move || {
-        answer(&h, m.as_ref(), from, &said, Vec::new(), Turn::default())
+        let turn = Turn {
+            steps,
+            ..Turn::default()
+        };
+        answer(&h, m.as_ref(), from, &said, Vec::new(), turn)
     })
     .await
     .unwrap_or_else(|e| Err(e.to_string()));
@@ -1299,19 +1338,34 @@ async fn run() -> Result<(), String> {
         state.clone(),
         web.as_ref().map(|w| w.aside()),
     );
-    tokio::spawn(remind(
-        move || {
-            last(&c, &s).map(|door| site::Mirror {
-                door,
-                web: w.clone(),
-            })
-        },
-        hippo.clone(),
-        model.clone(),
-        state.clone(),
+    let (alerts, house) = (
         env::var_os("YEOMAN_ALERTS").map(PathBuf::from),
         house::House::from_env(),
-    ));
+    );
+    // Without Matrix the pages are the only door, and always there.
+    match (&client, w) {
+        (None, Some(w)) => tokio::spawn(remind(
+            move || Some(w.clone()),
+            hippo.clone(),
+            model.clone(),
+            state.clone(),
+            alerts,
+            house,
+        )),
+        (_, w) => tokio::spawn(remind(
+            move || {
+                last(&c, &s).map(|door| site::Mirror {
+                    door,
+                    web: w.clone(),
+                })
+            },
+            hippo.clone(),
+            model.clone(),
+            state.clone(),
+            alerts,
+            house,
+        )),
+    };
     if env::var_os("YEOMAN_FORGET").is_some() {
         let pages = env::var_os("YEOMAN_PAGES").map(PathBuf::from);
         let w = web.clone();
@@ -1481,7 +1535,13 @@ async fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let r = match args.as_slice() {
         [] => run().await,
-        [cmd, dir] if cmd == "tools" => tools::serve(PathBuf::from(dir)).await,
+        [cmd, dir] if cmd == "tools" => tools::serve(PathBuf::from(dir), None).await,
+        // A seat's claude takes its agents from the yeoman that started it,
+        // which names its state; any other claude on the seat gets none.
+        [cmd] if cmd == "agents" => match env::var_os("YEOMAN_AGENTS") {
+            Some(dir) => tools::serve(PathBuf::from(dir), Some(&tools::AGENTS)).await,
+            None => tools::serve(PathBuf::new(), Some(&[])).await,
+        },
         [cmd, to, text @ ..] if cmd == "tell" && !text.is_empty() => {
             house::tell(to, &text.join(" "))
         }
