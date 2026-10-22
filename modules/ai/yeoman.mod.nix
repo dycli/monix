@@ -18,7 +18,8 @@
 # YouTube only, and film and show requests, going over Seerr on loopback
 # only with `requestsKeyFile` set), which reaches only its book, its hippo
 # and those services, and pictures (yeoman-image.py), drawn either by the
-# image service that alone holds the household's Codex login or by Grok
+# image service, the only assistant-side holder of a Codex login (the
+# seat keeps its own, for paseo), or by Grok
 # Imagine through the X service, and X, read by Grok's x_search through
 # the X service (`yeoman x`, yeoman/src/x.rs) that alone holds the
 # subscription's xAI sign-in; `yeoman tools`
