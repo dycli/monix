@@ -29,7 +29,8 @@ Usage:
                            a page from character at
   hippo date <id>          date and time of message id
   hippo search <regex>     search every message, word for word
-  hippo tail <n>           the last n messages whole, as JSON lines
+  hippo tail <n> [title]   the last n messages whole, as JSON lines; with a
+                           title, only those of the chats it names
   hippo chat <harness> <session>
                            one chat's latest messages, verbatim (the hook
                            that reopens a chat after a compaction)

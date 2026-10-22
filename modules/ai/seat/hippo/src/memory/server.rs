@@ -13,6 +13,7 @@ use crate::memory::view::{CONTEXT, PLACEHOLDER, UNBUILT, VIEW, View, head};
 use chrono::{DateTime, Local};
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -257,17 +258,10 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
                 .map(|d| d.format("%Y-%m-%d %H:%M:%S %a").to_string())
                 .ok_or_else(|| format!("No message {id}."))
         }
-        // The last messages whole, one JSON object a line, for programs
-        // that show a conversation (yeoman's web chat loads its history so).
+        // The last messages whole, for programs that show a conversation.
         "tail" => {
             let n = num(a, 0, "n")?.min(TAIL_MAX);
-            let c = core.lock().unwrap();
-            let t = c.store.len();
-            let mut out = Vec::new();
-            for i in t.saturating_sub(n)..t {
-                out.push(serde_json::to_string(&c.store.get(i)?).map_err(|e| e.to_string())?);
-            }
-            Ok(out.join("\n"))
+            tail(&core.lock().unwrap().store, n, a.get(1).map(String::as_str))
         }
         "chat" => {
             let [harness, session] = a.as_slice() else {
@@ -364,6 +358,36 @@ const OWN_CUT: usize = 800;
 /// holds every chat in one timeline, so without this a compacted chat can
 /// take up another's work. The captain's last few messages and the chat's
 /// last reply, oldest first; nothing for a chat with no messages yet.
+/// The last `n` messages whole, one JSON object a line, oldest first, for
+/// programs that show a conversation (yeoman's web chat loads its history
+/// so). With a title, only those of the chats that go by it: a yeoman seat
+/// runs each turn as a session of its own, all under one name.
+fn tail(store: &Store, n: u64, title: Option<&str>) -> Result<String, String> {
+    let ids: Vec<u64> = match title {
+        Some(title) => {
+            let keys: HashSet<&str> = store
+                .chats
+                .iter()
+                .filter(|(_, r)| r.title == title)
+                .map(|(k, _)| k.as_str())
+                .collect();
+            let mut ids: Vec<u64> = (0..store.len())
+                .rev()
+                .filter(|&i| store.chat(i).is_some_and(|k| keys.contains(k)))
+                .take(n as usize)
+                .collect();
+            ids.reverse();
+            ids
+        }
+        None => (store.len().saturating_sub(n)..store.len()).collect(),
+    };
+    let mut out = Vec::new();
+    for i in ids {
+        out.push(serde_json::to_string(&store.get(i)?).map_err(|e| e.to_string())?);
+    }
+    Ok(out.join("\n"))
+}
+
 fn this_chat(store: &Store, harness: &str, session: &str) -> Result<String, String> {
     let key = chat_key(harness, session);
     let (mut users, mut talk) = (0, false);
@@ -855,6 +879,56 @@ mod tests {
         assert!(lines[4].starts_with("24 user: yyy") && lines[4].ends_with("y…"));
         assert_eq!(lines.len(), 5);
         assert_eq!(this_chat(&store, "claude", "fresh").unwrap(), "");
+    }
+
+    #[test]
+    fn a_titled_tail_keeps_to_the_chats_so_named() {
+        let dir = std::env::temp_dir().join(format!("hippo-tail-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let mut store = Store::open(&dir, true).unwrap();
+        let msg = |k: usize, s: &str| Draft {
+            kind: Kind::Talk,
+            chat: Some(s.into()),
+            text: format!("{s} {k}"),
+            date: Local::now(),
+            src: Some(crate::memory::store::Src {
+                h: "claude".into(),
+                s: s.into(),
+                e: k.to_string(),
+            }),
+        };
+        let chat = |s: &str, title: &str| crate::memory::store::ChatRec {
+            chat: s.into(),
+            harness: "claude".into(),
+            session: s.into(),
+            title: title.into(),
+            cwd: String::new(),
+            first: String::new(),
+        };
+        // Two turns of the seat, each its own session, around another chat.
+        store.register(chat("t1", "Raava")).unwrap();
+        store.register(chat("other", "Fix hippo")).unwrap();
+        store.register(chat("t2", "Raava")).unwrap();
+        let order = ["t1", "other", "t1", "other", "t2", "other", "t2"];
+        store
+            .append(order.iter().enumerate().map(|(k, s)| msg(k, s)).collect())
+            .unwrap();
+        let texts = |out: String| -> Vec<String> {
+            out.lines()
+                .map(|l| {
+                    serde_json::from_str::<serde_json::Value>(l).unwrap()["text"]
+                        .as_str()
+                        .unwrap()
+                        .to_owned()
+                })
+                .collect()
+        };
+        assert_eq!(
+            texts(tail(&store, 3, Some("Raava")).unwrap()),
+            ["t1 2", "t2 4", "t2 6"]
+        );
+        assert_eq!(texts(tail(&store, 2, None).unwrap()), ["other 5", "t2 6"]);
+        assert_eq!(tail(&store, 5, Some("Nobody")).unwrap(), "");
     }
 
     #[test]

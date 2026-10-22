@@ -61,14 +61,18 @@ const convert = (m: Msg): ThreadMessageLike => ({
   id: m.id,
   role: m.role,
   content: [
-    ...(m.tools ?? []).map((t) => ({
-      type: "tool-call" as const,
-      toolCallId: t.id,
-      toolName: t.name,
-      args: (t.input ?? {}) as Args,
-      result: t.result,
-      isError: t.error,
-    })),
+    // Each call after the words that led to it, in the order they came.
+    ...(m.tools ?? []).flatMap((t) => [
+      ...(t.before ? [{ type: "text" as const, text: t.before }] : []),
+      {
+        type: "tool-call" as const,
+        toolCallId: t.id,
+        toolName: t.name,
+        args: (t.input ?? {}) as Args,
+        result: t.result,
+        isError: t.error,
+      },
+    ]),
     ...(m.text ? [{ type: "text" as const, text: m.text }] : []),
     ...(m.picture ? [{ type: "image" as const, image: m.picture }] : []),
     ...(m.file ? [{ type: "file" as const, data: `/api/file/${encodeURIComponent(m.file)}`, mimeType: "", filename: m.file }] : []),
@@ -1169,7 +1173,15 @@ function useVoices(want: boolean) {
 function Speak() {
   const { live } = useCustom();
   const voice = useMe()?.voice;
-  const text = useAuiState((s) => s.message.content.map((p) => (p.type === "text" ? p.text : "")).join(""));
+  // The answer: the words after the last call, not those on the way.
+  const text = useAuiState((s) => {
+    const parts = s.message.content as readonly { type: string; text?: string }[];
+    const from = parts.map((p) => p.type).lastIndexOf("tool-call") + 1;
+    return parts
+      .slice(from)
+      .map((p) => (p.type === "text" ? (p.text ?? "") : ""))
+      .join("");
+  });
   const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
   if (live || !voice || !text.trim()) return null;
   const press = async () => {
@@ -1281,46 +1293,212 @@ function toolName(name: string) {
 
 // The first short string among the arguments says what a call was about:
 // a query, a path, a URL.
-function gist(args: Args | undefined) {
+function gist(args: Args | string | undefined) {
+  if (typeof args === "string") return args.split("\n")[0];
   const first = Object.values(args ?? {}).find((v) => typeof v === "string" && v.trim());
   return typeof first === "string" ? first.split("\n")[0] : "";
 }
 
-// One quiet line per tool the model used on its way to an answer, with a
-// spinner until the result is back; a click opens what went in and came out.
+// Claude Code's tools as a person would name them, each with its glyph.
+const TOOLS: Record<string, [string, Glyph]> = {
+  Bash: ["Shell", "shell"],
+  BashOutput: ["Shell output", "shell"],
+  KillShell: ["Stop shell", "shell"],
+  Read: ["Read", "file"],
+  Edit: ["Edit", "pen"],
+  MultiEdit: ["Edit", "pen"],
+  NotebookEdit: ["Edit", "pen"],
+  Write: ["Write", "pen"],
+  Grep: ["Search", "find"],
+  Glob: ["Find files", "find"],
+  WebFetch: ["Fetch", "web"],
+  WebSearch: ["Web search", "web"],
+  Agent: ["Agent", "agent"],
+  Task: ["Agent", "agent"],
+  TodoWrite: ["Todos", "list"],
+  ToolSearch: ["Tool search", "find"],
+  Skill: ["Skill", "agent"],
+  AskUserQuestion: ["Question", "ask"],
+};
+
+type Glyph = "shell" | "file" | "pen" | "find" | "web" | "agent" | "list" | "ask" | "plug";
+
+const GLYPHS: Record<Glyph, ReactNode> = {
+  shell: <path d="m4 17 6-6-6-6M12 19h8" />,
+  file: (
+    <>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+    </>
+  ),
+  pen: <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />,
+  find: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m21 21-4.3-4.3" />
+    </>
+  ),
+  web: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20M12 2a15.3 15.3 0 0 1 0 20 15.3 15.3 0 0 1 0-20" />
+    </>
+  ),
+  agent: <path d="m12 3 1.9 5.8L20 10.5l-6.1 1.7L12 18l-1.9-5.8L4 10.5l6.1-1.7z" />,
+  list: <path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" />,
+  ask: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01" />
+    </>
+  ),
+  plug: <path d="M12 22v-5M9 8V2M15 8V2M18 8v5a6 6 0 0 1-12 0V8z" />,
+};
+
+const home = (path: string) => path.replace(/^\/home\/[^/]+/, "~");
+
+// What a call was about, in a few words: the command, the file, the query.
+function about(name: string, args: Args | string | undefined): string {
+  if (typeof args !== "object" || args === null) return gist(args);
+  const a = args as Record<string, unknown>;
+  const str = (k: string) => (typeof a[k] === "string" ? (a[k] as string) : "");
+  switch (name) {
+    case "Bash":
+      // A leading `cd somewhere &&` says nothing about what ran.
+      return str("command").split("\n")[0].replace(/^cd\s+\S+\s*&&\s*/, "");
+    case "Read":
+    case "Edit":
+    case "MultiEdit":
+    case "Write":
+      return home(str("file_path"));
+    case "NotebookEdit":
+      return home(str("notebook_path"));
+    case "Grep":
+      return str("pattern") + (str("path") ? `  in ${home(str("path"))}` : "");
+    case "WebFetch":
+      return str("url").replace(/^https?:\/\//, "");
+    case "Agent":
+    case "Task":
+      return str("description");
+    case "TodoWrite":
+      return Array.isArray(a.todos) ? `${a.todos.length} items` : "";
+  }
+  return gist(args);
+}
+
+// One quiet line per tool the model used, with the words it said on the
+// way above it; a spinner until the result is back, and a click opens what
+// went in and came out, drawn for the tool it was.
 function ToolLine({ toolName: name, args, result, isError }: ToolCallMessagePartProps) {
   const { live } = useCustom();
   return <ToolRow name={name} args={args} result={result} isError={isError} live={live} />;
 }
 
-type Row = { name: string; args: Args | undefined; result: unknown; isError?: boolean; live?: boolean };
+type Row = { name: string; args: Args | string | undefined; result: unknown; isError?: boolean; live?: boolean };
 
 function ToolRow({ name, args, result, isError, live }: Row) {
   const done = result !== undefined;
-  const mark = !done ? (live ? "spin" : "·") : isError ? "✕" : "✓";
+  const [label, glyph] = TOOLS[name] ?? [toolName(name), "plug"];
   return (
-    <details className="group/tool not-prose my-0.5 text-[13.5px] text-mid last-of-type:mb-3">
-      <summary className="flex cursor-pointer list-none items-center gap-2 marker:hidden [&::-webkit-details-marker]:hidden">
-        {mark === "spin" ? (
-          <span className="size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-hair border-t-accent" />
+    <details className="group/tool not-prose text-[13.5px] [:not(details)+&]:mt-2 [&:has(+:not(details))]:mb-3 [&:last-child]:mb-3">
+      <summary className="-mx-1.5 flex cursor-pointer list-none items-center gap-2 rounded-md px-1.5 py-[3px] marker:hidden hover:bg-hover/50 [&::-webkit-details-marker]:hidden">
+        {!done && live ? (
+          <span className="size-3.5 shrink-0 animate-spin rounded-full border-[1.5px] border-hair border-t-accent" />
         ) : (
-          <span className={`w-3 shrink-0 text-center ${isError ? "text-accent" : "text-soft"}`}>{mark}</span>
+          <svg viewBox="0 0 24 24" className={`size-3.5 shrink-0 ${isError ? "text-accent" : "text-soft"}`} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            {GLYPHS[glyph]}
+          </svg>
         )}
-        <span className="shrink-0 font-medium text-ink/80">{toolName(name)}</span>
-        <span className="truncate text-soft">{gist(args)}</span>
+        <span className={`shrink-0 font-medium ${isError ? "text-accent" : "text-ink/80"}`}>{label}</span>
+        <span className="min-w-0 truncate font-mono text-[12.5px] text-soft [font-variant-ligatures:none]">{about(name, args)}</span>
+        <svg viewBox="0 0 24 24" className="ml-auto size-3.5 shrink-0 text-soft opacity-0 transition group-open/tool:rotate-90 group-hover/tool:opacity-100 group-open/tool:opacity-100" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="m9 18 6-6-6-6" />
+        </svg>
       </summary>
-      <div className="mt-1.5 mb-2 ml-5 flex flex-col gap-1.5">
-        <pre className="max-h-48 overflow-auto rounded-lg border border-hair bg-lift px-3 py-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
-          {JSON.stringify(args, null, 2)}
-        </pre>
-        {done && (
-          <pre className="max-h-72 overflow-auto rounded-lg border border-hair bg-lift px-3 py-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
-            {String(result) || "(nothing)"}
-          </pre>
-        )}
+      <div className="mt-1 mb-2.5 ml-[6px] flex flex-col gap-2 border-l border-hair pl-4">
+        <ToolBody name={name} args={args} />
+        {done ? <Output text={String(result)} error={isError} /> : <span className="text-xs text-soft">{live ? "Running…" : "No result."}</span>}
       </div>
     </details>
   );
+}
+
+// No ligatures: code shows `--` and `===` as typed.
+const BLOCK = "max-h-72 overflow-auto rounded-lg border border-hair bg-lift px-3 py-2 font-mono text-[12px] leading-relaxed [font-variant-ligatures:none] whitespace-pre-wrap [overflow-wrap:anywhere]";
+
+// What went in: a command as typed, an edit as a diff, a file as written.
+function ToolBody({ name, args }: { name: string; args: Args | string | undefined }) {
+  if (typeof args !== "object" || args === null) return args ? <pre className={BLOCK}>{args}</pre> : null;
+  const a = args as Record<string, unknown>;
+  const str = (k: string) => (typeof a[k] === "string" ? (a[k] as string) : "");
+  const path = <div className="font-mono text-[12px] text-mid [overflow-wrap:anywhere]">{home(str("file_path"))}</div>;
+  switch (name) {
+    case "Bash":
+      return (
+        <>
+          {str("description") && <div className="text-xs text-soft">{str("description")}</div>}
+          <pre className={BLOCK}>
+            <span className="text-soft select-none">$ </span>
+            {str("command")}
+          </pre>
+        </>
+      );
+    case "Edit":
+      return (
+        <>
+          {path}
+          <Diff old={str("old_string")} next={str("new_string")} />
+        </>
+      );
+    case "MultiEdit":
+      return (
+        <>
+          {path}
+          {(Array.isArray(a.edits) ? (a.edits as { old_string?: string; new_string?: string }[]) : []).map((e, k) => (
+            <Diff key={k} old={e.old_string ?? ""} next={e.new_string ?? ""} />
+          ))}
+        </>
+      );
+    case "Write":
+      return (
+        <>
+          {path}
+          <pre className={BLOCK}>{str("content")}</pre>
+        </>
+      );
+    case "Read":
+      return a.offset || a.limit ? (
+        <div className="font-mono text-[12px] text-mid">
+          {home(str("file_path"))}
+          {a.offset ? ` from line ${String(a.offset)}` : ""}
+          {a.limit ? `, ${String(a.limit)} lines` : ""}
+        </div>
+      ) : null;
+  }
+  if (Object.keys(a).length === 0) return null;
+  return <pre className={BLOCK}>{JSON.stringify(a, null, 2)}</pre>;
+}
+
+// An edit's lines out and in, as a diff reads.
+function Diff({ old, next }: { old: string; next: string }) {
+  const line = (sign: string, tint: string) => (l: string, k: number) => (
+    <div key={sign + k} className={`px-3 ${tint}`}>
+      <span className="text-soft select-none">{sign} </span>
+      {l}
+    </div>
+  );
+  return (
+    <pre className="max-h-72 overflow-auto rounded-lg border border-hair bg-lift py-2 font-mono text-[12px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
+      {old && old.split("\n").map(line("−", "bg-red-500/10"))}
+      {next && next.split("\n").map(line("+", "bg-emerald-500/12"))}
+    </pre>
+  );
+}
+
+// What came out, cut by the server to what a page can hold.
+function Output({ text, error }: { text: string; error?: boolean }) {
+  if (!text.trim()) return <span className="text-xs text-soft">No output.</span>;
+  return <pre className={`${BLOCK} ${error ? "border-accent/40 text-accent" : "text-mid"}`}>{text}</pre>;
 }
 
 // Tools with a card of their own show as a one-line summary in the talk and
@@ -2021,7 +2199,7 @@ function Screen({ url, shape = 16 / 9, on, driving, close, pane }: { url: string
 function TaskStrip({ task, stop }: { task: Task; stop: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const now = task.tools.at(-1);
-  const doing = task.words.trim() ? task.words.trim().split("\n").at(-1) : now ? `${toolName(now.name)} ${gist(now.input as Args)}` : "Starting";
+  const doing = task.words.trim() ? task.words.trim().split("\n").at(-1) : now ? `${TOOLS[now.name]?.[0] ?? toolName(now.name)} ${about(now.name, now.input as Args)}` : "Starting";
   return (
     <section className="rise relative mt-1.5 mb-3 rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift" aria-label={`${task.name} at work`}>
       <span className="absolute -top-[0.75em] left-3.5 rounded bg-lift px-1.5 text-xs font-semibold tracking-wide text-accent uppercase">{task.name} at work</span>

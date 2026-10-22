@@ -53,7 +53,12 @@ const ASK: Duration = Duration::from_secs(5 * 60);
 const ASK_GAP: Duration = Duration::from_secs(60);
 /// Letters for the code, without look-alikes (0 O 1 I L).
 const CODE: &[u8] = b"23456789ABCDEFGHJKMNPQRSTUVWXYZ";
-const HISTORY: u64 = 200;
+/// Messages of history the page loads: a seat's tool calls and results
+/// count, so enough for a few dozen turns.
+const HISTORY: u64 = 400;
+/// The most of a tool call or result the history carries, in bytes; the
+/// rest opens from hippo.
+const HISTORY_STEP: usize = 4 * 1024;
 /// How long a reply read aloud stays cached.
 const SPEECH_KEEP: Duration = Duration::from_secs(30 * 24 * 3600);
 const SEND_MAX: usize = 32 * 1024;
@@ -1674,6 +1679,18 @@ fn lines(all: Vec<Said>) -> Vec<Line> {
                 }
             }
             "user" | "talk" | "note" => {}
+            // A seat's work, as hippo read it from the session: the page
+            // draws each call with its result, among the words.
+            "tool" | "echo" => {
+                if said.text.len() > HISTORY_STEP {
+                    let mut cut = HISTORY_STEP;
+                    while !said.text.is_char_boundary(cut) {
+                        cut -= 1;
+                    }
+                    said.text.truncate(cut);
+                    said.text.push('…');
+                }
+            }
             _ => continue,
         }
         out.push(Line {
@@ -2225,7 +2242,7 @@ mod tests {
         });
         let h = crate::hippo::Hippo {
             sock: sock.clone(),
-            watched: false,
+            seat: None,
         };
         let got: Vec<_> = super::past_parts(&h, 14)
             .unwrap()
@@ -2274,7 +2291,23 @@ mod tests {
             .map(|l| (l.said.i, l.reaction.as_deref()))
             .collect();
         // The second 👍 has no unanswered message of the person's, so it stays.
-        assert_eq!(got, [(1, Some("👍")), (4, None), (5, None)]);
+        assert_eq!(got, [(1, Some("👍")), (3, None), (4, None), (5, None)]);
+    }
+
+    #[test]
+    fn a_seats_work_comes_clipped() {
+        let long = "é".repeat(HISTORY_STEP);
+        let out = lines(vec![
+            said(1, "user", "check"),
+            said(2, "tool", r#"Bash {"command":"ls"}"#),
+            said(3, "echo", &long),
+            said(4, "work", "[Counter] COUNTED"),
+            said(5, "talk", "Done."),
+        ]);
+        let kinds: Vec<_> = out.iter().map(|l| l.said.kind.as_str()).collect();
+        assert_eq!(kinds, ["user", "tool", "echo", "talk"]);
+        let echo = &out[2].said.text;
+        assert!(echo.len() <= HISTORY_STEP + '…'.len_utf8() && echo.ends_with('…'));
     }
 
     #[test]

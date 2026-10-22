@@ -10,9 +10,10 @@ use std::path::PathBuf;
 #[derive(Clone)]
 pub struct Hippo {
     pub sock: PathBuf,
-    /// Whether hippo reads the chat from Claude Code's session files on its
-    /// own (the seat's, in seat mode): then logging would keep it twice.
-    pub watched: bool,
+    /// In seat mode, the title the seat's sessions go by: hippo reads the
+    /// chat from Claude Code's session files on its own (logging would keep
+    /// it twice), among every other chat it follows.
+    pub seat: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -47,7 +48,7 @@ impl Hippo {
 
     /// Logs one message: `user` for the captain's words, `talk` for the yeoman's.
     pub fn log(&self, kind: &str, text: &str) -> Result<(), String> {
-        if self.watched {
+        if self.seat.is_some() {
             return Ok(());
         }
         self.ask("log", &[kind, text]).map(|_| ())
@@ -68,9 +69,14 @@ impl Hippo {
         self.ask("date", &[&id.to_string()])
     }
 
-    /// The last `n` messages whole, oldest first.
+    /// The last `n` messages whole, oldest first: the seat's own, when
+    /// hippo keeps other chats too.
     pub fn tail(&self, n: u64) -> Result<Vec<Said>, String> {
-        let out = self.ask("tail", &[&n.to_string()])?;
+        let n = n.to_string();
+        let out = match &self.seat {
+            Some(title) => self.ask("tail", &[&n, title])?,
+            None => self.ask("tail", &[&n])?,
+        };
         out.lines()
             .map(|l| serde_json::from_str(l).map_err(|e| format!("hippo tail: {e}")))
             .collect()

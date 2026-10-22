@@ -1454,7 +1454,7 @@ pub async fn serve(dir: PathBuf) -> Result<(), String> {
     let hippo = std::env::var("HIPPO_DIR").map_err(|_| "HIPPO_DIR is not set")?;
     let hippo = Hippo {
         sock: PathBuf::from(hippo).join("hippo.sock"),
-        watched: false,
+        seat: None,
     };
     let tools = Tools {
         dir,

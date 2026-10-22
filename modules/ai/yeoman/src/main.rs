@@ -1271,7 +1271,7 @@ async fn run() -> Result<(), String> {
     let model: Arc<dyn Model> = model::from_env()?.into();
     let hippo = Arc::new(Hippo {
         sock: PathBuf::from(var("HIPPO_DIR")?).join("hippo.sock"),
-        watched: model.seat(),
+        seat: model.seat().then(model::seat_name),
     });
     // Subagents cut short at the last stop go on from their logs.
     task::resume(&state);

@@ -281,6 +281,12 @@ fn background_tasks(line: &str) -> Option<usize> {
         .then(|| ev["tasks"].as_array().map_or(0, Vec::len))
 }
 
+/// The name every turn of the seat goes by, as Claude Code titles its
+/// sessions and hippo its chats.
+pub fn seat_name() -> String {
+    std::env::var("YEOMAN_NAME").unwrap_or_else(|_| "yeoman".into())
+}
+
 /// The steps in one stream-json line: tool calls from the model, results
 /// from the tools. Claude Code reports results as a user turn.
 pub fn steps(line: &str) -> Vec<Step> {
@@ -396,7 +402,7 @@ impl Model for Claude {
         ]);
         if self.seat {
             // Every turn its own session, all under one name.
-            let name = std::env::var("YEOMAN_NAME").unwrap_or_else(|_| "yeoman".into());
+            let name = seat_name();
             cmd.args([
                 "--name",
                 &name,

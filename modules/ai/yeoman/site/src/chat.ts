@@ -25,7 +25,9 @@ export type Msg = {
   live?: boolean;
 };
 
-export type Tool = { id: string; name: string; input: unknown; result?: string; error?: boolean };
+/** A tool call: `before` holds the words the model said on its way to it,
+ * which the page shows above it, as a terminal does. */
+export type Tool = { id: string; name: string; input: unknown; result?: string; error?: boolean; before?: string };
 
 /** A subagent at work on its own: its name, its task, and its work so
  * far. `stopping` once a stop is asked for. */
@@ -179,21 +181,8 @@ export function useChat(): Chat {
         setTasks((ks) => atWork(ks, now.agents));
       }
       setMessages((was) => {
-        const now: Msg[] = said.map((m) => {
-          // What the yeoman sent is kept, and hippo logs it by name.
-          const sent = m.kind === "talk" ? SENT.exec(m.text) : null;
-          return {
-            id: `h-${m.i}`,
-            role: ROLE[m.kind],
-            text: sent ? "" : m.text,
-            plain: m.kind === "talk" && DRAFT.test(m.text),
-            picture: sent?.[1] === "picture" ? fileUrl(sent[2]) : undefined,
-            file: sent?.[1] === "file" ? sent[2] : undefined,
-            reaction: m.reaction ?? undefined,
-            date: new Date(m.date),
-          };
-        });
-        // hippo keeps no tools and no photos, and a phone resyncs each time
+        const now = fromHistory(said);
+        // A yeoman's hippo keeps no tools and no photos, and a phone resyncs each time
         // the page comes back, so an answer found again by its words keeps
         // the tools (and cards) this page saw, and a message sent with files
         // keeps their thumbnails; hippo logs it as "(sent a photo: …) words".
@@ -222,6 +211,13 @@ export function useChat(): Chat {
           newer.splice(j, 1);
           return false;
         });
+        // A seat's turn under way is in hippo in part, tools and all: the
+        // live one takes over hippo's, keeping what each has.
+        const live = kept.findIndex((m) => m.live);
+        const last = now.at(-1);
+        if (live >= 0 && !kept.slice(0, live).some((m) => m.role === "user") && last?.role === "assistant" && last.tools && kept[live].tools) {
+          return [...now.slice(0, -1), ...kept.slice(0, live), joinTurn(last, kept[live]), ...kept.slice(live + 1)];
+        }
         return [...now, ...kept];
       });
       setCards(waiting);
@@ -458,11 +454,94 @@ function step(ms: Msg[], s: Step): Msg[] {
     const done = (t: Tool) => (t.id === s.id ? { ...t, result: s.text, error: s.error } : t);
     return ms.map((m) => (m.tools?.some((t) => t.id === s.id) ? { ...m, tools: m.tools.map(done) } : m));
   }
-  const tool = { id: s.id, name: s.name, input: s.input };
+  const tool: Tool = { id: s.id, name: s.name, input: s.input };
   // Words before a call lead into it and are not the answer, which
-  // comes whole in `said`.
-  if (last?.live) return [...ms.slice(0, -1), { ...last, text: "", tools: [...(last.tools ?? []), tool] }];
+  // comes whole in `said`; they stay above the call.
+  if (last?.live) {
+    if (last.text.trim()) tool.before = last.text;
+    return [...ms.slice(0, -1), { ...last, text: "", tools: [...(last.tools ?? []), tool] }];
+  }
   return [...ms, { id: `w-${s.id}`, role: "assistant", text: "", tools: [tool], live: true, date: new Date() }];
+}
+
+// The conversation as hippo keeps it. A seat's history holds its work too,
+// a `tool` line per call (`Name {input}`) and an `echo` per result, in the
+// order they came: they gather into the answer they led to, as in a live
+// turn, with the words between them kept above the call they led into.
+function fromHistory(said: Said[]): Msg[] {
+  const out: Msg[] = [];
+  for (const m of said) {
+    const last = out.at(-1);
+    const turn = last?.role === "assistant" && !last.plain && !last.picture && !last.file ? last : undefined;
+    if (m.kind === "tool") {
+      const [, name, rest] = /^(\S+)\s?([\s\S]*)$/.exec(m.text) ?? [, m.text, ""];
+      const tool: Tool = { id: `h-${m.i}`, name, input: parse(rest) };
+      if (!turn) {
+        out.push({ id: `h-${m.i}`, role: "assistant", text: "", tools: [tool], date: new Date(m.date) });
+        continue;
+      }
+      if (turn.text.trim()) tool.before = turn.text;
+      turn.text = "";
+      turn.tools = [...(turn.tools ?? []), tool];
+      turn.date = new Date(m.date);
+      continue;
+    }
+    if (m.kind === "echo") {
+      // Results come in the order of their calls; one with no call is
+      // Claude Code's own news (a background job done), not the model's.
+      const open = turn?.tools?.find((t) => t.result === undefined);
+      if (open) open.result = m.text;
+      continue;
+    }
+    // The answer after the calls, once.
+    if (m.kind === "talk" && turn?.tools && !turn.text && !SENT.test(m.text) && !DRAFT.test(m.text)) {
+      Object.assign(turn, { text: m.text, date: new Date(m.date) });
+      continue;
+    }
+    // What the yeoman sent is kept, and hippo logs it by name.
+    const sent = m.kind === "talk" ? SENT.exec(m.text) : null;
+    out.push({
+      id: `h-${m.i}`,
+      role: ROLE[m.kind],
+      text: sent ? "" : m.text,
+      plain: m.kind === "talk" && DRAFT.test(m.text),
+      picture: sent?.[1] === "picture" ? fileUrl(sent[2]) : undefined,
+      file: sent?.[1] === "file" ? sent[2] : undefined,
+      reaction: m.reaction ?? undefined,
+      date: new Date(m.date),
+    });
+  }
+  return out;
+}
+
+// A call's input as the model wrote it; one cut short in hippo stays words.
+function parse(input: string): unknown {
+  if (!input) return {};
+  try {
+    return JSON.parse(input);
+  } catch {
+    return input;
+  }
+}
+
+// A turn under way, as hippo has it so far and as this page saw it: each
+// call the page saw takes its place in hippo's (by its name and input, in
+// order) with the id the stream's results will name it by; the rest follow.
+function joinTurn(kept: Msg, live: Msg): Msg {
+  const tools = [...(kept.tools ?? [])];
+  const extra: Tool[] = [];
+  let from = 0;
+  for (const t of live.tools ?? []) {
+    const same = JSON.stringify(t.input);
+    const k = tools.findIndex((h, x) => x >= from && h.name === t.name && JSON.stringify(h.input) === same);
+    if (k < 0) {
+      extra.push(t);
+      continue;
+    }
+    tools[k] = { ...tools[k], id: t.id, result: t.result ?? tools[k].result, error: t.error, before: tools[k].before ?? t.before };
+    from = k + 1;
+  }
+  return { ...kept, id: live.id, tools: [...tools, ...extra], text: live.text || kept.text, live: true };
 }
 
 // The model reads photos up to 3.75 MB (IMAGE_MAX in main.rs) in JPEG, PNG,
