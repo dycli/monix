@@ -7,7 +7,7 @@ that starts afterwards is sent modifiers with no keymap; Brave crashes
 on that in xkb_state_update_mask. Not fixed upstream as of ef6ef6a.
 
 diff --git a/seat.c b/seat.c
-index 5f659a4..097c694 100644
+index 5f659a4..f8c1eb1 100644
 --- a/seat.c
 +++ b/seat.c
 @@ -321,6 +321,8 @@ handle_keyboard_group_modifiers(struct wl_listener *listener, void *data)
@@ -54,7 +54,7 @@ index 5f659a4..097c694 100644
 +	struct wlr_keyboard *keyboard = data;
 +	struct wlr_keyboard *current = wlr_seat_get_keyboard(seat->seat);
 +
-+	wlr_keyboard_group_remove_keyboard(group->wlr_group, keyboard);
++	/* The group has already let the keyboard go, by its own listener. */
 +	if (current == keyboard || current == &group->wlr_group->keyboard) {
 +		wlr_seat_set_keyboard(seat->seat, NULL);
 +	}
