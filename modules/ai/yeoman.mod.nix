@@ -1272,7 +1272,6 @@
           };
         };
 
-
         systemd.services = mkMerge (
           mapAttrsToList services cfg.instances
           ++ singleton {
