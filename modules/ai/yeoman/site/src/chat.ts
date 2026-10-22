@@ -189,19 +189,14 @@ export function useChat(): Chat {
       }
       setMessages((was) => {
         const now = fromHistory(said);
-        // A yeoman's hippo keeps no tools and no photos, and a phone resyncs each time
+        // A yeoman's hippo keeps no tools, and a phone resyncs each time
         // the page comes back, so an answer found again by its words keeps
-        // the tools (and cards) this page saw, and a message sent with files
-        // keeps their thumbnails; hippo logs it as "(sent a photo: …) words".
+        // the tools (and cards) this page saw.
         for (const m of was) {
           for (let j = now.length - 1; j >= 0; j--) {
             const h = now[j];
             if (m.tools && m.text && h.role === "assistant" && !h.tools && h.text === m.text) {
               h.tools = m.tools;
-              break;
-            }
-            if (m.files?.length && h.role === "user" && !h.files && h.text.startsWith("(sent ") && h.text.endsWith(m.text) && m.files.every((f) => h.text.includes(f.name))) {
-              Object.assign(h, { text: m.text, files: m.files });
               break;
             }
           }
@@ -624,7 +619,7 @@ function fromHistory(said: Said[]): Msg[] {
     out.push({
       id: `h-${m.i}`,
       role: ROLE[m.kind],
-      text: sent ? "" : m.kind === "user" ? m.text.replace(STEERED, "") : m.text,
+      ...(m.kind === "user" ? theirs(m.text) : { text: sent ? "" : m.text }),
       plain: m.kind === "talk" && DRAFT.test(m.text),
       picture: sent?.[1] === "picture" ? fileUrl(sent[2]) : undefined,
       file: sent?.[1] === "file" ? sent[2] : undefined,
@@ -633,6 +628,20 @@ function fromHistory(said: Said[]): Msg[] {
     });
   }
   return out;
+}
+
+// The person's words as hippo has them, "[image]\n(sent while you were
+// working) (sent a photo: a.png; a file: b.txt) words", as the page shows
+// them: the words, under the files kept in the library.
+function theirs(text: string): Pick<Msg, "text" | "files"> {
+  text = text.replace(/^(\[(image|document)\]\n)+/, "").replace(STEERED, "");
+  const sent = /^\(sent ((?:a (?:photo|file): [^;]+?(?:, kept unseen)?(?:; )?)+)\) ?([\s\S]*)$/.exec(text);
+  if (!sent) return { text };
+  const files = sent[1].split("; ").map((f) => {
+    const [, kind, name] = /^a (photo|file): (.+?)(?:, kept unseen)?$/.exec(f) ?? [, "file", f];
+    return { name, image: kind === "photo" ? fileUrl(name) : undefined };
+  });
+  return { text: sent[2], files };
 }
 
 // A call's input as the model wrote it; one cut short in hippo stays words.

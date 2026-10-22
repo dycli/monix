@@ -132,14 +132,16 @@ pub struct Steer {
 }
 
 impl Steer {
-    /// Hands `text` to the turn under way; false when none will read it,
-    /// and it should wait its turn instead.
-    pub fn send(&self, text: &str) -> bool {
+    /// Hands `text`, with any photos or PDFs, to the turn under way; false
+    /// when none will read it, and it should wait its turn instead.
+    pub fn send(&self, text: &str, files: &[Attachment]) -> bool {
         let mut into = self.into.lock().unwrap();
         let Some(stdin) = into.as_mut() else {
             return false;
         };
-        let line = user(vec![json!({"type": "text", "text": text})]);
+        let mut content: Vec<Value> = files.iter().map(block).collect();
+        content.push(json!({"type": "text", "text": text}));
+        let line = user(content);
         if stdin
             .write_all(line.as_bytes())
             .and_then(|()| stdin.flush())
@@ -547,13 +549,7 @@ impl Model for Claude {
         } else {
             cached(memory)
         };
-        content.extend(files.iter().map(|f| match f {
-            Attachment::Image { mime, data } => json!({"type": "image",
-                    "source": {"type": "base64", "media_type": mime, "data": B64.encode(data)}}),
-            Attachment::Pdf(data) => json!({"type": "document",
-                    "source": {"type": "base64", "media_type": "application/pdf",
-                               "data": B64.encode(data)}}),
-        }));
+        content.extend(files.iter().map(block));
         if let Some(r) = &run.reminder {
             content.push(json!({"type": "text",
                 "text": format!("<system-reminder>\n{r}\n</system-reminder>")}));
@@ -786,6 +782,17 @@ fn cached(memory: &str) -> Vec<Value> {
 }
 
 /// Reads the server names out of an MCP config file.
+/// A photo or PDF as a content block of a user message.
+fn block(f: &Attachment) -> Value {
+    match f {
+        Attachment::Image { mime, data } => json!({"type": "image",
+                "source": {"type": "base64", "media_type": mime, "data": B64.encode(data)}}),
+        Attachment::Pdf(data) => json!({"type": "document",
+                "source": {"type": "base64", "media_type": "application/pdf",
+                           "data": B64.encode(data)}}),
+    }
+}
+
 fn mcp(file: String) -> Result<(String, Vec<String>), String> {
     let text = std::fs::read_to_string(&file).map_err(|e| format!("{file}: {e}"))?;
     let config: Value = serde_json::from_str(&text).map_err(|e| format!("{file}: {e}"))?;

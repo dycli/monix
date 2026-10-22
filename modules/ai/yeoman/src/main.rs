@@ -383,42 +383,11 @@ fn answer(
     } else {
         hippo.view()?
     };
-    // Photos and PDFs go to the model as they are, as many as fit in one
-    // request; text is inlined; the rest it knows by name.
-    let mut sent = Vec::new();
-    let mut inline = String::new();
-    let mut attached = Vec::new();
-    let mut room = PDF_MAX;
-    for (name, photo, r) in files {
-        let r = r.filter(|r| match r {
-            Read::Model(Attachment::Image { data, .. } | Attachment::Pdf(data)) => room
-                .checked_sub(data.len())
-                .map(|left| room = left)
-                .is_some(),
-            Read::Text(_) => true,
-        });
-        sent.push(format!(
-            "{} {name}{}",
-            if photo { "a photo:" } else { "a file:" },
-            if r.is_none() { ", kept unseen" } else { "" }
-        ));
-        match r {
-            None => {}
-            Some(Read::Model(a)) => attached.push(a),
-            Some(Read::Text(t)) => {
-                let t: String = t.chars().take(TEXT_MAX).collect();
-                inline.push_str(&format!("\n<file name=\"{name}\">\n{t}\n</file>"));
-            }
-        }
-    }
-    let said = if sent.is_empty() {
-        text.to_owned()
-    } else {
-        format!("(sent {}) {text}", sent.join("; "))
-            .trim_end()
-            .to_owned()
-    };
-    let files = attached;
+    let Taken {
+        said,
+        inline,
+        files,
+    } = take(text, files);
     let (name, person) = (var("YEOMAN_NAME")?, var("YEOMAN_PERSON")?);
     let (kind, logged, who) = match from {
         From::Person => ("user", said.clone(), person.clone()),
@@ -677,10 +646,64 @@ pub fn redone(text: &str) -> Option<&str> {
         .or_else(|| text.strip_prefix(AGAIN))
 }
 
+/// A message's words and files as the model takes them.
+struct Taken {
+    /// The words, after a note of the files sent with them.
+    said: String,
+    /// Text files, whole up to TEXT_MAX, to follow the words.
+    inline: String,
+    files: Vec<Attachment>,
+}
+
+/// Photos and PDFs go to the model as they are, as many as fit in one
+/// request; text is inlined; the rest it knows by name.
+fn take(text: &str, files: Vec<(String, bool, Option<Read>)>) -> Taken {
+    let mut sent = Vec::new();
+    let mut inline = String::new();
+    let mut attached = Vec::new();
+    let mut room = PDF_MAX;
+    for (name, photo, r) in files {
+        let r = r.filter(|r| match r {
+            Read::Model(Attachment::Image { data, .. } | Attachment::Pdf(data)) => room
+                .checked_sub(data.len())
+                .map(|left| room = left)
+                .is_some(),
+            Read::Text(_) => true,
+        });
+        sent.push(format!(
+            "{} {name}{}",
+            if photo { "a photo:" } else { "a file:" },
+            if r.is_none() { ", kept unseen" } else { "" }
+        ));
+        match r {
+            None => {}
+            Some(Read::Model(a)) => attached.push(a),
+            Some(Read::Text(t)) => {
+                let t: String = t.chars().take(TEXT_MAX).collect();
+                inline.push_str(&format!("\n<file name=\"{name}\">\n{t}\n</file>"));
+            }
+        }
+    }
+    let said = if sent.is_empty() {
+        text.to_owned()
+    } else {
+        format!("(sent {}) {text}", sent.join("; "))
+            .trim_end()
+            .to_owned()
+    };
+    Taken {
+        said,
+        inline,
+        files: attached,
+    }
+}
+
 /// Words the person sends while a turn runs join it, as Claude Code takes
-/// a message typed while it works; "stop" alone stops it. False when there
-/// is no turn to take them, or they bring files: then they wait their turn.
+/// a message typed while it works, files and all; "stop" alone stops it.
+/// False when there is no turn to take them: then they wait their turn.
 async fn steered<D: Door>(
+    door: &D,
+    state: &Path,
     steer: &Steer,
     stop: &AtomicBool,
     hippo: &Arc<Hippo>,
@@ -688,18 +711,35 @@ async fn steered<D: Door>(
 ) -> bool {
     let text = msg.text.trim();
     // A redo answers afresh; it can't fold into the answer it replaces.
-    if !msg.files.is_empty() || text.is_empty() || redone(&msg.text).is_some() {
+    if (text.is_empty() && msg.files.is_empty()) || redone(&msg.text).is_some() || !steer.running()
+    {
         return false;
     }
-    if text.eq_ignore_ascii_case("stop") && steer.running() {
+    if text.eq_ignore_ascii_case("stop") && msg.files.is_empty() {
         stop.store(true, Ordering::Relaxed);
         return true;
     }
-    if !steer.send(&format!("(sent while you were working) {text}")) {
+    let mut got = Vec::new();
+    for f in &msg.files {
+        match door.fetch(f).await {
+            Ok(g) => got.push(g),
+            // Its own turn says what went wrong.
+            Err(_) => return false,
+        }
+    }
+    let Taken {
+        said,
+        inline,
+        files,
+    } = take(text, keep(state, got));
+    if !steer.send(
+        &format!("(sent while you were working) {said}{inline}"),
+        &files,
+    ) {
         return false;
     }
-    let (h, t) = (hippo.clone(), text.to_owned());
-    let logged = tokio::task::spawn_blocking(move || h.log("user", &t)).await;
+    let h = hippo.clone();
+    let logged = tokio::task::spawn_blocking(move || h.log("user", &said)).await;
     if let Ok(Err(e)) = logged {
         eprintln!("yeoman: {e}");
     }
@@ -1171,7 +1211,7 @@ async fn steered_report(hippo: &Arc<Hippo>, turn: &Turns, said: &str) -> bool {
         "<agent-report>\n{said}\n</agent-report>\n\n{}.",
         from_agent(&person)
     );
-    if !turn.steer.send(&told) {
+    if !turn.steer.send(&told, &[]) {
         return false;
     }
     // Off the seat, hippo learns it here; on it, from the tag in the chat.
@@ -1203,7 +1243,7 @@ async fn work_on(
             // for the next one.
             if !run
                 .steer
-                .send(&format!("(sent while you were working) {text}"))
+                .send(&format!("(sent while you were working) {text}"), &[])
             {
                 break;
             }
@@ -1534,10 +1574,10 @@ async fn run() -> Result<(), String> {
             stop.clone(),
         );
         let (queue, mut queued) = mpsc::unbounded_channel();
-        let (sr, hr) = (steer.clone(), hippo.clone());
+        let (sr, hr, s2) = (steer.clone(), hippo.clone(), state.clone());
         tokio::spawn(async move {
             while let Some((door, msg)) = from_web.recv().await {
-                if !steered(&sr, &st, &hr, &msg).await {
+                if !steered(&door, &s2, &sr, &st, &hr, &msg).await {
                     let _ = queue.send((door, msg));
                 }
             }
@@ -1551,10 +1591,16 @@ async fn run() -> Result<(), String> {
         });
     }
     let (queue, mut queued) = mpsc::unbounded_channel();
-    let (st, sr, hr, wr) = (stop.clone(), steer.clone(), hippo.clone(), web.clone());
+    let (st, sr, hr, wr, s3) = (
+        stop.clone(),
+        steer.clone(),
+        hippo.clone(),
+        web.clone(),
+        state.clone(),
+    );
     tokio::spawn(async move {
         while let Some((door, msg)) = inbox.recv().await {
-            if steered(&sr, &st, &hr, &msg).await {
+            if steered(&door, &s3, &sr, &st, &hr, &msg).await {
                 if let Some(w) = &wr {
                     w.heard(&msg.id, &msg.text);
                 }
