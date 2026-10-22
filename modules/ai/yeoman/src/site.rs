@@ -84,11 +84,15 @@ enum Shown {
         plain: bool,
         aside: bool,
     },
-    /// What the person wrote by another door, as it comes in.
+    /// What the person wrote, as it comes in: by another door, or by a
+    /// page, which every other page open shows too.
     Heard {
         /// The other door's id, so a reaction to it lands here too.
         id: String,
         text: String,
+        /// The sending page's own id for it, so that page knows it.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        from: Option<String>,
     },
     /// An act waiting for the person's word.
     Pending {
@@ -238,6 +242,7 @@ impl Web {
         self.show(Shown::Heard {
             id: id.into(),
             text: text.into(),
+            from: None,
         });
     }
 
@@ -279,6 +284,26 @@ impl Web {
         let _ = waiter.send(input);
         self.show(Shown::Asked { id: id.into() });
         true
+    }
+
+    /// Words typed while asks wait answer them, as a chat's reply does: a
+    /// question takes them as the answer to each of its questions, and a
+    /// tool waiting for a yes is refused, the words telling the turn why.
+    /// True when they answered a question, and so are not news to the turn.
+    fn typed(&self, text: &str) -> bool {
+        let open: Vec<(String, Option<Value>)> = self
+            .asks
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(a, _)| (a.id.clone(), typed_answer(a, text)))
+            .collect();
+        let mut answered = false;
+        for (id, input) in open {
+            answered |= input.is_some();
+            self.resolve(&id, input);
+        }
+        answered
     }
 
     fn show(&self, s: Shown) {
@@ -342,13 +367,20 @@ impl Web {
         }
     }
 
-    /// The person's words from a page: that page shows them itself, so
-    /// they go to the record alone.
-    fn sent(&self, id: &str, text: &str) {
-        self.keep(&Shown::Heard {
+    /// The person's words from a page, to every page open: the one that
+    /// sent them knows them by `from`. A redo goes to the record alone;
+    /// the other pages see its answer, and the history, on their next load.
+    fn sent(&self, id: &str, text: &str, from: Option<String>, redo: bool) {
+        let heard = Shown::Heard {
             id: id.into(),
             text: text.into(),
-        });
+            from,
+        };
+        if redo {
+            self.keep(&heard);
+        } else {
+            self.show(heard);
+        }
     }
 }
 
@@ -1941,6 +1973,7 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
     }
     let mut text = String::new();
     let mut redo = "";
+    let mut local = None;
     let mut files = Vec::new();
     loop {
         let field = match form.next_field().await {
@@ -1967,6 +2000,10 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
                     Err(e) => return (e.status(), e.body_text()).into_response(),
                 }
             }
+            Some("local") => match field.text().await {
+                Ok(t) if t.len() <= 64 => local = Some(t),
+                _ => return StatusCode::BAD_REQUEST.into_response(),
+            },
             Some("redo") => match field.text().await.as_deref() {
                 Ok("edit") => redo = crate::EDITED,
                 Ok("again") => redo = crate::AGAIN,
@@ -1986,7 +2023,13 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
         return StatusCode::BAD_REQUEST.into_response();
     }
     let id = site.web.id();
-    site.web.sent(&id, text);
+    site.web.sent(&id, text, local, !redo.is_empty());
+    // An answer reaches the turn as the question's answer; sent on as well,
+    // the turn would hear it twice. Files with it still go on.
+    let answered = redo.is_empty() && !text.eq_ignore_ascii_case("stop") && site.web.typed(text);
+    if answered && files.is_empty() {
+        return Json(serde_json::json!({ "id": id })).into_response();
+    }
     let msg = Message {
         id: id.clone(),
         text: format!("{redo}{text}"),
@@ -2074,6 +2117,21 @@ async fn answer(
     } else {
         StatusCode::NOT_FOUND.into_response()
     }
+}
+
+/// A question's input answered in the person's own words, or None for any
+/// other ask, which they refuse.
+fn typed_answer(ask: &SeatAsk, text: &str) -> Option<Value> {
+    if ask.tool != "AskUserQuestion" {
+        return None;
+    }
+    let answers = ask.input["questions"]
+        .as_array()?
+        .iter()
+        .filter_map(|q| q["question"].as_str())
+        .map(|q| (q.to_owned(), Value::String(text.to_owned())))
+        .collect();
+    answered(&ask.input, true, Some(answers))
 }
 
 /// The input a tool runs with once answered, or None when refused.
@@ -2355,6 +2413,20 @@ async fn wait(State(site): State<Arc<Site>>, Json(w): Json<Waiting>) -> Response
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn typed_words_answer_a_question_and_refuse_a_tool() {
+        let ask = |tool: &str, input: Value| SeatAsk {
+            id: "a".into(),
+            tool: tool.into(),
+            input,
+            about: None,
+        };
+        let q = serde_json::json!({"questions": [{"question": "Tea or coffee?"}, {"question": "Milk?"}]});
+        let got = typed_answer(&ask("AskUserQuestion", q), "coffee, black").unwrap();
+        assert_eq!(got["answers"]["Tea or coffee?"], "coffee, black");
+        assert_eq!(got["answers"]["Milk?"], "coffee, black");
+        assert!(typed_answer(&ask("Bash", serde_json::json!({"command": "ls"})), "no").is_none());
+    }
 
     #[test]
     fn plain_reads_markdown_as_words() {
@@ -2633,7 +2705,7 @@ mod tests {
             step: Step::Text { text: t.into() },
             agent: None,
         };
-        web.sent("web-1", "how big?");
+        web.sent("web-1", "how big?", None, false);
         for t in ["Let me ", "look."] {
             web.show(text(t));
         }

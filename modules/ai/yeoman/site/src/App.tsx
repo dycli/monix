@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as KeyEvent, type PointerEvent, type ReactNode } from "react";
 import {
   ActionBarPrimitive,
   AssistantRuntimeProvider,
@@ -7,6 +7,7 @@ import {
   MessagePartPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAui,
   useAuiState,
   useExternalStoreRuntime,
   type AppendMessage,
@@ -17,7 +18,7 @@ import {
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
 import { Streamdown } from "streamdown";
 import { usePinchText } from "./pinch";
-import { askToSignIn, attachments, drives, fromAgentChat, POINTER, quiet, said, search, useChat, waitToSignIn, zoom, type Answers, type Ask, type Card, type Chat, type Hit, type Msg, type Part, type Question, type Task } from "./chat";
+import { askToSignIn, attachments, COMMANDS, SEND_MAX, drives, fromAgentChat, POINTER, quiet, said, search, useChat, waitToSignIn, zoom, type Answers, type Ask, type Card, type Chat, type Hit, type Msg, type Part, type Question, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
 import { Bars, Call, SPEED, useVoiceChoice, useVoiceSpeed, voiceChoice, voiceSpeed } from "./call";
@@ -899,7 +900,7 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
               <ThreadPrimitive.ScrollToBottom className="absolute -top-12 left-1/2 z-10 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-frame bg-lift text-mid shadow-lift hover:text-ink disabled:invisible">
                 <Arrow down />
               </ThreadPrimitive.ScrollToBottom>
-              <ComposerPrimitive.Root className="rounded-3xl border border-frame bg-lift py-[7px] pr-[7px] pl-2 shadow-dock focus-within:border-soft max-sm:py-[5px] max-sm:pr-[5px] max-sm:pl-1.5">
+              <ComposerPrimitive.Root className="relative rounded-3xl border border-frame bg-lift py-[7px] pr-[7px] pl-2 shadow-dock focus-within:border-soft max-sm:py-[5px] max-sm:pr-[5px] max-sm:pl-1.5">
                 <ComposerPrimitive.AttachmentDropzone className="flex flex-col">
                 <div className="flex flex-wrap gap-2 px-3 empty:hidden [&:not(:empty)]:pt-2 [&:not(:empty)]:pb-1">
                   <ComposerPrimitive.Attachments>{({ attachment }) => <Chip attachment={attachment} removable />}</ComposerPrimitive.Attachments>
@@ -911,11 +912,7 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
                 >
                   <Plus />
                 </ComposerPrimitive.AddAttachment>
-                <ComposerPrimitive.Input
-                  autoFocus
-                  placeholder={`Message ${NAME}`}
-                  className="max-h-[40vh] flex-1 resize-none bg-transparent py-[7px] text-base leading-normal outline-none placeholder:text-soft"
-                />
+                <SlashInput />
                 <Trailing typing={typing} stop={stop} cardOpen={!!deck.length && !leaving} close={close} call={voice ? () => setCalling(true) : undefined} />
                 </div>
                 </ComposerPrimitive.AttachmentDropzone>
@@ -940,6 +937,79 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
      </AgentCtx.Provider>
      </CardCtx.Provider>
     </AssistantRuntimeProvider>
+  );
+}
+
+// The composer's words, with the slash commands as a menu over it while
+// they are a bare "/name", as Claude Code and Codex list theirs: arrows
+// move, Tab or Enter takes one, Escape shuts it. One that takes an argument
+// is filled in to finish; the others run at once.
+function SlashInput() {
+  const aui = useAui();
+  const text = useAuiState((s) => s.composer.text);
+  const [at, setAt] = useState(0);
+  const [shut, setShut] = useState<string | null>(null);
+  const typed = /^\/(\w*)$/.exec(text);
+  const list = typed && shut !== text ? COMMANDS.filter((c) => c.name.startsWith(typed[1].toLowerCase())) : [];
+  const on = Math.min(at, list.length - 1);
+  const take = (c: (typeof COMMANDS)[number]) => {
+    setAt(0);
+    aui.composer.setText(c.arg ? `/${c.name} ` : `/${c.name}`);
+    if (!c.arg) aui.composer.send();
+  };
+  const keys = (e: KeyEvent<HTMLTextAreaElement>) => {
+    if (!list.length) return;
+    const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+    if (step) setAt((on + step + list.length) % list.length);
+    else if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) take(list[on]);
+    else if (e.key === "Escape") setShut(text);
+    else return;
+    e.preventDefault();
+  };
+  return (
+    <>
+      {!!list.length && (
+        <div
+          role="listbox"
+          aria-label="Commands"
+          className="absolute inset-x-0 bottom-[calc(100%+6px)] z-30 overflow-hidden rounded-2xl border border-frame bg-lift py-1.5 shadow-lift"
+        >
+          {list.map((c, i) => (
+            <button
+              key={c.name}
+              type="button"
+              role="option"
+              aria-selected={i === on}
+              // Before the textarea's blur, so the words keep their focus.
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => take(c)}
+              onPointerEnter={() => setAt(i)}
+              className={`flex w-full items-baseline gap-3 px-4 py-1.5 text-left ${i === on ? "bg-hover" : ""}`}
+            >
+              <span className="shrink-0 whitespace-nowrap font-mono text-[14px] text-ink">
+                /{c.name}
+                {c.arg && <span className="text-soft"> {c.arg}</span>}
+              </span>
+              <span className="truncate text-sm text-mid">{c.does}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <ComposerPrimitive.Input
+        autoFocus
+        placeholder={`Message ${NAME}`}
+        onKeyDown={keys}
+        // A paste too long for a message becomes a text file at once, shown
+        // as a chip before it goes, as Claude and ChatGPT take one.
+        onPaste={(e) => {
+          const pasted = e.clipboardData.getData("text/plain");
+          if (new TextEncoder().encode(pasted).length <= SEND_MAX) return;
+          e.preventDefault();
+          void aui.composer.addAttachment(new File([pasted], "pasted.txt", { type: "text/plain" }));
+        }}
+        className="max-h-[40vh] flex-1 resize-none bg-transparent py-[7px] text-base leading-normal outline-none placeholder:text-soft"
+      />
+    </>
   );
 }
 
@@ -1008,15 +1078,18 @@ function UserMessage() {
       <div className="flex max-w-[min(82%,560px)] flex-wrap justify-end gap-1.5 empty:hidden">
         <MessagePrimitive.Attachments>{({ attachment }) => <Chip attachment={attachment} />}</MessagePrimitive.Attachments>
       </div>
-      <MessagePrimitive.If hasContent>
-      <div className="relative w-fit max-w-[min(82%,560px)] rounded-[20px_20px_6px_20px] border-[1.25px] border-edge px-[17px] py-2.5 whitespace-pre-wrap [overflow-wrap:anywhere]">
-        <MessagePrimitive.Parts />
-        <Reaction />
-      </div>
-      </MessagePrimitive.If>
-      <div className="mt-1 mr-1 flex items-center gap-2">
-        <Time />
+      {/* The time and pencil sit beside the words, as iMessage and Slack
+          keep theirs, so back-to-back messages aren't spaced apart by a row
+          that is empty until hovered. */}
+      <div className="flex w-full items-end justify-end gap-2">
+        <Time className="mb-1.5 shrink-0" />
         <Edit />
+        <MessagePrimitive.If hasContent>
+        <div className="relative w-fit max-w-[min(82%,560px)] rounded-[20px_20px_6px_20px] border-[1.25px] border-edge px-[17px] py-2.5 whitespace-pre-wrap [overflow-wrap:anywhere]">
+          <MessagePrimitive.Parts />
+          <Reaction />
+        </div>
+        </MessagePrimitive.If>
       </div>
     </MessagePrimitive.Root>
   );
@@ -1137,13 +1210,24 @@ function AssistantMessage() {
         </div>
       )}
       <Reaction />
-      <div className="mt-1 flex items-center gap-2">
-        <Copy />
-        <Speak />
-        <Redraw />
-        <Time />
-      </div>
+      <Actions />
     </MessagePrimitive.Root>
+  );
+}
+
+// Copy, read aloud and redraw under words said, and under the turn's last
+// piece; a piece that is only tool calls, cut by words sent mid-turn, has
+// nothing to copy and no row.
+function Actions() {
+  const shown = useAuiState((s) => s.message.isLast || s.message.content.some((p) => p.type === "text" && !!p.text.trim()));
+  if (!shown) return null;
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <Copy />
+      <Speak />
+      <Redraw />
+      <Time />
+    </div>
   );
 }
 
@@ -2584,7 +2668,7 @@ function AskCard({ ask: a, reply }: { ask: Ask; reply: Reply }) {
                       className={`rounded-xl border px-3 py-1.5 text-left text-[14px] ${on ? "border-ink bg-ink text-paper" : "border-frame hover:bg-hover"}`}
                     >
                       {o.label}
-                      {o.description && <span className={`block text-[12px] ${on ? "opacity-75" : "text-mid"}`}>{o.description}</span>}
+                      {o.description && o.description !== o.label && <span className={`block text-[12px] ${on ? "opacity-75" : "text-mid"}`}>{o.description}</span>}
                     </button>
                   );
                 })}

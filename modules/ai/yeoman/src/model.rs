@@ -544,6 +544,10 @@ impl Model for Claude {
                 cmd.args(["--disallowedTools", &denied.join(",")]);
             }
         }
+        // A group of its own, so a stop ends all of it: a wrapper's claude
+        // (bwrap forks it) and the shells it starts would otherwise live on,
+        // holding its output open and the turn with it.
+        std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
         let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -664,6 +668,17 @@ impl Model for Claude {
                     s.close();
                 }
                 withdraw(&run.ask, &open);
+                // Asked first, so the CLI ends the background shells it
+                // started in sessions of their own; then made to.
+                let group = child.id() as i32;
+                // SAFETY: killpg only sends a signal, to the group this child leads.
+                unsafe { libc::killpg(group, libc::SIGTERM) };
+                let given = Instant::now() + Duration::from_secs(3);
+                while child.try_wait().ok().flatten().is_none() && Instant::now() < given {
+                    thread::sleep(Duration::from_millis(50));
+                }
+                // SAFETY: as above.
+                unsafe { libc::killpg(group, libc::SIGKILL) };
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(if stopped {

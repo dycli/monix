@@ -63,7 +63,7 @@ export type Part = { id: number; n: number; text: string };
 
 type Shown =
   | { type: "said"; id: string; text: string; plain: boolean; aside: boolean }
-  | { type: "heard"; id: string; text: string }
+  | { type: "heard"; id: string; text: string; from?: string }
   | { type: "pending"; pending: Pending }
   | { type: "settled"; id: number; text: string; done: boolean }
   | { type: "react"; to: string; emoji: string }
@@ -77,8 +77,18 @@ type Shown =
   | { type: "asked"; id: string }
   | { type: "forgot" };
 
+/** The slash commands the page answers itself; `/` opens them as a menu. */
+export const COMMANDS: { name: string; arg?: string; does: string }[] = [
+  { name: "model", arg: "[name]", does: "show or switch the model for the next turns" },
+  { name: "stop", does: "stop the turn running now" },
+  { name: "help", does: "list these commands" },
+  { name: "clear", does: "start afresh (every turn already does)" },
+  { name: "new", does: "the same as /clear" },
+  { name: "compact", does: "the same as /clear" },
+];
+
 /** The longest message text, in bytes, that /api/send takes (SEND_MAX in site.rs). */
-const SEND_MAX = 32 * 1024;
+export const SEND_MAX = 32 * 1024;
 
 const ROLE: Record<string, Msg["role"]> = { user: "user", talk: "assistant", note: "system" };
 
@@ -346,7 +356,42 @@ export function useChat(): Chat {
     };
   }, []);
 
+  // A slash command the page knows is done here, answered with a note, as
+  // Claude Code and Codex answer theirs in place; any other goes on as
+  // words, so the agent's own commands and skills still reach it.
+  const command = useCallback(async (text: string) => {
+    const [, name, arg] = /^\/(\w+)\s*(.*)$/s.exec(text.trim()) ?? [];
+    const c = COMMANDS.find((c) => c.name === name?.toLowerCase());
+    if (!c) return false;
+    const note = (said: string) => setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "system", text: said, date: new Date() }]);
+    if (c.name === "stop") {
+      const r = await fetch("/api/stop", { method: "POST" }).catch(() => undefined);
+      if (r?.status === 401) setStatus("signed-out");
+    } else if (c.name === "model") {
+      const [now, me] = await Promise.all([
+        fetch("/api/model").then((r) => r.json() as Promise<{ model: string }>).catch(() => undefined),
+        fetch("/api/me").then((r) => r.json() as Promise<{ models: string[] }>).catch(() => undefined),
+      ]);
+      const choices = me?.models ?? [];
+      const want = arg.trim().toLowerCase();
+      if (!want) note(`Running on ${now?.model || "the default model"}.${choices.length ? ` /model ${choices.join(", /model ")} switches.` : ""}`);
+      else if (want === now?.model) note(`Already on ${want}.`);
+      else {
+        const r = await fetch("/api/model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: want }) }).catch(() => undefined);
+        if (r?.status === 401) return setStatus("signed-out"), true;
+        note(r?.ok ? `Switched to ${want}, from the next turn on.` : `No model ${want}.${choices.length ? ` The choices are ${choices.join(", ")}.` : ""}`);
+      }
+    } else if (c.name === "help") {
+      note(COMMANDS.map((c) => `/${c.name}${c.arg ? ` ${c.arg}` : ""}: ${c.does}`).join("\n"));
+    } else {
+      // clear, new, compact: a turn here is never long-lived.
+      note("Nothing to clear: every turn starts fresh, and what came before lives in memory, not in a running context.");
+    }
+    return true;
+  }, []);
+
   const send = useCallback(async (text: string, files: File[], redo?: "edit" | "again") => {
+    if (!redo && !files.length && text.startsWith("/") && (await command(text))) return;
     // Words too long for a message go as a text file, read whole, as
     // ChatGPT and Claude take a long paste.
     if (new TextEncoder().encode(text).length > SEND_MAX) {
@@ -362,6 +407,7 @@ export function useChat(): Chat {
     });
     const body = new FormData();
     body.set("text", text);
+    body.set("local", local);
     if (redo) body.set("redo", redo);
     for (const f of files) {
       body.append("file", f);
@@ -378,7 +424,7 @@ export function useChat(): Chat {
     }
     // The server's id, so a reaction finds the message.
     const { id } = (await r.json()) as { id: string };
-    setMessages((ms) => ms.map((m) => (m.id === local ? { ...m, id } : m)));
+    setMessages((ms) => (ms.some((m) => m.id === id) ? ms : ms.map((m) => (m.id === local ? { ...m, id } : m))));
   }, []);
 
   // The turn answers "(Stopped.)" over the stream.
@@ -521,6 +567,10 @@ function onto(ms: Msg[], s: Shown): Msg[] {
       return [...ms, { id: s.id, role: "assistant", text: s.text, plain: s.plain, date: new Date() }];
     }
     case "heard":
+      // This page's own words take the server's id, so a reaction finds
+      // them; another page's join the talk.
+      if (s.from && ms.some((m) => m.id === s.from)) return ms.map((m) => (m.id === s.from ? { ...m, id: s.id } : m));
+      if (ms.some((m) => m.id === s.id)) return ms;
       return [...ms, { id: s.id, role: "user", text: s.text, date: new Date() }];
     case "step":
       return step(ms, s.step);
