@@ -191,8 +191,9 @@ pub enum Step {
     },
     /// More of the words being written, as they come.
     Text { text: String },
-    /// A subagent's whole answer to one message, kept in its log; steered
-    /// runs give one per message. Doors never see it.
+    /// A subagent's or the seat's whole answer to one message: a subagent
+    /// keeps it in its log, the seat says it at once. Steered runs give one
+    /// per message. Doors never see it.
     Answer { text: String },
 }
 
@@ -205,6 +206,15 @@ fn answer(line: &str) -> Option<String> {
     }
     let text = ev["result"].as_str()?.trim();
     (!text.is_empty()).then(|| text.to_owned())
+}
+
+/// How many background jobs run, when the line says it changed.
+fn background_tasks(line: &str) -> Option<usize> {
+    if !line.contains("background_tasks_changed") {
+        return None;
+    }
+    let ev = serde_json::from_str::<Value>(line).ok()?;
+    (ev["subtype"] == "background_tasks_changed").then(|| ev["tasks"].as_array().map_or(0, Vec::len))
 }
 
 /// The steps in one stream-json line: tool calls from the model, results
@@ -403,12 +413,19 @@ impl Model for Claude {
         let steps = run.steps.clone();
         let steer = run.steer.clone();
         let sub = run.sub;
+        let seat = self.seat;
         let reader = thread::spawn(move || -> std::io::Result<(String, Option<String>)> {
             let mut out = String::new();
             // The reply's last computer tool, once it drives the computer.
             let mut used: Option<String> = None;
+            // The seat's background jobs still running: the CLI wakes the
+            // model when each ends, and answers again.
+            let mut background = 0;
             for line in BufReader::new(stdout).lines() {
                 let line = line?;
+                if let Some(n) = background_tasks(&line) {
+                    background = n;
+                }
                 if let Some(call) = keep::computer_call(&line) {
                     // The browser is leased the moment the reply first drives
                     // it, before the reply's own session ends and closes it.
@@ -423,15 +440,18 @@ impl Model for Claude {
                     self::steps(&line).into_iter().for_each(|s| show(s));
                 }
                 // Words that came after the answer was out wait for the
-                // next turn; ones already written the CLI answers next.
+                // next turn; ones already written the CLI answers next. The
+                // seat stays open while its background jobs run, so the
+                // person talks to it meanwhile, as in a Claude Code session.
                 if let Some(s) = &steer
+                    && (!seat || background == 0)
                     && line.contains(r#""result""#)
                     && serde_json::from_str::<Value>(&line)
                         .is_ok_and(|ev| ev.get("type").and_then(Value::as_str) == Some("result"))
                 {
                     s.close();
                 }
-                if let (true, Some(show)) = (sub, &steps)
+                if let (true, Some(show)) = (sub || seat, &steps)
                     && let Some(text) = answer(&line)
                 {
                     show(Step::Answer { text });
@@ -754,5 +774,15 @@ mod tests {
         assert_eq!(answer(r#"{"type":"result","result":"  "}"#), None);
         assert_eq!(answer(r#"{"type":"assistant","result":"hi"}"#), None);
         assert_eq!(answer("not json"), None);
+    }
+
+    #[test]
+    fn background_from_stream() {
+        let changed = |tasks: &str| {
+            format!(r#"{{"type":"system","subtype":"background_tasks_changed","tasks":{tasks}}}"#)
+        };
+        assert_eq!(background_tasks(&changed(r#"[{"task_id":"b1"}]"#)), Some(1));
+        assert_eq!(background_tasks(&changed("[]")), Some(0));
+        assert_eq!(background_tasks(r#"{"type":"result","result":"hi"}"#), None);
     }
 }

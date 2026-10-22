@@ -691,13 +691,33 @@ async fn reply<D: Door>(
     let text = msg.text;
     let shown = door.clone();
     let kept = hippo.clone();
+    // The seat's answers are said as they come: one may be out while its
+    // background jobs run on, each ending in an answer of its own.
+    let (answers, mut heard) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let speaker = door.clone();
+    let spoken = tokio::spawn(async move {
+        let mut n = 0;
+        while let Some(text) = heard.recv().await {
+            if let Err(e) = speaker.say(&text).await {
+                eprintln!("yeoman: {e}");
+            }
+            n += 1;
+        }
+        n
+    });
     let reply = match file {
         Err(e) => {
             eprintln!("yeoman: {e}");
-            e
+            drop(answers);
+            Ok(e)
         }
         Ok(file) => tokio::task::spawn_blocking(move || {
-            let steps: Steps = Arc::new(move |s| shown.step(s));
+            let steps: Steps = Arc::new(move |s| match s {
+                Step::Answer { text } => {
+                    let _ = answers.send(text);
+                }
+                s => shown.step(s),
+            });
             answer(
                 &hippo,
                 model.as_ref(),
@@ -713,17 +733,22 @@ async fn reply<D: Door>(
             )
         })
         .await
-        .unwrap_or_else(|e| Err(e.to_string()))
-        .unwrap_or_else(|e| match e.as_str() {
-            "stopped" => "(Stopped.)".to_owned(),
-            _ => {
-                eprintln!("yeoman: {e}");
-                format!("(I couldn't answer that: {e})")
-            }
-        }),
+        .unwrap_or_else(|e| Err(e.to_string())),
     };
+    let said = spoken.await.unwrap_or(0) > 0;
     typing.stop().await;
-    let sent = if is_reaction(&reply) {
+    let reply = match reply {
+        Ok(_) if said => String::new(),
+        Ok(reply) => reply,
+        Err(e) if e == "stopped" => "(Stopped.)".to_owned(),
+        Err(e) => {
+            eprintln!("yeoman: {e}");
+            format!("(I couldn't answer that: {e})")
+        }
+    };
+    let sent = if reply.is_empty() {
+        Ok(())
+    } else if is_reaction(&reply) {
         door.react(&msg.id, &reply).await
     } else {
         door.say(&reply).await.map(|_| ())
