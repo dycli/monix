@@ -170,9 +170,12 @@ export function useChat(): Chat {
       // The tray is extra: a chat without it still works.
       const waiting: Pending[] = w.ok ? await w.json() : [];
       const asked: Ask[] = a.ok ? await a.json() : [];
-      const now: { agents: Agent[]; screen: string | null; size?: string | null; browser?: boolean; typing?: boolean } | null = t.ok ? await t.json() : null;
+      const now: { agents: Agent[]; screen: string | null; size?: string | null; browser?: boolean; typing?: boolean; turn?: { start: number; shown: Shown[] } } | null = t.ok
+        ? await t.json()
+        : null;
       if (gone) return false;
       const turning = !!now?.typing;
+      const turnRecord = now?.turn;
       if (now) {
         setScreen(now.screen ?? undefined);
         const [w, h] = (now.size ?? "").split("x").map(Number);
@@ -202,6 +205,29 @@ export function useChat(): Chat {
               break;
             }
           }
+        }
+        // The last turn as the yeoman showed it, for when hippo hasn't got
+        // it: a seat's turn reaches hippo only once it ends, so a page
+        // loaded meanwhile would lose the person's words and the calls.
+        // hippo has it once it holds a message of the person's from then on.
+        const record = turnRecord;
+        if (record?.shown.length) {
+          const newer = now.filter((m) => (m.date?.getTime() ?? 0) >= record.start - 1000);
+          if (!turning && newer.some((m) => m.role === "user")) return now;
+          let shown = record.shown.reduce(onto, [] as Msg[]);
+          if (!turning) shown = shown.flatMap((m) => (!m.live ? [m] : m.tools ? [{ ...m, text: "", live: false }] : []));
+          const kept = shown.filter((m) => {
+            const j = newer.findIndex((h) => h.role === m.role && (h.text === m.text || (m.role === "user" && h.text.endsWith(m.text))));
+            if (j < 0) return true;
+            newer.splice(j, 1);
+            return false;
+          });
+          // This page's own copy keeps what the record has not: thumbnails.
+          for (const m of kept) {
+            const mine = was.find((w) => w.id === m.id);
+            if (mine?.files) m.files = mine.files;
+          }
+          return [...now, ...kept];
         }
         // The turn under way is not all in hippo yet: what this page has
         // past hippo's newest message it knew (a message waiting its turn,
@@ -255,16 +281,10 @@ export function useChat(): Chat {
         const s: Shown = JSON.parse(e.data);
         switch (s.type) {
           case "said":
-            setMessages((ms) => {
-              // The answer joins the tools and words that led to it; a
-              // draft, or what came from no turn, stands alone.
-              const last = ms.at(-1);
-              if (!s.plain && !s.aside && last?.live) return [...ms.slice(0, -1), { ...last, id: s.id, text: s.text, live: false }];
-              return [...ms, { id: s.id, role: "assistant", text: s.text, plain: s.plain, date: new Date() }];
-            });
-            break;
           case "heard":
-            setMessages((ms) => [...ms, { id: s.id, role: "user", text: s.text, date: new Date() }]);
+          case "picture":
+          case "file":
+            setMessages((ms) => onto(ms, s));
             break;
           case "pending":
             setCards((cs) => (cs.some((c) => c.id === s.pending.id) ? cs : [...cs, s.pending]));
@@ -276,7 +296,7 @@ export function useChat(): Chat {
             break;
           case "step":
             if (s.agent !== null) setTasks((ks) => taskStep(ks, s.agent!, s.step));
-            else setMessages((ms) => step(ms, s.step));
+            else setMessages((ms) => onto(ms, s));
             break;
           case "agents":
             setTasks((ks) => atWork(ks, s.agents));
@@ -298,12 +318,6 @@ export function useChat(): Chat {
             break;
           case "react":
             setMessages((ms) => ms.map((m) => (m.id === s.to ? { ...m, reaction: s.emoji } : m)));
-            break;
-          case "picture":
-            setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", picture: fileUrl(s.name), date: new Date() }]);
-            break;
-          case "file":
-            setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", file: s.name, date: new Date() }]);
             break;
           case "typing":
             setTyping(s.on);
@@ -498,6 +512,30 @@ export function fromAgentChat(text: string): Pick<Task, "text" | "tools" | "word
 
 /** Whether these tools drive the computer, so its screen is worth watching. */
 export const drives = (tools: Tool[] | undefined) => !!tools?.some((t) => t.name.startsWith("mcp__computer__"));
+
+/** What one shown thing does to the talk: the person's words, a call or
+ * its result, words on the way, the answer, a picture or a file. */
+function onto(ms: Msg[], s: Shown): Msg[] {
+  switch (s.type) {
+    case "said": {
+      // The answer joins the tools and words that led to it; a draft, or
+      // what came from no turn, stands alone.
+      const last = ms.at(-1);
+      if (!s.plain && !s.aside && last?.live) return [...ms.slice(0, -1), { ...last, id: s.id, text: s.text, live: false }];
+      return [...ms, { id: s.id, role: "assistant", text: s.text, plain: s.plain, date: new Date() }];
+    }
+    case "heard":
+      return [...ms, { id: s.id, role: "user", text: s.text, date: new Date() }];
+    case "step":
+      return step(ms, s.step);
+    case "picture":
+      return [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", picture: fileUrl(s.name), date: new Date() }];
+    case "file":
+      return [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", file: s.name, date: new Date() }];
+    default:
+      return ms;
+  }
+}
 
 function step(ms: Msg[], s: Step): Msg[] {
   const last = ms.at(-1);

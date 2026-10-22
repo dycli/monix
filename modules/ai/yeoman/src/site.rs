@@ -185,7 +185,24 @@ pub struct Web {
     typing: Arc<AtomicBool>,
     /// The seat's asks waiting on the person, each with its waiter.
     asks: Arc<Mutex<Vec<(SeatAsk, Waiter)>>>,
+    /// The last turn as the pages were shown it, for a page that loads
+    /// before hippo has it: a seat's turn reaches hippo only once it ends.
+    turn: Arc<Mutex<Turn>>,
 }
+
+/// What a turn showed so far: the person's words, the calls, the answer.
+/// It stays past the turn's end, until the next one begins.
+#[derive(Default, Clone, Serialize)]
+struct Turn {
+    /// When its first message came, in Unix milliseconds.
+    start: u64,
+    shown: Vec<Shown>,
+    #[serde(skip)]
+    ended: bool,
+}
+
+/// The most a turn record keeps; a page loading later sees hippo's.
+const TURN_KEPT: usize = 400;
 
 impl Web {
     pub fn new() -> Self {
@@ -199,6 +216,7 @@ impl Web {
             browser: Arc::default(),
             typing: Arc::default(),
             asks: Arc::default(),
+            turn: Arc::default(),
         }
     }
 
@@ -264,8 +282,45 @@ impl Web {
     }
 
     fn show(&self, s: Shown) {
+        self.keep(&s);
         // No page open is no error: hippo has it for the next one.
         let _ = self.shown.send(s);
+    }
+
+    /// Adds what belongs to the turn to its record; the first thing after
+    /// a turn's end begins the next.
+    fn keep(&self, s: &Shown) {
+        let mut t = self.turn.lock().unwrap();
+        match s {
+            Shown::Typing { on: false } => {
+                t.ended = true;
+                return;
+            }
+            Shown::Heard { .. }
+            | Shown::Step { agent: None, .. }
+            | Shown::Said { aside: false, .. }
+            | Shown::Picture { .. }
+            | Shown::File { .. } => {}
+            _ => return,
+        }
+        if t.ended || t.shown.is_empty() {
+            *t = Turn {
+                start: unix_ms(),
+                ..Turn::default()
+            };
+        }
+        if t.shown.len() < TURN_KEPT {
+            t.shown.push(s.clone());
+        }
+    }
+
+    /// The person's words from a page: that page shows them itself, so
+    /// they go to the record alone.
+    fn sent(&self, id: &str, text: &str) {
+        self.keep(&Shown::Heard {
+            id: id.into(),
+            text: text.into(),
+        });
     }
 }
 
@@ -730,6 +785,12 @@ fn unix() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
+}
+
+fn unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 fn token() -> Result<String, String> {
@@ -1897,6 +1958,7 @@ async fn send(State(site): State<Arc<Site>>, headers: HeaderMap, mut form: Multi
         return StatusCode::BAD_REQUEST.into_response();
     }
     let id = site.web.id();
+    site.web.sent(&id, text);
     let msg = Message {
         id: id.clone(),
         text: format!("{redo}{text}"),
@@ -2160,6 +2222,7 @@ async fn task_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response
         "size": std::env::var("YEOMAN_SCREEN_SIZE").ok(),
         "browser": site.web.browser.load(Ordering::Relaxed),
         "typing": site.web.typing.load(Ordering::Relaxed),
+        "turn": site.web.turn.lock().unwrap().clone(),
     }))
     .into_response()
 }
