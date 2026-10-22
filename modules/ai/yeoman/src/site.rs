@@ -2738,7 +2738,13 @@ mod tests {
             pct,
             resets: resets.into(),
         };
-        assert_eq!(got, [w("5h", 3, "Thu Oct 22 23:19"), w("week", 27, "Sun Oct 25 17:59")]);
+        assert_eq!(
+            got,
+            [
+                w("5h", 3, "Thu Oct 22 23:19"),
+                w("week", 27, "Sun Oct 25 17:59")
+            ]
+        );
     }
 
     #[test]
