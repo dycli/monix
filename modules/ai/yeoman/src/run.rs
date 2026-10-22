@@ -48,8 +48,10 @@ pub fn run(
     fs::create_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let ran = (|| {
         // The runner is another user of the desk's group; the service's
-        // umask would shut it out.
-        open(&dir, 0o2770)?;
+        // umask would shut it out. The folder takes the group from the
+        // desk; no setgid bit, which the sandbox (RestrictSUIDSGID) refuses,
+        // and the runner writes as the group anyway.
+        open(&dir, 0o770)?;
         let mut given = HashMap::new();
         for name in names {
             let from = library
