@@ -46,6 +46,11 @@ pub trait Door: Clone + Send + Sync + 'static {
     /// Shows a tool call or its result while the answer is being worked
     /// out. Called from the model's reader thread, so it must not block.
     fn step(&self, _step: Step) {}
+
+    /// Who answers the seat's questions here, when the door can show them.
+    fn asker(&self) -> Option<std::sync::Arc<dyn crate::model::Asker>> {
+        None
+    }
     /// The same for subagent `agent`, at work apart from any turn.
     fn agent_step(&self, _agent: &str, _step: Step) {}
     /// The subagents at work, by name, with their tasks. Called on every

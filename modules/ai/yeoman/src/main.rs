@@ -34,7 +34,7 @@ use book::Book;
 use chrono::Local;
 use door::{Door, Fetched, Message, Typing, send_outbox};
 use hippo::Hippo;
-use model::{Attachment, Model, Run, Steer, Step, Steps};
+use model::{Asker, Attachment, Model, Run, Steer, Step, Steps};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -335,6 +335,7 @@ struct Turn {
     steps: Option<Steps>,
     cards: bool,
     steer: Option<Arc<Steer>>,
+    ask: Option<Arc<dyn Asker>>,
 }
 
 fn answer(
@@ -350,6 +351,7 @@ fn answer(
         steps,
         cards,
         steer,
+        ask,
     } = turn;
     // The seat brings its own memory.
     let view = if model.seat() {
@@ -479,6 +481,7 @@ fn answer(
             stop,
             steps,
             steer,
+            ask,
             ..Run::default()
         },
     )?;
@@ -598,6 +601,7 @@ fn work(
             sub: true,
             steps,
             steer,
+            ask: None,
         },
     )?;
     if reply.is_empty() {
@@ -695,6 +699,7 @@ async fn reply<D: Door>(
     // background jobs run on, each ending in an answer of its own.
     let (answers, mut heard) = tokio::sync::mpsc::unbounded_channel::<String>();
     let speaker = door.clone();
+    let asker = door.asker();
     let spoken = tokio::spawn(async move {
         let mut n = 0;
         while let Some(text) = heard.recv().await {
@@ -729,6 +734,7 @@ async fn reply<D: Door>(
                     steps: Some(steps),
                     cards: D::CARDS,
                     steer: Some(steer),
+                    ask: asker,
                 },
             )
         })

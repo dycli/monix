@@ -11,6 +11,12 @@
    faint grain. What a person says is framed, what the machine wrote (code)
    is filled, and the one colour is a red pencil mark for what wants
    attention. Neither is pure white or black, which glare on a phone. */
+/* A pinch sizes the talk's text (pinch.ts), so the page itself never
+   zooms, double-tap included. */
+html {
+  touch-action: pan-x pan-y;
+}
+
 :root {
   --ink: #2a2019;
   --mid: #6a5a4b;

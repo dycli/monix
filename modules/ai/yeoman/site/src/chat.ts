@@ -44,6 +44,13 @@ export type Pending = { id: number; act: Act; event: string | null };
 /** A card in the tray: `busy` while a verdict is carried out, `error` when it failed. */
 export type Card = Pending & { busy?: boolean; error?: string };
 
+/** One of AskUserQuestion's questions. */
+export type Question = { question: string; header?: string; options: { label: string; description?: string }[]; multiSelect?: boolean };
+/** What the seat asks mid-turn, as Claude Code would in a terminal: may `tool` run, or AskUserQuestion's questions. */
+export type Ask = { id: string; tool: string; input: Record<string, unknown>; about: string | null; busy?: boolean };
+/** Each question's answer, by its text; several picks joined by ", ". */
+export type Answers = Record<string, string>;
+
 type Said = { i: number; kind: string; text: string; date: string; reaction: string | null };
 
 /** A line of the yeoman's view of its past: messages `id` to `id+n`, folded into one summary. */
@@ -60,7 +67,9 @@ type Shown =
   | { type: "typing"; on: boolean }
   | { type: "step"; step: Step; agent: string | null }
   | { type: "agents"; agents: Agent[] }
-  | { type: "browser"; open: boolean };
+  | { type: "browser"; open: boolean }
+  | { type: "ask"; ask: Ask }
+  | { type: "asked"; id: string };
 
 /** The longest message text, in bytes, that /api/send takes (SEND_MAX in site.rs). */
 const SEND_MAX = 32 * 1024;
@@ -89,6 +98,9 @@ export type Chat =
       stop: () => Promise<void>;
       cards: Card[];
       decide: (id: number, yes: boolean) => Promise<void>;
+      asks: Ask[];
+      /** Lets the tool run (with answers, for questions) or refuses it. */
+      reply: (id: string, yes: boolean, answers?: Answers) => Promise<void>;
       tasks: Task[];
       stopTask: (name: string) => Promise<void>;
       /** The computer's screen, when the yeoman has one. */
@@ -110,6 +122,7 @@ export function useChat(): Chat {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [typing, setTyping] = useState(false);
   const [cards, setCards] = useState<Card[]>([]);
+  const [asks, setAsks] = useState<Ask[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [screen, setScreen] = useState<string>();
   const [shape, setShape] = useState<number>();
@@ -127,7 +140,7 @@ export function useChat(): Chat {
     // History from hippo, again on every reconnect and return to the page:
     // what the stream carried while nothing listened is in hippo by then.
     const sync = async (): Promise<boolean> => {
-      const [r, w, t] = await Promise.all([fetch("/api/history"), fetch("/api/pending"), fetch("/api/task")]);
+      const [r, w, t, a] = await Promise.all([fetch("/api/history"), fetch("/api/pending"), fetch("/api/task"), fetch("/api/asks")]);
       if (r.status === 401) {
         setStatus("signed-out");
         return false;
@@ -150,6 +163,7 @@ export function useChat(): Chat {
       }
       // The tray is extra: a chat without it still works.
       const waiting: Pending[] = w.ok ? await w.json() : [];
+      const asked: Ask[] = a.ok ? await a.json() : [];
       const now: { agents: Agent[]; screen: string | null; size?: string | null; browser?: boolean; typing?: boolean } | null = t.ok ? await t.json() : null;
       if (gone) return false;
       const turning = !!now?.typing;
@@ -211,6 +225,7 @@ export function useChat(): Chat {
         return [...now, ...kept];
       });
       setCards(waiting);
+      setAsks(asked);
       setStatus("ready");
       ready = true;
       return true;
@@ -265,6 +280,12 @@ export function useChat(): Chat {
             break;
           case "agents":
             setTasks((ks) => atWork(ks, s.agents));
+            break;
+          case "ask":
+            setAsks((as) => (as.some((a) => a.id === s.ask.id) ? as : [...as, s.ask]));
+            break;
+          case "asked":
+            setAsks((as) => as.filter((a) => a.id !== s.id));
             break;
           case "browser":
             setBrowser(s.open);
@@ -386,11 +407,24 @@ export function useChat(): Chat {
     if (!r?.ok) setCards((cs) => cs.map((c) => (c.id === id ? { ...c, busy: false, error: r ? `That failed (${r.status}).` : "The yeoman couldn't be reached." } : c)));
   }, []);
 
+  const reply = useCallback(async (id: string, yes: boolean, answers?: Answers) => {
+    setAsks((as) => as.map((a) => (a.id === id ? { ...a, busy: true } : a)));
+    const r = await fetch("/api/answer", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, yes, answers }),
+    }).catch(() => undefined);
+    if (r?.status === 401) return setStatus("signed-out");
+    // Answered: `asked` comes over the stream. Gone: the turn took it back.
+    if (r?.status === 404) return setAsks((as) => as.filter((a) => a.id !== id));
+    if (!r?.ok) setAsks((as) => as.map((a) => (a.id === id ? { ...a, busy: false } : a)));
+  }, []);
+
   const refresh = useCallback(() => resync.current(), []);
 
   if (status === "loading" || status === "signed-out") return { state: status };
   if (status !== "ready") return { state: "error", error: status };
-  return { state: "ready", messages, typing, send, stop, cards, decide, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past };
+  return { state: "ready", messages, typing, send, stop, cards, decide, asks, reply, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past };
 }
 
 // The agents at work now, each keeping the work the page has seen of it.

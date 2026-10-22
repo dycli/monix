@@ -14,7 +14,7 @@
 use crate::door::{Door, Fetched, Message};
 use crate::files::{Library, mime_of};
 use crate::hippo::{Hippo, Said};
-use crate::model::{Attachment, Step};
+use crate::model::{Ask as SeatAsk, Asker, Attachment, Step};
 use crate::pending::{self, Pending};
 use crate::{Read, seen};
 use crate::{keep, task};
@@ -27,6 +27,7 @@ use axum::{Json, Router};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fs;
@@ -124,6 +125,14 @@ enum Shown {
     Browser {
         open: bool,
     },
+    /// The seat asks the person: may a tool run, or its questions.
+    Ask {
+        ask: SeatAsk,
+    },
+    /// Ask `id` is answered or taken back.
+    Asked {
+        id: String,
+    },
 }
 
 /// A subagent at work, as a page shows it.
@@ -132,6 +141,10 @@ pub struct Agent {
     name: String,
     task: String,
 }
+
+/// Where the person's answer to an ask goes: the input to run with, or
+/// None to refuse.
+type Waiter = std::sync::mpsc::Sender<Option<Value>>;
 
 /// The open pages, as a door.
 #[derive(Clone)]
@@ -145,6 +158,8 @@ pub struct Web {
     browser: Arc<AtomicBool>,
     /// Whether a turn is under way, for a page that missed the news.
     typing: Arc<AtomicBool>,
+    /// The seat's asks waiting on the person, each with its waiter.
+    asks: Arc<Mutex<Vec<(SeatAsk, Waiter)>>>,
 }
 
 impl Web {
@@ -156,6 +171,7 @@ impl Web {
             agents: Arc::default(),
             browser: Arc::default(),
             typing: Arc::default(),
+            asks: Arc::default(),
         }
     }
 
@@ -185,15 +201,49 @@ impl Web {
         }
     }
 
+    /// Settles ask `id` with `input` (None refuses it); false when it is
+    /// gone already.
+    fn resolve(&self, id: &str, input: Option<Value>) -> bool {
+        let found = {
+            let mut asks = self.asks.lock().unwrap();
+            let i = asks.iter().position(|(a, _)| a.id == id);
+            i.map(|i| asks.remove(i))
+        };
+        let Some((_, waiter)) = found else {
+            return false;
+        };
+        let _ = waiter.send(input);
+        self.show(Shown::Asked { id: id.into() });
+        true
+    }
+
     fn show(&self, s: Shown) {
         // No page open is no error: hippo has it for the next one.
         let _ = self.shown.send(s);
     }
 }
 
+impl Asker for Web {
+    fn put(&self, ask: SeatAsk) -> Option<Value> {
+        let (waiter, answer) = std::sync::mpsc::channel();
+        self.asks.lock().unwrap().push((ask.clone(), waiter));
+        self.show(Shown::Ask { ask });
+        // A waiter dropped unanswered refuses.
+        answer.recv().ok().flatten()
+    }
+
+    fn withdraw(&self, id: &str) {
+        self.resolve(id, None);
+    }
+}
+
 impl Door for Web {
     type File = Upload;
     const CARDS: bool = true;
+
+    fn asker(&self) -> Option<Arc<dyn Asker>> {
+        Some(Arc::new(self.clone()))
+    }
 
     async fn say(&self, text: &str) -> Result<String, String> {
         let id = self.id();
@@ -310,6 +360,10 @@ pub struct Mirror<D: Door> {
 
 impl<D: Door> Door for Mirror<D> {
     type File = D::File;
+
+    fn asker(&self) -> Option<Arc<dyn Asker>> {
+        self.web.as_ref().and_then(Door::asker)
+    }
 
     async fn say(&self, text: &str) -> Result<String, String> {
         let id = self.door.say(text).await?;
@@ -827,6 +881,8 @@ pub async fn serve(
         )
         .route("/api/pending", get(waiting))
         .route("/api/decide", post(decide))
+        .route("/api/asks", get(asks))
+        .route("/api/answer", post(answer))
         .route("/api/stop", post(stop))
         .route("/api/task", get(task_now))
         .route("/api/agent/{name}/stop", post(agent_stop))
@@ -1741,6 +1797,67 @@ async fn waiting(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response 
     }
 }
 
+/// The seat's asks waiting on the person, for a page that missed them.
+async fn asks(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let asks: Vec<SeatAsk> = site
+        .web
+        .asks
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(a, _)| a.clone())
+        .collect();
+    Json(asks).into_response()
+}
+
+#[derive(Deserialize)]
+struct Reply {
+    id: String,
+    yes: bool,
+    /// For AskUserQuestion: each question's answer, by its text.
+    answers: Option<serde_json::Map<String, Value>>,
+}
+
+/// The person's answer to an ask: the tool runs as it was asked, with the
+/// answers added for questions; 404 when it is answered or gone already.
+async fn answer(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    Json(a): Json<Reply>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let input = {
+        let asks = site.web.asks.lock().unwrap();
+        let Some((ask, _)) = asks.iter().find(|(k, _)| k.id == a.id) else {
+            return StatusCode::NOT_FOUND.into_response();
+        };
+        answered(&ask.input, a.yes, a.answers)
+    };
+    if site.web.resolve(&a.id, input) {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    }
+}
+
+/// The input a tool runs with once answered, or None when refused.
+fn answered(
+    input: &Value,
+    yes: bool,
+    answers: Option<serde_json::Map<String, Value>>,
+) -> Option<Value> {
+    let mut input = input.clone();
+    if let (Some(answers), Some(o)) = (answers, input.as_object_mut()) {
+        o.insert("answers".into(), Value::Object(answers));
+    }
+    yes.then_some(input)
+}
+
 #[derive(Deserialize)]
 struct Verdict {
     id: u64,
@@ -2186,6 +2303,18 @@ mod tests {
                 (9, "clouds")
             ]
         );
+    }
+
+    #[test]
+    fn answers_join_the_input() {
+        let input = serde_json::json!({"questions": [{"question": "Tea?"}]});
+        let mut answers = serde_json::Map::new();
+        answers.insert("Tea?".into(), "Yes".into());
+        let out = answered(&input, true, Some(answers)).unwrap();
+        assert_eq!(out["answers"]["Tea?"], "Yes");
+        assert_eq!(out["questions"], input["questions"]);
+        assert_eq!(answered(&input, false, None), None);
+        assert_eq!(answered(&input, true, None), Some(input));
     }
 
     #[test]

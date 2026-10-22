@@ -115,6 +115,9 @@ pub struct Run {
     pub steps: Option<Steps>,
     /// Where the person's next words go while this turn runs.
     pub steer: Option<Arc<Steer>>,
+    /// Who answers the seat's questions and permission prompts; without
+    /// one they are refused, as `claude -p` refuses what it would ask.
+    pub ask: Option<Arc<dyn Asker>>,
 }
 
 /// The way into the turn under way: words written here reach the model at
@@ -154,6 +157,15 @@ impl Steer {
         *self.into.lock().unwrap() = Some(stdin);
     }
 
+    /// Answers the CLI's control request `id`, while the input is open.
+    fn respond(&self, id: &str, response: Value) {
+        let line = json!({"type": "control_response",
+            "response": {"subtype": "success", "request_id": id, "response": response}});
+        if let Some(stdin) = self.into.lock().unwrap().as_mut() {
+            let _ = writeln!(stdin, "{line}").and_then(|()| stdin.flush());
+        }
+    }
+
     /// Ends the input: the CLI exits once it has answered what it has.
     fn close(&self) {
         self.into.lock().unwrap().take();
@@ -169,6 +181,57 @@ fn user(content: Vec<Value>) -> String {
 }
 
 pub type Steps = Arc<dyn Fn(Step) + Send + Sync>;
+
+/// What the seat's CLI asks the person mid-turn, as Claude Code would in a
+/// terminal: whether `tool` may run with `input`, or, for AskUserQuestion,
+/// the questions in `input`.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Ask {
+    pub id: String,
+    pub tool: String,
+    pub input: Value,
+    /// The CLI's own words on what the call does, when it has them.
+    pub about: Option<String>,
+}
+
+/// Puts an ask to the person and waits for them: the input the tool runs
+/// with (for questions, holding the answers), or None to refuse it.
+pub trait Asker: Send + Sync {
+    fn put(&self, ask: Ask) -> Option<Value>;
+    /// The CLI took its question back, or the turn ended without answer.
+    fn withdraw(&self, id: &str);
+}
+
+/// The CLI's question in one stream-json line, when it asks one.
+fn ask_of(ev: &Value) -> Option<Ask> {
+    let r = &ev["request"];
+    (ev["type"] == "control_request" && r["subtype"] == "can_use_tool").then(|| Ask {
+        id: ev["request_id"].as_str().unwrap_or_default().to_owned(),
+        tool: r["tool_name"].as_str().unwrap_or_default().to_owned(),
+        input: r["input"].clone(),
+        about: r["description"].as_str().map(str::to_owned),
+    })
+}
+
+/// Takes back the asks a turn leaves unanswered as it ends.
+fn withdraw(asker: &Option<Arc<dyn Asker>>, open: &Mutex<Vec<String>>) {
+    if let Some(a) = asker {
+        open.lock()
+            .unwrap()
+            .drain(..)
+            .for_each(|id| a.withdraw(&id));
+    }
+}
+
+/// The CLI's word for an answer: run with this input, or don't.
+fn verdict(input: Option<Value>) -> Value {
+    match input {
+        Some(input) => json!({"behavior": "allow", "updatedInput": input}),
+        None => {
+            json!({"behavior": "deny", "message": "Refused: the person said no, or no one was there to answer."})
+        }
+    }
+}
 
 /// The most of a tool's result a door is shown; the model reads it all.
 pub const STEP_MAX: usize = 16 * 1024;
@@ -214,7 +277,8 @@ fn background_tasks(line: &str) -> Option<usize> {
         return None;
     }
     let ev = serde_json::from_str::<Value>(line).ok()?;
-    (ev["subtype"] == "background_tasks_changed").then(|| ev["tasks"].as_array().map_or(0, Vec::len))
+    (ev["subtype"] == "background_tasks_changed")
+        .then(|| ev["tasks"].as_array().map_or(0, Vec::len))
 }
 
 /// The steps in one stream-json line: tool calls from the model, results
@@ -338,6 +402,11 @@ impl Model for Claude {
                 &name,
                 "--permission-mode",
                 "auto",
+                // What it would ask in a terminal comes as control
+                // requests on stdout, answered on stdin (as the Agent SDK's
+                // canUseTool), which the page shows as cards.
+                "--permission-prompt-tool",
+                "stdio",
                 "--append-system-prompt",
                 system,
                 "--model",
@@ -398,9 +467,12 @@ impl Model for Claude {
         content.push(json!({"type": "text", "text": prompt}));
         let line = user(content);
         let mut stdin = child.stdin.take().unwrap();
+        // The seat's input stays open for its answers to the CLI's
+        // questions, even when no one's words can steer it.
+        let run_steer = run.steer.clone().or_else(|| self.seat.then(Arc::default));
         // Written from a thread, as the files can outgrow the pipe; then,
         // with a steer, the input stays open for the person's next words.
-        let steer = run.steer.clone();
+        let steer = run_steer.clone();
         let writer = thread::spawn(move || {
             stdin.write_all(line.as_bytes())?;
             if let Some(s) = steer {
@@ -411,9 +483,13 @@ impl Model for Claude {
         let stdout = child.stdout.take().unwrap();
         let keep = self.keep.clone();
         let steps = run.steps.clone();
-        let steer = run.steer.clone();
+        let steer = run_steer.clone();
         let sub = run.sub;
         let seat = self.seat;
+        let asker = run.ask.clone();
+        // The asks still waiting on the person, withdrawn when the turn ends.
+        let open: Arc<Mutex<Vec<String>>> = Arc::default();
+        let asking = open.clone();
         let reader = thread::spawn(move || -> std::io::Result<(String, Option<String>)> {
             let mut out = String::new();
             // The reply's last computer tool, once it drives the computer.
@@ -425,6 +501,25 @@ impl Model for Claude {
                 let line = line?;
                 if let Some(n) = background_tasks(&line) {
                     background = n;
+                }
+                if line.contains("control_") {
+                    let ev = serde_json::from_str::<Value>(&line).unwrap_or_default();
+                    if let (Some(ask), Some(s)) = (ask_of(&ev), &steer) {
+                        let (s, asker, asking) = (s.clone(), asker.clone(), asking.clone());
+                        // Each waits on the person in a thread of its own, so
+                        // the stream reads on meanwhile.
+                        thread::spawn(move || {
+                            let id = ask.id.clone();
+                            asking.lock().unwrap().push(id.clone());
+                            let input = asker.and_then(|a| a.put(ask));
+                            asking.lock().unwrap().retain(|a| *a != id);
+                            s.respond(&id, verdict(input));
+                        });
+                    } else if ev["type"] == "control_cancel_request"
+                        && let (Some(a), Some(id)) = (&asker, ev["request_id"].as_str())
+                    {
+                        a.withdraw(id);
+                    }
                 }
                 if let Some(call) = keep::computer_call(&line) {
                     // The browser is leased the moment the reply first drives
@@ -469,9 +564,10 @@ impl Model for Claude {
             }
             let stopped = run.stop.as_ref().is_some_and(|s| s.load(Ordering::Relaxed));
             if stopped || deadline.is_some_and(|d| Instant::now() > d) {
-                if let Some(s) = &run.steer {
+                if let Some(s) = &run_steer {
                     s.close();
                 }
+                withdraw(&run.ask, &open);
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(if stopped {
@@ -483,9 +579,10 @@ impl Model for Claude {
             thread::sleep(Duration::from_millis(100));
         };
         let _ = writer.join();
-        if let Some(s) = &run.steer {
+        if let Some(s) = &run_steer {
             s.close();
         }
+        withdraw(&run.ask, &open);
         let (out, used) = reader.join().unwrap().map_err(|e| e.to_string())?;
         // A reply that ends by closing the browser lets it go; otherwise the
         // lease runs on from the reply's last use.
@@ -774,6 +871,21 @@ mod tests {
         assert_eq!(answer(r#"{"type":"result","result":"  "}"#), None);
         assert_eq!(answer(r#"{"type":"assistant","result":"hi"}"#), None);
         assert_eq!(answer("not json"), None);
+    }
+
+    #[test]
+    fn asks_from_stream() {
+        let ev: Value = serde_json::from_str(
+            r#"{"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool",
+            "tool_name":"Write","input":{"file_path":"/tmp/a"},"description":"a"}}"#,
+        )
+        .unwrap();
+        let ask = ask_of(&ev).unwrap();
+        assert_eq!((ask.id.as_str(), ask.tool.as_str()), ("r1", "Write"));
+        assert_eq!(ask.about.as_deref(), Some("a"));
+        assert!(ask_of(&json!({"type": "result"})).is_none());
+        assert_eq!(verdict(Some(json!({"x": 1})))["behavior"], "allow");
+        assert_eq!(verdict(None)["behavior"], "deny");
     }
 
     #[test]

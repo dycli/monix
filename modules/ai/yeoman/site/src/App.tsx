@@ -15,7 +15,8 @@ import {
   type ToolCallMessagePartProps,
 } from "@assistant-ui/react";
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
-import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, zoom, type Card, type Chat, type Hit, type Msg, type Part, type Task } from "./chat";
+import { usePinchText } from "./pinch";
+import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, zoom, type Answers, type Ask, type Card, type Chat, type Hit, type Msg, type Part, type Question, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
 import { Bars, Call, SPEED, useVoiceChoice, useVoiceSpeed, voiceChoice, voiceSpeed } from "./call";
@@ -643,6 +644,7 @@ function Download() {
 
 type Send = Extract<Chat, { state: "ready" }>["send"];
 type Decide = (id: number, yes: boolean) => Promise<void>;
+type Reply = (id: string, yes: boolean, answers?: Answers) => Promise<void>;
 
 type ThreadProps = {
   messages: Msg[];
@@ -651,6 +653,8 @@ type ThreadProps = {
   stop: () => Promise<void>;
   cards: Card[];
   decide: Decide;
+  asks: Ask[];
+  reply: Reply;
   tasks: Task[];
   stopTask: (name: string) => Promise<void>;
   screen?: string;
@@ -662,7 +666,8 @@ type ThreadProps = {
   past: Part[];
 };
 
-function Thread({ messages, typing, send, stop, cards, decide, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past }: ThreadProps) {
+function Thread({ messages, typing, send, stop, cards, decide, asks, reply, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past }: ThreadProps) {
+  usePinchText();
   const [finding, setFinding] = useState(false);
   const [calling, setCalling] = useState(false);
   const voice = useMe()?.voice;
@@ -809,7 +814,7 @@ function Thread({ messages, typing, send, stop, cards, decide, tasks, stopTask, 
         {finding && <Search close={() => setFinding(false)} />}
         <div className="flex min-h-0 flex-1">
         <ThreadPrimitive.Viewport ref={viewport} className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-          <main className={`mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)] fades ${deck.length && !leaving ? "faded" : ""}`}>
+          <main style={{ zoom: "var(--talk, 1)" }} className={`mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3.5 pt-6 pb-10 max-sm:w-[calc(100%-28px)] fades ${deck.length && !leaving ? "faded" : ""}`}>
             {past.length > 0 && <Past parts={past} />}
             <ThreadPrimitive.Messages>
               {({ message }) =>
@@ -825,6 +830,9 @@ function Thread({ messages, typing, send, stop, cards, decide, tasks, stopTask, 
                 {screen && !wide && <Screen url={screen} shape={shape} on={watching} driving={driving} close={closeBrowser} />}
                 {tasks.map((t) => (
                   <TaskStrip key={t.name} task={t} stop={() => stopTask(t.name)} />
+                ))}
+                {asks.map((a) => (
+                  <AskCard key={a.id} ask={a} reply={reply} />
                 ))}
                 <Tray cards={cards} decide={decide} />
               </div>
@@ -2048,6 +2056,91 @@ function TaskStrip({ task, stop }: { task: Task; stop: () => Promise<void> }) {
 // Acts waiting for the person's word sit above the composer, where the
 // next thing is done, until a verdict here or in Matrix settles them. A
 // mail draft reads as a letter on a sheet of its own.
+// What the seat asks mid-turn, where Claude Code would ask in the terminal:
+// AskUserQuestion's questions to pick from, or whether a tool may run.
+function AskCard({ ask: a, reply }: { ask: Ask; reply: Reply }) {
+  const questions = a.tool === "AskUserQuestion" ? ((a.input.questions as Question[] | undefined) ?? []) : undefined;
+  const [picked, setPicked] = useState<Record<string, string[]>>({});
+  const [other, setOther] = useState<Record<string, string>>({});
+  const answer = (q: Question) => (other[q.question]?.trim() ? [...(picked[q.question] ?? []), other[q.question].trim()] : (picked[q.question] ?? [])).join(", ");
+  const pick = (q: Question, label: string) =>
+    setPicked((p) => {
+      const was = p[q.question] ?? [];
+      const now = q.multiSelect ? (was.includes(label) ? was.filter((l) => l !== label) : [...was, label]) : [label];
+      return { ...p, [q.question]: now };
+    });
+  const ready = !questions || questions.every((q) => answer(q));
+  const go = () => reply(a.id, true, questions && Object.fromEntries(questions.map((q) => [q.question, answer(q)])));
+  return (
+    <article className="rise relative mb-3.5 shrink-0 rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift" aria-label={questions ? "Questions" : `May ${a.tool} run?`}>
+      <span className="absolute -top-[0.75em] left-3.5 rounded bg-lift px-1.5 text-xs font-semibold tracking-wide text-accent uppercase">Waiting on you</span>
+      {questions ? (
+        <div className="flex flex-col gap-4 px-5 pt-4 pb-2">
+          {questions.map((q) => (
+            <fieldset key={q.question} className="flex flex-col gap-2">
+              {q.header && <legend className="text-[11px] font-semibold tracking-wider text-soft uppercase">{q.header}</legend>}
+              <p className="text-[15px] font-medium">{q.question}</p>
+              <div className="flex flex-wrap gap-2">
+                {q.options.map((o) => {
+                  const on = picked[q.question]?.includes(o.label);
+                  return (
+                    <button
+                      key={o.label}
+                      title={o.description}
+                      onClick={() => pick(q, o.label)}
+                      className={`rounded-xl border px-3 py-1.5 text-left text-[14px] ${on ? "border-ink bg-ink text-paper" : "border-frame hover:bg-hover"}`}
+                    >
+                      {o.label}
+                      {o.description && <span className={`block text-[12px] ${on ? "opacity-75" : "text-mid"}`}>{o.description}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <input
+                value={other[q.question] ?? ""}
+                onChange={(e) => setOther((o) => ({ ...o, [q.question]: e.target.value }))}
+                placeholder="Or say something else"
+                className="rounded-xl border border-frame bg-transparent px-3 py-1.5 text-[14px] outline-none focus:border-soft"
+              />
+            </fieldset>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5 px-5 pt-4 pb-2">
+          <p className="text-[15px] font-medium">
+            May I use <code className="text-[14px]">{a.tool}</code>?
+          </p>
+          {a.about && <p className="text-[14px] text-mid">{a.about}</p>}
+          <pre className="max-h-48 overflow-auto rounded-lg bg-hover px-3 py-2 text-[12.5px] whitespace-pre-wrap [overflow-wrap:anywhere]">{shown(a.input)}</pre>
+        </div>
+      )}
+      <footer className="flex items-center justify-end gap-2 px-3.5 pb-3">
+        {a.busy ? (
+          <span className="flex h-9 items-center gap-2 px-3 text-[13.5px] text-mid">
+            <span className="size-3 animate-spin rounded-full border-[1.5px] border-hair border-t-accent" /> Working
+          </span>
+        ) : (
+          <>
+            <button onClick={() => reply(a.id, false)} className="h-9 rounded-full px-4 text-[14px] text-mid hover:bg-hover hover:text-ink">
+              {questions ? "Skip" : "Deny"}
+            </button>
+            <button disabled={!ready} onClick={go} className="h-9 rounded-full bg-ink px-5 text-[14px] font-medium text-paper hover:opacity-85 disabled:opacity-40">
+              {questions ? "Answer" : "Allow"}
+            </button>
+          </>
+        )}
+      </footer>
+    </article>
+  );
+}
+
+// A tool's input as the person reads it: the command or the file when it
+// has one, else the whole input.
+function shown(input: Record<string, unknown>): string {
+  for (const k of ["command", "file_path", "url", "pattern"]) if (typeof input[k] === "string") return input[k] as string;
+  return JSON.stringify(input, null, 2);
+}
+
 function Tray({ cards, decide }: { cards: Card[]; decide: Decide }) {
   if (cards.length === 0) return null;
   return (
