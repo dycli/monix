@@ -129,7 +129,7 @@ function Viewer() {
   const [drag, setDrag] = useState(0);
   const from = useRef<number>(undefined);
   useEffect(() => {
-    const open = (e: Event) => setSrc((e as CustomEvent<string>).detail);
+    const open = (e: globalThis.Event) => setSrc((e as CustomEvent<string>).detail);
     window.addEventListener(VIEW, open);
     return () => window.removeEventListener(VIEW, open);
   }, []);
