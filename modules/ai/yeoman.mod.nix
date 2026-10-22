@@ -1057,7 +1057,7 @@
         # The seat's agents, for the claude runs a seat instance starts: the
         # yeoman names its state in YEOMAN_AGENTS, and any other claude on the
         # seat (paseo's) finds no tools here.
-        seat.claudeMcp = mkIf (lib.attrsets.any (_: i: i.seat) cfg.instances) {
+        seat.claudeMcp = mkIf (lib.lists.any (i: i.seat) (lib.attrsets.attrValues cfg.instances)) {
           yeoman = {
             type = "stdio";
             command = getExe yeoman;
