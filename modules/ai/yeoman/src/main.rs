@@ -766,7 +766,6 @@ async fn reply<D: Door>(
         .unwrap_or_else(|e| Err(e.to_string())),
     };
     let said = spoken.await.unwrap_or(0) > 0;
-    typing.stop().await;
     let reply = match reply {
         Ok(_) if said => String::new(),
         Ok(reply) => reply,
@@ -786,6 +785,9 @@ async fn reply<D: Door>(
     if let Err(e) = sent {
         eprintln!("yeoman: {e}");
     }
+    // Only now: a page takes the end of typing for the turn's end, and a
+    // closing word ("(Stopped.)") said after it would stand apart.
+    typing.stop().await;
     // After the answer, as hippo has them.
     send_outbox(&door, &kept, state).await;
 }

@@ -1513,6 +1513,8 @@ const DID: Record<string, [string, string, string]> = {
   WebSearch: ["searched the web", "time", "times"],
   Agent: ["sent", "agent", "agents"],
   Task: ["sent", "agent", "agents"],
+  AskUserQuestion: ["asked", "question", "questions"],
+  TodoWrite: ["updated", "to-do list", "to-do lists"],
 };
 
 function did(calls: Call[]): string {
