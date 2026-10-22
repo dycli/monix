@@ -14,7 +14,7 @@
   flake.nixosModules.sites =
     { lib, ... }:
     let
-      inherit (lib.attrsets) genAttrs;
+      inherit (lib.attrsets) genAttrs listToAttrs nameValuePair;
       inherit (lib.lists) singleton;
 
       webRoot = "/srv/www";
@@ -68,7 +68,20 @@
               forceSSL = true;
               enableACME = true;
               locations."/".return = "503";
-            });
+            })
+            # www.<domain> answers with a 301 to the bare name, path kept,
+            # so the bar drops the www. Each has its own cert, since
+            # Cloudflare checks the origin's.
+            // listToAttrs (
+              map (
+                domain:
+                nameValuePair "www.${domain}" {
+                  forceSSL = true;
+                  enableACME = true;
+                  globalRedirect = domain;
+                }
+              ) (live ++ parked)
+            );
         };
 
         security.acme.acceptTerms = true;
