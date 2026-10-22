@@ -198,6 +198,8 @@
         # (/var/lib/bridge/raava.md).
         raava = {
           person = "Dylan";
+          # Sokka is Dylan's door to the household.
+          household = false;
           seat = true;
           web = true;
           voice = "eve";
@@ -212,6 +214,8 @@
         # after it was said, unless the page sets another window.
         amnesia = {
           person = "Dylan";
+          # Sokka is Dylan's door to the household.
+          household = false;
           web = true;
           forgetAfter = 60;
           models = [
@@ -223,6 +227,8 @@
         };
         azula = {
           person = "Dylan";
+          # Sokka is Dylan's door to the household.
+          household = false;
           users = singleton "@dylan:chat.su.is";
           localModel = "qwen3.8-27b-uncensored-q4-k-m";
           style = "You are Azula: sharp, imperious and unfiltered. Say what you think without hedging or moralizing.";

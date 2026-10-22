@@ -111,9 +111,12 @@
       browserIndex = n: 10 + (computers.indexes cfg.instances).${n};
       siteOf = n: findFirst (s: elem n cfg.sites.${s}.members) null (attrNames cfg.sites);
       host = sub: "https://${sub}.${config.shipProxy.domain}";
+      # Each person's door to the household; their other assistants stay out,
+      # so a share or a note to the person reaches them once.
+      members = filterAttrs (_: i: i.household) cfg.instances;
       households = {
         YEOMAN_HOUSE = house;
-        YEOMAN_PEOPLE = concatStringsSep "," (mapAttrsToList (n: i: "${n}=${i.person}") cfg.instances);
+        YEOMAN_PEOPLE = concatStringsSep "," (mapAttrsToList (n: i: "${n}=${i.person}") members);
         # The ship's seat is in the household by this name (house.rs).
         YEOMAN_SEAT = "Bridge";
       };
@@ -307,7 +310,7 @@
             url = if shared' == null then host n else "${host shared'}/${n}";
           };
           shared =
-            households
+            optionalAttrs i.household households
             // {
               YEOMAN_UNIT = n;
               YEOMAN_USAGE = "/run/usage.sock";
@@ -686,9 +689,9 @@
                   Restart = "always";
                   RestartSec = 10;
                   ReadWritePaths = [
-                    house
                     site.dir
                   ]
+                  ++ optional i.household house
                   ++ optional i.alerts config.alerts.spool
                   ++ optionals i.computer [
                     pc.desk
@@ -872,6 +875,16 @@
                     '';
                   };
 
+                  household = mkOption {
+                    type = types.bool;
+                    default = true;
+                    description = ''
+                      Whether it is its person's door to the household: the
+                      shared lists, and notes to and from the others'
+                      assistants. One per person.
+                    '';
+                  };
+
                   seat = mkOption {
                     type = types.bool;
                     default = false;
@@ -1047,6 +1060,10 @@
               i: (i.credentialsEnvFile != null || i.web) && !(i.seat && i.forgetAfter != null)
             ) (lib.attrsets.attrValues cfg.instances);
             message = "yeoman: an instance needs Matrix or web on, and the seat can't forget.";
+          }
+          {
+            assertion = lib.lists.allUnique (mapAttrsToList (_: i: i.person) members);
+            message = "yeoman: a person has one assistant in the household at most.";
           }
           {
             assertion = lib.lists.allUnique inSites;
@@ -1249,7 +1266,7 @@
             group = "yeoman-household";
             mode = "2770";
           };
-        }) cfg.instances
+        }) members
         // lib.attrsets.mapAttrs' (n: _: {
           name = "${house}/seat/${n}";
           value.d = {
@@ -1257,7 +1274,7 @@
             group = "yeoman-household";
             mode = "2770";
           };
-        }) cfg.instances;
+        }) members;
 
         systemd.sockets.yeoman-image = {
           description = "Pictures for the household assistants";
