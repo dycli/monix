@@ -639,6 +639,59 @@ const Plus = () => (
   </svg>
 );
 
+// What the + offers: a phone gets its camera too, as ChatGPT's and
+// Claude's apps do; a desktop has none worth asking for.
+const TOUCH = matchMedia("(pointer: coarse)").matches;
+const SOURCES = [
+  ...(TOUCH ? [{ label: "Camera", accept: "image/*", capture: "environment", path: "M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" }] : []),
+  { label: TOUCH ? "Photos" : "Add image", accept: "image/*", path: "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21" },
+  { label: TOUCH ? "Files" : "Upload file", accept: "*", path: "m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" },
+];
+
+/** The composer's +: a small menu above it of where a file comes from. */
+function AddMenu() {
+  const aui = useAui();
+  const [open, setOpen, ref] = useMenu();
+  const pick = (accept: string, capture?: string) => {
+    setOpen(false);
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.multiple = !capture;
+    if (capture) input.setAttribute("capture", capture);
+    input.onchange = () => {
+      for (const f of input.files ?? []) void aui.composer.addAttachment(f);
+    };
+    input.click();
+  };
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        aria-label="Attach"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className={`grid size-[38px] place-items-center rounded-full hover:text-ink ${open ? "bg-hover text-ink" : "text-mid"}`}
+      >
+        <Plus />
+      </button>
+      {open && (
+        <div role="menu" className="absolute bottom-full left-0 mb-2 min-w-44 overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift py-1 shadow-lift">
+          {SOURCES.map((o) => (
+            <button key={o.label} type="button" role="menuitem" onClick={() => pick(o.accept, o.capture)} className="flex w-full items-center gap-3 px-4 py-2 text-left text-[15px] text-ink hover:bg-hover">
+              <svg viewBox="0 0 24 24" className="size-[18px] text-mid" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                <path d={o.path} />
+              </svg>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** A local URL for a photo's thumbnail, let go when the chip goes. */
 function usePicture(a: Attachment): string | undefined {
   const [url, setUrl] = useState<string>();
@@ -906,12 +959,7 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
                   <ComposerPrimitive.Attachments>{({ attachment }) => <Chip attachment={attachment} removable />}</ComposerPrimitive.Attachments>
                 </div>
                 <div className="flex items-end gap-1.5">
-                <ComposerPrimitive.AddAttachment
-                  aria-label="Attach files"
-                  className="grid size-[38px] shrink-0 place-items-center rounded-full text-mid hover:text-ink disabled:invisible"
-                >
-                  <Plus />
-                </ComposerPrimitive.AddAttachment>
+                <AddMenu />
                 <SlashInput />
                 <Trailing typing={typing} stop={stop} cardOpen={!!deck.length && !leaving} close={close} call={voice ? () => setCalling(true) : undefined} />
                 </div>
