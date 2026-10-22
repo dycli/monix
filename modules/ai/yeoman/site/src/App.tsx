@@ -1014,27 +1014,30 @@ function SlashInput() {
 }
 
 // The one button after the composer: Stop while the yeoman is answering;
-// else, with a card up and nothing typed, a down arrow to close it; else,
-// with nothing typed and a voice to call, a call; else Send, which the
+// else, with a card up and nothing to send, a down arrow to close it; else,
+// with nothing to send and a voice to call, a call; else Send, which the
 // primitive greys when there is nothing to send. One button, never two
 // half-lit ones.
 function Trailing({ typing, stop, cardOpen, close, call }: { typing: boolean; stop: () => Promise<void>; cardOpen: boolean; close: () => void; call?: () => void }) {
   const text = useAuiState((s) => s.composer.text);
+  const files = useAuiState((s) => s.composer.attachments.length);
+  // A picture or file alone is something to send.
+  const empty = !text.trim() && !files;
   const round = "grid size-[38px] shrink-0 place-items-center rounded-full";
   // Words typed while a turn runs join it, so Send stands in for Stop.
-  if (typing && !text.trim())
+  if (typing && empty)
     return (
       <button type="button" onClick={() => void stop()} aria-label="Stop" title="Stop" className={`${round} border border-frame text-ink hover:bg-hover`}>
         <span className="size-3 rounded-[2px] bg-current" />
       </button>
     );
-  if (cardOpen && !text.trim())
+  if (cardOpen && empty)
     return (
       <button type="button" onClick={() => close()} aria-label="Close the card" title="Close the card" className={`${round} bg-ink text-paper hover:opacity-85`}>
         <Arrow down />
       </button>
     );
-  if (call && !text.trim())
+  if (call && empty)
     return (
       <button type="button" onClick={call} aria-label={`Call ${NAME}`} title={`Call ${NAME}`} className={`${round} bg-ink text-paper hover:opacity-85`}>
         <Bars />

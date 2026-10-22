@@ -527,9 +527,16 @@ fn tail(store: &Store, n: u64, title: Option<&str>) -> Result<String, String> {
         }
         None => (store.len().saturating_sub(n)..store.len()).collect(),
     };
+    let mut msgs = ids
+        .into_iter()
+        .map(|i| store.get(i))
+        .collect::<Result<Vec<_>, _>>()?;
+    // A transcript is read when it next changes, so a turn can be stored
+    // after a later one (a reminder's, say); a chat reads in time order.
+    msgs.sort_by_key(|m| chrono::DateTime::parse_from_rfc3339(&m.date).ok());
     let mut out = Vec::new();
-    for i in ids {
-        out.push(serde_json::to_string(&store.get(i)?).map_err(|e| e.to_string())?);
+    for m in msgs {
+        out.push(serde_json::to_string(&m).map_err(|e| e.to_string())?);
     }
     Ok(out.join("\n"))
 }
@@ -1063,6 +1070,32 @@ mod tests {
             tail(&reopened, 10, Some("Raava")).unwrap().lines().count(),
             2
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_chat_read_late_still_shows_in_time_order() {
+        let dir = std::env::temp_dir().join(format!("hippo-late-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let mut store = Store::open(&dir, true).unwrap();
+        post(&mut store, "Raava", Kind::Talk, "the reminder, later").unwrap();
+        // The turn before it, stored only now as its transcript is read.
+        store
+            .append(vec![Draft {
+                kind: Kind::User,
+                chat: Some("raava".into()),
+                text: "the turn, earlier".into(),
+                date: Local::now() - chrono::Duration::minutes(5),
+                src: Some(crate::memory::store::Src {
+                    h: POSTED.into(),
+                    s: "Raava".into(),
+                    e: "late".into(),
+                }),
+            }])
+            .unwrap();
+        let out = tail(&store, 10, Some("Raava")).unwrap();
+        let lines: Vec<&str> = out.lines().collect();
+        assert!(lines[0].contains("the turn, earlier") && lines[1].contains("the reminder, later"));
         let _ = fs::remove_dir_all(&dir);
     }
 
