@@ -562,6 +562,10 @@ function step(ms: Msg[], s: Step): Msg[] {
 // a `tool` line per call (`Name {input}`) and an `echo` per result, in the
 // order they came: they gather into the answer they led to, as in a live
 // turn, with the words between them kept above the call they led into.
+// The yeoman marks words sent mid-turn for the model, and hippo logs them so;
+// the page shows them as the person wrote them, and so knows them again.
+const STEERED = /^\(sent while you were working\) /;
+
 function fromHistory(said: Said[]): Msg[] {
   const out: Msg[] = [];
   for (const m of said) {
@@ -611,7 +615,7 @@ function fromHistory(said: Said[]): Msg[] {
     out.push({
       id: `h-${m.i}`,
       role: ROLE[m.kind],
-      text: sent ? "" : m.text,
+      text: sent ? "" : m.kind === "user" ? m.text.replace(STEERED, "") : m.text,
       plain: m.kind === "talk" && DRAFT.test(m.text),
       picture: sent?.[1] === "picture" ? fileUrl(sent[2]) : undefined,
       file: sent?.[1] === "file" ? sent[2] : undefined,
