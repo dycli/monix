@@ -22,7 +22,7 @@ use crate::weather::Weather;
 use crate::web::Web;
 use crate::x;
 use crate::youtube::Youtube;
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{NaiveDate, NaiveDateTime, Timelike};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{ServiceExt, tool, tool_handler, tool_router};
@@ -92,6 +92,21 @@ struct Remind {
     /// assistant, or a person, whose assistant passes it on).
     #[serde(default)]
     share_with: Vec<String>,
+}
+
+/// A reminder must lie ahead: one set in the past would fire at once. The
+/// refusal names the time, since a seat has no clock of its own and may
+/// have guessed it.
+fn ahead(at: NaiveDateTime, now: NaiveDateTime) -> Result<(), String> {
+    let minute = now.date().and_hms_opt(now.hour(), now.minute(), 0).unwrap();
+    if at < minute {
+        return Err(format!(
+            "{} has passed; it is now {}.",
+            at.format(AT),
+            now.format("%a %Y-%m-%d %H:%M")
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -514,6 +529,7 @@ impl Tools {
     fn remind(&self, Parameters(r): Parameters<Remind>) -> Result<String, String> {
         let at = NaiveDateTime::parse_from_str(&r.at, AT)
             .map_err(|_| format!("`at` must be YYYY-MM-DD HH:MM, not {}", r.at))?;
+        ahead(at, chrono::Local::now().naive_local())?;
         let share = if r.ask { r.share_with } else { Vec::new() };
         if !share.is_empty() {
             self.household()?.check(&share)?;
@@ -1558,6 +1574,16 @@ pub async fn serve(dir: PathBuf, only: Option<&[&str]>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_reminder_in_the_past_is_refused_with_the_time() {
+        let t = |s| NaiveDateTime::parse_from_str(s, AT).unwrap();
+        let now = t("2026-10-22 15:14") + chrono::Duration::seconds(50);
+        let err = ahead(t("2026-10-22 15:03"), now).unwrap_err();
+        assert!(err.contains("15:14"), "{err}");
+        assert!(ahead(t("2026-10-22 15:14"), now).is_ok());
+        assert!(ahead(t("2026-10-22 15:16"), now).is_ok());
+    }
 
     #[test]
     fn a_page_is_published_under_a_plain_name_only() {
