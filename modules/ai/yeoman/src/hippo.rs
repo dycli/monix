@@ -54,6 +54,15 @@ impl Hippo {
         self.ask("log", &[kind, text]).map(|_| ())
     }
 
+    /// Logs what was said outside any turn (a reminder, a draft shown). On
+    /// a seat no transcript holds it, so it goes to the seat's own chat.
+    pub fn aside(&self, kind: &str, text: &str) -> Result<(), String> {
+        match &self.seat {
+            Some(title) => self.ask("post", &[title, kind, text]).map(|_| ()),
+            None => self.ask("log", &[kind, text]).map(|_| ()),
+        }
+    }
+
     /// Opens line `id+n` into its two halves; `n = 1` gives the message whole.
     pub fn zoom(&self, id: u64, n: u64) -> Result<String, String> {
         self.ask("zoom", &[&id.to_string(), &n.to_string()])

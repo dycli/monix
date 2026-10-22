@@ -8,7 +8,7 @@ use crate::code::live::Sources;
 use crate::memory::compact::Backend;
 use crate::memory::compactor::{Pump, Spent, pump};
 use crate::memory::store::{
-    Draft, Kind, Store, append_line, chat_key, day_name, fmt_date, parse_date,
+    ChatRec, Draft, Kind, Src, Store, append_line, chat_key, day_name, fmt_date, parse_date,
 };
 use crate::memory::tree::{Tree, addr, flat};
 use crate::memory::view::{CONTEXT, PLACEHOLDER, UNBUILT, VIEW, View, head};
@@ -242,6 +242,10 @@ fn num(args: &[String], k: usize, what: &str) -> Result<u64, String> {
         .map_err(|_| format!("{what} must be a number."))
 }
 
+/// The harness name of chats posted over the socket, not read from a
+/// transcript.
+const POSTED: &str = "yeoman";
+
 fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
     let a = &req.args;
     let core = &shared.core;
@@ -310,6 +314,29 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
             c.sync();
             pump(shared, &mut c);
             Ok(format!("Logged as message {}.", ids[0]))
+        }
+        // What a seat says outside its turns (a reminder, a draft for
+        // approval) is in no transcript: its server posts it to the seat's
+        // own chat, under the seat's title. Never the user's words.
+        "post" => {
+            let [title, kind, text @ ..] = a.as_slice() else {
+                return Err("Usage: post <title> <kind> <text>".into());
+            };
+            let kind = match kind.as_str() {
+                "talk" => Kind::Talk,
+                "note" => Kind::Note,
+                "work" => Kind::Work,
+                other => return Err(format!("Cannot post a {other} message.")),
+            };
+            let text = text.join(" ");
+            if title.trim().is_empty() || text.trim().is_empty() {
+                return Err("Nothing to post.".into());
+            }
+            let mut c = core.lock().unwrap();
+            let i = post(&mut c.store, title, kind, &text)?;
+            c.sync();
+            pump(shared, &mut c);
+            Ok(format!("Posted as message {i}."))
         }
         // The seat's PreCompact hook: its cache is about to go, so the batch
         // that would come at the budget comes now, and the view the fresh
@@ -454,6 +481,33 @@ const OWN_CUT: usize = 800;
 /// programs that show a conversation (yeoman's web chat loads its history
 /// so). With a title, only those of the chats that go by it: a yeoman seat
 /// runs each turn as a session of its own, all under one name.
+/// Appends one message to the chat titled `title`, registering it first.
+fn post(store: &mut Store, title: &str, kind: Kind, text: &str) -> Result<u64, String> {
+    let now = Local::now();
+    let label = title.to_lowercase().replace(char::is_whitespace, "-");
+    store.register(ChatRec {
+        chat: label.clone(),
+        harness: POSTED.into(),
+        session: title.into(),
+        title: title.into(),
+        cwd: String::new(),
+        first: fmt_date(&now),
+    })?;
+    let e = format!("post-{}", store.len());
+    let ids = store.append(vec![Draft {
+        kind,
+        chat: Some(label),
+        text: crate::memory::mask::mask(text.trim()),
+        date: now,
+        src: Some(Src {
+            h: POSTED.into(),
+            s: title.into(),
+            e,
+        }),
+    }])?;
+    Ok(ids[0])
+}
+
 fn tail(store: &Store, n: u64, title: Option<&str>) -> Result<String, String> {
     let ids: Vec<u64> = match title {
         Some(title) => {
@@ -989,6 +1043,27 @@ mod tests {
                 .unwrap()
                 .contains("message 0 ")
         );
+    }
+
+    #[test]
+    fn a_posted_message_joins_its_seats_chat() {
+        let dir = std::env::temp_dir().join(format!("hippo-post-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let mut store = Store::open(&dir, true).unwrap();
+        post(&mut store, "Raava", Kind::Talk, "Reminder: stretch").unwrap();
+        post(&mut store, "Other", Kind::Talk, "elsewhere").unwrap();
+        post(&mut store, "Raava", Kind::Note, "second").unwrap();
+        let out = tail(&store, 10, Some("Raava")).unwrap();
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].contains("Reminder: stretch") && lines[1].contains("second"));
+        // Both land after a reload, under one registered chat.
+        let reopened = Store::open(&dir, false).unwrap();
+        assert_eq!(
+            tail(&reopened, 10, Some("Raava")).unwrap().lines().count(),
+            2
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -911,7 +911,7 @@ async fn ask_alone<D: Door>(
 /// Keeps in hippo what the yeoman said outside a turn.
 pub async fn log_talk(hippo: &Arc<Hippo>, text: String) {
     let hippo = hippo.clone();
-    if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.log("talk", &text)).await {
+    if let Ok(Err(e)) = tokio::task::spawn_blocking(move || hippo.aside("talk", &text)).await {
         eprintln!("yeoman: {e}");
     }
 }
