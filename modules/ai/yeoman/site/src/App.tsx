@@ -15,8 +15,9 @@ import {
   type ToolCallMessagePartProps,
 } from "@assistant-ui/react";
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
+import { Streamdown } from "streamdown";
 import { usePinchText } from "./pinch";
-import { askToSignIn, attachments, drives, said, search, useChat, waitToSignIn, zoom, type Answers, type Ask, type Card, type Chat, type Hit, type Msg, type Part, type Question, type Task } from "./chat";
+import { askToSignIn, attachments, drives, fromAgentChat, POINTER, said, search, useChat, waitToSignIn, zoom, type Answers, type Ask, type Card, type Chat, type Hit, type Msg, type Part, type Question, type Task } from "./chat";
 import { useTheme } from "./theme";
 import { usePush } from "./push";
 import { Bars, Call, SPEED, useVoiceChoice, useVoiceSpeed, voiceChoice, voiceSpeed } from "./call";
@@ -46,6 +47,14 @@ type Cards = { open: (key: string) => void; redraw: (msgId: string) => void; typ
 const CardCtx = createContext<Cards>({ open() {}, redraw() {}, typing: false });
 const useCards = () => useContext(CardCtx);
 
+// Subagents, as Victor shows them: each at work is a dot above the
+// composer, and its Agent call in the talk is a frame with its report. Both
+// open its own page. `open` takes the call's id, and hippo's id for the
+// agent, which finds its chat once the page no longer holds it.
+type Agents = { tasks: Task[]; open: (call: string, agent?: string, title?: string) => void };
+const AgentCtx = createContext<Agents>({ tasks: [], open() {} });
+const isAgent = (name: string) => name === "Agent" || name === "Task";
+
 // Which tool draws a card, by its name whichever server carries it.
 function cardKind(name: string): Kind | undefined {
   if (name.endsWith("__weather")) return "weather";
@@ -71,6 +80,7 @@ const convert = (m: Msg): ThreadMessageLike => ({
         args: (t.input ?? {}) as Args,
         result: t.result,
         isError: t.error,
+        artifact: t.agent || t.report ? { agent: t.agent, report: t.report } : undefined,
       },
     ]),
     ...(m.text ? [{ type: "text" as const, text: m.text }] : []),
@@ -679,6 +689,8 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
   // way down so the talk fades back in rather than snapping.
   const [open, setOpen] = useState<string>();
   const [leaving, setLeaving] = useState<Way | false>(false);
+  const [agent, setAgent] = useState<{ call: string; agent?: string; title?: string }>();
+  const agents = useMemo<Agents>(() => ({ tasks, open: (call, agent, title) => setAgent({ call, agent, title }) }), [tasks]);
   const leave = useRef<number>(undefined);
   // The dots stand for work not yet shown; once words or tools arrive, they show it.
   const working = typing && !messages.at(-1)?.live;
@@ -798,6 +810,7 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
   return (
     <AssistantRuntimeProvider runtime={runtime}>
      <CardCtx.Provider value={api}>
+     <AgentCtx.Provider value={agents}>
       <ThreadPrimitive.Root className="flex h-full flex-col">
         <header className="relative z-20 flex h-[57px] shrink-0 items-center justify-between border-b border-hair bg-paper px-[max(20px,env(safe-area-inset-left))] max-sm:h-[51px] max-sm:px-3.5">
           <Switcher />
@@ -832,14 +845,12 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
               {/* What waits or works above the composer scrolls as one, so the talk stays in view. */}
               <div className="max-h-[min(66vh,720px)] overflow-y-auto pt-2.5 empty:hidden">
                 {screen && !wide && <Screen url={screen} shape={shape} on={watching} driving={driving} close={closeBrowser} />}
-                {tasks.map((t) => (
-                  <TaskStrip key={t.name} task={t} stop={() => stopTask(t.name)} />
-                ))}
                 {asks.map((a) => (
                   <AskCard key={a.id} ask={a} reply={reply} />
                 ))}
                 <Tray cards={cards} decide={decide} />
               </div>
+              <AgentDots tasks={tasks} open={(name) => setAgent({ call: name })} />
               <ThreadPrimitive.ScrollToBottom className="absolute -top-12 left-1/2 z-10 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-frame bg-lift text-mid shadow-lift hover:text-ink disabled:invisible">
                 <Arrow down />
               </ThreadPrimitive.ScrollToBottom>
@@ -878,8 +889,10 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
             }}
           />
         )}
+        {agent && <AgentPage {...agent} tasks={tasks} stop={stopTask} close={() => setAgent(undefined)} />}
         {deck.length > 0 && <Deck key={deck[0].key} faces={deck} start={open!} leaving={leaving} edge={edge} close={close} />}
       </ThreadPrimitive.Root>
+     </AgentCtx.Provider>
      </CardCtx.Provider>
     </AssistantRuntimeProvider>
   );
@@ -1411,7 +1424,9 @@ type Row = { name: string; args: Args | string | undefined; result: unknown; isE
 
 // Calls that come back to back, with no words between them, gather into one
 // stack; a card stands on its own.
-const byRun = (part: { type: string; toolName?: string }) => (part.type === "tool-call" && !cardKind(part.toolName ?? "") ? (["group-tools"] as const) : null);
+// An Agent call stands on its own too, as the frame of its report.
+const byRun = (part: { type: string; toolName?: string }) =>
+  part.type === "tool-call" && !cardKind(part.toolName ?? "") && !isAgent(part.toolName ?? "") ? (["group-tools"] as const) : null;
 
 type Call = { type: string; toolCallId: string; toolName: string; args: Args | string | undefined; result?: unknown; isError?: boolean };
 
@@ -1605,6 +1620,7 @@ function Output({ text, error }: { text: string; error?: boolean }) {
 function Tool(props: ToolCallMessagePartProps) {
   const kind = cardKind(props.toolName);
   if (kind) return <CardInline {...props} kind={kind} />;
+  if (isAgent(props.toolName)) return <AgentFrame {...props} />;
   return <ToolLine {...props} />;
 }
 
@@ -2292,40 +2308,144 @@ function Screen({ url, shape = 16 / 9, on, driving, close, pane }: { url: string
   );
 }
 
-// A subagent at work on its own, apart from the talk: its name and task,
-// what it is doing now, its work so far on a click, and Stop.
-function TaskStrip({ task, stop }: { task: Task; stop: () => Promise<void> }) {
-  const [open, setOpen] = useState(false);
-  const now = task.tools.at(-1);
-  const doing = task.words.trim() ? task.words.trim().split("\n").at(-1) : now ? `${TOOLS[now.name]?.[0] ?? toolName(now.name)} ${about(now.name, now.input as Args)}` : "Starting";
+// A subagent's name: the Agent call's description, or a yeoman agent's own.
+const nameOf = (t: Task) => t.title || t.name;
+
+// Each subagent at work is a dot at the bottom left, above the composer,
+// as in Victor's chat; a tap opens its page.
+function AgentDots({ tasks, open }: { tasks: Task[]; open: (name: string) => void }) {
+  const on = tasks.filter((t) => !t.done);
+  if (!on.length) return null;
   return (
-    <section className="rise relative mt-1.5 mb-3 rounded-[14px] border-[1.25px] border-edge bg-lift shadow-lift" aria-label={`${task.name} working`}>
-      <span className="absolute -top-[0.75em] left-3.5 rounded bg-lift px-1.5 text-xs font-semibold tracking-wide text-accent uppercase">{task.name} working</span>
-      <div className="flex items-start gap-3 px-4 pt-3.5 pb-3">
-        <button type="button" onClick={() => setOpen(!open)} className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left" aria-expanded={open}>
-          <p className={`text-[14.5px] [overflow-wrap:anywhere] ${open ? "" : "line-clamp-2"}`}>{task.text || "A task"}</p>
-          <p className="flex w-full items-center gap-2 text-[13px] text-mid">
-            <span className="size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-hair border-t-accent" />
-            <span className="truncate">{doing}</span>
-          </p>
-        </button>
+    <div className="mb-2 flex flex-wrap items-center gap-1.5 px-1">
+      {on.map((t) => (
         <button
+          key={t.name}
           type="button"
-          onClick={stop}
-          disabled={task.stopping}
-          className="h-9 shrink-0 rounded-full px-4 text-[14px] text-mid hover:bg-hover hover:text-ink disabled:opacity-50"
+          onClick={() => open(t.name)}
+          title={`${nameOf(t)}: working`}
+          className="rise flex h-7 max-w-[15rem] items-center gap-2 rounded-full border border-hair bg-lift px-2.5 text-[12.5px] text-mid shadow-lift hover:text-ink max-sm:max-w-[10rem]"
         >
-          {task.stopping ? "Stopping" : "Stop"}
+          <span className="relative grid size-2.5 shrink-0 place-items-center">
+            <span className="absolute size-2.5 animate-ping rounded-full bg-accent/40 motion-reduce:hidden" />
+            <span className="size-2 rounded-full bg-accent" />
+          </span>
+          <span className="truncate">{nameOf(t)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// The Agent call in the talk: a frame named on its edge, holding the
+// report; its work stays on the agent's own page.
+function AgentFrame({ toolCallId, args, result, isError, artifact }: ToolCallMessagePartProps) {
+  const { tasks, open } = useContext(AgentCtx);
+  const { live } = useCustom();
+  const { description } = (args ?? {}) as { description?: string };
+  const { agent, report } = (artifact ?? {}) as { agent?: string; report?: string };
+  const task = tasks.find((t) => t.name === toolCallId);
+  const out = typeof result === "string" ? result : result === undefined ? undefined : JSON.stringify(result);
+  const launched = !!out?.startsWith("Async agent launched");
+  // Run in the foreground, the call's result is the report itself.
+  const said = report ?? (out !== undefined && !launched && !isError && !POINTER.test(out) ? out : undefined);
+  const working = task ? !task.done : live && said === undefined && !isError;
+  const name = description || "Agent";
+  return (
+    <div className="relative my-5 rounded-[14px] border-[1.25px] border-edge">
+      <span className="absolute -top-[0.75em] left-3.5 flex items-center gap-1.5 bg-paper px-1.5 text-xs font-semibold tracking-wide text-mid uppercase">
+        {working && <span className="size-1.5 animate-pulse rounded-full bg-accent" />}
+        {name}
+      </span>
+      <div className="px-5 pt-3.5 pb-1 text-[14.5px]">
+        {said ? (
+          <Streamdown mode="static" lineNumbers={false} controls={{ code: true, table: false }} linkSafety={{ enabled: false }}>
+            {said}
+          </Streamdown>
+        ) : isError ? (
+          <p className="text-accent [overflow-wrap:anywhere]">{out}</p>
+        ) : (
+          <p className="flex items-center gap-2 py-1 text-mid">
+            {working && <span className="size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-hair border-t-accent" />}
+            {working ? "Working" : "No report came back."}
+          </p>
+        )}
+      </div>
+      <div className="flex justify-end px-3 pb-2">
+        <button type="button" onClick={() => open(toolCallId, agent, name)} className="rounded-full px-2.5 py-1 text-[12.5px] text-soft hover:bg-hover hover:text-ink">
+          Its work ›
         </button>
       </div>
-      {open && task.tools.length > 0 && (
-        <div className="max-h-[38vh] overflow-y-auto border-t border-dashed border-frame px-4 pt-2.5 pb-1">
-          {task.tools.map((t) => (
-            <ToolRow key={t.id} name={t.name} args={t.input as Args} result={t.result} isError={t.error} live />
-          ))}
-        </div>
-      )}
-    </section>
+    </div>
+  );
+}
+
+// A subagent's own page, over the talk: its task, then its words and calls
+// in order, live while it works. One the page no longer holds, after a
+// reload, comes from hippo, which keeps every subagent's chat. Only the
+// yeoman's own agents can be stopped.
+function AgentPage({ call, agent, title, tasks, stop, close }: { call: string; agent?: string; title?: string; tasks: Task[]; stop: (name: string) => Promise<void>; close: () => void }) {
+  const task = tasks.find((t) => t.name === call);
+  const [kept, setKept] = useState<Pick<Task, "text" | "tools" | "words"> | null>();
+  const fetching = !!agent && !task?.tools.length;
+  useEffect(() => {
+    if (!fetching) return;
+    let on = true;
+    fetch(`/api/agent/${encodeURIComponent(agent!)}/chat`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { text: string } | null) => on && setKept(j ? fromAgentChat(j.text) : null))
+      .catch(() => on && setKept(null));
+    return () => {
+      on = false;
+    };
+  }, [fetching, agent]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => e.key === "Escape" && close();
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [close]);
+  const work = task?.tools.length || !kept ? task : { ...task, ...kept };
+  const live = !!task && !task.done;
+  const md = (text: string) => (
+    <Streamdown mode="static" lineNumbers={false} controls={{ code: true, table: false }} linkSafety={{ enabled: false }}>
+      {text}
+    </Streamdown>
+  );
+  return (
+    <div className="rise fixed inset-0 z-30 flex flex-col bg-paper" role="dialog" aria-label={title ?? (task ? nameOf(task) : "Agent")}>
+      <header className="flex h-[57px] shrink-0 items-center gap-1.5 border-b border-hair px-[max(12px,env(safe-area-inset-left))] max-sm:h-[51px]">
+        <button type="button" onClick={close} aria-label="Back to the talk" title="Back" className="grid size-9 shrink-0 place-items-center rounded-full text-mid hover:bg-hover hover:text-ink">
+          <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+        </button>
+        <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold">
+          {title ?? (task ? nameOf(task) : "Agent")}
+          <span className="font-normal text-mid"> · {live ? "working" : "done"}</span>
+        </h2>
+        {live && !task.title && (
+          <button type="button" onClick={() => void stop(task.name)} disabled={task.stopping} className="h-9 shrink-0 rounded-full px-4 text-[14px] text-mid hover:bg-hover hover:text-ink disabled:opacity-50">
+            {task.stopping ? "Stopping" : "Stop"}
+          </button>
+        )}
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <main style={{ zoom: "var(--talk, 1)" }} className="mx-auto flex w-[min(740px,100%-40px)] flex-col gap-3 pt-6 pb-16 max-sm:w-[calc(100%-28px)]">
+          {work?.text && <p className="self-end rounded-[18px] bg-hover px-4 py-2.5 text-[14.5px] whitespace-pre-wrap [overflow-wrap:anywhere] max-w-[85%]">{work.text}</p>}
+          <div className="md">
+            {work?.tools.map((t) => (
+              <div key={t.id}>
+                {t.before && md(t.before)}
+                <ToolRow name={t.name} args={t.input as Args} result={t.result} isError={t.error} live={live} />
+              </div>
+            ))}
+            {work?.words && md(work.words)}
+          </div>
+          {live && <Dots />}
+          {!work?.text && !work?.tools.length && (fetching && kept === undefined ? <Dots /> : !live && <p className="text-mid">Its work wasn't kept.</p>)}
+        </main>
+      </div>
+    </div>
   );
 }
 

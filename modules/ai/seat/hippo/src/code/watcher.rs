@@ -202,7 +202,13 @@ impl Watcher {
             }
             _ => {}
         }
-        chat.ended = false;
+        // `claude -p` writes a background task's notice after the answer
+        // the task's report already led to; it must not reopen that turn.
+        let notice =
+            item.kind == Kind::Echo && text.trim_start().starts_with("<task-notification>");
+        if !notice {
+            chat.ended = false;
+        }
         chat.since.get_or_insert(item.date);
         chat.held_keys.insert(key);
         chat.held.push(Held {
@@ -427,5 +433,44 @@ mod tests {
             "price-quotes-keyboard"
         );
         assert_eq!(slug(""), "");
+    }
+
+    #[test]
+    fn a_trailing_task_notice_keeps_the_turn_ended() {
+        let dir = std::env::temp_dir().join(format!("hippo-notice-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut store = Store::open(&dir, true).unwrap();
+        let mut w = Watcher::default();
+        let at = Local::now();
+        let said = |kind, text: &str, e: &str| {
+            Event::Item(Item {
+                kind,
+                text: text.into(),
+                date: at,
+                src: crate::memory::store::Src {
+                    h: "claude".into(),
+                    s: "s1".into(),
+                    e: e.into(),
+                },
+                opens: kind == Kind::User,
+                call: None,
+                memory: false,
+            })
+        };
+        for ev in [
+            said(Kind::User, "Count the files.", "1"),
+            said(Kind::Talk, "The number is 1.", "2"),
+            Event::TurnEnd,
+            said(
+                Kind::Echo,
+                "<task-notification>\n<task-id>a1</task-id>",
+                "3",
+            ),
+        ] {
+            w.feed(&mut store, "claude", "s1", None, at, ev).unwrap();
+        }
+        w.tick(&mut store, at + QUIET).unwrap();
+        assert_eq!(w.chat("claude", "s1").unwrap().held(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

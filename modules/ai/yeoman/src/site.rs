@@ -140,11 +140,25 @@ enum Shown {
     },
 }
 
-/// A subagent at work, as a page shows it.
+/// A subagent at work, as a page shows it. One the seat's Agent call
+/// started goes by the call's id, `title` its description; the page can't
+/// stop it, as nothing outside the CLI can.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Agent {
     name: String,
     task: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+}
+
+impl Agent {
+    fn own((name, task): (String, String)) -> Self {
+        Self {
+            name,
+            task,
+            title: None,
+        }
+    }
 }
 
 /// Where the person's answer to an ask goes: the input to run with, or
@@ -159,6 +173,10 @@ pub struct Web {
     aside: bool,
     /// The agents as last shown, so a tick that changes nothing is silent.
     agents: Arc<Mutex<Vec<Agent>>>,
+    /// The yeoman's own agents as the tick last gave them, and the seat's
+    /// subagents at work, both shown as one list.
+    own: Arc<Mutex<Vec<Agent>>>,
+    seated: Arc<Mutex<Vec<Agent>>>,
     /// Whether the computer's browser is open, as the keeper last said.
     browser: Arc<AtomicBool>,
     /// Whether a turn is under way, for a page that missed the news.
@@ -174,6 +192,8 @@ impl Web {
             ids: Arc::new(AtomicU64::new(0)),
             aside: false,
             agents: Arc::default(),
+            own: Arc::default(),
+            seated: Arc::default(),
             browser: Arc::default(),
             typing: Arc::default(),
             asks: Arc::default(),
@@ -194,6 +214,20 @@ impl Web {
             id: id.into(),
             text: text.into(),
         });
+    }
+
+    /// Shows the agents at work, if that changed.
+    fn at_work(&self) {
+        let now: Vec<Agent> = [
+            self.own.lock().unwrap().clone(),
+            self.seated.lock().unwrap().clone(),
+        ]
+        .concat();
+        let mut last = self.agents.lock().unwrap();
+        if *last != now {
+            *last = now.clone();
+            self.show(Shown::Agents { agents: now });
+        }
     }
 
     fn id(&self) -> String {
@@ -286,7 +320,62 @@ impl Door for Web {
     }
 
     fn step(&self, step: Step) {
-        self.show(Shown::Step { step, agent: None });
+        match step {
+            Step::Inner { parent, step } => {
+                // Claude Code's subagents end on a SubagentHandback call,
+                // whose message is the report; the notice that follows only
+                // points to it.
+                if let Step::Call { name, input, .. } = step.as_ref()
+                    && name == "SubagentHandback"
+                    && let Some(report) = input["message"].as_str()
+                {
+                    self.show(Shown::Step {
+                        step: Step::Done {
+                            id: parent.clone(),
+                            report: report.to_owned(),
+                        },
+                        agent: None,
+                    });
+                }
+                self.agent_step(&parent, *step)
+            }
+            Step::Agent { id, name, task } => {
+                self.seated.lock().unwrap().push(Agent {
+                    name: id,
+                    task,
+                    title: Some(name),
+                });
+                self.at_work();
+            }
+            Step::Result { id, text, error } => {
+                // An Agent call run in the foreground ends with its report;
+                // a background one's result only says it started.
+                let mut seated = self.seated.lock().unwrap();
+                let was = seated.len();
+                if !text.starts_with("Async agent launched") {
+                    seated.retain(|a| a.name != id);
+                }
+                let gone = seated.len() != was;
+                drop(seated);
+                if gone {
+                    self.at_work();
+                }
+                self.show(Shown::Step {
+                    step: Step::Result { id, text, error },
+                    agent: None,
+                });
+            }
+            Step::Done { id, report } => {
+                // The report goes to the call, as its result does.
+                self.seated.lock().unwrap().retain(|a| a.name != id);
+                self.at_work();
+                self.show(Shown::Step {
+                    step: Step::Done { id, report },
+                    agent: None,
+                });
+            }
+            step => self.show(Shown::Step { step, agent: None }),
+        }
     }
 
     fn agent_step(&self, agent: &str, step: Step) {
@@ -297,21 +386,19 @@ impl Door for Web {
     }
 
     fn agents(&self, now: Vec<(String, String)>) {
-        let now: Vec<Agent> = now
-            .into_iter()
-            .map(|(name, task)| Agent { name, task })
-            .collect();
-        let mut last = self.agents.lock().unwrap();
-        if *last != now {
-            *last = now.clone();
-            self.show(Shown::Agents { agents: now });
-        }
+        *self.own.lock().unwrap() = now.into_iter().map(Agent::own).collect();
+        self.at_work();
     }
 
     async fn typing(&self, on: bool) {
         // The beat asks twice a second; the page hears only the change.
         if self.typing.swap(on, Ordering::Relaxed) != on {
             self.show(Shown::Typing { on });
+        }
+        // The seat's run is over, and its subagents with it.
+        if !on && !self.seated.lock().unwrap().is_empty() {
+            self.seated.lock().unwrap().clear();
+            self.at_work();
         }
     }
 
@@ -872,6 +959,7 @@ pub async fn serve(
         .route("/api/said/{i}", get(said))
         .route("/api/past", get(past))
         .route("/api/zoom/{id}/{n}", get(zoom))
+        .route("/api/agent/{id}/chat", get(agent_chat))
         .route("/api/file/{name}", get(kept))
         .route("/api/speak", post(speak))
         .route("/api/speak/{key}", get(spoken))
@@ -1135,6 +1223,26 @@ async fn zoom(
         Ok(Err(_)) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
             eprintln!("yeoman: site zoom: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// A seat subagent's whole chat, for its page once it is done.
+async fn agent_chat(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let h = site.hippo.clone();
+    match tokio::task::spawn_blocking(move || h.agent(&id)).await {
+        Ok(Ok(text)) => Json(serde_json::json!({ "text": text })).into_response(),
+        Ok(Err(_)) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            eprintln!("yeoman: site agent chat: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
@@ -1680,8 +1788,9 @@ fn lines(all: Vec<Said>) -> Vec<Line> {
             }
             "user" | "talk" | "note" => {}
             // A seat's work, as hippo read it from the session: the page
-            // draws each call with its result, among the words.
-            "tool" | "echo" => {
+            // draws each call with its result, among the words, and a
+            // subagent's report in its Agent call's frame.
+            "tool" | "echo" | "work" => {
                 if said.text.len() > HISTORY_STEP {
                     let mut cut = HISTORY_STEP;
                     while !said.text.is_char_boundary(cut) {
@@ -2001,10 +2110,7 @@ async fn task_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response
         return StatusCode::UNAUTHORIZED.into_response();
     }
     Json(serde_json::json!({
-        "agents": task::working(&site.state)
-            .into_iter()
-            .map(|(name, task)| Agent { name, task })
-            .collect::<Vec<_>>(),
+        "agents": site.web.agents.lock().unwrap().clone(),
         "screen": std::env::var("YEOMAN_SCREEN").ok(),
         "size": std::env::var("YEOMAN_SCREEN_SIZE").ok(),
         "browser": site.web.browser.load(Ordering::Relaxed),
@@ -2305,7 +2411,7 @@ mod tests {
             said(5, "talk", "Done."),
         ]);
         let kinds: Vec<_> = out.iter().map(|l| l.said.kind.as_str()).collect();
-        assert_eq!(kinds, ["user", "tool", "echo", "talk"]);
+        assert_eq!(kinds, ["user", "tool", "echo", "work", "talk"]);
         let echo = &out[2].said.text;
         assert!(echo.len() <= HISTORY_STEP + '…'.len_utf8() && echo.ends_with('…'));
     }

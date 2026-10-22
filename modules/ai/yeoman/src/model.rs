@@ -258,6 +258,19 @@ pub enum Step {
     /// keeps it in its log, the seat says it at once. Steered runs give one
     /// per message. Doors never see it.
     Answer { text: String },
+    /// The seat's Agent call `id` started a subagent, `name` its
+    /// description and `task` its prompt.
+    Agent {
+        id: String,
+        name: String,
+        task: String,
+    },
+    /// The subagent of Agent call `id` stopped, with its report.
+    Done { id: String, report: String },
+    /// A step of the subagent the seat's Agent call `parent` started: the
+    /// CLI puts its work on the seat's stream, tagged, as Claude Code
+    /// nests it under the call. It is the subagent's, not the answer's.
+    Inner { parent: String, step: Box<Step> },
 }
 
 /// The answer in one stream-json line, when it ends a reply that didn't
@@ -295,6 +308,44 @@ pub fn steps(line: &str) -> Vec<Step> {
     };
     let parts = ev["message"]["content"].as_array().into_iter().flatten();
     let s = |v: &Value| v.as_str().unwrap_or_default().to_owned();
+    if let Some(parent) = ev["parent_tool_use_id"].as_str() {
+        // A subagent's words come whole, never as deltas.
+        let words = parts
+            .clone()
+            .filter(|c| ev["type"] == "assistant" && c["type"] == "text")
+            .map(|c| Step::Text {
+                text: s(&c["text"]),
+            });
+        let mut own = vec![];
+        if ev["type"] != "stream_event" {
+            let mut plain = ev.clone();
+            plain["parent_tool_use_id"] = Value::Null;
+            own = steps(&plain.to_string());
+        }
+        return words
+            .chain(own)
+            .map(|step| Step::Inner {
+                parent: parent.to_owned(),
+                step: Box::new(step),
+            })
+            .collect();
+    }
+    match (ev["type"].as_str(), ev["subtype"].as_str()) {
+        (Some("system"), Some("task_started")) if ev["task_type"] == "local_agent" => {
+            return vec![Step::Agent {
+                id: s(&ev["tool_use_id"]),
+                name: s(&ev["description"]),
+                task: s(&ev["prompt"]),
+            }];
+        }
+        (Some("system"), Some("task_notification")) if ev["tool_use_id"].is_string() => {
+            return vec![Step::Done {
+                id: s(&ev["tool_use_id"]),
+                report: s(&ev["summary"]),
+            }];
+        }
+        _ => {}
+    }
     match ev["type"].as_str() {
         // With --include-partial-messages, the words arrive as deltas
         // before the whole message does.
@@ -822,6 +873,56 @@ mod tests {
     #[test]
     fn short_memory_has_no_mark() {
         assert!(marks(&cached("<chat>\n0+1|a\n</chat>\n")).is_empty());
+    }
+
+    #[test]
+    fn a_subagents_work_is_its_own() {
+        let started = r#"{"type":"system","subtype":"task_started","task_id":"a6","tool_use_id":"t1","description":"Count files","task_type":"local_agent","prompt":"Run ls"}"#;
+        assert_eq!(
+            steps(started),
+            vec![Step::Agent {
+                id: "t1".into(),
+                name: "Count files".into(),
+                task: "Run ls".into()
+            }]
+        );
+        let bash = r#"{"type":"system","subtype":"task_started","task_id":"b1","tool_use_id":"t9","description":"sleep","task_type":"local_bash"}"#;
+        assert_eq!(steps(bash), vec![]);
+        let call = r#"{"type":"assistant","parent_tool_use_id":"t1","message":{"content":[{"type":"thinking","thinking":""},{"type":"text","text":"Counting"},{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"ls"}}]}}"#;
+        let inner = |step| Step::Inner {
+            parent: "t1".into(),
+            step: Box::new(step),
+        };
+        assert_eq!(
+            steps(call),
+            vec![
+                inner(Step::Text {
+                    text: "Counting".into()
+                }),
+                inner(Step::Call {
+                    id: "t2".into(),
+                    name: "Bash".into(),
+                    input: serde_json::json!({"command": "ls"}),
+                }),
+            ]
+        );
+        let result = r#"{"type":"user","parent_tool_use_id":"t1","message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":"101"}]}}"#;
+        assert_eq!(
+            steps(result),
+            vec![inner(Step::Result {
+                id: "t2".into(),
+                text: "101".into(),
+                error: false
+            })]
+        );
+        let done = r#"{"type":"system","subtype":"task_notification","task_id":"a6","tool_use_id":"t1","status":"completed","summary":"101"}"#;
+        assert_eq!(
+            steps(done),
+            vec![Step::Done {
+                id: "t1".into(),
+                report: "101".into()
+            }]
+        );
     }
 
     #[test]

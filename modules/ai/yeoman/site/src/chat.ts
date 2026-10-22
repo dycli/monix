@@ -27,18 +27,21 @@ export type Msg = {
 
 /** A tool call: `before` holds the words the model said on its way to it,
  * which the page shows above it, as a terminal does. */
-export type Tool = { id: string; name: string; input: unknown; result?: string; error?: boolean; before?: string };
+export type Tool = { id: string; name: string; input: unknown; result?: string; error?: boolean; before?: string; agent?: string; report?: string };
 
-/** A subagent at work on its own: its name, its task, and its work so
- * far. `stopping` once a stop is asked for. */
-export type Task = { name: string; text: string; tools: Tool[]; words: string; stopping?: boolean };
+/** A subagent on its own: its name, its task, and its work so far, words
+ * and calls in order. One the seat's Agent call started goes by the call's
+ * id, with `title` its description; nothing outside the CLI can stop it.
+ * `stopping` once a stop is asked for; `done` once it has left the list. */
+export type Task = { name: string; text: string; tools: Tool[]; words: string; title?: string; stopping?: boolean; done?: boolean };
 
-type Agent = { name: string; task: string };
+type Agent = { name: string; task: string; title?: string };
 
 type Step =
   | { type: "call"; id: string; name: string; input: unknown }
   | { type: "result"; id: string; text: string; error: boolean }
-  | { type: "text"; text: string };
+  | { type: "text"; text: string }
+  | { type: "done"; id: string; report: string };
 
 /** An act waiting for the person's word: today only a mail draft. */
 export type Act = { kind: "mail"; account: string | null; to: string; subject: string; body: string };
@@ -423,9 +426,12 @@ export function useChat(): Chat {
   return { state: "ready", messages, typing, send, stop, cards, decide, asks, reply, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past };
 }
 
-// The agents at work now, each keeping the work the page has seen of it.
+// The agents at work now, each keeping the work the page has seen of it;
+// those gone from the list are done, and their pages stay to be read.
 function atWork(ks: Task[], agents: Agent[]): Task[] {
-  return agents.map((a) => ks.find((k) => k.name === a.name) ?? { name: a.name, text: a.task, tools: [], words: "" });
+  const now = agents.map((a) => ({ ...(ks.find((k) => k.name === a.name) ?? { tools: [], words: "" }), name: a.name, text: a.task, title: a.title, done: false }));
+  const gone = ks.filter((k) => !agents.some((a) => a.name === k.name)).map((k) => ({ ...k, done: true }));
+  return [...gone, ...now];
 }
 
 // An agent's steps before the page heard it started still belong to it.
@@ -437,8 +443,50 @@ function taskStep(ks: Task[], name: string, s: Step): Task[] {
       ? { ...t, words: t.words + s.text }
       : s.type === "result"
         ? { ...t, tools: t.tools.map((x) => (x.id === s.id ? { ...x, result: s.text, error: s.error } : x)) }
-        : { ...t, words: "", tools: [...t.tools, { id: s.id, name: s.name, input: s.input }] };
+        : s.type === "call" && s.name === "SubagentHandback"
+          ? { ...t, words: handback(t.words, s.input) }
+          : s.type === "call"
+          ? { ...t, words: "", tools: [...t.tools, { id: s.id, name: s.name, input: s.input, before: t.words.trim() || undefined }] }
+          : t;
   return k ? ks.map((x) => (x === k ? next : x)) : [...ks, next];
+}
+
+// A subagent's id, which its Agent call's result names and hippo keeps its
+// chat by; and Claude Code's news of a task done, with its report.
+const agentOf = (result: string) => /^agentId: (\w+)/m.exec(result)?.[1];
+// What Claude Code says in place of a report it handed back on its own.
+export const POINTER = /^This agent's report was delivered to you/;
+const NEWS = /^<task-notification>[\s\S]*?<task-id>(\w+)<\/task-id>[\s\S]*?(?:<result>([\s\S]*?)<\/result>|$)/;
+
+// A subagent hands its report back in a call; its page shows it as its
+// last words.
+const handback = (words: string, input: unknown) => {
+  const report = (input as { message?: unknown } | undefined)?.message;
+  return typeof report === "string" ? (words.trim() ? `${words}\n\n${report}` : report) : words;
+};
+
+/** A subagent's whole chat as hippo zooms it, `{i}|{kind}: {text}` per
+ * message, read as its page shows one: the task, then words and calls. */
+export function fromAgentChat(text: string): Pick<Task, "text" | "tools" | "words"> {
+  const t: Pick<Task, "text" | "tools" | "words"> = { text: "", tools: [], words: "" };
+  for (const m of text.split(/\n(?=\d+\|)/)) {
+    const [, i, kind, body] = /^(\d+)\|(\w+)(?: \[[^\]]*\])?: ([\s\S]*)$/.exec(m.trim()) ?? [];
+    if (!kind) continue;
+    if (kind === "user" && !t.text) t.text = body;
+    else if (kind === "tool") {
+      const [, name, rest] = /^(\S+)\s?([\s\S]*)$/.exec(body) ?? [, body, ""];
+      if (name === "SubagentHandback") {
+        t.words = handback(t.words, parse(rest));
+        continue;
+      }
+      t.tools.push({ id: `a-${i}`, name, input: parse(rest), before: t.words.trim() || undefined });
+      t.words = "";
+    } else if (kind === "echo") {
+      const open = t.tools.find((x) => x.result === undefined);
+      if (open) open.result = body;
+    } else if (kind === "talk") t.words += (t.words ? "\n\n" : "") + body;
+  }
+  return t;
 }
 
 /** Whether these tools drive the computer, so its screen is worth watching. */
@@ -450,8 +498,9 @@ function step(ms: Msg[], s: Step): Msg[] {
     if (last?.live) return [...ms.slice(0, -1), { ...last, text: last.text + s.text }];
     return [...ms, { id: crypto.randomUUID(), role: "assistant", text: s.text, live: true, date: new Date() }];
   }
-  if (s.type === "result") {
-    const done = (t: Tool) => (t.id === s.id ? { ...t, result: s.text, error: s.error } : t);
+  if (s.type === "result" || s.type === "done") {
+    const done = (t: Tool) =>
+      t.id !== s.id ? t : s.type === "done" ? (!s.report || POINTER.test(s.report) ? t : { ...t, report: s.report }) : { ...t, result: s.text, error: s.error, agent: agentOf(s.text) ?? t.agent };
     return ms.map((m) => (m.tools?.some((t) => t.id === s.id) ? { ...m, tools: m.tools.map(done) } : m));
   }
   const tool: Tool = { id: s.id, name: s.name, input: s.input };
@@ -486,11 +535,25 @@ function fromHistory(said: Said[]): Msg[] {
       turn.date = new Date(m.date);
       continue;
     }
+    if (m.kind === "work") {
+      // A subagent's report as hippo keeps it, `[id]\n{report}\n\nFull chat: …`.
+      const [, id, report] = /^\[(\w+)\]\n([\s\S]*?)(?:\n\nFull chat: hippo zoom \w+)?$/.exec(m.text) ?? [];
+      const call = out.flatMap((o) => o.tools ?? []).reverse().find((t) => t.agent === id);
+      if (call) call.report = report.trim();
+      continue;
+    }
     if (m.kind === "echo") {
-      // Results come in the order of their calls; one with no call is
-      // Claude Code's own news (a background job done), not the model's.
+      // A subagent's report finds the Agent call that started it, by the
+      // agent's id; other news of Claude Code's own isn't the model's.
+      const news = NEWS.exec(m.text);
+      if (news) {
+        const call = out.flatMap((o) => o.tools ?? []).reverse().find((t) => t.agent === news[1]);
+        if (call && news[2] !== undefined && !POINTER.test(news[2])) call.report = news[2].trim();
+        continue;
+      }
+      // Results come in the order of their calls.
       const open = turn?.tools?.find((t) => t.result === undefined);
-      if (open) open.result = m.text;
+      if (open) Object.assign(open, { result: m.text, agent: agentOf(m.text) });
       continue;
     }
     // The answer after the calls, once.

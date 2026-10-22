@@ -59,6 +59,24 @@ impl Hippo {
         self.ask("zoom", &[&id.to_string(), &n.to_string()])
     }
 
+    /// A seat subagent's whole chat, `{i}|{kind}: {text}` per message,
+    /// from its agent id. Its transcript is read by the hippo command, as
+    /// the server keeps only the report.
+    pub fn agent(&self, id: &str) -> Result<String, String> {
+        if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(format!("No agent {id}."));
+        }
+        let out = std::process::Command::new("hippo")
+            .args(["zoom", id])
+            .output()
+            .map_err(|e| format!("hippo: {e}"))?;
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_owned())
+        }
+    }
+
     /// Every message matching a case-insensitive regex, newest last.
     pub fn search(&self, regex: &str) -> Result<String, String> {
         self.ask("search", &[regex])
