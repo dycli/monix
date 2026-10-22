@@ -194,6 +194,33 @@
           computer = true;
           voice = "ara";
         };
+        # Bridge itself in the web chat, on trial beside paseo
+        # (/var/lib/bridge/raava.md).
+        raava = {
+          person = "Dylan";
+          seat = true;
+          web = true;
+          voice = "eve";
+          models = [
+            "opus"
+            "sonnet"
+            "haiku"
+            "fable"
+          ];
+        };
+        # One-off questions: no Matrix, and everything forgotten after an
+        # idle hour.
+        amnesia = {
+          person = "Dylan";
+          web = true;
+          forgetAfter = 60;
+          models = [
+            "opus"
+            "sonnet"
+            "haiku"
+            "fable"
+          ];
+        };
         azula = {
           person = "Dylan";
           users = singleton "@dylan:chat.su.is";
@@ -209,6 +236,8 @@
         members = [
           "sokka"
           "azula"
+          "raava"
+          "amnesia"
         ];
       };
     };

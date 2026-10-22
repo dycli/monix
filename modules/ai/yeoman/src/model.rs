@@ -6,6 +6,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Read, Write};
+use std::path::Path;
 
 use crate::keep;
 use std::process::{ChildStdin, Command, Stdio};
@@ -43,6 +44,12 @@ pub trait Model: Send + Sync {
     fn tools(&self) -> bool {
         false
     }
+
+    /// Whether the model is the seat itself, which brings its own rules,
+    /// memory and tools: it takes no memory, clock or yeoman prompt.
+    fn seat(&self) -> bool {
+        false
+    }
 }
 
 pub fn from_env() -> Result<Box<dyn Model>, String> {
@@ -54,6 +61,7 @@ pub fn from_env() -> Result<Box<dyn Model>, String> {
             effort: var("YEOMAN_EFFORT"),
             mcp: var("YEOMAN_MCP").map(mcp).transpose()?,
             keep: var("YEOMAN_KEEP"),
+            seat: var("YEOMAN_SEAT_MODE").is_some(),
         })),
         "http" => Ok(Box::new(Http {
             url: var("YEOMAN_URL").ok_or("YEOMAN_URL is not set")?,
@@ -61,6 +69,34 @@ pub fn from_env() -> Result<Box<dyn Model>, String> {
         })),
         other => Err(format!("Unknown YEOMAN_BACKEND {other}.")),
     }
+}
+
+/// The models the person may switch between on the page (YEOMAN_MODELS,
+/// comma-separated); none when the model is fixed.
+pub fn choices() -> Vec<String> {
+    std::env::var("YEOMAN_MODELS")
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The model the person picked, kept in the state directory; none until
+/// they pick one, or once it is no longer among the choices.
+pub fn picked(state: &Path) -> Option<String> {
+    let m = std::fs::read_to_string(state.join("model")).ok()?;
+    let m = m.trim();
+    choices().iter().any(|c| c == m).then(|| m.to_owned())
+}
+
+/// Keeps the person's pick for the turns after this one.
+pub fn pick(state: &Path, model: &str) -> Result<(), String> {
+    if !choices().iter().any(|c| c == model) {
+        return Err(format!("{model} is not among the choices"));
+    }
+    std::fs::write(state.join("model"), model).map_err(|e| e.to_string())
 }
 
 /// The `claude` CLI in print mode: no built-in tools, no settings sources
@@ -238,6 +274,11 @@ pub struct Claude {
     /// The computer's keeper, when there is a computer: the browser is
     /// leased for a while whenever a reply drives it.
     pub keep: Option<String>,
+    /// Seat mode: Claude Code as the seat runs it, with its own settings,
+    /// hooks, rules, MCP servers and built-in tools, the session kept for
+    /// hippo's watcher. The memory arrives through the rules, so none is
+    /// sent; the turn has no clock, as the seat's don't.
+    pub seat: bool,
 }
 
 /// The tools that act on the world, by MCP name.
@@ -261,6 +302,9 @@ impl Model for Claude {
         files: &[Attachment],
         run: Run,
     ) -> Result<String, String> {
+        let model = std::env::var_os("STATE_DIRECTORY")
+            .and_then(|s| picked(Path::new(&s)))
+            .unwrap_or_else(|| self.model.clone());
         let mut cmd = Command::new(&self.command);
         // One-hour cache entries, pinned rather than left to Claude Code's
         // default: the memory's mark must match the lifetime of Claude
@@ -275,17 +319,34 @@ impl Model for Claude {
             "--output-format",
             "stream-json",
             "--verbose",
-            "--no-session-persistence",
-            "--system-prompt",
-            system,
-            "--tools",
-            "",
-            "--strict-mcp-config",
-            "--setting-sources",
-            "",
-            "--model",
-            &self.model,
         ]);
+        if self.seat {
+            // Every turn its own session, all under one name.
+            let name = std::env::var("YEOMAN_NAME").unwrap_or_else(|_| "yeoman".into());
+            cmd.args([
+                "--name",
+                &name,
+                "--permission-mode",
+                "auto",
+                "--append-system-prompt",
+                system,
+                "--model",
+                &model,
+            ]);
+        } else {
+            cmd.args([
+                "--no-session-persistence",
+                "--system-prompt",
+                system,
+                "--tools",
+                "",
+                "--strict-mcp-config",
+                "--setting-sources",
+                "",
+                "--model",
+                &model,
+            ]);
+        }
         if let Some(effort) = &self.effort {
             cmd.args(["--effort", effort]);
         }
@@ -312,7 +373,11 @@ impl Model for Claude {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("{}: {e}", self.command))?;
-        let mut content = cached(memory);
+        let mut content = if self.seat {
+            Vec::new()
+        } else {
+            cached(memory)
+        };
         content.extend(files.iter().map(|f| match f {
             Attachment::Image { mime, data } => json!({"type": "image",
                     "source": {"type": "base64", "media_type": mime, "data": B64.encode(data)}}),
@@ -377,7 +442,7 @@ impl Model for Claude {
             Ok((out, used))
         });
         let errors = drain(child.stderr.take().unwrap());
-        let deadline = (!run.endless).then(|| Instant::now() + TIMEOUT);
+        let deadline = (!run.endless && !self.seat).then(|| Instant::now() + TIMEOUT);
         let status = loop {
             if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
                 break status;
@@ -466,6 +531,10 @@ impl Model for Claude {
 
     fn tools(&self) -> bool {
         self.mcp.is_some()
+    }
+
+    fn seat(&self) -> bool {
+        self.seat
     }
 }
 

@@ -442,200 +442,305 @@
             LoadCredential = claudeCredential;
             BindReadOnlyPaths = singleton "${claudeEtc}:/etc/claude-code";
           };
+          seat = topology.seat;
+          # Matrix only with an account: without one, the site alone.
+          matrix = i.credentialsEnvFile != null;
+          models = optionalAttrs (i.models != [ ]) { YEOMAN_MODELS = concatStringsSep "," i.models; };
+          # Wipes the state, all but the push keys, once nothing has been
+          # said for forgetAfter minutes; the memory goes with it.
+          forget = pkgs.writeShellApplication {
+            name = "${n}-forget";
+            runtimeInputs = [
+              pkgs.findutils
+              pkgs.systemd
+            ];
+            text = ''
+              said=$(find ${state}/hippo -type f -print -quit 2>/dev/null || true)
+              recent=$(find ${state}/hippo -type f -mmin -${toString i.forgetAfter} -print -quit 2>/dev/null || true)
+              [ -n "$said" ] && [ -z "$recent" ] || exit 0
+              systemctl stop ${n}.service ${n}-hippo.service
+              find ${state} -mindepth 1 -maxdepth 1 ! -name vapid ! -name push.json -exec rm -rf {} +
+              find ${site.dir} -mindepth 1 -delete
+              systemctl start ${n}-hippo.service ${n}.service
+              echo "forgot everything"
+            '';
+          };
         in
-        {
-          "${n}-register" = {
-            description = "${i.name} Matrix account bootstrap";
-            wantedBy = singleton "multi-user.target";
-            wants = singleton "tuwunel.service";
-            after = singleton "tuwunel.service";
-            serviceConfig =
-              sandbox
-              // fence
-              // {
-                Type = "oneshot";
-                RemainAfterExit = true;
-                ExecStart = getExe register;
-                EnvironmentFile = [
-                  i.credentialsEnvFile
-                  cfg.registrationEnvFile
-                ];
-              };
-          };
-
-          # The memory's door, after the seat's on 8940, by sorted name.
-          "${n}-door" = mkIf (i.doorPassphraseFile != null) (
-            lib.ship.hippoDoor {
-              inherit hippo;
-              service = "${n}-hippo.service";
-              dir = env.HIPPO_DIR;
-              user = n;
-              agent = i.name;
-              inherit (i) person;
-              port = 8940 + lib.lists.findFirstIndex (m: m == n) 0 (attrNames cfg.instances) + 1;
-              host = "hippo-${n}.${config.shipProxy.domain}";
-              passphraseFile = i.doorPassphraseFile;
-            }
-          );
-
-          "${n}-hippo" = {
-            description = "${i.name}'s memory";
-            wantedBy = singleton "multi-user.target";
-            environment =
-              env
-              // {
-                HIPPO_AGENT = i.name;
-                HIPPO_VIEW = toString cfg.viewBytes;
-              }
-              // (
-                if i.localModel != null then
-                  {
-                    # A local agent's memory stays local too: what it is told
-                    # never leaves the host, and its compactor never refuses.
-                    HIPPO_BACKEND = "http";
-                    HIPPO_URL = "http://127.0.0.1:${toString config.inference.port}/v1";
-                    HIPPO_MODEL = i.localModel;
-                    # Its template thinks at xhigh by default: ~3x slower than
-                    # low for lines about as good on six real jobs, and Azula's
-                    # replies queue behind it on the one GPU slot.
-                    HIPPO_HTTP_EXTRA = lib.strings.toJSON { chat_template_kwargs.reasoning_effort = "low"; };
-                  }
-                else
-                  {
-                    HIPPO_BACKEND = "claude";
-                    HIPPO_CLAUDE = getExe claude;
-                    HIPPO_MODEL = "haiku";
-                    HIPPO_EFFORT = "high";
-                  }
-              );
-            serviceConfig =
-              sandbox
-              // fence
-              // claudeUnit
-              // {
-                StateDirectory = [
-                  n
-                  "${n}/hippo"
-                ];
-                ExecStart = "${getExe hippo} serve chat";
-                Restart = "always";
-                RestartSec = 5;
-              };
-          };
-
-          ${n} = {
-            description = "${i.name}, ${i.person}'s household assistant";
-            wantedBy = singleton "multi-user.target";
-            wants = [
-              "tuwunel.service"
-              "${n}-register.service"
-              "${n}-hippo.service"
-            ];
-            after = [
-              "tuwunel.service"
-              "${n}-register.service"
-              "${n}-hippo.service"
-            ];
-            environment =
-              env
-              // shared
-              // {
-                YEOMAN_NAME = i.name;
-                YEOMAN_PERSON = i.person;
-                YEOMAN_HOMESERVER = "http://127.0.0.1:${toString config.matrix.port}";
-                YEOMAN_USERS = concatStringsSep "," i.users;
-                YEOMAN_BACKEND = "claude";
-                YEOMAN_CLAUDE = getExe claude;
-                YEOMAN_MODEL = cfg.model;
-                YEOMAN_MCP = toString mcp;
-                YEOMAN_MATRIX = "${creds}/matrix";
-              }
-              // optionalAttrs (i.localModel != null) {
-                # Local inference takes no MCP, so it answers without tools.
-                YEOMAN_BACKEND = "http";
-                YEOMAN_URL = "http://127.0.0.1:${toString config.inference.port}/v1";
-                YEOMAN_MODEL = i.localModel;
-              }
-              // optionalAttrs (i.style != null) { YEOMAN_STYLE = i.style; }
-              // optionalAttrs (i.voice != null) { YEOMAN_VOICE = i.voice; }
-              // optionalAttrs i.web {
-                YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
-                YEOMAN_SITE_ROOT = web;
-                # Names this server to push services, and the site to its
-                # notifications.
-                YEOMAN_SITE_URL = host (if shared' == null then n else shared');
-              }
-              // optionalAttrs (shared' != null) {
-                YEOMAN_PERSONAS = concatStringsSep "," (
-                  map (m: "${m}=${cfg.instances.${m}.name}") cfg.sites.${shared'}.members
-                );
-                YEOMAN_APP = cfg.sites.${shared'}.name;
-                YEOMAN_SESSIONS = "${sitesDir}/${shared'}/sessions";
-              }
-              // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
-              # Watches read the mail, calendars and money here, not in
-              # the tools.
-              // {
-                YEOMAN_CALDAV = "${creds}/caldav";
-                YEOMAN_TZ = config.time.timeZone;
-              }
-              // optionalAttrs (cfg.financeDb != null) {
-                YEOMAN_FINANCE = cfg.financeDb;
-              }
-              // optionalAttrs (i.mailCredentialsFile != null) {
-                YEOMAN_MAIL = "${creds}/mail";
-                YEOMAN_SMTP = cfg.smtpServer;
-                YEOMAN_IMAP = cfg.mailServer;
-              };
-            serviceConfig =
-              sandbox
-              // fence
-              // claudeUnit
-              // {
-                ExecStart = start;
-                LoadCredential = [
-                  "matrix:${i.credentialsEnvFile}"
-                  claudeCredential
-                  "caldav:${cfg.calendarCredentialsFile}"
+        if i.seat then
+          {
+            # The seat itself behind the yeoman's site: Claude Code as
+            # Bridge runs it, with the seat's login, rules, memory and
+            # privileges, as paseo does. hippo's watcher keeps its turns.
+            ${n} = {
+              description = "${i.name}, Bridge in ${i.person}'s web chat";
+              wantedBy = singleton "multi-user.target";
+              after = singleton "hippo.service";
+              wants = singleton "hippo.service";
+              environment =
+                shared
+                // {
+                  HOME = seat.home;
+                  HIPPO_DIR = seat.hippo;
+                  # The seat's own installs, its claude among them.
+                  PATH = lib.mkForce (
+                    concatStringsSep ":" [
+                      "${seat.home}/.nix-profile/bin"
+                      "/etc/profiles/per-user/${seat.user}/bin"
+                      "/run/wrappers/bin"
+                      "/run/current-system/sw/bin"
+                    ]
+                  );
+                  YEOMAN_NAME = i.name;
+                  YEOMAN_PERSON = i.person;
+                  YEOMAN_BACKEND = "claude";
+                  YEOMAN_CLAUDE = "claude";
+                  YEOMAN_MODEL = cfg.model;
+                  YEOMAN_SEAT_MODE = "1";
+                  YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
+                  YEOMAN_SITE_ROOT = web;
+                  YEOMAN_SITE_URL = host (if shared' == null then n else shared');
+                }
+                // optionalAttrs (shared' != null) {
+                  YEOMAN_PERSONAS = concatStringsSep "," (
+                    map (m: "${m}=${cfg.instances.${m}.name}") cfg.sites.${shared'}.members
+                  );
+                  YEOMAN_APP = cfg.sites.${shared'}.name;
+                  YEOMAN_SESSIONS = "${sitesDir}/${shared'}/sessions";
+                }
+                // optionalAttrs (i.voice != null) { YEOMAN_VOICE = i.voice; }
+                // models;
+              serviceConfig = {
+                User = seat.user;
+                Group = seat.user;
+                SupplementaryGroups = [
+                  "yeoman-x"
+                  "usage"
                 ]
-                ++ optional (i.mailCredentialsFile != null) "mail:${i.mailCredentialsFile}"
-                ++ optional (i.newsKeyFile != null) "news:${i.newsKeyFile}"
-                ++ optional (cfg.homeTokenFile != null) "home:${cfg.homeTokenFile}"
-                ++ optional (cfg.requestsKeyFile != null) "requests:${cfg.requestsKeyFile}"
-                ++ optional (cfg.searchKeyFile != null) "search:${cfg.searchKeyFile}";
-                RuntimeDirectory = n;
-                RuntimeDirectoryMode = "0700";
+                ++ optional (shared' != null) "yeoman-${shared'}";
+                StateDirectory = n;
+                StateDirectoryMode = "0700";
+                WorkingDirectory = seat.home;
+                ExecStart = getExe yeoman;
+                # A restart ends the turn under way; the next message
+                # starts afresh from the memory.
                 Restart = "always";
                 RestartSec = 10;
-                ReadWritePaths = [
-                  house
-                  site.dir
-                ]
-                ++ optional i.alerts config.alerts.spool
-                ++ optionals i.computer [
-                  pc.desk
-                  (browsers.desk n)
-                ]
-                ++ optional (shared' != null) "${sitesDir}/${shared'}";
-              }
-              // optionalAttrs i.web { SocketBindAllow = singleton "tcp:${toString (chatPort n)}"; }
-              // optionalAttrs (i.computer || shared' != null) {
-                SupplementaryGroups =
-                  sandbox.SupplementaryGroups
-                  ++ optional i.computer computers.deskGroup
-                  ++ optional (shared' != null) "yeoman-${shared'}";
-              }
-              // optionalAttrs i.computer {
-                # Through the fence to its own runner and browser.
-                IPAddressAllow = fence.IPAddressAllow ++ [
-                  pc.addr
-                  pc.browser
-                ];
+                # Each turn's claude and what it runs; paseo's bound.
+                MemoryHigh = "12G";
               };
+            };
+          }
+        else
+          {
+            "${n}-register" = mkIf matrix {
+              description = "${i.name} Matrix account bootstrap";
+              wantedBy = singleton "multi-user.target";
+              wants = singleton "tuwunel.service";
+              after = singleton "tuwunel.service";
+              serviceConfig =
+                sandbox
+                // fence
+                // {
+                  Type = "oneshot";
+                  RemainAfterExit = true;
+                  ExecStart = getExe register;
+                  EnvironmentFile = [
+                    i.credentialsEnvFile
+                    cfg.registrationEnvFile
+                  ];
+                };
+            };
+
+            # The memory's door, after the seat's on 8940, by sorted name.
+            "${n}-door" = mkIf (i.doorPassphraseFile != null) (
+              lib.ship.hippoDoor {
+                inherit hippo;
+                service = "${n}-hippo.service";
+                dir = env.HIPPO_DIR;
+                user = n;
+                agent = i.name;
+                inherit (i) person;
+                port = 8940 + lib.lists.findFirstIndex (m: m == n) 0 (attrNames cfg.instances) + 1;
+                host = "hippo-${n}.${config.shipProxy.domain}";
+                passphraseFile = i.doorPassphraseFile;
+              }
+            );
+
+            "${n}-hippo" = {
+              description = "${i.name}'s memory";
+              wantedBy = singleton "multi-user.target";
+              environment =
+                env
+                // {
+                  HIPPO_AGENT = i.name;
+                  HIPPO_VIEW = toString cfg.viewBytes;
+                }
+                // (
+                  if i.localModel != null then
+                    {
+                      # A local agent's memory stays local too: what it is told
+                      # never leaves the host, and its compactor never refuses.
+                      HIPPO_BACKEND = "http";
+                      HIPPO_URL = "http://127.0.0.1:${toString config.inference.port}/v1";
+                      HIPPO_MODEL = i.localModel;
+                      # Its template thinks at xhigh by default: ~3x slower than
+                      # low for lines about as good on six real jobs, and Azula's
+                      # replies queue behind it on the one GPU slot.
+                      HIPPO_HTTP_EXTRA = lib.strings.toJSON { chat_template_kwargs.reasoning_effort = "low"; };
+                    }
+                  else
+                    {
+                      HIPPO_BACKEND = "claude";
+                      HIPPO_CLAUDE = getExe claude;
+                      HIPPO_MODEL = "haiku";
+                      HIPPO_EFFORT = "high";
+                    }
+                );
+              serviceConfig =
+                sandbox
+                // fence
+                // claudeUnit
+                // {
+                  StateDirectory = [
+                    n
+                    "${n}/hippo"
+                  ];
+                  ExecStart = "${getExe hippo} serve chat";
+                  Restart = "always";
+                  RestartSec = 5;
+                };
+            };
+
+            ${n} = {
+              description = "${i.name}, ${i.person}'s household assistant";
+              wantedBy = singleton "multi-user.target";
+              wants = [
+                "${n}-hippo.service"
+              ]
+              ++ optionals matrix [
+                "tuwunel.service"
+                "${n}-register.service"
+              ];
+              after = [
+                "${n}-hippo.service"
+              ]
+              ++ optionals matrix [
+                "tuwunel.service"
+                "${n}-register.service"
+              ];
+              environment =
+                env
+                // shared
+                // {
+                  YEOMAN_NAME = i.name;
+                  YEOMAN_PERSON = i.person;
+                  YEOMAN_BACKEND = "claude";
+                  YEOMAN_CLAUDE = getExe claude;
+                  YEOMAN_MODEL = cfg.model;
+                  YEOMAN_MCP = toString mcp;
+                }
+                // models
+                // optionalAttrs matrix {
+                  YEOMAN_HOMESERVER = "http://127.0.0.1:${toString config.matrix.port}";
+                  YEOMAN_USERS = concatStringsSep "," i.users;
+                  YEOMAN_MATRIX = "${creds}/matrix";
+                }
+                // optionalAttrs (i.localModel != null) {
+                  # Local inference takes no MCP, so it answers without tools.
+                  YEOMAN_BACKEND = "http";
+                  YEOMAN_URL = "http://127.0.0.1:${toString config.inference.port}/v1";
+                  YEOMAN_MODEL = i.localModel;
+                }
+                // optionalAttrs (i.style != null) { YEOMAN_STYLE = i.style; }
+                // optionalAttrs (i.voice != null) { YEOMAN_VOICE = i.voice; }
+                // optionalAttrs i.web {
+                  YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
+                  YEOMAN_SITE_ROOT = web;
+                  # Names this server to push services, and the site to its
+                  # notifications.
+                  YEOMAN_SITE_URL = host (if shared' == null then n else shared');
+                }
+                // optionalAttrs (shared' != null) {
+                  YEOMAN_PERSONAS = concatStringsSep "," (
+                    map (m: "${m}=${cfg.instances.${m}.name}") cfg.sites.${shared'}.members
+                  );
+                  YEOMAN_APP = cfg.sites.${shared'}.name;
+                  YEOMAN_SESSIONS = "${sitesDir}/${shared'}/sessions";
+                }
+                // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
+                # Watches read the mail, calendars and money here, not in
+                # the tools.
+                // {
+                  YEOMAN_CALDAV = "${creds}/caldav";
+                  YEOMAN_TZ = config.time.timeZone;
+                }
+                // optionalAttrs (cfg.financeDb != null) {
+                  YEOMAN_FINANCE = cfg.financeDb;
+                }
+                // optionalAttrs (i.mailCredentialsFile != null) {
+                  YEOMAN_MAIL = "${creds}/mail";
+                  YEOMAN_SMTP = cfg.smtpServer;
+                  YEOMAN_IMAP = cfg.mailServer;
+                };
+              serviceConfig =
+                sandbox
+                // fence
+                // claudeUnit
+                // {
+                  ExecStart = start;
+                  LoadCredential = [
+                    claudeCredential
+                    "caldav:${cfg.calendarCredentialsFile}"
+                  ]
+                  ++ optional matrix "matrix:${i.credentialsEnvFile}"
+                  ++ optional (i.mailCredentialsFile != null) "mail:${i.mailCredentialsFile}"
+                  ++ optional (i.newsKeyFile != null) "news:${i.newsKeyFile}"
+                  ++ optional (cfg.homeTokenFile != null) "home:${cfg.homeTokenFile}"
+                  ++ optional (cfg.requestsKeyFile != null) "requests:${cfg.requestsKeyFile}"
+                  ++ optional (cfg.searchKeyFile != null) "search:${cfg.searchKeyFile}";
+                  RuntimeDirectory = n;
+                  RuntimeDirectoryMode = "0700";
+                  Restart = "always";
+                  RestartSec = 10;
+                  ReadWritePaths = [
+                    house
+                    site.dir
+                  ]
+                  ++ optional i.alerts config.alerts.spool
+                  ++ optionals i.computer [
+                    pc.desk
+                    (browsers.desk n)
+                  ]
+                  ++ optional (shared' != null) "${sitesDir}/${shared'}";
+                }
+                // optionalAttrs i.web { SocketBindAllow = singleton "tcp:${toString (chatPort n)}"; }
+                // optionalAttrs (i.computer || shared' != null) {
+                  SupplementaryGroups =
+                    sandbox.SupplementaryGroups
+                    ++ optional i.computer computers.deskGroup
+                    ++ optional (shared' != null) "yeoman-${shared'}";
+                }
+                // optionalAttrs i.computer {
+                  # Through the fence to its own runner and browser.
+                  IPAddressAllow = fence.IPAddressAllow ++ [
+                    pc.addr
+                    pc.browser
+                  ];
+                };
+            };
+
+            "${n}-forget" = mkIf (i.forgetAfter != null) {
+              description = "${i.name} forgets, once idle";
+              serviceConfig = {
+                Type = "oneshot";
+                ExecStart = getExe forget;
+              };
+            };
           };
-        };
 
       alerted = attrNames (filterAttrs (_: i: i.alerts) cfg.instances);
+      # The instances that run as a user of their own: all but the seat's.
+      ownUsers = filterAttrs (_: i: !i.seat) cfg.instances;
       inSites = concatMap (s: cfg.sites.${s}.members) (attrNames cfg.sites);
     in
     {
@@ -664,6 +769,7 @@
 
                   users = mkOption {
                     type = types.listOf types.str;
+                    default = [ ];
                     example = singleton "@alice:chat.example.com";
                     description = ''
                       Who it talks with: it joins rooms they invite it to and
@@ -672,8 +778,10 @@
                   };
 
                   credentialsEnvFile = mkOption {
-                    type = types.str;
+                    type = types.nullOr types.str;
+                    default = null;
                     description = ''
+                      Required unless seat is on.
                       agenix env file with MATRIX_USER=@name:server and
                       MATRIX_PASSWORD=..., the assistant's own Matrix
                       account, registered on first start.
@@ -761,6 +869,40 @@
                     description = ''
                       The xAI voice the site reads replies aloud in, through
                       yeoman-x's sign-in; null = no read-aloud button.
+                    '';
+                  };
+
+                  models = mkOption {
+                    type = types.listOf types.str;
+                    default = [ ];
+                    example = [
+                      "opus"
+                      "sonnet"
+                    ];
+                    description = ''
+                      Claude models the person may switch between in the web
+                      chat's settings; empty keeps the model fixed.
+                    '';
+                  };
+
+                  forgetAfter = mkOption {
+                    type = types.nullOr types.ints.positive;
+                    default = null;
+                    example = 60;
+                    description = ''
+                      Minutes without a word after which it forgets
+                      everything: memory, files, pages; null = never.
+                    '';
+                  };
+
+                  seat = mkOption {
+                    type = types.bool;
+                    default = false;
+                    description = ''
+                      Whether this is the seat itself in a web chat: each
+                      message runs Claude Code as the seat user, with its
+                      settings, hooks, MCP servers, built-in tools and
+                      memory; no Matrix, sandbox or memory of its own.
                     '';
                   };
 
@@ -924,6 +1066,12 @@
             message = "yeoman: a site lists only instances with web on.";
           }
           {
+            assertion = lib.lists.all (
+              i: (i.credentialsEnvFile != null || i.web) && !(i.seat && i.forgetAfter != null)
+            ) (lib.attrsets.attrValues cfg.instances);
+            message = "yeoman: an instance needs Matrix or web on, and the seat can't forget.";
+          }
+          {
             assertion = lib.lists.allUnique inSites;
             message = "yeoman: an instance belongs to one site at most.";
           }
@@ -957,7 +1105,7 @@
               home = "/var/lib/${n}";
             })
             (
-              cfg.instances
+              ownUsers
               // {
                 yeoman-image = { };
                 yeoman-x = { };
@@ -968,7 +1116,7 @@
             ${topology.seat.user}.extraGroups = singleton "yeoman-household";
           };
         users.groups =
-          mapAttrs (_: _: { }) cfg.instances
+          mapAttrs (_: _: { }) ownUsers
           // lib.attrsets.mapAttrs' (s: _: nameValuePair "yeoman-${s}" { }) cfg.sites
           // {
             yeoman-image = { };
@@ -1061,7 +1209,7 @@
         // lib.attrsets.mapAttrs' (n: _: {
           name = "${pages}/${n}";
           value.d = {
-            user = n;
+            user = if cfg.instances.${n}.seat then topology.seat.user else n;
             group = "nginx";
             mode = "2750";
           };
@@ -1146,6 +1294,17 @@
             SocketGroup = "yeoman-x";
           };
         };
+
+        systemd.timers = lib.attrsets.mapAttrs' (
+          n: _:
+          nameValuePair "${n}-forget" {
+            wantedBy = singleton "timers.target";
+            timerConfig = {
+              OnBootSec = "5min";
+              OnUnitActiveSec = "5min";
+            };
+          }
+        ) (filterAttrs (_: i: i.forgetAfter != null) cfg.instances);
 
         systemd.services = mkMerge (
           mapAttrsToList services cfg.instances

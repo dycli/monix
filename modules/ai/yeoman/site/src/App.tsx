@@ -132,12 +132,12 @@ function ThemeButton({ className = "" }: { className?: string }) {
 }
 
 type Persona = { unit: string; name: string };
-type Me = { name: string; personas: Persona[]; voice: string | null };
+type Me = { name: string; personas: Persona[]; voice: string | null; models: string[] };
 
 // Who answers here, asked once for the switcher and the speak buttons.
 const ME: Promise<Me> = fetch("/api/me")
   .then((r) => (r.ok ? r.json() : Promise.reject()))
-  .catch(() => ({ name: "", personas: [], voice: null }));
+  .catch(() => ({ name: "", personas: [], voice: null, models: [] }));
 
 function useMe() {
   const [me, setMe] = useState<Me | null>(null);
@@ -386,6 +386,7 @@ function Settings() {
   const [choice, setChoice] = useVoiceChoice();
   const [speed, setSpeed] = useVoiceSpeed();
   const voices = useVoices(open && !!voice);
+  const [model, pickModel] = useModel(open && !!me?.models.length);
   const [hearing, setHearing] = useState(false);
   const picked = choice ?? voice;
   const hear = () => {
@@ -484,6 +485,24 @@ function Settings() {
                   className="mt-2 w-full accent-ink"
                 />
               </label>
+            )}
+            {!!me?.models.length && (
+              <div className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-[15px]">
+                <label htmlFor="model">Model</label>
+                <select
+                  id="model"
+                  value={model ?? ""}
+                  onChange={(e) => pickModel(e.target.value)}
+                  className="max-w-36 bg-transparent text-right text-[13px] text-mid capitalize outline-none"
+                >
+                  {/* The running model stays listed even when it isn't a choice. */}
+                  {[...new Set([...me.models, ...(model ? [model] : [])])].map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
             <button type="button" role="menuitem" onClick={reload} className={row}>
               Reload
@@ -1099,6 +1118,26 @@ async function play(text: string, voice: string, done: () => void) {
   } catch {
     if (stopping === end) end();
   }
+}
+
+/** The model the next turn runs on, asked once `want` turns true, and a
+ * way to switch it; the turn under way keeps its own. */
+function useModel(want: boolean): [string | null, (m: string) => void] {
+  const [model, setModel] = useState<string | null>(null);
+  useEffect(() => {
+    if (!want) return;
+    fetch("/api/model")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((v: { model: string }) => setModel(v.model), () => {});
+  }, [want]);
+  const pick = (m: string) => {
+    const was = model;
+    setModel(m);
+    fetch("/api/model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: m }) })
+      .then((r) => r.ok || Promise.reject(r.status))
+      .catch(() => setModel(was));
+  };
+  return [model, pick];
 }
 
 type Voice = { id: string; name: string };

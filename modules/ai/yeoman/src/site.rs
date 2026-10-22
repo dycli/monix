@@ -490,6 +490,9 @@ struct Who {
     /// The xAI voice replies are read aloud in: YEOMAN_VOICE, none when
     /// unset or without yeoman-x.
     voice: Option<String>,
+    /// The models the person may switch between (YEOMAN_MODELS); empty
+    /// when the model is fixed.
+    models: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -509,6 +512,7 @@ impl Who {
             voice: std::env::var("YEOMAN_VOICE")
                 .ok()
                 .filter(|_| std::env::var_os("YEOMAN_X").is_some()),
+            models: crate::model::choices(),
         }
     }
 }
@@ -813,6 +817,7 @@ pub async fn serve(
         .route("/api/speak", post(speak))
         .route("/api/speak/{key}", get(spoken))
         .route("/api/voices", get(voices))
+        .route("/api/model", get(model_now).post(model_pick))
         .route("/api/call", post(call))
         .route("/api/call/end", post(call_end))
         .route("/api/events", get(events))
@@ -1765,6 +1770,37 @@ async fn decide(
 
 /// Stops the turn under way, from the page or Matrix; it answers
 /// "(Stopped.)". With no turn running it does nothing.
+/// The model the next turn runs on: the person's pick, else YEOMAN_MODEL.
+async fn model_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let model = crate::model::picked(&site.state)
+        .or_else(|| std::env::var("YEOMAN_MODEL").ok())
+        .unwrap_or_default();
+    Json(serde_json::json!({ "model": model })).into_response()
+}
+
+#[derive(Deserialize)]
+struct Pick {
+    model: String,
+}
+
+/// Switches the model from the next turn on; the one under way keeps its.
+async fn model_pick(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    Json(p): Json<Pick>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    match crate::model::pick(&site.state, &p.model) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+    }
+}
+
 async fn stop(State(site): State<Arc<Site>>, headers: HeaderMap) -> StatusCode {
     if !site.signed(&headers) {
         return StatusCode::UNAUTHORIZED;
@@ -2070,7 +2106,10 @@ mod tests {
             }
             asked
         });
-        let h = crate::hippo::Hippo { sock: sock.clone() };
+        let h = crate::hippo::Hippo {
+            sock: sock.clone(),
+            watched: false,
+        };
         let got: Vec<_> = super::past_parts(&h, 14)
             .unwrap()
             .into_iter()

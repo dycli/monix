@@ -10,6 +10,9 @@ use std::path::PathBuf;
 #[derive(Clone)]
 pub struct Hippo {
     pub sock: PathBuf,
+    /// Whether hippo reads the chat from Claude Code's session files on its
+    /// own (the seat's, in seat mode): then logging would keep it twice.
+    pub watched: bool,
 }
 
 #[derive(Deserialize)]
@@ -44,6 +47,9 @@ impl Hippo {
 
     /// Logs one message: `user` for the captain's words, `talk` for the yeoman's.
     pub fn log(&self, kind: &str, text: &str) -> Result<(), String> {
+        if self.watched {
+            return Ok(());
+        }
         self.ask("log", &[kind, text]).map(|_| ())
     }
 

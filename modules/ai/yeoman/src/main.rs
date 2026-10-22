@@ -61,6 +61,15 @@ address (id+n: the n messages from id) and tags who spoke: user is \
 message passed on from the household, or a note from Bridge, and work is \
 the report of a subagent you started, beginning \"[Name]\".";
 
+/// The seat's own words in place of PROMPT: Claude Code's prompt and the
+/// seat's rules come first, with the memory.
+const SEAT: &str = "\
+You are {name}: Bridge, the ship's engineer, answering {person} in {name}, \
+a web chat they may read on their phone, not a terminal. Every message \
+starts a fresh session: what came before is in the hippo view, and in \
+hippo. {person} sees your tool calls as they happen and your final \
+message as the answer; markdown shows.";
+
 /// Added when the model has no tools.
 const NO_TOOLS: &str = "\n\nWhen a line is too condensed to answer from, say what you \
 remember and ask. You have no tools: say so when asked to do something, \
@@ -342,7 +351,12 @@ fn answer(
         cards,
         steer,
     } = turn;
-    let view = hippo.view()?;
+    // The seat brings its own memory.
+    let view = if model.seat() {
+        String::new()
+    } else {
+        hippo.view()?
+    };
     // Photos and PDFs go to the model as they are, as many as fit in one
     // request; text is inlined; the rest it knows by name.
     let mut sent = Vec::new();
@@ -440,12 +454,21 @@ fn answer(
     let (said, acts) = frame(from, said);
     hippo.log(kind, &logged)?;
     // Here, not in the system prompt, which stays the same turn to turn.
-    let prompt = format!(
-        "\nNow: {}{}\n\n{who}: {said}{inline}",
-        Local::now().format("%Y-%m-%d %a %H:%M"),
-        at_work(model)
-    );
-    let system = system(model, cards, PROMPT, &name, &person);
+    // The seat's words come as a person's do in Claude Code: bare.
+    let prompt = match (model.seat(), from) {
+        (true, From::Person) => format!("{said}{inline}"),
+        (true, _) => format!("{who}: {said}{inline}"),
+        (false, _) => format!(
+            "\nNow: {}{}\n\n{who}: {said}{inline}",
+            Local::now().format("%Y-%m-%d %a %H:%M"),
+            at_work(model)
+        ),
+    };
+    let system = if model.seat() {
+        SEAT.replace("{name}", &name).replace("{person}", &person)
+    } else {
+        system(model, cards, PROMPT, &name, &person)
+    };
     let reply = model.answer(
         &system,
         &view,
@@ -1207,31 +1230,36 @@ fn on_book<T>(
     Book::open(state, None)?.change(f)
 }
 
+/// The Matrix room last spoken in, when there is Matrix.
+fn last(client: &Option<matrix_sdk::Client>, state: &Path) -> Option<matrix::Matrix> {
+    client.as_ref().and_then(|c| matrix::last(c, state))
+}
+
 async fn run() -> Result<(), String> {
     let state = PathBuf::from(var("STATE_DIRECTORY")?);
-    let users: Arc<Vec<String>> = Arc::new(
-        var("YEOMAN_USERS")?
-            .split(',')
-            .map(|u| u.trim().to_owned())
-            .collect(),
-    );
+    let model: Arc<dyn Model> = model::from_env()?.into();
     let hippo = Arc::new(Hippo {
         sock: PathBuf::from(var("HIPPO_DIR")?).join("hippo.sock"),
+        watched: model.seat(),
     });
-    let model: Arc<dyn Model> = model::from_env()?.into();
     // Subagents cut short at the last stop go on from their logs.
     task::resume(&state);
     let (messages, mut inbox) = mpsc::unbounded_channel();
     let (verdicts, mut thumbs) = mpsc::unbounded_channel();
-    let client = matrix::open(
-        &var("YEOMAN_HOMESERVER")?,
-        account(&var("YEOMAN_MATRIX")?)?,
-        &state,
-        users,
-        messages,
-        verdicts,
-    )
-    .await?;
+    // Matrix only with a homeserver: the seat is reached by its site alone.
+    let client = match env::var("YEOMAN_HOMESERVER") {
+        Ok(hs) => {
+            let users: Arc<Vec<String>> = Arc::new(
+                var("YEOMAN_USERS")?
+                    .split(',')
+                    .map(|u| u.trim().to_owned())
+                    .collect(),
+            );
+            let account = account(&var("YEOMAN_MATRIX")?)?;
+            Some(matrix::open(&hs, account, &state, users, messages, verdicts).await?)
+        }
+        Err(_) => None,
+    };
     // The open pages, when there is a site: they see Matrix's talk too.
     let web = var("YEOMAN_SITE").is_ok().then(site::Web::new);
     let (c, s, w) = (
@@ -1241,7 +1269,7 @@ async fn run() -> Result<(), String> {
     );
     tokio::spawn(remind(
         move || {
-            matrix::last(&c, &s).map(|door| site::Mirror {
+            last(&c, &s).map(|door| site::Mirror {
                 door,
                 web: w.clone(),
             })
@@ -1282,7 +1310,7 @@ async fn run() -> Result<(), String> {
         let (verdicts, mut clicks) = mpsc::unbounded_channel();
         let (c, s) = (client.clone(), state.clone());
         let notify: site::Notify = Box::new(move |text| {
-            let door = matrix::last(&c, &s);
+            let door = last(&c, &s);
             Box::pin(async move {
                 let door = door.ok_or("no Matrix room yet")?;
                 door.say(&text).await
@@ -1311,7 +1339,7 @@ async fn run() -> Result<(), String> {
         tokio::spawn(async move {
             while let Some((id, yes)) = clicks.recv().await {
                 let (s, h) = (s.clone(), h.clone());
-                match matrix::last(&c, &s) {
+                match last(&c, &s) {
                     Some(door) => {
                         let door = site::Mirror {
                             door,
@@ -1391,7 +1419,10 @@ async fn run() -> Result<(), String> {
             .await;
         }
     });
-    matrix::sync(&client).await
+    match &client {
+        Some(c) => matrix::sync(c).await,
+        None => std::future::pending().await,
+    }
 }
 
 // One person's assistant: two threads carry its I/O, and the model, hippo
