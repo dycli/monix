@@ -162,11 +162,35 @@ function useMe() {
   return me;
 }
 
+/** A menu that shuts when a press or focus lands anywhere outside it, or
+ * on Escape, as Radix's do; the press still does its own work, so a tap
+ * into the composer both shuts the menu and starts typing. */
+function useMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: globalThis.Event) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("focusin", outside, true);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("focusin", outside, true);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+  return [open, setOpen, ref] as const;
+}
+
 /** The assistant's name; where others share the host, a press lists them
  * and picking one sets the cookie the proxy routes by and reloads. */
 function Switcher() {
   const personas = useMe()?.personas ?? [];
-  const [open, setOpen] = useState(false);
+  const [open, setOpen, ref] = useMenu();
   const name = <span className="font-serif text-[22px] tracking-[-0.01em]">{NAME}</span>;
   if (personas.length < 2) return name;
   const pick = (p: Persona) => {
@@ -174,7 +198,7 @@ function Switcher() {
     location.reload();
   };
   return (
-    <div className="relative">
+    <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} className="-ml-2 flex items-center gap-1 rounded-full px-2 hover:bg-hover">
         {name}
         <svg viewBox="0 0 24 24" className="size-4 text-mid" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -183,7 +207,6 @@ function Switcher() {
       </button>
       {open && (
         <>
-          <div className="fixed inset-0" onClick={() => setOpen(false)} />
           <div role="menu" className="absolute top-full left-0 mt-1 min-w-40 overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift py-1 shadow-lift">
             {personas.map((p) => (
               <button
@@ -390,7 +413,7 @@ async function reload() {
 /** The gear in the header: theme, notifications and reload in one menu. A
  * dot on it says a newer build is waiting. */
 function Settings() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen, ref] = useMenu();
   const [theme, toggleTheme] = useTheme();
   // Mounted with the header, not the menu, so the worker registers and
   // the bell's state is known before the menu first opens.
@@ -414,7 +437,7 @@ function Settings() {
   const row = "flex w-full items-center justify-between gap-6 px-4 py-2.5 text-left text-[15px] hover:bg-hover disabled:opacity-40 disabled:hover:bg-transparent";
   const note = "text-[13px] text-mid";
   return (
-    <div className="relative">
+    <div ref={ref} className="relative">
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -432,7 +455,6 @@ function Settings() {
       </button>
       {open && (
         <>
-          <div className="fixed inset-0" onClick={() => setOpen(false)} />
           <div role="menu" className="absolute top-full right-0 mt-1 min-w-60 overflow-hidden rounded-[14px] border-[1.25px] border-edge bg-lift py-1 shadow-lift">
             <button type="button" role="menuitem" onClick={toggleTheme} className={row}>
               Theme
