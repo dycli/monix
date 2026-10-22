@@ -296,37 +296,38 @@ function Fold({ part }: { part: Part }) {
     if (inside && inside !== "failed" && !("parts" in inside && inside.parts.some((p) => p.text.startsWith("(not summarized")))) return;
     setInside((await zoom(part.id, part.n)) ?? "failed");
   };
-  const size = <span className="shrink-0 pt-px font-mono text-[11.5px] text-soft">{part.n}x</span>;
+  // On a phone the size runs into the line's first row, so the text keeps the width.
+  const size = <span className="shrink-0 pt-px font-mono text-[11.5px] text-soft max-sm:mr-2">{part.n}x</span>;
   if (!open) {
     return (
-      <button type="button" onClick={() => void toggle()} aria-expanded={false} className="flex gap-2.5 rounded-xl px-3 py-1.5 text-left hover:bg-hover">
+      <button type="button" onClick={() => void toggle()} aria-expanded={false} className="flex gap-2.5 rounded-xl px-3 py-1.5 text-left hover:bg-hover max-sm:block max-sm:px-2.5 max-sm:text-[14px] max-sm:leading-snug">
         {size}
         <span className="text-[14px] leading-snug text-mid [overflow-wrap:anywhere]">{part.text.replace(/\*\*|`/g, "")}</span>
       </button>
     );
   }
+  // As Unii draws it: the halves inside a thin frame, so each level costs a
+  // few pixels, and its fold bar held at the top while it scrolls past.
   return (
-    <div className="flex flex-col">
-      <button type="button" onClick={() => void toggle()} aria-expanded className="flex gap-2.5 rounded-xl px-3 py-1 text-left text-[12.5px] text-soft hover:bg-hover hover:text-mid">
+    <div className="flex flex-col gap-0.5 rounded-xl border border-frame px-1.5 pb-1.5">
+      <button type="button" onClick={() => void toggle()} aria-expanded className="sticky top-0 z-10 -mx-1.5 flex gap-2.5 rounded-t-xl border-b border-hair bg-paper px-3 py-1.5 text-left text-[12.5px] text-soft hover:text-mid">
         <span className="font-mono">▾ {part.n}x</span>
         <span>fold</span>
       </button>
-      <div className="ml-[22px] flex flex-col gap-0.5 border-l border-hair pl-1.5">
-        {!inside ? (
-          <div className="px-3">
-            <Dots />
-          </div>
-        ) : inside === "failed" ? (
-          <p className="px-3 py-1.5 text-[14px] text-mid">Couldn't open it.</p>
-        ) : "parts" in inside ? (
-          inside.parts.map((p) => <Fold key={`${p.id}+${p.n}`} part={p} />)
-        ) : (
-          <div className="px-3 py-1.5">
-            <div className="text-xs font-semibold text-mid">{WHO[inside.kind] ?? inside.kind}</div>
-            <div className="mt-0.5 text-[14.5px] whitespace-pre-wrap [overflow-wrap:anywhere]">{inside.text}</div>
-          </div>
-        )}
-      </div>
+      {!inside ? (
+        <div className="px-3">
+          <Dots />
+        </div>
+      ) : inside === "failed" ? (
+        <p className="px-3 py-1.5 text-[14px] text-mid">Couldn't open it.</p>
+      ) : "parts" in inside ? (
+        inside.parts.map((p) => <Fold key={`${p.id}+${p.n}`} part={p} />)
+      ) : (
+        <div className="px-3 py-1.5">
+          <div className="text-xs font-semibold text-mid">{WHO[inside.kind] ?? inside.kind}</div>
+          <div className="mt-0.5 text-[14.5px] whitespace-pre-wrap [overflow-wrap:anywhere]">{inside.text}</div>
+        </div>
+      )}
     </div>
   );
 }
