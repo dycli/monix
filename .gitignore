@@ -25,6 +25,9 @@
 !*.nu.in
 !*.qml
 
+# Patches on packages the ship builds.
+!*.patch
+
 # The assistants' web page (modules/ai/yeoman/site).
 !*.ts
 !*.tsx

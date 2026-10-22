@@ -1,0 +1,94 @@
+cage: drop a virtual keyboard's group when the keyboard goes away
+
+cage 0.3.1 gives each virtual keyboard (wayvnc makes one per viewer) a
+group of its own but never removes it. Once the viewer leaves, the seat
+still offers a keyboard while the one it points at is gone, so a client
+that starts afterwards is sent modifiers with no keymap; Brave crashes
+on that in xkb_state_update_mask. Not fixed upstream as of ef6ef6a.
+
+diff --git a/seat.c b/seat.c
+index 5f659a4..097c694 100644
+--- a/seat.c
++++ b/seat.c
+@@ -321,6 +321,8 @@ handle_keyboard_group_modifiers(struct wl_listener *listener, void *data)
+ 	handle_modifier_event(&group->wlr_group->keyboard, group->seat);
+ }
+ 
++static void handle_virtual_keyboard_destroy(struct wl_listener *listener, void *data);
++
+ static void
+ cg_keyboard_group_add(struct wlr_keyboard *keyboard, struct cg_seat *seat, bool virtual)
+ {
+@@ -371,6 +373,11 @@ cg_keyboard_group_add(struct wlr_keyboard *keyboard, struct cg_seat *seat, bool
+ 	wl_signal_add(&cg_group->wlr_group->keyboard.events.modifiers, &cg_group->modifiers);
+ 	cg_group->modifiers.notify = handle_keyboard_group_modifiers;
+ 
++	if (virtual) {
++		wl_signal_add(&keyboard->base.events.destroy, &cg_group->destroy);
++		cg_group->destroy.notify = handle_virtual_keyboard_destroy;
++	}
++
+ 	return;
+ 
+ cleanup:
+@@ -385,11 +392,38 @@ keyboard_group_destroy(struct cg_keyboard_group *keyboard_group)
+ {
+ 	wl_list_remove(&keyboard_group->key.link);
+ 	wl_list_remove(&keyboard_group->modifiers.link);
++	if (keyboard_group->is_virtual) {
++		wl_list_remove(&keyboard_group->destroy.link);
++	}
+ 	wlr_keyboard_group_destroy(keyboard_group->wlr_group);
+ 	wl_list_remove(&keyboard_group->link);
+ 	free(keyboard_group);
+ }
+ 
++/* A virtual keyboard sits alone in its group, so the group goes with it.
++ * Otherwise the seat keeps offering a keyboard whose keymap is gone, and
++ * clients are sent modifiers with no keymap (Chromium crashes on that). */
++static void
++handle_virtual_keyboard_destroy(struct wl_listener *listener, void *data)
++{
++	struct cg_keyboard_group *group = wl_container_of(listener, group, destroy);
++	struct cg_seat *seat = group->seat;
++	struct wlr_keyboard *keyboard = data;
++	struct wlr_keyboard *current = wlr_seat_get_keyboard(seat->seat);
++
++	wlr_keyboard_group_remove_keyboard(group->wlr_group, keyboard);
++	if (current == keyboard || current == &group->wlr_group->keyboard) {
++		wlr_seat_set_keyboard(seat->seat, NULL);
++	}
++	keyboard_group_destroy(group);
++
++	if (wlr_seat_get_keyboard(seat->seat) == NULL && !wl_list_empty(&seat->keyboard_groups)) {
++		struct cg_keyboard_group *next = wl_container_of(seat->keyboard_groups.next, next, link);
++		wlr_seat_set_keyboard(seat->seat, &next->wlr_group->keyboard);
++	}
++	update_capabilities(seat);
++}
++
+ static void
+ handle_new_keyboard(struct cg_seat *seat, struct wlr_keyboard *keyboard, bool virtual)
+ {
+@@ -787,6 +821,9 @@ handle_destroy(struct wl_listener *listener, void *data)
+ 
+ 	struct cg_keyboard_group *group, *group_tmp;
+ 	wl_list_for_each_safe (group, group_tmp, &seat->keyboard_groups, link) {
++		if (group->is_virtual) {
++			wl_list_remove(&group->destroy.link);
++		}
+ 		wlr_keyboard_group_destroy(group->wlr_group);
+ 		free(group);
+ 	}
+diff --git a/seat.h b/seat.h
+index 4b7bfda..ba543e6 100644
+--- a/seat.h
++++ b/seat.h
+@@ -55,6 +55,7 @@ struct cg_keyboard_group {
+ 	struct cg_seat *seat;
+ 	struct wl_listener key;
+ 	struct wl_listener modifiers;
++	struct wl_listener destroy; // the virtual keyboard's, if is_virtual
+ 	struct wl_list link; // cg_seat::keyboard_groups
+ 	bool is_virtual;
+ };
