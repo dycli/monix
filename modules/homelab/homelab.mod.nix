@@ -194,6 +194,22 @@
           computer = true;
           voice = "ara";
         };
+        # Bridge itself in the web chat, on trial beside paseo
+        # (/var/lib/bridge/raava.md).
+        raava = {
+          person = "Dylan";
+          # Sokka is Dylan's door: a message to Dylan goes there.
+          door = false;
+          seat = true;
+          web = true;
+          voice = "eve";
+          models = [
+            "opus"
+            "sonnet"
+            "haiku"
+            "fable"
+          ];
+        };
         # One-off questions: no Matrix, and each message forgotten an hour
         # after it was said, unless the page sets another window.
         amnesia = {
@@ -226,6 +242,7 @@
         members = [
           "sokka"
           "azula"
+          "raava"
           "amnesia"
         ];
       };
