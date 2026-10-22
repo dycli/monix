@@ -1136,7 +1136,7 @@ function UserMessage() {
         <Time className="mb-1.5 shrink-0" />
         <Edit />
         <MessagePrimitive.If hasContent>
-        <div className="relative w-fit max-w-[min(82%,560px)] rounded-[20px_20px_6px_20px] border-[1.25px] border-edge px-[17px] py-2.5 whitespace-pre-wrap [overflow-wrap:anywhere]">
+        <div className="relative w-fit max-w-[min(82%,560px)] rounded-[20px_20px_6px_20px] border-[1.25px] border-edge px-[17px] py-2.5 whitespace-pre-wrap [overflow-wrap:anywhere] [text-wrap:wrap]">
           <MessagePrimitive.Parts />
           <Reaction />
         </div>
