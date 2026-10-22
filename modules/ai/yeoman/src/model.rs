@@ -118,6 +118,9 @@ pub struct Run {
     /// Who answers the seat's questions and permission prompts; without
     /// one they are refused, as `claude -p` refuses what it would ask.
     pub ask: Option<Arc<dyn Asker>>,
+    /// Told the model beside the prompt, as Claude Code's own reminders
+    /// are: hippo leaves it out of the person's words.
+    pub reminder: Option<String>,
 }
 
 /// The way into the turn under way: words written here reach the model at
@@ -551,6 +554,10 @@ impl Model for Claude {
                     "source": {"type": "base64", "media_type": "application/pdf",
                                "data": B64.encode(data)}}),
         }));
+        if let Some(r) = &run.reminder {
+            content.push(json!({"type": "text",
+                "text": format!("<system-reminder>\n{r}\n</system-reminder>")}));
+        }
         content.push(json!({"type": "text", "text": prompt}));
         let line = user(content);
         let mut stdin = child.stdin.take().unwrap();

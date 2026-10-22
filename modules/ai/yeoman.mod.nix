@@ -1079,6 +1079,9 @@
             type = "stdio";
             command = getExe yeoman;
             args = singleton "agents";
+            # Four small tools the seat always needs: load them up front, so
+            # its first spawn of a turn isn't a schemaless call that fails.
+            alwaysLoad = true;
           };
         };
 

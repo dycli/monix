@@ -484,6 +484,12 @@ fn answer(
             at_work(model)
         ),
     };
+    // A seat's turn is a fresh session that can't see its agents, and
+    // without this it redid a running one's work.
+    let reminder = model
+        .seat()
+        .then(|| working_now().map(|w| format!("Agents at work now: {w}. Their tasks are theirs: ask or tell them with agent_chat and tell_agent, don't redo them.")))
+        .flatten();
     let system = if model.seat() {
         SEAT.replace("{name}", &name).replace("{person}", &person)
     } else {
@@ -500,6 +506,7 @@ fn answer(
             steps,
             steer,
             ask,
+            reminder,
             ..Run::default()
         },
     )?;
@@ -570,9 +577,18 @@ fn system(model: &dyn Model, cards: bool, head: &str, name: &str, person: &str) 
 /// The agents at work now, named at the start of each of the yeoman's
 /// turns: read from their files, so the list can't drift from the truth.
 fn at_work(model: &dyn Model) -> String {
-    let Some(state) = std::env::var_os("STATE_DIRECTORY").filter(|_| model.tools()) else {
+    if !model.tools() || std::env::var_os("STATE_DIRECTORY").is_none() {
         return String::new();
-    };
+    }
+    format!(
+        "\nAgents at work now: {}.",
+        working_now().as_deref().unwrap_or("none")
+    )
+}
+
+/// The agents at work, each with the start of its task, if any.
+fn working_now() -> Option<String> {
+    let state = std::env::var_os("STATE_DIRECTORY")?;
     let agents: Vec<String> = task::working(Path::new(&state))
         .into_iter()
         .map(|(name, task)| {
@@ -580,10 +596,7 @@ fn at_work(model: &dyn Model) -> String {
             format!("{name} ({gist})")
         })
         .collect();
-    match agents.is_empty() {
-        true => "\nAgents at work now: none.".into(),
-        false => format!("\nAgents at work now: {}.", agents.join(", ")),
-    }
+    (!agents.is_empty()).then(|| agents.join(", "))
 }
 
 /// One run of subagent `name`, from its whole log; its reply is its
@@ -626,6 +639,7 @@ fn work(
             steps,
             steer,
             ask: None,
+            reminder: None,
         },
     )?;
     if reply.is_empty() {
