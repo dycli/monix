@@ -113,6 +113,11 @@ in
                   default = [ ];
                   description = "extra model ids that resolve to this entry";
                 };
+                tools = mkOption {
+                  type = types.bool;
+                  default = true;
+                  description = "whether the model can call tools; OpenCode sends none when false";
+                };
               };
             }
           );
@@ -135,7 +140,7 @@ in
               id:
               nameValuePair id {
                 name = id;
-                tool_call = true;
+                tool_call = m.tools;
                 modalities = {
                   input = singleton "text";
                   output = singleton "text";
@@ -263,25 +268,71 @@ in
           output = 1024;
           flags = baseFlags;
           aliases = [ "talkie" ];
+          tools = false;
         };
       };
     };
 
   # The OpenCode client view of this host's catalog.
   flake.homeModules.inference-client =
-    { lib, osConfig, ... }:
+    {
+      lib,
+      osConfig,
+      pkgs,
+      ...
+    }:
     let
       inherit (lib.ship) opencode;
+      baseURL = "http://127.0.0.1:${toString osConfig.inference.port}/v1";
+      talkie = osConfig.inference.models."talkie-1930-13b-q8-0" or null;
     in
     {
       home.sessionVariables = opencode.environment;
+
+      # `talkie` opens OpenCode on the 1930 model alone. Its 2048-token window
+      # can't hold OpenCode's coding prompt, tool schemas or the global
+      # AGENTS.md (~1k tokens), so it gets its own config home holding only a
+      # one-line prompt, and runs outside any repository so no project
+      # AGENTS.md loads either.
+      home.file.".local/state/talkie/opencode/opencode.jsonc" = lib.mkIf (talkie != null) {
+        text = lib.strings.toJSON {
+          "$schema" = "https://opencode.ai/config.json";
+          autoupdate = false;
+          model = "local/talkie";
+          small_model = "local/talkie";
+          default_agent = "talkie";
+          permission."*" = "deny";
+          provider.local = {
+            npm = "@ai-sdk/openai-compatible";
+            name = "talkie";
+            models.talkie = osConfig.inference.openCodeModels.talkie;
+            options = {
+              inherit baseURL;
+              apiKey = "local";
+            };
+          };
+          agent.talkie = {
+            mode = "primary";
+            model = "local/talkie";
+            prompt = "You are talkie, a conversationalist who knows only what was written before 1931. Answer plainly and briefly.";
+          };
+        };
+      };
+      home.packages = lib.optional (talkie != null) (
+        pkgs.writeShellScriptBin "talkie" ''
+          export XDG_CONFIG_HOME="$HOME/.local/state/talkie"
+          export OPENCODE_DISABLE_CLAUDE_CODE=1
+          cd "$XDG_CONFIG_HOME"
+          exec opencode "$@"
+        ''
+      );
 
       home.file.".config/opencode/opencode.jsonc" = {
         force = true;
         text = lib.strings.toJSON (
           opencode.config {
             name = "${osConfig.networking.hostName} local inference";
-            baseURL = "http://127.0.0.1:${toString osConfig.inference.port}/v1";
+            inherit baseURL;
             models = osConfig.inference.openCodeModels;
           }
         );
