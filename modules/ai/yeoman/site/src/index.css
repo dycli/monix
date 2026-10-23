@@ -332,9 +332,11 @@ html {
     transition: none;
   }
 }
-/* A pen still writing: a soft caret after the last word of a live answer. */
-.writing > :last-child::after,
-.writing > div > :last-child::after {
+/* A pen still writing: a soft caret after the last word of a live answer.
+   Streamdown wraps blocks in a div; only the block's last element takes
+   the caret, never the wrapper too, or it shows twice. */
+.writing > :last-child:not(div)::after,
+.writing > div:last-child > :last-child::after {
   content: "";
   display: inline-block;
   width: 0.5em;
@@ -365,8 +367,8 @@ html {
   .rise,
   .absorb,
   .thinking,
-  .writing > :last-child::after,
-  .writing > div > :last-child::after {
+  .writing > :last-child:not(div)::after,
+  .writing > div:last-child > :last-child::after {
     animation: none;
   }
 }

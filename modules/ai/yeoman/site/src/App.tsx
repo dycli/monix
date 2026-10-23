@@ -1876,13 +1876,16 @@ function ToolLine({ toolName: name, args, result, isError }: ToolCallMessagePart
 
 type Row = { name: string; args: Args | string | undefined; result: unknown; isError?: boolean; live?: boolean };
 
-// Calls that come back to back, with no words between them, gather into one
-// stack; a card stands on its own.
+// Everything the model did between its words, its thinking and its calls,
+// gathers into one stack; a card stands on its own.
 // An Agent call stands on its own too, as the frame of its report.
 const byRun = (part: { type: string; toolName?: string }) =>
-  part.type === "tool-call" && !cardKind(part.toolName ?? "") && !isAgent(part.toolName ?? "") ? (["group-tools"] as const) : null;
+  part.type === "reasoning" || (part.type === "tool-call" && !cardKind(part.toolName ?? "") && !isAgent(part.toolName ?? ""))
+    ? (["group-tools"] as const)
+    : null;
 
 type Call = { type: string; toolCallId: string; toolName: string; args: Args | string | undefined; result?: unknown; isError?: boolean };
+type Worked = Call | { type: "reasoning"; text: string };
 
 // What a stack did, in words: "Ran 4 commands, read 2 files".
 const DID: Record<string, [string, string, string]> = {
@@ -1905,7 +1908,7 @@ const DID: Record<string, [string, string, string]> = {
   TodoWrite: ["updated", "to-do list", "to-do lists"],
 };
 
-function did(calls: Call[]): string {
+function did(calls: Call[], thought: boolean): string {
   const tally = new Map<string, [string, string, string, number]>();
   for (const c of calls) {
     const [verb, one, many] = DID[c.toolName] ?? ["used", "tool", "tools"];
@@ -1914,24 +1917,31 @@ function did(calls: Call[]): string {
     t[3]++;
     tally.set(key, t);
   }
-  const said = [...tally.values()].map(([verb, one, many, n]) => `${verb} ${n} ${n === 1 ? one : many}`).join(", ");
+  const said = [...(thought ? ["thought"] : []), ...[...tally.values()].map(([verb, one, many, n]) => `${verb} ${n} ${n === 1 ? one : many}`)].join(", ");
   return said.charAt(0).toUpperCase() + said.slice(1);
 }
 
-// A run of calls as one line that opens into their rows, each of which
-// opens in turn. While the run goes on, the call under way shows below the
-// line with its spinner, and each one done folds up into the line.
+// A run of thinking and calls as one line that opens into their rows, each
+// of which opens in turn. While the run goes on, the thinking or call under
+// way shows below the line, and each one done folds up into the line.
 function ToolStack({ indices }: { indices: readonly number[] }) {
-  const { live } = useCustom();
-  const parts = useAuiState((s) => s.message.parts) as readonly Call[];
+  const { live, musing } = useCustom();
+  const parts = useAuiState((s) => s.message.parts) as readonly Worked[];
   const [open, setOpen] = useState(false);
-  const calls = indices.map((i) => parts[i]).filter((c) => c?.type === "tool-call");
-  const row = (c: Call, running: boolean) => <ToolRow key={c.toolCallId} name={c.toolName} args={c.args} result={c.result} isError={c.isError} live={running} />;
-  if (calls.length === 1) return row(calls[0], live);
-  const busy = calls.filter((c) => live && c.result === undefined);
-  const done = calls.filter((c) => !busy.includes(c));
-  const failed = done.filter((c) => c.isError).length;
-  const glyphs = [...new Set(done.map((c) => (TOOLS[c.toolName] ?? ["", "plug"])[1]))].slice(0, 3);
+  const items = indices.map((i) => parts[i]).filter((w) => w?.type === "tool-call" || w?.type === "reasoning");
+  const row = (w: Worked, running: boolean, n: number) =>
+    w.type === "reasoning" ? (
+      <Thought key={`thought-${n}`} text={(w as { text: string }).text} />
+    ) : (
+      <ToolRow key={(w as Call).toolCallId} name={(w as Call).toolName} args={(w as Call).args} result={(w as Call).result} isError={(w as Call).isError} live={running} />
+    );
+  if (items.length === 1) return row(items[0], live, 0);
+  const going = (w: Worked) => live && (w.type === "reasoning" ? musing === (w as { text: string }).text : (w as Call).result === undefined);
+  const busy = items.filter(going);
+  const done = items.filter((w) => !busy.includes(w));
+  const calls = done.filter((w): w is Call => w.type === "tool-call");
+  const failed = calls.filter((c) => c.isError).length;
+  const glyphs = [...new Set(calls.map((c) => (TOOLS[c.toolName] ?? ["", "plug"])[1]))].slice(0, 3);
   return (
     <div className="not-prose my-2.5 text-[13.5px]">
       {done.length > 0 && (
@@ -1951,7 +1961,7 @@ function ToolStack({ indices }: { indices: readonly number[] }) {
             ))}
           </span>
           <span key={done.length} className={`${live ? "absorb " : ""}min-w-0 truncate font-medium text-ink/80`}>
-            {did(done)}
+            {did(calls, calls.length < done.length)}
           </span>
           {failed > 0 && <span className="shrink-0 text-xs text-accent">{failed} failed</span>}
           <svg viewBox="0 0 24 24" className="ml-auto size-3.5 shrink-0 text-soft transition group-aria-expanded/stack:rotate-90" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -1959,8 +1969,16 @@ function ToolStack({ indices }: { indices: readonly number[] }) {
           </svg>
         </button>
       )}
-      {open && <div className="rise mt-1 ml-[10px] border-l border-hair pl-3.5">{done.map((c) => row(c, false))}</div>}
-      {busy.length > 0 && <div className={done.length ? "mt-1 ml-[10px] border-l border-hair pl-3.5" : ""}>{busy.map((c) => <div key={c.toolCallId} className="rise">{row(c, true)}</div>)}</div>}
+      {open && <div className="rise mt-1 ml-[10px] border-l border-hair pl-3.5">{done.map((w, n) => row(w, false, n))}</div>}
+      {busy.length > 0 && (
+        <div className={done.length ? "mt-1 ml-[10px] border-l border-hair pl-3.5" : ""}>
+          {busy.map((w, n) => (
+            <div key={w.type === "reasoning" ? `thinking-${n}` : (w as Call).toolCallId} className="rise">
+              {row(w, true, n)}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
