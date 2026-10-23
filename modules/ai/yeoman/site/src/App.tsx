@@ -67,6 +67,9 @@ function cardKind(name: string): Kind | undefined {
   if (name.endsWith("__markets")) return "markets";
 }
 
+// Whether the model put a call's card up; otherwise it folds into the stack.
+const isShown = (args: unknown) => typeof args === "object" && args !== null && (args as { show?: unknown }).show === true;
+
 const convert = (m: Msg): ThreadMessageLike => ({
   id: m.id,
   role: m.role,
@@ -993,8 +996,11 @@ function Thread({ messages, typing, jobs, send, stop, cards, decide, asks, reply
     const id = key?.split("#")[0];
     return id ? messages.find((m) => m.tools?.some((t) => t.id === id)) : undefined;
   };
+  // A card put up opens with the others its answer put up; one folded in
+  // the steps opens alone.
   const shown = holder(open);
-  const deck = shown ? deckOf(shown) : [];
+  const call = shown?.tools?.find((t) => t.id === open?.split("#")[0]);
+  const deck = !shown || !call ? [] : isShown(call.input) ? deckOf(shown) : facesOf(call);
 
   const show = (key: string) => {
     measure();
@@ -1010,8 +1016,8 @@ function Thread({ messages, typing, jobs, send, stop, cards, decide, asks, reply
     }, 280);
   };
 
-  // A deck comes up by itself once, as its first card lands; cards already
-  // on the page when it loads stay folded.
+  // A deck comes up by itself once, as the first card the model put up
+  // lands; cards already on the page when it loads stay folded.
   const seen = useRef<Set<string>>(null);
   seen.current ??= new Set(messages.flatMap(deckOf).map((f) => f.key));
   useEffect(() => {
@@ -1906,10 +1912,11 @@ function ToolLine({ toolName: name, args, result, isError }: ToolCallMessagePart
 type Row = { name: string; args: Args | string | undefined; result: unknown; isError?: boolean; live?: boolean };
 
 // Everything the model did between its words, its thinking and its calls,
-// gathers into one stack; a card stands on its own.
+// gathers into one stack, the cards it only looked at too; a card it put
+// up stands on its own.
 // An Agent call stands on its own too, as the frame of its report.
-const byRun = (part: { type: string; toolName?: string }) =>
-  part.type === "reasoning" || (part.type === "tool-call" && !cardKind(part.toolName ?? "") && !isAgent(part.toolName ?? ""))
+const byRun = (part: { type: string; toolName?: string; args?: unknown }) =>
+  part.type === "reasoning" || (part.type === "tool-call" && !(cardKind(part.toolName ?? "") && isShown(part.args)) && !isAgent(part.toolName ?? ""))
     ? (["group-tools"] as const)
     : null;
 
@@ -1937,10 +1944,22 @@ const DID: Record<string, [string, string, string]> = {
   TodoWrite: ["updated", "to-do list", "to-do lists"],
 };
 
+// The same for a card's tool, by its kind whichever server carries it.
+const LOOKED: Record<Kind, [string, string, string]> = {
+  weather: ["checked", "forecast", "forecasts"],
+  calendar: ["checked", "calendar", "calendars"],
+  list: ["looked at", "list", "lists"],
+  inbox: ["searched", "mailbox", "mailboxes"],
+  mail: ["read", "email", "emails"],
+  transactions: ["looked at", "ledger", "ledgers"],
+  markets: ["looked at", "portfolio", "portfolios"],
+};
+
 function did(calls: Call[], thought: boolean): string {
   const tally = new Map<string, [string, string, string, number]>();
   for (const c of calls) {
-    const [verb, one, many] = DID[c.toolName] ?? ["used", "tool", "tools"];
+    const kind = cardKind(c.toolName);
+    const [verb, one, many] = DID[c.toolName] ?? (kind && LOOKED[kind]) ?? ["used", "tool", "tools"];
     const key = `${verb} ${many}`;
     const t = tally.get(key) ?? [verb, one, many, 0];
     t[3]++;
@@ -1961,6 +1980,8 @@ function ToolStack({ indices }: { indices: readonly number[] }) {
   const row = (w: Worked, running: boolean, n: number) =>
     w.type === "reasoning" ? (
       <Thought key={`thought-${n}`} text={(w as { text: string }).text} />
+    ) : cardKind((w as Call).toolName) && facesOf({ id: (w as Call).toolCallId, name: (w as Call).toolName, result: (w as Call).result, error: (w as Call).isError }).length ? (
+      <CardRow key={(w as Call).toolCallId} call={w as Call} />
     ) : (
       <ToolRow key={(w as Call).toolCallId} name={(w as Call).toolName} args={(w as Call).args} result={(w as Call).result} isError={(w as Call).isError} live={running} />
     );
@@ -2162,8 +2183,8 @@ function facesOf(t: { id: string; name: string; result?: unknown; error?: boolea
   return [{ key: t.id, kind, data } as Face];
 }
 
-/** An answer's cards, in the order its tools ran. */
-const deckOf = (m: Msg) => (m.tools ?? []).flatMap(facesOf);
+/** The cards an answer put up, in the order its tools ran. */
+const deckOf = (m: Msg) => (m.tools ?? []).filter((t) => isShown(t.input)).flatMap(facesOf);
 
 // In the talk, a card is one quiet line: an icon and a word or two; a tap
 // brings its deck back. While the call runs or if its result won't parse it
@@ -2183,6 +2204,25 @@ function CardInline(props: ToolCallMessagePartProps & { kind: Kind }) {
       <span className="text-[15px] leading-none">{icon}</span>
       <span className="truncate font-medium text-ink/80">{label}</span>
       <span className="shrink-0 text-soft transition-opacity group-hover/card:opacity-100 sm:opacity-0">Open</span>
+    </button>
+  );
+}
+
+// A card the model only looked at, as a row in its stack: the gist, and a
+// tap opens it.
+function CardRow({ call }: { call: Call }) {
+  const cards = useCards();
+  const kind = cardKind(call.toolName)!;
+  const [icon, label] = cardSummary(kind, parseCard(kind, call.result));
+  return (
+    <button
+      type="button"
+      onClick={() => cards.open(call.toolCallId)}
+      className="group/card -mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2 rounded-md px-1.5 py-[3px] text-left text-[13.5px] hover:bg-hover/50 [&:last-child]:mb-3"
+    >
+      <span className="w-3.5 shrink-0 text-center text-[12px] leading-none">{icon}</span>
+      <span className="min-w-0 truncate font-medium text-ink/80">{label}</span>
+      <span className="ml-auto shrink-0 text-xs text-soft transition-opacity group-hover/card:opacity-100 sm:opacity-0">Open</span>
     </button>
   );
 }

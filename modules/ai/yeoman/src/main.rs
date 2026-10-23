@@ -164,10 +164,13 @@ task asks for, and what failed. {name} may send you more messages, even \
 while you work: answer the last.";
 
 /// Added when the door draws the calendar's events and the lists as cards.
-const CARDS: &str = "\n\n{person} sees what the events, list, mail, weather, \
-transactions and markets tools return drawn as cards over the talk. Don't repeat what a card shows: say in a \
-line or two what stands out (what's next, a clash, a free stretch) or that \
-it's done.";
+const CARDS: &str = "\n\n{person}'s page draws what the events, list, mail, weather, \
+transactions and markets tools return as cards, folded into your steps. Set \
+`show` on a call to put its card up over the talk: when {person} asks to see \
+something, or the card is the answer (the week's calendar, this month's \
+spending); never while you're searching or reading to answer. Don't repeat \
+what a shown card shows: say in a line or two what stands out (what's next, a \
+clash, a free stretch) or that it's done.";
 
 /// Added when the assistant reads the person's mail.
 const MAIL: &str = "\n\nWhen you tell {person} about their mail, a digest or \

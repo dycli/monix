@@ -143,6 +143,16 @@ struct Id {
 }
 
 #[derive(Deserialize, JsonSchema)]
+struct Show {
+    /// Put the card up on the person's screen. Only when they asked to
+    /// see it, or the card is the answer; leave out while you're only
+    /// looking things up, and it stays folded in your steps.
+    #[serde(default)]
+    #[allow(dead_code)]
+    show: bool,
+}
+
+#[derive(Deserialize, JsonSchema)]
 struct Items {
     /// The list's name, short and lowercase, e.g. groceries.
     list: String,
@@ -153,6 +163,12 @@ struct Items {
     /// and they hear what was added. Leave out to keep it to yourselves.
     #[serde(default)]
     with: Vec<String>,
+    /// Put the card up on the person's screen. Only when they asked to
+    /// see it, or the card is the answer; leave out while you're only
+    /// looking things up, and it stays folded in your steps.
+    #[serde(default)]
+    #[allow(dead_code)]
+    show: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -162,6 +178,12 @@ struct ShareList {
     /// Who to share it with, each by name: a person (their assistant
     /// passes it on) or an assistant.
     with: Vec<String>,
+    /// Put the card up on the person's screen. Only when they asked to
+    /// see it, or the card is the answer; leave out while you're only
+    /// looking things up, and it stays folded in your steps.
+    #[serde(default)]
+    #[allow(dead_code)]
+    show: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -208,6 +230,12 @@ struct MailSearch {
     limit: Option<u32>,
     /// The account, by name, when there is more than one.
     account: Option<String>,
+    /// Put the card up on the person's screen. Only when they asked to
+    /// see it, or the card is the answer; leave out while you're only
+    /// looking things up, and it stays folded in your steps.
+    #[serde(default)]
+    #[allow(dead_code)]
+    show: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -218,6 +246,12 @@ struct MailRead {
     folder: Option<String>,
     /// The account, by name, when there is more than one.
     account: Option<String>,
+    /// Put the card up on the person's screen. Only when they asked to
+    /// see it, or the card is the answer; leave out while you're only
+    /// looking things up, and it stays folded in your steps.
+    #[serde(default)]
+    #[allow(dead_code)]
+    show: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -337,6 +371,12 @@ struct Events {
     days: Option<i64>,
     /// One calendar's name; leave out for all.
     calendar: Option<String>,
+    /// Put the card up on the person's screen. Only when they asked to
+    /// see it, or the card is the answer; leave out while you're only
+    /// looking things up, and it stays folded in your steps.
+    #[serde(default)]
+    #[allow(dead_code)]
+    show: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -426,6 +466,12 @@ struct Spending {
     category: Option<String>,
     /// Only merchants whose name holds this, in any case.
     merchant: Option<String>,
+    /// Put the card up on the person's screen. Only when they asked to
+    /// see it, or the card is the answer; leave out while you're only
+    /// looking things up, and it stays folded in your steps.
+    #[serde(default)]
+    #[allow(dead_code)]
+    show: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -474,6 +520,12 @@ struct Count {
 struct List {
     /// The list's name; leave out to show every list.
     list: Option<String>,
+    /// Put the card up on the person's screen. Only when they asked to
+    /// see it, or the card is the answer; leave out while you're only
+    /// looking things up, and it stays folded in your steps.
+    #[serde(default)]
+    #[allow(dead_code)]
+    show: bool,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -628,7 +680,7 @@ impl Tools {
     )]
     fn list_add(
         &self,
-        Parameters(Items { list, items, with }): Parameters<Items>,
+        Parameters(Items { list, items, with, .. }): Parameters<Items>,
     ) -> Result<String, String> {
         let shared = !with.is_empty();
         if shared {
@@ -669,7 +721,7 @@ impl Tools {
     )]
     fn share_list(
         &self,
-        Parameters(ShareList { list, with }): Parameters<ShareList>,
+        Parameters(ShareList { list, with, .. }): Parameters<ShareList>,
     ) -> Result<String, String> {
         self.household()?.check(&with)?;
         let out = self.book()?.change(|db| {
@@ -711,7 +763,7 @@ impl Tools {
     }
 
     #[tool(description = "Show one list, or every list; shared ones are marked.")]
-    fn lists(&self, Parameters(List { list }): Parameters<List>) -> Result<String, String> {
+    fn lists(&self, Parameters(List { list, .. }): Parameters<List>) -> Result<String, String> {
         let book = self.book()?;
         let mut all = Vec::new();
         for (shelf, _) in self.shelves() {
@@ -899,7 +951,7 @@ impl Tools {
     #[tool(
         description = "The weather at home: now (temperature, how it feels, wind, humidity), the next 24 hours, and each day's high, low, chance of rain, sunrise and sunset for the week, in °F and mph."
     )]
-    fn weather(&self) -> Result<String, String> {
+    fn weather(&self, _: Parameters<Show>) -> Result<String, String> {
         let weather = self.weather.as_deref().ok_or("There is no weather here.")?;
         let report = weather.report()?;
         serde_json::to_string(&report).map_err(|e| e.to_string())
@@ -920,7 +972,7 @@ impl Tools {
     }
 
     #[tool(
-        description = "The household's transactions between two days, filed as the money page files them (categories, rules and card-payment matches applied): money spent and money in, spending by category, and the newest transactions, as many as fit (`shown` of `count`), as rows under `columns`. Choose the days from what was asked: \"this month\" is the 1st to today, \"last week\" the seven days before today. Amounts are Plaid's: positive is money out. Card payments, transfers and investing are moves, in the list but in neither total. It is drawn as a card."
+        description = "The household's transactions between two days, filed as the money page files them (categories, rules and card-payment matches applied): money spent and money in, spending by category, and the newest transactions, as many as fit (`shown` of `count`), as rows under `columns`. Choose the days from what was asked: \"this month\" is the 1st to today, \"last week\" the seven days before today. Amounts are Plaid's: positive is money out. Card payments, transfers and investing are moves, in the list but in neither total. It draws a card."
     )]
     fn transactions(&self, Parameters(s): Parameters<Spending>) -> Result<String, String> {
         let finance = self
@@ -933,9 +985,9 @@ impl Tools {
     }
 
     #[tool(
-        description = "How the household's investment accounts are doing: each account's value, its holdings with what they're worth against what they cost, cash or holdings the brokerage doesn't break down, and the total on each day balances were kept (daily from 2026-10-20). Prices are the last close Plaid reported, as of `as_of`. It is drawn as a card."
+        description = "How the household's investment accounts are doing: each account's value, its holdings with what they're worth against what they cost, cash or holdings the brokerage doesn't break down, and the total on each day balances were kept (daily from 2026-10-20). Prices are the last close Plaid reported, as of `as_of`. It draws a card."
     )]
-    fn markets(&self) -> Result<String, String> {
+    fn markets(&self, _: Parameters<Show>) -> Result<String, String> {
         let finance = self
             .finance
             .as_deref()
@@ -1096,6 +1148,7 @@ impl Tools {
             start,
             days,
             calendar,
+            ..
         }): Parameters<Events>,
     ) -> Result<String, String> {
         self.calendar()?
