@@ -209,14 +209,14 @@
           # sudo's raw pty, so the journal's lines lose their carriage returns
           # and staircase, and the switch restarts dbus under a waiting
           # systemctl ("Connection reset by peer") though the deploy goes on.
-          before=$(systemctl show -P InvocationID "$unit")
           "''${start[@]}" --no-block "$unit"
-          # Done once a new run of the unit has ended. A failed query (dbus
-          # restarting mid-switch) just means ask again.
+          # A oneshot's start job lasts until the deploy exits, so done is when
+          # the unit has no job left. (Its InvocationID won't do: it's empty
+          # both before a run and after one.) A failed query (dbus restarting
+          # mid-switch) just means ask again.
           until
-            id=$(systemctl show -P InvocationID "$unit" 2>/dev/null) &&
-              state=$(systemctl show -P ActiveState "$unit" 2>/dev/null) &&
-              [[ $id != "$before" && ($state == inactive || $state == failed) ]]
+            jobs=$(systemctl list-jobs --no-legend "$unit" 2>/dev/null) &&
+              [[ -z $jobs ]]
           do
             sleep 1
           done
