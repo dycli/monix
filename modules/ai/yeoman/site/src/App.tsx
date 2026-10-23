@@ -677,6 +677,9 @@ function Thought({ text }: { text: string }) {
   return (
     <div className="my-1.5">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex items-center gap-1.5 text-[13px] text-soft hover:text-mid">
+        <svg viewBox="0 0 24 24" className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          {GLYPHS.brain}
+        </svg>
         <span className={musing === text ? "thinking" : undefined}>{musing === text ? "Thinking" : "Thought"}</span>
         <svg viewBox="0 0 16 16" className={`size-3 transition-transform ${open ? "rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
           <path d="M6 4l4 4-4 4" />
@@ -946,7 +949,9 @@ function Thread({ messages, typing, jobs, send, stop, cards, decide, asks, reply
   // streamed thinking shows as its own row, a running call spins in its
   // stack, and a question waiting on the person isn't work.
   const live = messages.at(-1)?.live ? messages.at(-1) : undefined;
-  const running = !!live?.tools?.some((t) => t.result === undefined && !t.error);
+  // A call still runs even after the person's mid-turn words land below it.
+  const answer = [...messages].reverse().find((m) => m.role !== "user");
+  const running = !!answer?.live && !!answer.tools?.some((t) => t.result === undefined && !t.error);
   const working = typing && !asks.length && !running;
   // The screen shows while the browser is open: from the moment the turn or
   // an agent drives it until the yeoman or the person closes it. On a wide
@@ -1818,9 +1823,16 @@ const TOOLS: Record<string, [string, Glyph]> = {
   AskUserQuestion: ["Question", "ask"],
 };
 
-type Glyph = "shell" | "file" | "pen" | "find" | "web" | "agent" | "list" | "ask" | "plug";
+type Glyph = "brain" | "shell" | "file" | "pen" | "find" | "web" | "agent" | "list" | "ask" | "plug";
 
 const GLYPHS: Record<Glyph, ReactNode> = {
+  brain: (
+    <>
+      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+      <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4M17.6 6.5a3 3 0 0 0 .4-1.5M6 5a3 3 0 0 0 .4 1.5" />
+    </>
+  ),
   shell: <path d="m4 17 6-6-6-6M12 19h8" />,
   file: (
     <>
@@ -1958,7 +1970,7 @@ function ToolStack({ indices }: { indices: readonly number[] }) {
   const done = items.filter((w) => !busy.includes(w));
   const calls = done.filter((w): w is Call => w.type === "tool-call");
   const failed = calls.filter((c) => c.isError).length;
-  const glyphs = [...new Set(calls.map((c) => (TOOLS[c.toolName] ?? ["", "plug"])[1]))].slice(0, 3);
+  const glyphs = [...new Set<Glyph>([...(calls.length < done.length ? ["brain" as const] : []), ...calls.map((c) => (TOOLS[c.toolName] ?? ["", "plug"])[1])])].slice(0, 3);
   return (
     <div className="not-prose my-2.5 text-[13.5px]">
       {done.length > 0 && (
