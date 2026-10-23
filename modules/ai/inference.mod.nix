@@ -252,6 +252,18 @@ in
         # (registry.ollama.ai/v2/orcarouter/qwen3.8-27b-uncensored/blobs/…),
         # which serves the same GGUF without Hugging Face's sign-in gate.
         "qwen3.8-27b-uncensored-q4-k-m" = qwen38 147456 "Qwen3.8-27B-Uncensored-Q4_K_M.gguf";
+        # talkie: a 13B trained only on pre-1931 text. zakarth's GGUF rescales
+        # two layer-14 ffn_down channels (bit-exact) whose activations overflow
+        # fp16 in llama.cpp's Vulkan matmul (ggml-org/llama.cpp#23953) and
+        # turn the plain GGUFs to garbage; move to an unmodified GGUF once
+        # Vulkan keeps those activations in bf16. Trained at 2048 context.
+        "talkie-1930-13b-q8-0" = {
+          file = "talkie-1930-13b-it.Q8_0.gguf";
+          context = 2048;
+          output = 1024;
+          flags = baseFlags;
+          aliases = [ "talkie" ];
+        };
       };
     };
 
