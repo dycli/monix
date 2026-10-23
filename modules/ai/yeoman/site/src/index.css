@@ -175,7 +175,11 @@ html {
     border-collapse: collapse;
     font: 15px/1.45 var(--font-sans);
   }
+  /* A cell breaks between words only: under .md's `anywhere` a narrow
+     phone squeezed a column to one letter a line. A wide table scrolls in
+     its wrapper instead. */
   .md :where(td, th) {
+    overflow-wrap: normal;
     text-align: left;
     padding: 6px 14px 6px 0;
     border: 0;
