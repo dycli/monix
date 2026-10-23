@@ -44,6 +44,7 @@ type Step =
   | { type: "result"; id: string; text: string; error: boolean }
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
+  | { type: "jobs"; names: string[] }
   | { type: "done"; id: string; report: string };
 
 /** An act waiting for the person's word: today only a mail draft. */
@@ -112,6 +113,8 @@ export type Chat =
       state: "ready";
       messages: Msg[];
       typing: boolean;
+      /** The turn's background jobs still running, by description. */
+      jobs: string[];
       /** `redo` puts the message in place of the person's last one. */
       send: (text: string, files: File[], redo?: "edit" | "again") => Promise<void>;
       stop: () => Promise<void>;
@@ -140,6 +143,7 @@ export function useChat(): Chat {
   const [status, setStatus] = useState<"loading" | "signed-out" | "ready" | string>("loading");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [typing, setTyping] = useState(false);
+  const [jobs, setJobs] = useState<string[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
   const [asks, setAsks] = useState<Ask[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -196,6 +200,7 @@ export function useChat(): Chat {
         setBrowser(!!now.browser);
         // The end of a turn may have gone out while nothing listened.
         setTyping(!!now.typing);
+        setJobs(turning ? jobsOf(now.turn?.shown ?? []) : []);
         // The work so far went out over the stream; a page that missed it
         // starts from the task.
         setTasks((ks) => atWork(ks, now.agents));
@@ -304,7 +309,9 @@ export function useChat(): Chat {
             if (s.done) setMessages((ms) => [...ms, { id: crypto.randomUUID(), role: "assistant", text: s.text, date: new Date() }]);
             break;
           case "step":
-            if (s.agent !== null) setTasks((ks) => taskStep(ks, s.agent!, s.step));
+            if (s.step.type === "jobs") {
+              if (s.agent === null) setJobs(s.step.names);
+            } else if (s.agent !== null) setTasks((ks) => taskStep(ks, s.agent!, s.step));
             else setMessages((ms) => onto(ms, s));
             break;
           case "agents":
@@ -330,6 +337,7 @@ export function useChat(): Chat {
             break;
           case "typing":
             setTyping(s.on);
+            if (!s.on) setJobs([]);
             // A turn that ended without an answer leaves its tools standing,
             // and loses the words it never finished.
             if (!s.on) setMessages((ms) => ms.flatMap((m) => (!m.live ? [m] : m.tools ? [{ ...m, text: "", live: false }] : [])));
@@ -489,7 +497,7 @@ export function useChat(): Chat {
 
   if (status === "loading" || status === "signed-out") return { state: status };
   if (status !== "ready") return { state: "error", error: status };
-  return { state: "ready", messages, typing, send, stop, cards, decide, asks, reply, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past };
+  return { state: "ready", messages, typing, jobs, send, stop, cards, decide, asks, reply, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past };
 }
 
 // The agents at work now, each keeping the work the page has seen of it;
@@ -560,6 +568,15 @@ export const drives = (tools: Tool[] | undefined) => !!tools?.some((t) => t.name
 
 /** What one shown thing does to the talk: the person's words, a call or
  * its result, words on the way, the answer, a picture or a file. */
+// The background jobs a turn's record last counted.
+function jobsOf(shown: Shown[]): string[] {
+  for (let i = shown.length - 1; i >= 0; i--) {
+    const s = shown[i];
+    if (s.type === "step" && s.agent === null && s.step.type === "jobs") return s.step.names;
+  }
+  return [];
+}
+
 function onto(ms: Msg[], s: Shown): Msg[] {
   switch (s.type) {
     case "said": {
@@ -576,7 +593,7 @@ function onto(ms: Msg[], s: Shown): Msg[] {
       if (ms.some((m) => m.id === s.id)) return ms;
       return [...ms, { id: s.id, role: "user", text: s.text, date: new Date() }];
     case "step":
-      return step(ms, s.step);
+      return s.step.type === "jobs" ? ms : step(ms, s.step);
     case "picture":
       return [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", picture: fileUrl(s.name), date: new Date() }];
     case "file":
@@ -601,6 +618,7 @@ function step(ms: Msg[], s: Step): Msg[] {
       t.id !== s.id ? t : s.type === "done" ? (!s.report || POINTER.test(s.report) ? t : { ...t, report: s.report }) : { ...t, result: s.text, error: s.error, agent: agentOf(s.text) ?? t.agent };
     return ms.map((m) => (m.tools?.some((t) => t.id === s.id) ? { ...m, tools: m.tools.map(done) } : m));
   }
+  if (s.type === "jobs") return ms;
   const tool: Tool = { id: s.id, name: s.name, input: s.input };
   // Words before a call lead into it and are not the answer, which
   // comes whole in `said`; they stay above the call.

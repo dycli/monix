@@ -274,6 +274,9 @@ pub enum Step {
     },
     /// The subagent of Agent call `id` stopped, with its report.
     Done { id: String, report: String },
+    /// The seat's background jobs still running, by their descriptions,
+    /// each time one starts or ends.
+    Jobs { names: Vec<String> },
     /// A step of the subagent the seat's Agent call `parent` started: the
     /// CLI puts its work on the seat's stream, tagged, as Claude Code
     /// nests it under the call. It is the subagent's, not the answer's.
@@ -301,14 +304,26 @@ fn said(text: &str) -> bool {
     !text.is_empty() && text != QUIET
 }
 
-/// How many background jobs run, when the line says it changed.
-fn background_tasks(line: &str) -> Option<usize> {
+/// The background jobs running, by description, when the line says they
+/// changed.
+fn background_tasks(line: &str) -> Option<Vec<String>> {
     if !line.contains("background_tasks_changed") {
         return None;
     }
     let ev = serde_json::from_str::<Value>(line).ok()?;
-    (ev["subtype"] == "background_tasks_changed")
-        .then(|| ev["tasks"].as_array().map_or(0, Vec::len))
+    (ev["subtype"] == "background_tasks_changed").then(|| {
+        ev["tasks"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|t| {
+                t["description"]
+                    .as_str()
+                    .unwrap_or("A background job")
+                    .to_owned()
+            })
+            .collect()
+    })
 }
 
 /// The name every turn of the seat goes by, as Claude Code titles its
@@ -615,8 +630,11 @@ impl Model for Claude {
             let mut background = 0;
             for line in BufReader::new(stdout).lines() {
                 let line = line?;
-                if let Some(n) = background_tasks(&line) {
-                    background = n;
+                if let Some(names) = background_tasks(&line) {
+                    background = names.len();
+                    if let Some(show) = &steps {
+                        show(Step::Jobs { names });
+                    }
                 }
                 if line.contains("control_") {
                     let ev = serde_json::from_str::<Value>(&line).unwrap_or_default();
@@ -1089,8 +1107,13 @@ mod tests {
         let changed = |tasks: &str| {
             format!(r#"{{"type":"system","subtype":"background_tasks_changed","tasks":{tasks}}}"#)
         };
-        assert_eq!(background_tasks(&changed(r#"[{"task_id":"b1"}]"#)), Some(1));
-        assert_eq!(background_tasks(&changed("[]")), Some(0));
+        assert_eq!(
+            background_tasks(&changed(
+                r#"[{"task_id":"b1","description":"Nap five seconds"}]"#
+            )),
+            Some(vec!["Nap five seconds".to_owned()])
+        );
+        assert_eq!(background_tasks(&changed("[]")), Some(vec![]));
         assert_eq!(background_tasks(r#"{"type":"result","result":"hi"}"#), None);
     }
 }

@@ -143,6 +143,7 @@ pub fn step(state: &Path, name: &str, step: &crate::model::Step) {
         Step::Answer { text } => ("talk", text.clone()),
         Step::Text { .. }
         | Step::Thinking { .. }
+        | Step::Jobs { .. }
         | Step::Agent { .. }
         | Step::Done { .. }
         | Step::Inner { .. } => return,

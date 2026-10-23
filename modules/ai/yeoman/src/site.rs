@@ -376,6 +376,24 @@ impl Web {
             before.push_str(text);
             return;
         }
+        // Only the latest count of background jobs is true.
+        if let Shown::Step {
+            step: Step::Jobs { .. },
+            agent: None,
+        } = s
+        {
+            t.shown.retain(|x| {
+                !matches!(
+                    x,
+                    Shown::Step {
+                        step: Step::Jobs { .. },
+                        ..
+                    }
+                )
+            });
+            t.shown.push(s.clone());
+            return;
+        }
         if t.shown.len() < TURN_KEPT {
             t.shown.push(s.clone());
         }

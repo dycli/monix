@@ -687,6 +687,19 @@ function Thought({ text }: { text: string }) {
   );
 }
 
+// The turn's background jobs, named as Claude Code names them, while they
+// run on after the answer or beside the work.
+function Jobs({ names }: { names: string[] }) {
+  return (
+    <div className="my-1.5 flex items-center gap-2 text-[13px] text-soft" aria-label="Running in the background">
+      <span className="size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-hair border-t-accent" />
+      <span className="min-w-0 truncate">
+        <span className="thinking">Working</span> · {names.length === 1 ? names[0] : `${names.length} jobs: ${names.join(", ")}`}
+      </span>
+    </div>
+  );
+}
+
 // A turn under way with nothing streaming yet: the word alone, pulsing.
 function Pondering() {
   return (
@@ -897,6 +910,7 @@ type Reply = (id: string, yes: boolean, answers?: Answers) => Promise<void>;
 type ThreadProps = {
   messages: Msg[];
   typing: boolean;
+  jobs: string[];
   send: Send;
   stop: () => Promise<void>;
   cards: Card[];
@@ -914,7 +928,7 @@ type ThreadProps = {
   past: Part[];
 };
 
-function Thread({ messages, typing, send, stop, cards, decide, asks, reply, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past }: ThreadProps) {
+function Thread({ messages, typing, jobs, send, stop, cards, decide, asks, reply, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past }: ThreadProps) {
   usePinchText();
   const usage = useUsage(typing);
   const [finding, setFinding] = useState(false);
@@ -1083,7 +1097,10 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
                 message.role === "user" ? <UserMessage /> : message.role === "assistant" ? <AssistantMessage /> : <Note />
               }
             </ThreadPrimitive.Messages>
-            {working && !live?.thinking?.trim() && !live?.text.trim() && <Pondering />}
+            {/* A finished answer with the turn still open is the model
+                waiting on a background job, not thinking. */}
+            {working && (live ? !live.thinking?.trim() && !live.text.trim() : messages.at(-1)?.role === "user") && <Pondering />}
+            {typing && jobs.length > 0 && <Jobs names={jobs} />}
           </main>
           <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-20 mt-auto bg-[linear-gradient(transparent,var(--paper)_14px)] px-5 pt-[18px] pb-[max(14px,env(safe-area-inset-bottom))] max-sm:px-3.5 max-sm:pt-3 max-sm:pb-[max(8px,env(safe-area-inset-bottom))]">
             <div ref={dock} className="relative mx-auto w-[min(740px,100%)]">
