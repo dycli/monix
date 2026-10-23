@@ -259,6 +259,8 @@ pub enum Step {
     },
     /// More of the words being written, as they come.
     Text { text: String },
+    /// More of the model's thinking, summarized by the API, as it comes.
+    Thinking { text: String },
     /// A subagent's or the seat's whole answer to one message: a subagent
     /// keeps it in its log, the seat says it at once. Steered runs give one
     /// per message. Doors never see it.
@@ -370,6 +372,14 @@ pub fn steps(line: &str) -> Vec<Step> {
         {
             vec![Step::Text {
                 text: s(&ev["event"]["delta"]["text"]),
+            }]
+        }
+        Some("stream_event")
+            if ev["event"]["type"] == "content_block_delta"
+                && ev["event"]["delta"]["type"] == "thinking_delta" =>
+        {
+            vec![Step::Thinking {
+                text: s(&ev["event"]["delta"]["thinking"]),
             }]
         }
         Some("assistant") => parts
@@ -528,7 +538,13 @@ impl Model for Claude {
             cmd.args(["--effort", effort]);
         }
         if run.steps.is_some() {
-            cmd.arg("--include-partial-messages");
+            // The CLI omits thinking unless asked; summarized, the page
+            // shows it as Paseo does. The flag is hidden in `--help`.
+            cmd.args([
+                "--include-partial-messages",
+                "--thinking-display",
+                "summarized",
+            ]);
         }
         if let Some((file, servers)) = &self.mcp {
             let allowed: Vec<String> = servers.iter().map(|s| format!("mcp__{s}")).collect();
@@ -1024,6 +1040,13 @@ mod tests {
         }
         let delta = r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}}"#;
         assert_eq!(steps(delta), vec![Step::Text { text: "Hel".into() }]);
+        let thought = r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"391 factors"}}}"#;
+        assert_eq!(
+            steps(thought),
+            vec![Step::Thinking {
+                text: "391 factors".into()
+            }]
+        );
         let start = r#"{"type":"stream_event","event":{"type":"content_block_start","index":0}}"#;
         assert!(steps(start).is_empty());
         assert!(steps(r#"{"type":"result","result":"hi"}"#).is_empty());

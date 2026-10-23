@@ -73,6 +73,7 @@ const convert = (m: Msg): ThreadMessageLike => ({
   content: [
     // Each call after the words that led to it, in the order they came.
     ...(m.tools ?? []).flatMap((t) => [
+      ...(t.thought ? [{ type: "reasoning" as const, text: t.thought }] : []),
       ...(t.before ? [{ type: "text" as const, text: t.before }] : []),
       {
         type: "tool-call" as const,
@@ -84,6 +85,7 @@ const convert = (m: Msg): ThreadMessageLike => ({
         artifact: t.agent || t.report ? { agent: t.agent, report: t.report } : undefined,
       },
     ]),
+    ...(m.thinking?.trim() ? [{ type: "reasoning" as const, text: m.thinking }] : []),
     ...(m.text && !quiet(m.text, m.live) ? [{ type: "text" as const, text: m.text }] : []),
     ...(m.picture ? [{ type: "image" as const, image: m.picture }] : []),
     ...(m.file ? [{ type: "file" as const, data: `api/file/${encodeURIComponent(m.file)}`, mimeType: "", filename: m.file }] : []),
@@ -96,7 +98,7 @@ const convert = (m: Msg): ThreadMessageLike => ({
     content: f.image ? [{ type: "image", image: f.image }] : [],
   })),
   createdAt: m.date,
-  metadata: { custom: { plain: m.plain ?? false, reaction: m.reaction ?? null, live: m.live ?? false } },
+  metadata: { custom: { plain: m.plain ?? false, reaction: m.reaction ?? null, live: m.live ?? false, musing: m.live && !m.text ? m.thinking : undefined } },
 });
 
 // Several assistants may share one host, so the server names the site
@@ -667,6 +669,33 @@ function Settings() {
   );
 }
 
+// The model's thinking, summarized, folded to one line as Paseo shows it:
+// "Thinking" pulses while it streams; a tap opens the words.
+function Thought({ text }: { text: string }) {
+  const { musing } = useCustom();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="my-1.5">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex items-center gap-1.5 text-[13px] text-soft hover:text-mid">
+        <span className={musing === text ? "thinking" : undefined}>{musing === text ? "Thinking" : "Thought"}</span>
+        <svg viewBox="0 0 16 16" className={`size-3 transition-transform ${open ? "rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+          <path d="M6 4l4 4-4 4" />
+        </svg>
+      </button>
+      {open && <div className="mt-1 border-l-2 border-hair pl-3 text-[14px] leading-relaxed whitespace-pre-wrap text-soft [overflow-wrap:anywhere]">{text.trim()}</div>}
+    </div>
+  );
+}
+
+// A turn under way with nothing streaming yet: the word alone, pulsing.
+function Pondering() {
+  return (
+    <div className="my-1.5 text-[13px] text-soft" aria-label="Thinking">
+      <span className="thinking">Thinking</span>
+    </div>
+  );
+}
+
 function Dots() {
   return (
     <div className="flex h-6 items-center gap-1" aria-label="Thinking">
@@ -898,9 +927,10 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
   const [agent, setAgent] = useState<{ call: string; agent?: string; title?: string }>();
   const agents = useMemo<Agents>(() => ({ tasks, open: (call, agent, title) => setAgent({ call, agent, title }) }), [tasks]);
   const leave = useRef<number>(undefined);
-  // The dots show for as long as the turn runs, as Claude Code's spinner
-  // does, so a pause mid-turn doesn't look finished; a running call spins
-  // in its stack instead, and a question waiting on the person isn't work.
+  // "Thinking" shows whenever the turn runs with nothing streaming, as
+  // Claude Code's spinner does, so a pause mid-turn doesn't look finished;
+  // streamed thinking shows as its own row, a running call spins in its
+  // stack, and a question waiting on the person isn't work.
   const live = messages.at(-1)?.live ? messages.at(-1) : undefined;
   const running = !!live?.tools?.some((t) => t.result === undefined && !t.error);
   const working = typing && !asks.length && !running;
@@ -1053,7 +1083,7 @@ function Thread({ messages, typing, send, stop, cards, decide, asks, reply, task
                 message.role === "user" ? <UserMessage /> : message.role === "assistant" ? <AssistantMessage /> : <Note />
               }
             </ThreadPrimitive.Messages>
-            {working && <Dots />}
+            {working && !live?.thinking?.trim() && !live?.text.trim() && <Pondering />}
           </main>
           <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-20 mt-auto bg-[linear-gradient(transparent,var(--paper)_14px)] px-5 pt-[18px] pb-[max(14px,env(safe-area-inset-bottom))] max-sm:px-3.5 max-sm:pt-3 max-sm:pb-[max(8px,env(safe-area-inset-bottom))]">
             <div ref={dock} className="relative mx-auto w-[min(740px,100%)]">
@@ -1218,7 +1248,7 @@ function Trailing({ typing, stop, cardOpen, close, call }: { typing: boolean; st
 }
 
 function useCustom() {
-  return useAuiState((s) => s.message.metadata.custom) as { plain: boolean; reaction: string | null; live: boolean };
+  return useAuiState((s) => s.message.metadata.custom) as { plain: boolean; reaction: string | null; live: boolean; musing?: string };
 }
 
 function Reaction() {
@@ -1367,6 +1397,8 @@ function AssistantMessage() {
                   return <ToolStack indices={part.indices} />;
                 case "text":
                   return <Text />;
+                case "reasoning":
+                  return <Thought text={(part as { text: string }).text} />;
                 case "tool-call":
                   return <Tool {...(part as unknown as ToolCallMessagePartProps)} />;
                 case "image":

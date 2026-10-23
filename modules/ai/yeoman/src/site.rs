@@ -362,6 +362,20 @@ impl Web {
             before.push_str(text);
             return;
         }
+        if let (
+            Shown::Step {
+                step: Step::Thinking { text },
+                agent: None,
+            },
+            Some(Shown::Step {
+                step: Step::Thinking { text: before },
+                agent: None,
+            }),
+        ) = (s, t.shown.last_mut())
+        {
+            before.push_str(text);
+            return;
+        }
         if t.shown.len() < TURN_KEPT {
             t.shown.push(s.clone());
         }

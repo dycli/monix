@@ -263,6 +263,16 @@ html {
 }
 
 /* A call done folds up into its stack's line, which gives a small nod. */
+/* The word "Thinking" while the model thinks: a slow fade, as Paseo's. */
+.thinking {
+  animation: fade 1.6s ease-in-out infinite;
+}
+@keyframes fade {
+  50% {
+    opacity: 0.35;
+  }
+}
+
 @keyframes absorb {
   from {
     opacity: 0.4;
@@ -354,6 +364,7 @@ html {
 @media (prefers-reduced-motion: reduce) {
   .rise,
   .absorb,
+  .thinking,
   .writing > :last-child::after,
   .writing > div > :last-child::after {
     animation: none;

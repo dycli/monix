@@ -23,11 +23,13 @@ export type Msg = {
   tools?: Tool[];
   /** Still working: tool calls go here until the answer arrives. */
   live?: boolean;
+  /** The model's thinking since its last call, summarized, as it streams. */
+  thinking?: string;
 };
 
 /** A tool call: `before` holds the words the model said on its way to it,
  * which the page shows above it, as a terminal does. */
-export type Tool = { id: string; name: string; input: unknown; result?: string; error?: boolean; before?: string; agent?: string; report?: string };
+export type Tool = { id: string; name: string; input: unknown; result?: string; error?: boolean; before?: string; thought?: string; agent?: string; report?: string };
 
 /** A subagent on its own: its name, its task, and its work so far, words
  * and calls in order. One the seat's Agent call started goes by the call's
@@ -41,6 +43,7 @@ type Step =
   | { type: "call"; id: string; name: string; input: unknown }
   | { type: "result"; id: string; text: string; error: boolean }
   | { type: "text"; text: string }
+  | { type: "thinking"; text: string }
   | { type: "done"; id: string; report: string };
 
 /** An act waiting for the person's word: today only a mail draft. */
@@ -589,6 +592,10 @@ function step(ms: Msg[], s: Step): Msg[] {
     if (last?.live) return [...ms.slice(0, -1), { ...last, text: last.text + s.text }];
     return [...ms, { id: crypto.randomUUID(), role: "assistant", text: s.text, live: true, date: new Date() }];
   }
+  if (s.type === "thinking") {
+    if (last?.live) return [...ms.slice(0, -1), { ...last, thinking: (last.thinking ?? "") + s.text }];
+    return [...ms, { id: crypto.randomUUID(), role: "assistant", text: "", thinking: s.text, live: true, date: new Date() }];
+  }
   if (s.type === "result" || s.type === "done") {
     const done = (t: Tool) =>
       t.id !== s.id ? t : s.type === "done" ? (!s.report || POINTER.test(s.report) ? t : { ...t, report: s.report }) : { ...t, result: s.text, error: s.error, agent: agentOf(s.text) ?? t.agent };
@@ -599,7 +606,8 @@ function step(ms: Msg[], s: Step): Msg[] {
   // comes whole in `said`; they stay above the call.
   if (last?.live) {
     if (last.text.trim()) tool.before = last.text;
-    return [...ms.slice(0, -1), { ...last, text: "", tools: [...(last.tools ?? []), tool] }];
+    if (last.thinking?.trim()) tool.thought = last.thinking;
+    return [...ms.slice(0, -1), { ...last, text: "", thinking: undefined, tools: [...(last.tools ?? []), tool] }];
   }
   return [...ms, { id: `w-${s.id}`, role: "assistant", text: "", tools: [tool], live: true, date: new Date() }];
 }
