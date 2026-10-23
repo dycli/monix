@@ -204,10 +204,24 @@
           journalctl --follow --output=cat --unit="$unit" --since="$since" &
           follow=$!
           trap 'kill $follow 2>/dev/null' EXIT
-          status=0
-          "''${start[@]}" "$unit" || status=$?
+          # Queue the deploy and watch it here rather than letting systemctl
+          # wait on it: under sudo the waiting systemctl holds the terminal in
+          # sudo's raw pty, so the journal's lines lose their carriage returns
+          # and staircase, and the switch restarts dbus under a waiting
+          # systemctl ("Connection reset by peer") though the deploy goes on.
+          before=$(systemctl show -P InvocationID "$unit")
+          "''${start[@]}" --no-block "$unit"
+          # Done once a new run of the unit has ended. A failed query (dbus
+          # restarting mid-switch) just means ask again.
+          until
+            id=$(systemctl show -P InvocationID "$unit" 2>/dev/null) &&
+              state=$(systemctl show -P ActiveState "$unit" 2>/dev/null) &&
+              [[ $id != "$before" && ($state == inactive || $state == failed) ]]
+          do
+            sleep 1
+          done
           sleep 1
-          exit "$status"
+          [[ $(systemctl show -P Result "$unit") == success ]]
         '';
       };
     in
