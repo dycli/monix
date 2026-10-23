@@ -680,7 +680,9 @@ impl Tools {
     )]
     fn list_add(
         &self,
-        Parameters(Items { list, items, with, .. }): Parameters<Items>,
+        Parameters(Items {
+            list, items, with, ..
+        }): Parameters<Items>,
     ) -> Result<String, String> {
         let shared = !with.is_empty();
         if shared {
