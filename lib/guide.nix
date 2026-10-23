@@ -63,6 +63,10 @@
       libraries, reading their docs and types. Add one when it removes more
       complexity than it brings.
     - Comments explain why. A workaround carries a comment naming what removes it.
+    - Before adding complexity for a speculative or vanishingly unlikely race or
+      security edge case, explain the concrete failure mode, likelihood, and
+      complexity cost to the user and get their buy-in. Do not silently expand
+      scope for theoretical robustness.
 
     ## Writing
 
