@@ -6,9 +6,10 @@
 # Each night the backup pauses only Immich, dumps its PostgreSQL database,
 # takes read-only Btrfs snapshots of the SSD and of the OS subvolume (for
 # the state still on the OS disk: Matrix, Home Assistant, Minecraft,
-# Prowlarr, Seerr, the assistants) and sends both to the encrypted Restic
-# repository on the 8-TB HDD. A backup counts only once its own restore
-# checks pass; Sunday maintenance prunes and reads back 5% of the data.
+# Prowlarr, Seerr, the assistants, KeePass) and sends both to the
+# encrypted Restic repository on the 8-TB HDD. A backup counts only once
+# its own restore checks pass; Sunday maintenance prunes and reads back 5%
+# of the data.
 # The repository is inside this machine: it covers a dead SSD, not a dead
 # machine.
 { self, ... }:
@@ -40,6 +41,7 @@
         "var/lib/yeoman-pages"
         "var/lib/bridge"
         "var/lib/endgrain"
+        "var/lib/keepass"
         "srv/minecraft"
       ];
 
