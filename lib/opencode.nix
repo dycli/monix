@@ -30,13 +30,16 @@ in
   # ai-sdk loader requires a non-empty apiKey; llama-swap ignores it. The
   # shared permissions win over the caller's. Zen and Go share one key,
   # read from keyFile at each start so a rotated secret needs no
-  # activation (OpenCode 2 ignores auth.json).
+  # activation (OpenCode 2 ignores auth.json). DeepSeek and abliteration.ai
+  # read their own key files the same way.
   config =
     {
       name,
       baseURL,
       models,
       keyFile,
+      deepseekKeyFile,
+      abliterationKeyFile,
       extraMcp ? { },
       permission ? { },
       agent ? { },
@@ -57,6 +60,17 @@ in
         };
         opencode.options.apiKey = "{file:${keyFile}}";
         opencode-go.options.apiKey = "{file:${keyFile}}";
+        deepseek.options.apiKey = "{file:${deepseekKeyFile}}";
+        # Not in OpenCode's catalog, so declared in full.
+        abliteration = {
+          npm = "@ai-sdk/openai-compatible";
+          name = "abliteration.ai";
+          models.abliterated-model.name = "Abliterated";
+          options = {
+            baseURL = "https://api.abliteration.ai/v1";
+            apiKey = "{file:${abliterationKeyFile}}";
+          };
+        };
       };
     }
     // lib.attrsets.optionalAttrs (agent != { }) { inherit agent; };

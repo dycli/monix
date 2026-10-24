@@ -272,6 +272,8 @@ in
             baseURL = "http://127.0.0.1:${toString osConfig.inference.port}/v1";
             models = osConfig.inference.openCodeModels;
             keyFile = osConfig.secrets.opencode-key.path;
+            deepseekKeyFile = osConfig.secrets.deepseek-key.path;
+            abliterationKeyFile = osConfig.secrets.abliteration-key.path;
           }
         );
       };

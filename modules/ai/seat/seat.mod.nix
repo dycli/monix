@@ -188,6 +188,8 @@ in
             baseURL = "http://${topology.seatInferenceAddr}:${toString osConfig.inference.port}/v1";
             models = osConfig.inference.openCodeModels;
             keyFile = osConfig.secrets.opencode-key.path;
+            deepseekKeyFile = osConfig.secrets.deepseek-key.path;
+            abliterationKeyFile = osConfig.secrets.abliteration-key.path;
             extraMcp =
               browserServers
               |> mapAttrs (
