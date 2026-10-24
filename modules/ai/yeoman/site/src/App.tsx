@@ -314,9 +314,9 @@ function SplitButton() {
 }
 
 /** A round icon button for the header; `children` are the icon's paths. */
-function HeaderButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+function HeaderButton({ label, onClick, children, hot }: { label: string; onClick: () => void; children: React.ReactNode; hot?: boolean }) {
   return (
-    <button type="button" onClick={onClick} aria-label={label} title={label} className="grid size-9 place-items-center rounded-full text-mid hover:bg-hover hover:text-ink">
+    <button type="button" onClick={onClick} aria-label={label} title={label} className={`grid size-9 place-items-center rounded-full hover:bg-hover ${hot ? "text-red-600" : "text-mid hover:text-ink"}`}>
       <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
         {children}
       </svg>
@@ -956,12 +956,23 @@ function Thread({ messages, typing, jobs, send, stop, cards, decide, asks, reply
   const answer = [...messages].reverse().find((m) => m.role !== "user");
   const running = !!answer?.live && !!answer.tools?.some((t) => t.result === undefined && !t.error);
   const working = typing && !asks.length && !running;
-  // The screen shows while the browser is open: from the moment the turn or
-  // an agent drives it until the yeoman or the person closes it. On a wide
-  // screen it takes the right side, at a size worth reading.
+  // The screen shows only when the person opens it from the header, whose
+  // computer turns red while the turn or an agent drives the browser (an
+  // open but idle browser leaves it grey). On a wide screen it takes the
+  // right side, at a size worth reading.
   const last = messages.at(-1);
   const driving = (!!last?.live && drives(last.tools)) || tasks.some((t) => drives(t.tools));
-  const watching = !!screen && (browser || driving);
+  const [looking, setLooking] = useState(false);
+  const watching = !!screen && looking;
+  const look = () => {
+    if (looking) return setLooking(false);
+    setLooking(true);
+    if (!browser) void openBrowser();
+  };
+  const closeScreen = async () => {
+    setLooking(false);
+    await closeBrowser();
+  };
   const wide = useWide();
 
   // The deck fills the screen down to the top of what sits on the composer,
@@ -1088,7 +1099,7 @@ function Thread({ messages, typing, jobs, send, stop, cards, decide, asks, reply
               <path d="m20 20-3.5-3.5" />
             </HeaderButton>
             {screen && (
-              <HeaderButton label="Open the computer" onClick={() => void openBrowser()}>
+              <HeaderButton label={driving ? "The computer, in use" : "The computer"} onClick={look} hot={driving}>
                 <rect x="3" y="4" width="18" height="12" rx="2" />
                 <path d="M8 20h8M12 16v4" />
               </HeaderButton>
@@ -1117,7 +1128,7 @@ function Thread({ messages, typing, jobs, send, stop, cards, decide, asks, reply
             <div ref={dock} className="relative mx-auto w-[min(740px,100%)]">
               {/* What waits or works above the composer scrolls as one, so the talk stays in view. */}
               <div className="max-h-[min(66vh,720px)] overflow-y-auto pt-2.5 empty:hidden">
-                {screen && !wide && <Screen url={screen} shape={shape} on={watching} driving={driving} close={closeBrowser} />}
+                {screen && !wide && <Screen url={screen} shape={shape} on={watching} driving={driving} hide={() => setLooking(false)} close={closeScreen} />}
                 {asks.map((a) => (
                   <AskCard key={a.id} ask={a} reply={reply} />
                 ))}
@@ -1143,7 +1154,7 @@ function Thread({ messages, typing, jobs, send, stop, cards, decide, asks, reply
             </div>
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
-        {screen && wide && <Screen url={screen} shape={shape} on={watching} driving={driving} close={closeBrowser} pane />}
+        {screen && wide && <Screen url={screen} shape={shape} on={watching} driving={driving} hide={() => setLooking(false)} close={closeScreen} pane />}
         </div>
         {calling && (
           <Call
@@ -2795,18 +2806,13 @@ export function useWide() {
   return wide;
 }
 
-// The computer's screen, watched while its browser is open: noVNC's own
-// page, view only, so a stray tap does not fight the model. Take over opens
-// it with the keyboard, for a captcha or a sign-in only the person can do.
-// It opens by itself when the work turns to the computer and stays until
-// the browser closes; Close closes it, though not while the yeoman is at
-// it. Hidden, it stays a line to bring it back. As a pane it fills the
-// right of a wide window, top to bottom.
-function Screen({ url, shape = 16 / 9, on, driving, close, pane }: { url: string; shape?: number; on: boolean; driving: boolean; close: () => Promise<void>; pane?: boolean }) {
-  const [hidden, setHidden] = useState(false);
-  useEffect(() => {
-    if (on) setHidden(false);
-  }, [on]);
+// The computer's screen, opened from the header: noVNC's own page, view
+// only, so a stray tap does not fight the model. Take over opens it with the
+// keyboard, for a captcha or a sign-in only the person can do. Hide puts it
+// away, leaving the browser be; Close closes the browser too, though not
+// while the yeoman is at it. As a pane it fills the right of a wide window,
+// top to bottom.
+function Screen({ url, shape = 16 / 9, on, driving, hide, close, pane }: { url: string; shape?: number; on: boolean; driving: boolean; hide: () => void; close: () => Promise<void>; pane?: boolean }) {
   if (!on) return null;
   const sep = url.includes("?") ? "&" : "?";
   const bar = "flex h-8 items-center gap-1 px-1 text-[13px] text-mid";
@@ -2818,17 +2824,15 @@ function Screen({ url, shape = 16 / 9, on, driving, close, pane }: { url: string
     >
       <div className={`${bar} justify-between`}>
         <span className="flex min-w-0 items-center gap-2 truncate pl-2.5 font-medium text-ink/80">
-          <span className="size-2 animate-pulse rounded-full bg-accent" /> On the computer
+          <span className={`size-2 rounded-full ${driving ? "animate-pulse bg-red-600" : "bg-soft"}`} /> On the computer
         </span>
         <span className="flex">
           <a href={url} target="_blank" rel="noreferrer" className={link}>
             Take over
           </a>
-          {!pane && (
-            <button type="button" onClick={() => setHidden(!hidden)} className={link}>
-              {hidden ? "Show" : "Hide"}
-            </button>
-          )}
+          <button type="button" onClick={hide} className={link}>
+            Hide
+          </button>
           {!driving && (
             <button type="button" onClick={() => void close()} className={link}>
               Close
@@ -2836,17 +2840,15 @@ function Screen({ url, shape = 16 / 9, on, driving, close, pane }: { url: string
           )}
         </span>
       </div>
-      {!hidden && (
-        <iframe
-          src={`${url}${sep}view_only=1`}
-          title="The computer's screen"
-          className={`block w-full border-0 border-t border-hair bg-ink ${pane ? "min-h-0 flex-1" : ""}`}
-          // Inline, the frame spans the card in the screen's own shape, so
-          // on a phone noVNC scales it with no bands; only a window too
-          // short for that caps it, and noVNC letterboxes.
-          style={pane ? undefined : { aspectRatio: shape, maxHeight: "55vh" }}
-        />
-      )}
+      <iframe
+        src={`${url}${sep}view_only=1`}
+        title="The computer's screen"
+        className={`block w-full border-0 border-t border-hair bg-ink ${pane ? "min-h-0 flex-1" : ""}`}
+        // Inline, the frame spans the card in the screen's own shape, so
+        // on a phone noVNC scales it with no bands; only a window too
+        // short for that caps it, and noVNC letterboxes.
+        style={pane ? undefined : { aspectRatio: shape, maxHeight: "55vh" }}
+      />
     </section>
   );
 }
