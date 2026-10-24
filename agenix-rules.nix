@@ -39,6 +39,13 @@ in
     earth
   ]
   ++ admin;
+  # abliteration.ai API key, raw (ak_...), for OpenCode's abliteration provider.
+  "secrets/abliteration-key.age".publicKeys = [
+    water
+    fire
+    earth
+  ]
+  ++ admin;
   "hosts/water/secrets/matrix-registration.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/immich-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
