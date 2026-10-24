@@ -271,6 +271,7 @@ in
             name = "${osConfig.networking.hostName} local inference";
             baseURL = "http://127.0.0.1:${toString osConfig.inference.port}/v1";
             models = osConfig.inference.openCodeModels;
+            keyFile = osConfig.secrets.opencode-key.path;
           }
         );
       };

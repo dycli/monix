@@ -187,6 +187,7 @@ in
             name = "water local inference";
             baseURL = "http://${topology.seatInferenceAddr}:${toString osConfig.inference.port}/v1";
             models = osConfig.inference.openCodeModels;
+            keyFile = osConfig.secrets.opencode-key.path;
             extraMcp =
               browserServers
               |> mapAttrs (

@@ -28,12 +28,15 @@ in
 
   # An opencode.json whose `local` provider is a llama-swap endpoint. The
   # ai-sdk loader requires a non-empty apiKey; llama-swap ignores it. The
-  # shared permissions win over the caller's.
+  # shared permissions win over the caller's. Zen and Go share one key,
+  # read from keyFile at each start so a rotated secret needs no
+  # activation (OpenCode 2 ignores auth.json).
   config =
     {
       name,
       baseURL,
       models,
+      keyFile,
       extraMcp ? { },
       permission ? { },
       agent ? { },
@@ -43,13 +46,17 @@ in
       inherit lsp;
       mcp = mcp // extraMcp;
       permission = permission // permissions;
-      provider.local = {
-        npm = "@ai-sdk/openai-compatible";
-        inherit name models;
-        options = {
-          inherit baseURL;
-          apiKey = "local";
+      provider = {
+        local = {
+          npm = "@ai-sdk/openai-compatible";
+          inherit name models;
+          options = {
+            inherit baseURL;
+            apiKey = "local";
+          };
         };
+        opencode.options.apiKey = "{file:${keyFile}}";
+        opencode-go.options.apiKey = "{file:${keyFile}}";
       };
     }
     // lib.attrsets.optionalAttrs (agent != { }) { inherit agent; };
