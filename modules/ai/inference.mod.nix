@@ -113,11 +113,6 @@ in
                   default = [ ];
                   description = "extra model ids that resolve to this entry";
                 };
-                tools = mkOption {
-                  type = types.bool;
-                  default = true;
-                  description = "whether the model can call tools; OpenCode sends none when false";
-                };
               };
             }
           );
@@ -140,7 +135,7 @@ in
               id:
               nameValuePair id {
                 name = id;
-                tool_call = m.tools;
+                tool_call = true;
                 modalities = {
                   input = singleton "text";
                   output = singleton "text";
@@ -257,82 +252,24 @@ in
         # (registry.ollama.ai/v2/orcarouter/qwen3.8-27b-uncensored/blobs/…),
         # which serves the same GGUF without Hugging Face's sign-in gate.
         "qwen3.8-27b-uncensored-q4-k-m" = qwen38 147456 "Qwen3.8-27B-Uncensored-Q4_K_M.gguf";
-        # talkie: a 13B trained only on pre-1931 text. zakarth's GGUF rescales
-        # two layer-14 ffn_down channels (bit-exact) whose activations overflow
-        # fp16 in llama.cpp's Vulkan matmul (ggml-org/llama.cpp#23953) and
-        # turn the plain GGUFs to garbage; move to an unmodified GGUF once
-        # Vulkan keeps those activations in bf16. Trained at 2048 context.
-        "talkie-1930-13b-q8-0" = {
-          file = "talkie-1930-13b-it.Q8_0.gguf";
-          context = 2048;
-          output = 1024;
-          flags = baseFlags;
-          aliases = [ "talkie" ];
-          tools = false;
-        };
       };
     };
 
   # The OpenCode client view of this host's catalog.
   flake.homeModules.inference-client =
-    {
-      lib,
-      osConfig,
-      pkgs,
-      ...
-    }:
+    { lib, osConfig, ... }:
     let
       inherit (lib.ship) opencode;
-      baseURL = "http://127.0.0.1:${toString osConfig.inference.port}/v1";
-      talkie = osConfig.inference.models."talkie-1930-13b-q8-0" or null;
     in
     {
       home.sessionVariables = opencode.environment;
-
-      # `talkie` opens OpenCode on the 1930 model alone. Its 2048-token window
-      # can't hold OpenCode's coding prompt, tool schemas or the global
-      # AGENTS.md (~1k tokens), so it gets its own config home holding only a
-      # one-line prompt, and runs outside any repository so no project
-      # AGENTS.md loads either.
-      home.file.".local/state/talkie/opencode/opencode.jsonc" = lib.mkIf (talkie != null) {
-        text = lib.strings.toJSON {
-          "$schema" = "https://opencode.ai/config.json";
-          autoupdate = false;
-          model = "local/talkie";
-          small_model = "local/talkie";
-          default_agent = "talkie";
-          permission."*" = "deny";
-          provider.local = {
-            npm = "@ai-sdk/openai-compatible";
-            name = "talkie";
-            models.talkie = osConfig.inference.openCodeModels.talkie;
-            options = {
-              inherit baseURL;
-              apiKey = "local";
-            };
-          };
-          agent.talkie = {
-            mode = "primary";
-            model = "local/talkie";
-            prompt = "You are talkie, a conversationalist who knows only what was written before 1931. Answer plainly and briefly.";
-          };
-        };
-      };
-      home.packages = lib.optional (talkie != null) (
-        pkgs.writeShellScriptBin "talkie" ''
-          export XDG_CONFIG_HOME="$HOME/.local/state/talkie"
-          export OPENCODE_DISABLE_CLAUDE_CODE=1
-          cd "$XDG_CONFIG_HOME"
-          exec opencode "$@"
-        ''
-      );
 
       home.file.".config/opencode/opencode.jsonc" = {
         force = true;
         text = lib.strings.toJSON (
           opencode.config {
             name = "${osConfig.networking.hostName} local inference";
-            inherit baseURL;
+            baseURL = "http://127.0.0.1:${toString osConfig.inference.port}/v1";
             models = osConfig.inference.openCodeModels;
           }
         );
