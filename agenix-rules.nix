@@ -39,6 +39,13 @@ in
     earth
   ]
   ++ admin;
+  # DeepSeek platform API key, raw (sk-...), for OpenCode's deepseek provider.
+  "secrets/deepseek-key.age".publicKeys = [
+    water
+    fire
+    earth
+  ]
+  ++ admin;
   # abliteration.ai API key, raw (ak_...), for OpenCode's abliteration provider.
   "secrets/abliteration-key.age".publicKeys = [
     water
