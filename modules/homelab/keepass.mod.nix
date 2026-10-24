@@ -1,4 +1,4 @@
-# KeePass sync at https://keepass.<domain>: a WebDAV share Gab's password
+# KeePass sync at https://pass.<domain>: a WebDAV share Gab's password
 # app (Strongbox, KeePassium) opens her .kdbx from. Tailnet-only like every
 # ship-proxy name, behind one login. The database is encrypted by her own
 # master password, so the login only keeps the file to the household. The
@@ -32,7 +32,7 @@
       };
       systemd.services.nginx.serviceConfig.ReadWritePaths = singleton dir;
 
-      services.nginx.virtualHosts."keepass.${domain}" = {
+      services.nginx.virtualHosts."pass.${domain}" = {
         useACMEHost = domain;
         forceSSL = true;
         locations."/" = {
