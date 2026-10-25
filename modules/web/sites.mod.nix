@@ -32,10 +32,11 @@
         # su.is keeps its small projects under /labs/; the old top-level
         # paths send visitors there.
         # Its files keep fixed names across deploys, so browsers must
-        # revalidate every load (a cheap 304) or they run a stale lab.
+        # revalidate every load (a cheap 304) or they run a stale lab; a file
+        # asked for with ?v= is the exception (see $suis_cache below).
         "su.is" = {
           locations."~ ^/(endgrain|lifespan|liberi)(/|$)".return = "301 /labs$request_uri";
-          extraConfig = "add_header Cache-Control no-cache;";
+          extraConfig = "add_header Cache-Control $suis_cache;";
         };
         # lfish writes each file's page as <path>.html and content-hashes
         # everything under /_/.
@@ -53,6 +54,16 @@
           recommendedTlsSettings = true;
           recommendedGzipSettings = true;
           recommendedOptimisation = true;
+
+          # The labs' pages bump an asset's ?v= whenever the file changes, so
+          # a versioned URL never changes content and caches for a year, at
+          # Cloudflare's edge as well as in the browser.
+          appendHttpConfig = ''
+            map $arg_v $suis_cache {
+              "" no-cache;
+              default "public, max-age=31536000, immutable";
+            }
+          '';
 
           virtualHosts =
             genAttrs live (
