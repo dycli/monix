@@ -59,6 +59,20 @@ html {
   --dock: 0 1px 2px rgb(0 0 0 / 0.4), 0 -8px 28px rgb(0 0 0 / 0.45);
 }
 
+/* Pele's diagrams (plugins.ts) in the page's own ink and paper; it reads
+   these live, so a theme switch recolours drawn diagrams too. */
+:root {
+  --pele-bg: transparent;
+  --pele-fg: var(--ink);
+  --pele-muted: var(--mid);
+  --pele-line: var(--edge);
+  --pele-surface: var(--lift);
+  --pele-surface-alt: var(--block);
+  --pele-border: var(--frame);
+  --pele-accent: var(--accent);
+  --pele-font: var(--font-sans);
+}
+
 @theme inline {
   --color-ink: var(--ink);
   --color-mid: var(--mid);

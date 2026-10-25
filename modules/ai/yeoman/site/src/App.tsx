@@ -1378,19 +1378,19 @@ function EditMessage() {
   );
 }
 
-type Plugins = Pick<typeof import("./plugins"), "code" | "math">;
+type Plugins = Pick<typeof import("./plugins"), "code" | "math" | "mermaid">;
 let plugins: Plugins | undefined;
 let loading: Promise<Plugins> | undefined;
 // A code fence, or what may open math.
 const NEEDS = /```|\$|\\[([]/;
 
-/** The code and math plugins once loaded, which the first text needing them starts. */
+/** The code, math and diagram plugins once loaded, which the first text needing them starts. */
 function usePlugins(text: string) {
   const [, loaded] = useState<Plugins>();
   const needed = !plugins && NEEDS.test(text);
   useEffect(() => {
     if (!needed) return;
-    loading ??= import("./plugins").then(({ code, math }) => (plugins = { code, math }));
+    loading ??= import("./plugins").then(({ code, math, mermaid }) => (plugins = { code, math, mermaid }));
     loading.then(loaded, () => (loading = undefined));
   }, [needed]);
   return plugins;

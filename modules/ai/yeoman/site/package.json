@@ -12,6 +12,7 @@
     "@streamdown/code": "1.1.1",
     "@streamdown/math": "1.0.3",
     "katex": "0.19.0",
+    "pele": "1.10.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "streamdown": "2.7.0"

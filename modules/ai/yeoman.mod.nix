@@ -161,7 +161,7 @@
         pname = "yeoman-site";
         version = "0";
         src = ./yeoman/site;
-        npmDepsHash = "sha256-qFJ3CR/Duqw+eI8ZlEU5ok5LdKIFi+pjP3viqypBhxQ=";
+        npmDepsHash = "sha256-up5No3KEeil1Qw2s38eQR/FugCZFh/Bxs5Bg4C8qulc=";
         # rolldown and tsgo ship prebuilt Linux binaries.
         nativeBuildInputs = [
           pkgs.autoPatchelfHook
