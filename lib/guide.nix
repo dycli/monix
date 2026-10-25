@@ -68,6 +68,15 @@
       complexity cost to the user and get their buy-in. Do not silently expand
       scope for theoretical robustness.
 
+    ## Naming
+
+    Every name you choose (files, scripts, directories, functions, variables,
+    classes, commits, branches) uses precise professional vocabulary: the word
+    a 1972 IBM engineer would write in a specification. No slang, casual
+    shorthand, cute or clever names, or words borrowed from chat culture. A
+    script that deploys dashboards is `deploy_dashboards.sh`, not
+    `push_dashboards.sh`; the principle reaches past that one example.
+
     ## Writing
 
     Write like a sharp senior engineer: lead with the verdict and its main caveat,
