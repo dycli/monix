@@ -655,10 +655,13 @@ function step(ms: Msg[], s: Step): Msg[] {
 const STEERED = /^\(sent while you were working\) /;
 
 // A seat answers a background job's news that tells the person nothing new
-// with this alone (OpenClaw's convention); the yeoman never sends it, and
-// the page hides it, and while it streams in, its start.
-const QUIET = "NO_REPLY";
-export const quiet = (text: string, live = false) => (live ? QUIET.startsWith(text.trim()) : text.trim() === QUIET);
+// with NO_REPLY alone (OpenClaw's convention), and a routine, watch or
+// check-in with nothing to tell with "(nothing new)" (main.rs, QUIET); the
+// yeoman never sends either, and the page hides them, and while one streams
+// in, its start.
+const QUIETS = ["NO_REPLY", "(nothing new)"];
+export const quiet = (text: string, live = false) =>
+  QUIETS.some((q) => (live ? text.trim() && q.startsWith(text.trim()) : text.trim() === q));
 
 // What a seat is told by its routines, watches, alerts and messages comes
 // as words from the person, framed by the yeoman (main.rs, `who`); the page
@@ -718,7 +721,13 @@ function fromHistory(said: Said[]): Msg[] {
       if (open) Object.assign(open, { result: m.text, agent: agentOf(m.text) });
       continue;
     }
-    if (m.kind === "talk" && quiet(m.text)) continue;
+    if (m.kind === "talk" && quiet(m.text)) {
+      // A routine that found nothing leaves no trace: not its work, nor the
+      // note that started it.
+      if (turn?.tools && !turn.text.trim()) out.pop();
+      if (out.at(-1)?.role === "system") out.pop();
+      continue;
+    }
     // The answer after the calls, once.
     if (m.kind === "talk" && turn?.tools && !turn.text && !SENT.test(m.text) && !DRAFT.test(m.text)) {
       Object.assign(turn, { text: m.text, date: new Date(m.date) });
