@@ -194,9 +194,10 @@
           computer = true;
           voice = "ara";
         };
-        # Bridge itself in the web chat, on trial beside paseo
+        # Bridge itself in the web chat, beside paseo
         # (/var/lib/bridge/raava.md).
         raava = {
+          name = "Bridge";
           person = "Dylan";
           # Sokka is Dylan's door: a message to Dylan goes there.
           door = false;

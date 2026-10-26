@@ -109,6 +109,12 @@ impl House {
             .agents
             .iter()
             .filter(|a| a.unit != self.me)
+            // A seat instance goes by the seat's name, listed once below.
+            .filter(|a| {
+                self.seat
+                    .as_ref()
+                    .is_none_or(|s| !s.eq_ignore_ascii_case(&a.name))
+            })
             .map(|a| format!("{} ({}'s)", a.name, a.person))
             .collect();
         v.extend(self.seat.clone());
@@ -279,14 +285,16 @@ mod tests {
         vec![
             a("sokka", "Sokka", "Dylan", true),
             a("suki", "Suki", "Gab", true),
-            a("raava", "Raava", "Dylan", false),
+            a("azula", "Azula", "Dylan", false),
+            // The seat in the web chat goes by the seat's name.
+            a("raava", "Bridge", "Dylan", false),
         ]
     }
 
     #[test]
     fn posts_only_to_whom_it_names() {
         let dir = env::temp_dir().join(format!("yeoman-house-{}", std::process::id()));
-        for u in ["sokka", "suki", "raava"] {
+        for u in ["sokka", "suki", "azula", "raava"] {
             fs::create_dir_all(dir.join("mail").join(u)).unwrap();
         }
         fs::create_dir_all(dir.join("seat/sokka")).unwrap();
@@ -309,11 +317,13 @@ mod tests {
         assert_eq!(h.post(&["gab".into()], "hi").unwrap(), ["Suki"]);
         // An assistant by its name, and several at once, each once.
         assert_eq!(
-            h.post(&["Raava".into(), "suki".into(), "Gab".into()], "hi")
+            h.post(&["Azula".into(), "suki".into(), "Gab".into()], "hi")
                 .unwrap(),
-            ["Raava", "Suki"]
+            ["Azula", "Suki"]
         );
-        assert_eq!((n("suki"), n("raava"), n("sokka")), (2, 1, 0));
+        assert_eq!((n("suki"), n("azula"), n("sokka")), (2, 1, 0));
+        // Bridge is listed once, and its name reaches the seat's inbox.
+        assert_eq!(h.roster().matches("Bridge").count(), 1);
         // Its own person's door is itself.
         assert!(h.post(&["Dylan".into()], "hi").is_err());
         // An unknown name sends nothing at all.
@@ -322,6 +332,7 @@ mod tests {
         // The seat by name; a note to it appends to its inbox.
         assert_eq!(h.post(&["bridge".into()], " done ").unwrap(), ["Bridge"]);
         h.post(&["Bridge".into()], "and this").unwrap();
+        assert_eq!(n("raava"), 0);
         let inbox = fs::read_to_string(dir.join("seat/inbox")).unwrap();
         assert!(inbox.contains(" from Sokka (Dylan's assistant)\ndone\n\n## "));
         assert!(inbox.ends_with("and this\n\n"));

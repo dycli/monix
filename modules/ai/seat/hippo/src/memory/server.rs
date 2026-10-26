@@ -1057,17 +1057,17 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("hippo-post-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let mut store = Store::open(&dir, true).unwrap();
-        post(&mut store, "Raava", Kind::Talk, "Reminder: stretch").unwrap();
+        post(&mut store, "Bridge", Kind::Talk, "Reminder: stretch").unwrap();
         post(&mut store, "Other", Kind::Talk, "elsewhere").unwrap();
-        post(&mut store, "Raava", Kind::Note, "second").unwrap();
-        let out = tail(&store, 10, Some("Raava")).unwrap();
+        post(&mut store, "Bridge", Kind::Note, "second").unwrap();
+        let out = tail(&store, 10, Some("Bridge")).unwrap();
         let lines: Vec<&str> = out.lines().collect();
         assert_eq!(lines.len(), 2);
         assert!(lines[0].contains("Reminder: stretch") && lines[1].contains("second"));
         // Both land after a reload, under one registered chat.
         let reopened = Store::open(&dir, false).unwrap();
         assert_eq!(
-            tail(&reopened, 10, Some("Raava")).unwrap().lines().count(),
+            tail(&reopened, 10, Some("Bridge")).unwrap().lines().count(),
             2
         );
         let _ = fs::remove_dir_all(&dir);
@@ -1078,22 +1078,22 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("hippo-late-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let mut store = Store::open(&dir, true).unwrap();
-        post(&mut store, "Raava", Kind::Talk, "the reminder, later").unwrap();
+        post(&mut store, "Bridge", Kind::Talk, "the reminder, later").unwrap();
         // The turn before it, stored only now as its transcript is read.
         store
             .append(vec![Draft {
                 kind: Kind::User,
-                chat: Some("raava".into()),
+                chat: Some("bridge".into()),
                 text: "the turn, earlier".into(),
                 date: Local::now() - chrono::Duration::minutes(5),
                 src: Some(crate::memory::store::Src {
                     h: POSTED.into(),
-                    s: "Raava".into(),
+                    s: "Bridge".into(),
                     e: "late".into(),
                 }),
             }])
             .unwrap();
-        let out = tail(&store, 10, Some("Raava")).unwrap();
+        let out = tail(&store, 10, Some("Bridge")).unwrap();
         let lines: Vec<&str> = out.lines().collect();
         assert!(lines[0].contains("the turn, earlier") && lines[1].contains("the reminder, later"));
         let _ = fs::remove_dir_all(&dir);
@@ -1164,9 +1164,9 @@ mod tests {
             first: String::new(),
         };
         // Two turns of the seat, each its own session, around another chat.
-        store.register(chat("t1", "Raava")).unwrap();
+        store.register(chat("t1", "Bridge")).unwrap();
         store.register(chat("other", "Fix hippo")).unwrap();
-        store.register(chat("t2", "Raava")).unwrap();
+        store.register(chat("t2", "Bridge")).unwrap();
         let order = ["t1", "other", "t1", "other", "t2", "other", "t2"];
         store
             .append(order.iter().enumerate().map(|(k, s)| msg(k, s)).collect())
@@ -1182,7 +1182,7 @@ mod tests {
                 .collect()
         };
         assert_eq!(
-            texts(tail(&store, 3, Some("Raava")).unwrap()),
+            texts(tail(&store, 3, Some("Bridge")).unwrap()),
             ["t1 2", "t2 4", "t2 6"]
         );
         assert_eq!(texts(tail(&store, 2, None).unwrap()), ["other 5", "t2 6"]);

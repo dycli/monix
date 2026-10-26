@@ -94,8 +94,8 @@ pub struct Draft {
     pub src: Option<Src>,
 }
 
-/// One registered chat, written once to `chats.jsonl` the first time a
-/// message of it is logged.
+/// One registered chat, written to `chats.jsonl` the first time a message
+/// of it is logged; a later line for the same chat replaces it.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChatRec {
     pub chat: String,
@@ -290,10 +290,10 @@ impl Store {
 
     fn load(&mut self) -> Result<(), String> {
         let mut torn = Vec::new();
+        // A later line for a chat replaces its record: how a chat is
+        // retitled when its assistant is renamed.
         read_jsonl::<ChatRec>(&self.dir.join("chats.jsonl"), &mut torn, |c, _, _| {
-            self.chats
-                .entry(chat_key(&c.harness, &c.session))
-                .or_insert(c);
+            self.chats.insert(chat_key(&c.harness, &c.session), c);
         })?;
         self.days = day_files(&self.dir.join("main"))?;
         for (f, day) in self.days.clone().into_iter().enumerate() {

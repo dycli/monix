@@ -465,7 +465,7 @@
             # Bridge runs it, with the seat's login, rules, memory and
             # privileges, as paseo does. hippo's watcher keeps its turns.
             ${n} = {
-              description = "${i.name}, Bridge in ${i.person}'s web chat";
+              description = "Bridge in ${i.person}'s web chat (${i.name})";
               wantedBy = singleton "multi-user.target";
               after = singleton "hippo.service";
               wants = singleton "hippo.service";
@@ -1099,8 +1099,11 @@
             message = "yeoman: a person has one door at most.";
           }
           {
+            # A seat instance is Bridge itself, so it alone may bear the name;
+            # the household sends notes for Bridge to the seat's inbox.
             assertion = lib.lists.allUnique (
-              [ "bridge" ] ++ mapAttrsToList (_: i: lib.strings.toLower i.name) cfg.instances
+              [ "bridge" ]
+              ++ mapAttrsToList (_: i: lib.strings.toLower i.name) (filterAttrs (_: i: !i.seat) cfg.instances)
             );
             message = "yeoman: assistants need different names, none of them Bridge.";
           }

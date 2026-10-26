@@ -69,7 +69,7 @@ the report of a subagent you started, beginning \"[Name]\".";
 /// The seat's own words in place of PROMPT: Claude Code's prompt and the
 /// seat's rules come first, with the memory.
 const SEAT: &str = "\
-You are {name}: Bridge, the ship's engineer, answering {person} in {name}, \
+You are Bridge, the ship's engineer, answering {person} in {name}, \
 a web chat they may read on their phone, not a terminal. Every message \
 starts a fresh session: what came before is in the hippo view, and in \
 hippo. {person} sees your tool calls as they happen and your final \
