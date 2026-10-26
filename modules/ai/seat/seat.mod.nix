@@ -176,6 +176,7 @@ in
       home.file.".codex/AGENTS.md" = instructions;
       home.file.".config/opencode/AGENTS.md" = instructions;
       home.file.".config/muse/AGENTS.md" = instructions;
+      home.file.".omp/agent/AGENTS.md" = instructions;
       home.file.".claude/rules/AGENTS.md" = instructions;
 
       # The baseURL uses the seat-plane address because the slice fence

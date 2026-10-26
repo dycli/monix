@@ -123,6 +123,12 @@
         installPhase = "install -D $src $out/bin/muse";
         meta.mainProgram = "muse";
       });
+      omp = inputs.omp.packages.${pkgs.stdenv.hostPlatform.system}.omp.overrideAttrs (_: {
+        # The upstream check runs after Nix has unlinked the build directory.
+        preInstallCheck = ''
+          cd "$TMPDIR"
+        '';
+      });
     in
     {
       home.packages = [
@@ -133,6 +139,7 @@
         pkgs.codex
         pkgs.gcc
         pkgs.opencode
+        omp
         pkgs.hugo
         # The codex plugin's hooks invoke node directly.
         pkgs.nodejs
