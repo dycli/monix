@@ -5,6 +5,7 @@
 //! cannot steer them anywhere else.
 
 use crate::book::{self, Book, Repeat, Shelf};
+use crate::cadence;
 use crate::calendar::{Calendar, Change, NewEvent};
 use crate::files::{self, Library};
 use crate::finance::{self, Finance, Ledger};
@@ -92,6 +93,20 @@ struct Remind {
     /// assistant, or a person, whose assistant passes it on).
     #[serde(default)]
     share_with: Vec<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct Cadence {
+    /// When quiet hours start, HH:MM.
+    quiet_from: Option<String>,
+    /// When they end, HH:MM; the morning brief comes then.
+    quiet_until: Option<String>,
+    /// Hours between check-ins.
+    every: Option<u32>,
+    /// Most check-ins passed on in a day.
+    most: Option<u32>,
+    /// Briefs and check-ins on or off; quiet hours hold either way.
+    on: Option<bool>,
 }
 
 /// A reminder must lie ahead: one set in the past would fire at once. The
@@ -593,6 +608,29 @@ impl Tools {
             "Reminder {id} set for {}.",
             at.format("%a %Y-%m-%d %H:%M")
         ))
+    }
+
+    #[tool(
+        description = "Show or change when you speak unasked: quiet hours, when nothing waits but what's urgent; the morning brief as they end; check-ins every few hours after, said only when something needs them, at most `most` a day and the second only if your person has written since the first. Leave every field out to show it."
+    )]
+    fn cadence(&self, Parameters(c): Parameters<Cadence>) -> Result<String, String> {
+        let time = |t: &str| {
+            chrono::NaiveTime::parse_from_str(t, "%H:%M")
+                .map_err(|_| format!("a time must be HH:MM, not {t}"))
+        };
+        let quiet_from = c.quiet_from.as_deref().map(time).transpose()?;
+        let quiet_until = c.quiet_until.as_deref().map(time).transpose()?;
+        let s = self.book()?.change(|db| {
+            let mut s = cadence::setting(db)?;
+            s.quiet_from = quiet_from.unwrap_or(s.quiet_from);
+            s.quiet_until = quiet_until.unwrap_or(s.quiet_until);
+            s.every = c.every.unwrap_or(s.every);
+            s.most = c.most.unwrap_or(s.most);
+            s.on = c.on.unwrap_or(s.on);
+            cadence::set(db, &s)?;
+            Ok(s)
+        })?;
+        Ok(s.describe())
     }
 
     #[tool(description = "Show the reminders still to come.")]

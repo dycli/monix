@@ -77,6 +77,12 @@ impl House {
             .map(|_| self.dir.join("seat").join(&self.me))
     }
 
+    /// Whether this assistant is its person's door, the one that speaks
+    /// to them unasked.
+    pub fn is_door(&self) -> bool {
+        self.me().door
+    }
+
     /// This assistant's person.
     pub fn person(&self) -> &str {
         &self.me().person

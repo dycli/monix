@@ -5,6 +5,7 @@
 //! message and the answer go into hippo, so the next call remembers them.
 
 mod book;
+mod cadence;
 mod calendar;
 mod call;
 mod door;
@@ -781,6 +782,11 @@ async fn reply<D: Door>(
 ) {
     // A stop asked for between turns is for none of them.
     stop.store(false, Ordering::Relaxed);
+    // The second check-in of a day waits on this.
+    let now = Local::now().naive_local();
+    if let Err(e) = on_book(state, |db| cadence::wrote(db, now)) {
+        eprintln!("yeoman: {e}");
+    }
     let typing = Typing::start(&door);
     let mut got = Vec::new();
     let mut failed = None;
@@ -944,6 +950,7 @@ async fn drain(
     turn: &Turns,
     dir: &Path,
     from: From,
+    state: &Path,
 ) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -974,13 +981,15 @@ async fn drain(
         .collect();
     if !texts.is_empty() {
         let said = texts.join("\n\n");
-        let text = ask_alone(door, hippo, model, turn, from, said.clone())
+        // The host's alerts are the urgent kind, and never wait.
+        let quiet = (from != From::Alert).then(|| quiet(state)).flatten();
+        let text = ask_alone(door, hippo, model, turn, from, hush(said.clone(), &quiet))
             .await
             .unwrap_or_else(|e| {
                 eprintln!("yeoman: {}: {e}", dir.display());
                 said
             });
-        if let Err(e) = door.say(&text).await {
+        if let Err(e) = deliver(door, state, &quiet, &text).await {
             eprintln!("yeoman: {}: {e}", dir.display());
             return;
         }
@@ -1046,13 +1055,13 @@ async fn remind<D: Door>(
             .await;
         }
         if let Some(dir) = &alerted {
-            drain(&door, &hippo, &model, &turn, dir, From::Alert).await;
+            drain(&door, &hippo, &model, &turn, dir, From::Alert, &state).await;
         }
         if let Some(dir) = &mailbox {
-            drain(&door, &hippo, &model, &turn, dir, From::Message).await;
+            drain(&door, &hippo, &model, &turn, dir, From::Message, &state).await;
         }
         if let Some(dir) = &seatbox {
-            drain(&door, &hippo, &model, &turn, dir, From::Seat).await;
+            drain(&door, &hippo, &model, &turn, dir, From::Seat, &state).await;
         }
         show_pending(&door, &hippo, &state).await;
         work_on(&door, &hippo, &model, &turn, &state, &mut agents).await;
@@ -1114,6 +1123,168 @@ async fn remind<D: Door>(
                 eprintln!("yeoman: reminder {}: {e}", r.id);
             }
         }
+        if briefs() {
+            unasked(&door, &hippo, &model, &turn, &state).await;
+        }
+    }
+}
+
+/// Briefs, check-ins and quiet hours belong to the person's door: a
+/// second assistant of theirs (a seat, a forgetting one) keeps none.
+fn briefs() -> bool {
+    house::House::from_env().is_none_or(|h| h.is_door())
+}
+
+/// The person's setting, when it is their quiet hours now.
+fn quiet(state: &Path) -> Option<cadence::Setting> {
+    if !briefs() {
+        return None;
+    }
+    let s = Book::open(state, None)
+        .and_then(|b| b.read(cadence::setting))
+        .inspect_err(|e| eprintln!("yeoman: {e}"))
+        .ok()?;
+    s.quiet(Local::now().time()).then_some(s)
+}
+
+/// In quiet hours, tells a turn its answer waits for the brief and how to
+/// mark one that can't.
+fn hush(said: String, quiet: &Option<cadence::Setting>) -> String {
+    let Some(s) = quiet else {
+        return said;
+    };
+    let person = var("YEOMAN_PERSON").unwrap_or_else(|_| "your person".into());
+    format!(
+        "{said}\n\n(It is {person}'s quiet hours until {}: your answer waits for \
+         their morning brief. Begin it with URGENT: only if it can't wait until \
+         then: their home's safety, or money gone they didn't expect.)",
+        s.quiet_until.format("%H:%M")
+    )
+}
+
+/// Says what the yeoman says unasked, or in quiet hours keeps it for the
+/// brief, unless the turn marked it urgent.
+async fn deliver(
+    door: &impl Door,
+    state: &Path,
+    quiet: &Option<cadence::Setting>,
+    text: &str,
+) -> Result<(), String> {
+    if let Some(urgent) = text.strip_prefix("URGENT") {
+        let urgent = urgent.trim_start_matches([':', ' ', '\n']);
+        return door.say(urgent).await.map(drop);
+    }
+    if text == QUIET {
+        return Ok(());
+    }
+    if quiet.is_some() {
+        let now = Local::now().naive_local();
+        return on_book(state, |db| cadence::hold(db, text, now));
+    }
+    door.say(text).await.map(drop)
+}
+
+const BRIEF: &str = "Your morning brief for {person}, as their quiet hours end: \
+rank what needs them today from their mail since yesterday and today's calendar, \
+most pressing first, a line or two each. Then list what you could take on for them \
+today (a reply to draft, something to book or look into). Leave out what doesn't \
+need them; if nothing does, say so in a line.";
+
+const CHECK_IN: &str = "A check-in: look at {person}'s mail since {since} and their \
+calendar for the next few hours. Tell them only what needs them now that they haven't \
+already heard from you; if nothing does, answer exactly (nothing new).";
+
+/// The brief and the check-ins, when one is due.
+async fn unasked<D: Door>(
+    door: &D,
+    hippo: &Arc<Hippo>,
+    model: &Arc<dyn Model>,
+    turn: &Turns,
+    state: &Path,
+) {
+    let now = Local::now().naive_local();
+    let read = Book::open(state, None).and_then(|b| {
+        b.read(|db| Ok((cadence::setting(db)?, cadence::day(db)?, cadence::held(db)?)))
+    });
+    let (setting, day, (held, upto)) = match read {
+        Ok(r) => r,
+        Err(e) => return eprintln!("yeoman: {e}"),
+    };
+    // A yeoman new to this starts counting from now, its first brief the
+    // next morning, not one in the middle of the day it is deployed.
+    if day.date.is_none() {
+        if let Err(e) = on_book(state, |db| cadence::briefed(db, now, 0)) {
+            eprintln!("yeoman: {e}");
+        }
+        return;
+    }
+    let person = var("YEOMAN_PERSON").unwrap_or_else(|_| "your person".into());
+    match cadence::due(&setting, &day, now) {
+        None => {}
+        Some(cadence::Due::Brief) => {
+            let mut said = BRIEF.replace("{person}", &person);
+            if !held.is_empty() {
+                said.push_str(
+                    "\n\nWhat you held for this from their quiet hours, oldest first:\n<held>\n",
+                );
+                for (at, text) in &held {
+                    said.push_str(&format!("[{at}] {text}\n"));
+                }
+                said.push_str("</held>");
+            }
+            let answered = ask_alone(door, hippo, model, turn, From::Routine, said).await;
+            send_outbox(door, hippo, state).await;
+            // A failed brief still ends the night: what was held goes out
+            // word for word rather than wait a day.
+            let text = answered.unwrap_or_else(|e| {
+                eprintln!("yeoman: brief: {e}");
+                held.iter()
+                    .map(|(_, t)| t.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n\n")
+            });
+            if !text.is_empty()
+                && text != QUIET
+                && let Err(e) = door.say(&text).await
+            {
+                return eprintln!("yeoman: brief: {e}");
+            }
+            if let Err(e) = on_book(state, |db| cadence::briefed(db, now, upto)) {
+                eprintln!("yeoman: brief: {e}");
+            }
+        }
+        Some(cadence::Due::CheckIn(at)) => {
+            let since = day
+                .looked
+                .map_or("this morning".into(), |l| l.format("%H:%M").to_string());
+            let said = CHECK_IN
+                .replace("{person}", &person)
+                .replace("{since}", &since);
+            let answered = ask_alone(door, hippo, model, turn, From::Routine, said).await;
+            send_outbox(door, hippo, state).await;
+            let sent = match answered {
+                Ok(text) if text != QUIET => match door.say(&text).await {
+                    Ok(_) => true,
+                    Err(e) => {
+                        eprintln!("yeoman: check-in: {e}");
+                        false
+                    }
+                },
+                Ok(_) => false,
+                Err(e) => {
+                    eprintln!("yeoman: check-in: {e}");
+                    false
+                }
+            };
+            if let Err(e) = on_book(state, |db| cadence::looked(db, at, sent, now)) {
+                eprintln!("yeoman: check-in: {e}");
+            }
+        }
+        Some(cadence::Due::Skip(at)) => {
+            if let Err(e) = on_book(state, |db| cadence::looked(db, at, false, now)) {
+                eprintln!("yeoman: check-in: {e}");
+            }
+        }
     }
 }
 
@@ -1134,6 +1305,7 @@ async fn watches<D: Door>(
     house: Option<&house::House>,
 ) {
     let now = Local::now().naive_local();
+    let quiet = quiet(state);
     let all = match Book::open(state, None).and_then(|b| b.read(watch::watches)) {
         Ok(all) => all,
         Err(e) => return eprintln!("yeoman: {e}"),
@@ -1176,7 +1348,7 @@ async fn watches<D: Door>(
         fresh.truncate(WATCH_ITEMS);
         let quoted: Vec<String> = fresh.iter().map(watch::describe).collect();
         let said = format!("{}\n<items>\n{}\n</items>", w.text, quoted.join("\n"));
-        let answered = ask_alone(door, hippo, model, turn, From::Watch, said).await;
+        let answered = ask_alone(door, hippo, model, turn, From::Watch, hush(said, &quiet)).await;
         let (text, share) = match answered {
             Ok(text) => (text, w.share_with.clone()),
             Err(e) => {
@@ -1190,7 +1362,7 @@ async fn watches<D: Door>(
         if text != QUIET {
             // The answer is in hippo, where the pages show it; sending it
             // again would mean asking the model again on every tick.
-            if let Err(e) = door.say(&text).await {
+            if let Err(e) = deliver(door, state, &quiet, &text).await {
                 eprintln!("yeoman: watch {}: {e}", w.id);
             }
             if let (false, Some(h)) = (share.is_empty(), house) {
@@ -1310,11 +1482,12 @@ async fn work_on(
         if steered_report(hippo, turn, &said).await {
             continue;
         }
-        let text = ask_alone(door, hippo, model, turn, From::Work, said).await;
+        let quiet = quiet(state);
+        let text = ask_alone(door, hippo, model, turn, From::Work, hush(said, &quiet)).await;
         send_outbox(door, hippo, state).await;
         match text {
             Ok(text) => {
-                if let Err(e) = door.say(&text).await {
+                if let Err(e) = deliver(door, state, &quiet, &text).await {
                     eprintln!("yeoman: agent {name}: {e}");
                 }
             }
