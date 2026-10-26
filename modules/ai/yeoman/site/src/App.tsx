@@ -945,6 +945,7 @@ type ThreadProps = {
   reply: Reply;
   tasks: Task[];
   stopTask: (name: string) => Promise<void>;
+  tellTask: (name: string, text: string) => Promise<boolean>;
   screen?: string;
   shape?: number;
   browser: boolean;
@@ -954,7 +955,7 @@ type ThreadProps = {
   past: Part[];
 };
 
-function Thread({ messages, typing, jobs, send, stop, cards, decide, asks, reply, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past }: ThreadProps) {
+function Thread({ messages, typing, jobs, send, stop, cards, decide, asks, reply, tasks, stopTask, tellTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past }: ThreadProps) {
   usePinchText();
   const usage = useUsage(typing);
   const [finding, setFinding] = useState(false);
@@ -1185,10 +1186,10 @@ function Thread({ messages, typing, jobs, send, stop, cards, decide, asks, reply
             }}
           />
         )}
-        {agent && !wide && <AgentPage {...agent} tasks={tasks} stop={stopTask} close={() => setAgent(undefined)} />}
+        {agent && !wide && <AgentPage {...agent} tasks={tasks} stop={stopTask} tell={tellTask} close={() => setAgent(undefined)} />}
         {deck.length > 0 && <Deck key={deck[0].key} faces={deck} start={open!} leaving={leaving} edge={edge} close={close} />}
       </ThreadPrimitive.Root>
-      {agent && wide && <AgentPage key={agent.call} {...agent} side tasks={tasks} stop={stopTask} close={() => setAgent(undefined)} />}
+      {agent && wide && <AgentPage key={agent.call} {...agent} side tasks={tasks} stop={stopTask} tell={tellTask} close={() => setAgent(undefined)} />}
       </Panes>
      </AgentCtx.Provider>
      </CardCtx.Provider>
@@ -2974,7 +2975,7 @@ function AgentFrame({ toolCallId, args, result, isError, artifact }: ToolCallMes
 // in order, live while it works. One the page no longer holds, after a
 // reload, comes from hippo, which keeps every subagent's chat. Only the
 // yeoman's own agents can be stopped.
-function AgentPage({ call, agent, title, side, tasks, stop, close }: { call: string; agent?: string; title?: string; side?: boolean; tasks: Task[]; stop: (name: string) => Promise<void>; close: () => void }) {
+function AgentPage({ call, agent, title, side, tasks, stop, tell, close }: { call: string; agent?: string; title?: string; side?: boolean; tasks: Task[]; stop: (name: string) => Promise<void>; tell: (name: string, text: string) => Promise<boolean>; close: () => void }) {
   const task = tasks.find((t) => t.name === call);
   const [kept, setKept] = useState<Pick<Task, "text" | "tools" | "words"> | null>();
   const fetching = !!agent && !task?.tools.length;
@@ -3033,7 +3034,11 @@ function AgentPage({ call, agent, title, side, tasks, stop, close }: { call: str
             {work?.tools.map((t) => (
               <div key={t.id}>
                 {t.before && md(t.before)}
-                <ToolRow name={t.name} args={t.input as Args} result={t.result} isError={t.error} live={live} />
+                {t.told !== undefined ? (
+                  <p className="my-3 ml-auto w-fit max-w-[85%] rounded-[18px] bg-hover px-4 py-2.5 text-[14.5px] whitespace-pre-wrap [overflow-wrap:anywhere]">{t.told}</p>
+                ) : (
+                  <ToolRow name={t.name} args={t.input as Args} result={t.result} isError={t.error} live={live} />
+                )}
               </div>
             ))}
             {work?.words && md(work.words)}
@@ -3042,6 +3047,53 @@ function AgentPage({ call, agent, title, side, tasks, stop, close }: { call: str
           {!work?.text && !work?.tools.length && (fetching && kept === undefined ? <Dots /> : !live && <p className="text-mid">Its work wasn't kept.</p>)}
         </main>
       </div>
+      {task && !task.title && <AgentComposer name={task.name} live={live} tell={tell} />}
+    </div>
+  );
+}
+
+// Words to a spawned agent, as the yeoman's tell_agent sends them: one at
+// work reads them between its tool calls, a done one goes on from its log.
+// The seat's own Agent calls have no way in from outside the CLI.
+function AgentComposer({ name, live, tell }: { name: string; live: boolean; tell: (name: string, text: string) => Promise<boolean> }) {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const go = async () => {
+    const t = text.trim();
+    if (!t || sending) return;
+    setSending(true);
+    if (await tell(name, t)) setText("");
+    setSending(false);
+  };
+  return (
+    <div className="shrink-0 px-[max(12px,env(safe-area-inset-left))] pt-2 pb-[max(12px,env(safe-area-inset-bottom))]">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void go();
+        }}
+        className="mx-auto flex w-[min(740px,100%)] items-end gap-2 rounded-3xl border border-frame bg-lift py-[7px] pr-[7px] pl-4 shadow-dock focus-within:border-soft"
+      >
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && matchMedia("(pointer: fine)").matches) {
+              e.preventDefault();
+              void go();
+            }
+          }}
+          rows={1}
+          placeholder={live ? `Tell ${name} while it works` : `Tell ${name} more`}
+          aria-label={`Message ${name}`}
+          className="field-sizing-content max-h-40 min-h-9 flex-1 resize-none bg-transparent py-1.5 text-[15px] outline-none placeholder:text-soft"
+        />
+        <button type="submit" aria-label="Send" disabled={!text.trim() || sending} className="grid size-9 shrink-0 place-items-center rounded-full bg-ink text-paper disabled:bg-hair disabled:text-soft">
+          <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        </button>
+      </form>
     </div>
   );
 }

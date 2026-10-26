@@ -29,7 +29,7 @@ export type Msg = {
 
 /** A tool call: `before` holds the words the model said on its way to it,
  * which the page shows above it, as a terminal does. */
-export type Tool = { id: string; name: string; input: unknown; result?: string; error?: boolean; before?: string; thought?: string; agent?: string; report?: string };
+export type Tool = { id: string; name: string; input: unknown; result?: string; error?: boolean; before?: string; thought?: string; agent?: string; report?: string; told?: string };
 
 /** A subagent on its own: its name, its task, and its work so far, words
  * and calls in order. One the seat's Agent call started goes by the call's
@@ -126,6 +126,8 @@ export type Chat =
       reply: (id: string, yes: boolean, answers?: Answers) => Promise<void>;
       tasks: Task[];
       stopTask: (name: string) => Promise<void>;
+      /** Tells a subagent the person's words, as tell_agent would; false if it couldn't. */
+      tellTask: (name: string, text: string) => Promise<boolean>;
       /** The computer's screen, when the yeoman has one. */
       screen?: string;
       /** Its width over its height. */
@@ -458,6 +460,16 @@ export function useChat(): Chat {
     else if (!r?.ok) stopping(false);
   }, []);
 
+  // The words join its work where they fall, as the person said them; a
+  // done agent goes on from its log and comes back to the list at work.
+  const tellTask = useCallback(async (name: string, text: string) => {
+    const r = await fetch(`api/agent/${encodeURIComponent(name)}/tell`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) }).catch(() => undefined);
+    if (r?.status === 401) setStatus("signed-out");
+    if (!r?.ok) return false;
+    setTasks((ks) => ks.map((k) => (k.name === name ? { ...k, words: "", tools: [...k.tools, { id: `told-${Date.now()}`, name: "", input: null, told: text, before: k.words.trim() || undefined }] } : k)));
+    return true;
+  }, []);
+
   // The keeper lets the browser go; the screen leaves with the news of it.
   const openBrowser = useCallback(async () => {
     const r = await fetch("api/browser/open", { method: "POST" }).catch(() => undefined);
@@ -501,7 +513,7 @@ export function useChat(): Chat {
 
   if (status === "loading" || status === "signed-out") return { state: status };
   if (status !== "ready") return { state: "error", error: status };
-  return { state: "ready", messages, typing, jobs, send, stop, cards, decide, asks, reply, tasks, stopTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past };
+  return { state: "ready", messages, typing, jobs, send, stop, cards, decide, asks, reply, tasks, stopTask, tellTask, screen, shape, browser, closeBrowser, openBrowser, refresh, past };
 }
 
 // The agents at work now, each keeping the work the page has seen of it;

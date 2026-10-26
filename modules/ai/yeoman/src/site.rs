@@ -1155,6 +1155,7 @@ pub async fn serve(
         .route("/api/stop", post(stop))
         .route("/api/task", get(task_now))
         .route("/api/agent/{name}/stop", post(agent_stop))
+        .route("/api/agent/{name}/tell", post(agent_tell))
         .route("/api/browser/open", post(browser_open))
         .route("/api/browser/close", post(browser_close))
         .route("/api/ask", post(ask))
@@ -2452,6 +2453,44 @@ async fn agent_stop(
         Ok(()) => StatusCode::ACCEPTED.into_response(),
         Err(e) => (StatusCode::CONFLICT, e).into_response(),
     }
+}
+
+#[derive(Deserialize)]
+struct Tell {
+    text: String,
+}
+
+/// The person's words to a subagent, typed on its page: it reads them as
+/// the yeoman's would come, marked as theirs, and its reply still goes to
+/// the yeoman, which the words are logged for so it knows they were said.
+async fn agent_tell(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    axum::extract::Path(name): axum::extract::Path<String>,
+    Json(Tell { text }): Json<Tell>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let text = text.trim();
+    if text.is_empty() {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    if let Err(e) = task::tell(
+        &site.state,
+        &name,
+        &format!("(From the person, typed on your page) {text}"),
+    ) {
+        return (StatusCode::NOT_FOUND, e).into_response();
+    }
+    let (h, said) = (
+        site.hippo.clone(),
+        format!("(to {name}, on its page) {text}"),
+    );
+    if let Ok(Err(e)) = tokio::task::spawn_blocking(move || h.log("user", &said)).await {
+        eprintln!("yeoman: site agent tell: {e}");
+    }
+    StatusCode::ACCEPTED.into_response()
 }
 
 /// A page asks to be let in: the person gets its code over Matrix, the
