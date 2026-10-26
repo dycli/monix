@@ -208,12 +208,12 @@ function ThemeButton({ className = "" }: { className?: string }) {
 }
 
 type Persona = { unit: string; name: string };
-type Me = { name: string; personas: Persona[]; voice: string | null; models: string[]; forgets: number[] };
+type Me = { name: string; personas: Persona[]; voice: string | null; models: string[]; efforts: string[]; forgets: number[] };
 
 // Who answers here, asked once for the switcher and the speak buttons.
 const ME: Promise<Me> = fetch("api/me")
   .then((r) => (r.ok ? r.json() : Promise.reject()))
-  .catch(() => ({ name: "", personas: [], voice: null, models: [], forgets: [] }));
+  .catch(() => ({ name: "", personas: [], voice: null, models: [], efforts: [], forgets: [] }));
 
 function useMe() {
   const [me, setMe] = useState<Me | null>(null);
@@ -512,7 +512,8 @@ function Settings() {
   const [choice, setChoice] = useVoiceChoice();
   const [speed, setSpeed] = useVoiceSpeed();
   const voices = useVoices(open && !!voice);
-  const [model, pickModel] = useModel(open && !!me?.models.length);
+  const [model, pickModel] = useSetting("model", open && !!me?.models.length);
+  const [effort, pickEffort] = useSetting("effort", open && !!me?.efforts.length);
   const [forget, pickForget] = useForget(open && !!me?.forgets?.length);
   const [hearing, setHearing] = useState(false);
   const picked = choice ?? voice;
@@ -637,6 +638,25 @@ function Settings() {
                 >
                   {/* The running model stays listed even when it isn't a choice. */}
                   {[...new Set([...me.models, ...(model ? [model] : [])])].map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {!!me?.efforts.length && (
+              <div className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-[15px]">
+                <label htmlFor="effort">Thinking</label>
+                <select
+                  id="effort"
+                  value={effort ?? ""}
+                  onChange={(e) => pickEffort(e.target.value)}
+                  className="max-w-36 bg-transparent text-right text-[13px] text-mid capitalize outline-none"
+                >
+                  {/* Empty until a pick: the CLI's own default. */}
+                  {!effort && <option value="">Default</option>}
+                  {me.efforts.map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>
@@ -1529,24 +1549,25 @@ async function play(text: string, voice: string, done: () => void) {
   }
 }
 
-/** The model the next turn runs on, asked once `want` turns true, and a
- * way to switch it; the turn under way keeps its own. */
-function useModel(want: boolean): [string | null, (m: string) => void] {
-  const [model, setModel] = useState<string | null>(null);
+/** A setting the next turn runs with (`model` or `effort`), asked once
+ * `want` turns true, and a way to switch it; the turn under way keeps its
+ * own. */
+function useSetting(name: "model" | "effort", want: boolean): [string | null, (v: string) => void] {
+  const [value, setValue] = useState<string | null>(null);
   useEffect(() => {
     if (!want) return;
-    fetch("api/model")
+    fetch(`api/${name}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((v: { model: string }) => setModel(v.model), () => {});
-  }, [want]);
-  const pick = (m: string) => {
-    const was = model;
-    setModel(m);
-    fetch("api/model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: m }) })
+      .then((v: Record<string, string>) => setValue(v[name]), () => {});
+  }, [name, want]);
+  const pick = (v: string) => {
+    const was = value;
+    setValue(v);
+    fetch(`api/${name}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [name]: v }) })
       .then((r) => r.ok || Promise.reject(r.status))
-      .catch(() => setModel(was));
+      .catch(() => setValue(was));
   };
-  return [model, pick];
+  return [value, pick];
 }
 
 /** One limit window of a subscription (site.rs `Limit`). */

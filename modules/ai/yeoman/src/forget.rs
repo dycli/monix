@@ -14,7 +14,15 @@ pub const CHOICES: [u64; 8] = [10, 30, 60, 180, 720, 1440, 4320, 10080];
 
 /// What the state keeps whatever its age: sign-ins, push keys, the
 /// person's picks, and hippo's store, which forgets on its own.
-const KEEP: [&str; 6] = ["site", "vapid", "push.json", "model", "forget", "hippo"];
+const KEEP: [&str; 7] = [
+    "site",
+    "vapid",
+    "push.json",
+    "model",
+    "effort",
+    "forget",
+    "hippo",
+];
 
 /// The window in minutes: the person's pick, else YEOMAN_FORGET; None for
 /// a yeoman that remembers.

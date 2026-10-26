@@ -71,32 +71,51 @@ pub fn from_env() -> Result<Box<dyn Model>, String> {
     }
 }
 
-/// The models the person may switch between on the page (YEOMAN_MODELS,
-/// comma-separated); none when the model is fixed.
-pub fn choices() -> Vec<String> {
-    std::env::var("YEOMAN_MODELS")
-        .unwrap_or_default()
-        .split(',')
-        .map(str::trim)
-        .filter(|m| !m.is_empty())
-        .map(str::to_owned)
-        .collect()
+/// A setting the person may switch on the page: the choices come from an
+/// environment list (comma-separated), the pick is kept in the state
+/// directory for the turns after this one.
+pub struct Setting {
+    file: &'static str,
+    env: &'static str,
 }
 
-/// The model the person picked, kept in the state directory; none until
-/// they pick one, or once it is no longer among the choices.
-pub fn picked(state: &Path) -> Option<String> {
-    let m = std::fs::read_to_string(state.join("model")).ok()?;
-    let m = m.trim();
-    choices().iter().any(|c| c == m).then(|| m.to_owned())
-}
+/// The model (YEOMAN_MODELS); none to switch when the model is fixed.
+pub const MODEL: Setting = Setting {
+    file: "model",
+    env: "YEOMAN_MODELS",
+};
 
-/// Keeps the person's pick for the turns after this one.
-pub fn pick(state: &Path, model: &str) -> Result<(), String> {
-    if !choices().iter().any(|c| c == model) {
-        return Err(format!("{model} is not among the choices"));
+/// The thinking effort (YEOMAN_EFFORTS), as `claude --effort` takes it.
+pub const EFFORT: Setting = Setting {
+    file: "effort",
+    env: "YEOMAN_EFFORTS",
+};
+
+impl Setting {
+    pub fn choices(&self) -> Vec<String> {
+        std::env::var(self.env)
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|m| !m.is_empty())
+            .map(str::to_owned)
+            .collect()
     }
-    std::fs::write(state.join("model"), model).map_err(|e| e.to_string())
+
+    /// None until the person picks, or once the pick is no longer among
+    /// the choices.
+    pub fn picked(&self, state: &Path) -> Option<String> {
+        let m = std::fs::read_to_string(state.join(self.file)).ok()?;
+        let m = m.trim();
+        self.choices().iter().any(|c| c == m).then(|| m.to_owned())
+    }
+
+    pub fn pick(&self, state: &Path, value: &str) -> Result<(), String> {
+        if !self.choices().iter().any(|c| c == value) {
+            return Err(format!("{value} is not among the choices"));
+        }
+        std::fs::write(state.join(self.file), value).map_err(|e| e.to_string())
+    }
 }
 
 /// The `claude` CLI in print mode: no built-in tools, no settings sources
@@ -477,9 +496,14 @@ impl Model for Claude {
         files: &[Attachment],
         run: Run,
     ) -> Result<String, String> {
-        let model = std::env::var_os("STATE_DIRECTORY")
-            .and_then(|s| picked(Path::new(&s)))
+        let state = std::env::var_os("STATE_DIRECTORY");
+        let state = state.as_deref().map(Path::new);
+        let model = state
+            .and_then(|s| MODEL.picked(s))
             .unwrap_or_else(|| self.model.clone());
+        let effort = state
+            .and_then(|s| EFFORT.picked(s))
+            .or_else(|| self.effort.clone());
         let mut cmd = Command::new(&self.command);
         // One-hour cache entries, pinned rather than left to Claude Code's
         // default: the memory's mark must match the lifetime of Claude
@@ -549,7 +573,7 @@ impl Model for Claude {
                 &model,
             ]);
         }
-        if let Some(effort) = &self.effort {
+        if let Some(effort) = &effort {
             cmd.args(["--effort", effort]);
         }
         if run.steps.is_some() {

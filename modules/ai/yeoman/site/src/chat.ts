@@ -84,6 +84,7 @@ type Shown =
 /** The slash commands the page answers itself; `/` opens them as a menu. */
 export const COMMANDS: { name: string; arg?: string; does: string }[] = [
   { name: "model", arg: "[name]", does: "show or switch the model for the next turns" },
+  { name: "effort", arg: "[level]", does: "show or switch the thinking effort for the next turns" },
   { name: "stop", does: "stop the turn running now" },
   { name: "help", does: "list these commands" },
   { name: "clear", does: "start afresh (every turn already does)" },
@@ -378,19 +379,22 @@ export function useChat(): Chat {
     if (c.name === "stop") {
       const r = await fetch("api/stop", { method: "POST" }).catch(() => undefined);
       if (r?.status === 401) setStatus("signed-out");
-    } else if (c.name === "model") {
+    } else if (c.name === "model" || c.name === "effort") {
+      const [what, list] = c.name === "model" ? ["model", "models"] as const : ["effort", "efforts"] as const;
       const [now, me] = await Promise.all([
-        fetch("api/model").then((r) => r.json() as Promise<{ model: string }>).catch(() => undefined),
-        fetch("api/me").then((r) => r.json() as Promise<{ models: string[] }>).catch(() => undefined),
+        fetch(`api/${what}`).then((r) => r.json() as Promise<Record<string, string>>).catch(() => undefined),
+        fetch("api/me").then((r) => r.json() as Promise<Record<string, string[]>>).catch(() => undefined),
       ]);
-      const choices = me?.models ?? [];
+      const current = now?.[what];
+      const choices = me?.[list] ?? [];
       const want = arg.trim().toLowerCase();
-      if (!want) note(`Running on ${now?.model || "the default model"}.${choices.length ? ` /model ${choices.join(", /model ")} switches.` : ""}`);
-      else if (want === now?.model) note(`Already on ${want}.`);
+      const running = what === "model" ? `Running on ${current || "the default model"}.` : `Thinking at ${current || "the default effort"}.`;
+      if (!want) note(`${running}${choices.length ? ` /${what} ${choices.join(`, /${what} `)} switches.` : ""}`);
+      else if (want === current) note(`Already on ${want}.`);
       else {
-        const r = await fetch("api/model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: want }) }).catch(() => undefined);
+        const r = await fetch(`api/${what}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [what]: want }) }).catch(() => undefined);
         if (r?.status === 401) return setStatus("signed-out"), true;
-        note(r?.ok ? `Switched to ${want}, from the next turn on.` : `No model ${want}.${choices.length ? ` The choices are ${choices.join(", ")}.` : ""}`);
+        note(r?.ok ? `Switched to ${want}, from the next turn on.` : `No ${what} ${want}.${choices.length ? ` The choices are ${choices.join(", ")}.` : ""}`);
       }
     } else if (c.name === "help") {
       note(COMMANDS.map((c) => `/${c.name}${c.arg ? ` ${c.arg}` : ""}: ${c.does}`).join("\n"));

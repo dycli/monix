@@ -454,7 +454,9 @@
           seat = topology.seat;
           # Matrix only with an account: without one, the site alone.
           matrix = i.credentialsEnvFile != null;
-          models = optionalAttrs (i.models != [ ]) { YEOMAN_MODELS = concatStringsSep "," i.models; };
+          models =
+            optionalAttrs (i.models != [ ]) { YEOMAN_MODELS = concatStringsSep "," i.models; }
+            // optionalAttrs (i.efforts != [ ]) { YEOMAN_EFFORTS = concatStringsSep "," i.efforts; };
           forget = optionalAttrs (i.forgetAfter != null) { YEOMAN_FORGET = toString i.forgetAfter; };
         in
         if i.seat then
@@ -867,6 +869,28 @@
                     description = ''
                       Claude models the person may switch between in the web
                       chat's settings; empty keeps the model fixed.
+                    '';
+                  };
+
+                  efforts = mkOption {
+                    type = types.listOf (
+                      types.enum [
+                        "low"
+                        "medium"
+                        "high"
+                        "xhigh"
+                        "max"
+                      ]
+                    );
+                    default = [ ];
+                    example = [
+                      "low"
+                      "high"
+                    ];
+                    description = ''
+                      Thinking efforts (`claude --effort`) the person may
+                      switch between in the web chat's settings; empty keeps
+                      the CLI's default.
                     '';
                   };
 

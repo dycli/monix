@@ -209,6 +209,13 @@
             "haiku"
             "fable"
           ];
+          efforts = [
+            "low"
+            "medium"
+            "high"
+            "xhigh"
+            "max"
+          ];
         };
         # One-off questions: no Matrix, and each message forgotten an hour
         # after it was said, unless the page sets another window.
@@ -223,6 +230,13 @@
             "sonnet"
             "haiku"
             "fable"
+          ];
+          efforts = [
+            "low"
+            "medium"
+            "high"
+            "xhigh"
+            "max"
           ];
         };
         azula = {

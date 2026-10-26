@@ -795,6 +795,8 @@ struct Who {
     /// The models the person may switch between (YEOMAN_MODELS); empty
     /// when the model is fixed.
     models: Vec<String>,
+    /// The thinking efforts likewise (YEOMAN_EFFORTS).
+    efforts: Vec<String>,
     /// The windows, in minutes, the person may pick for forgetting; empty
     /// for one that remembers.
     forgets: Vec<u64>,
@@ -817,7 +819,8 @@ impl Who {
             voice: std::env::var("YEOMAN_VOICE")
                 .ok()
                 .filter(|_| std::env::var_os("YEOMAN_X").is_some()),
-            models: crate::model::choices(),
+            models: crate::model::MODEL.choices(),
+            efforts: crate::model::EFFORT.choices(),
             forgets: match std::env::var_os("YEOMAN_FORGET") {
                 Some(_) => crate::forget::CHOICES.to_vec(),
                 None => Vec::new(),
@@ -1136,6 +1139,7 @@ pub async fn serve(
         .route("/api/voices", get(voices))
         .route("/api/usage", get(usage))
         .route("/api/model", get(model_now).post(model_pick))
+        .route("/api/effort", get(effort_now).post(effort_pick))
         .route("/api/forget", get(forget_now).post(forget_pick))
         .route("/api/call", post(call))
         .route("/api/call/end", post(call_end))
@@ -2269,7 +2273,8 @@ async fn model_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Respons
     if !site.signed(&headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    let model = crate::model::picked(&site.state)
+    let model = crate::model::MODEL
+        .picked(&site.state)
         .or_else(|| std::env::var("YEOMAN_MODEL").ok())
         .unwrap_or_default();
     Json(serde_json::json!({ "model": model })).into_response()
@@ -2289,7 +2294,40 @@ async fn model_pick(
     if !site.signed(&headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    match crate::model::pick(&site.state, &p.model) {
+    match crate::model::MODEL.pick(&site.state, &p.model) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+    }
+}
+
+/// The thinking effort the next turn runs at: the person's pick, else
+/// YEOMAN_EFFORT; empty for the CLI's own default.
+async fn effort_now(State(site): State<Arc<Site>>, headers: HeaderMap) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let effort = crate::model::EFFORT
+        .picked(&site.state)
+        .or_else(|| std::env::var("YEOMAN_EFFORT").ok())
+        .unwrap_or_default();
+    Json(serde_json::json!({ "effort": effort })).into_response()
+}
+
+#[derive(Deserialize)]
+struct EffortPick {
+    effort: String,
+}
+
+/// Switches the effort from the next turn on; the one under way keeps its.
+async fn effort_pick(
+    State(site): State<Arc<Site>>,
+    headers: HeaderMap,
+    Json(p): Json<EffortPick>,
+) -> Response {
+    if !site.signed(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    match crate::model::EFFORT.pick(&site.state, &p.effort) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
     }
