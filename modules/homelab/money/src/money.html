@@ -67,6 +67,9 @@
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
   svg { display: block; width: 100%; overflow: visible; }
   svg text { fill: var(--soft); font: 12px system-ui; }
+  #sankey text.name { fill: var(--ink); font-size: 13px; }
+  #sankey text.amt { fill: var(--mid); }
+  #sankey .flow { transition: opacity .15s; }
   #tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--lift); font-size: 13px; padding: 6px 9px; border-radius: 8px; display: none; z-index: 9; white-space: nowrap; }
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; font: 600 12px system-ui; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); padding: 4px 6px; }
@@ -143,6 +146,7 @@
       <div class="legend"><span><i style="background:var(--income)"></i>Income</span><span><i style="background:var(--spend)"></i>Spending</span></div>
       <div id="flow"></div>
     </div>
+    <div class="card"><h2>Where it went</h2><div id="sankey"></div></div>
     <div class="card"><h2>By category</h2><div class="bars" id="cats"></div></div>
     <div class="card"><h2 id="txtitle">Transactions</h2><div id="txs"></div></div>
   </section>
@@ -357,6 +361,7 @@ function spending() {
   tiles($("#spendtiles"), [["Income", usd(t.income, false)], ["Spending", usd(t.spending, false)],
     ["Net", usd(t.income - t.spending, false)]]);
   flowChart();
+  sankey();
 
   const cats = data.categories.filter((c) => c.kind === "spend" && c.amount > 0).sort((a, b) => b.amount - a.amount);
   const top = cats.length ? cats[0].amount : 1;
@@ -448,6 +453,98 @@ function pairChart(box, ms, aria, empty, say, chosen, pick) {
   });
   box.replaceChildren(s);
 }
+
+// The month's money as a Sankey: income by payer on the left joins one
+// bar, which splits into the spending categories and what was kept, as
+// Monarch and Copilot draw it. A month that spent more than came in adds
+// "From savings" on the left instead of "Kept" on the right. Labels sit
+// beside every node, so colour only repeats the page's ink/rust meaning.
+function sankey() {
+  const box = $("#sankey");
+  const bySource = new Map();
+  for (const x of data.transactions) {
+    if (kindOf(x.category) !== "income") continue;
+    const who = x.merchant || x.name || "Deposit";
+    bySource.set(who, (bySource.get(who) || 0) - x.amount);
+  }
+  let sources = [...bySource].filter(([, v]) => v > 0.005).sort((a, b) => b[1] - a[1]);
+  // Past four payers the rest fold into one, so the column stays legible.
+  if (sources.length > 4) sources = [...sources.slice(0, 3), ["Other income", sources.slice(3).reduce((n, [, v]) => n + v, 0)]];
+  const income = sources.reduce((n, [, v]) => n + v, 0);
+  const cats = data.categories.filter((c) => c.kind === "spend" && c.amount > 0.005).sort((a, b) => b.amount - a.amount);
+  const spent = cats.reduce((n, c) => n + c.amount, 0);
+  if (income + spent < 0.01) {
+    box.replaceChildren(el("p", { className: "soft small", style: "margin:0", textContent: "No money moved this month." }));
+    return;
+  }
+  const left = sources.map(([name, v]) => ({ name, v, color: "#2b2620", say: `${name}: ${usd(v)} in` }));
+  if (spent > income + 0.005) left.push({ name: "From savings", v: spent - income, color: "#978b7d", say: `${usd(spent - income)} more went out than came in` });
+  const base = Math.max(income, spent);
+  const share = (v) => `${Math.round(100 * v / base)}% of ${income >= spent ? "income" : "spending"}`;
+  const right = cats.map((c) => ({ name: c.name, v: c.amount, color: "#b0482a", pick: c.name,
+    say: `${c.name}: ${usd(c.amount)}, ${share(c.amount)}, ${c.count} transaction${c.count === 1 ? "" : "s"}` }));
+  if (income > spent + 0.005) right.push({ name: "Kept", v: income - spent, color: "#2b2620", say: `Kept: ${usd(income - spent)}, ${share(income - spent)}` });
+
+  // Drawn at the card's real width so the text stays 12-13px on a phone;
+  // the box itself may be hidden in another tab, so measure <main>.
+  const W = Math.max(300, $("main").clientWidth - 74), narrow = W < 560;
+  const LL = narrow ? 76 : 170, LR = narrow ? 112 : 190, NW = 10, T = 30, SLOT = 30, GAP = 4;
+  const k = (narrow ? 220 : 280) / base;
+  const xl = LL, xr = W - LR - NW, xm = (xl + xr) / 2 - NW / 2;
+  // Each node gets a slot at least two label lines tall; small ones sit centred in theirs.
+  const column = (nodes) => {
+    let y = 0;
+    for (const n of nodes) {
+      n.h = Math.max(1, n.v * k); const slot = Math.max(n.h, SLOT);
+      n.y = y + (slot - n.h) / 2; n.mid = y + slot / 2; y += slot + GAP;
+    }
+    return y - GAP;
+  };
+  const hl = column(left), hr = column(right), hm = base * k;
+  const span = Math.max(hl, hr, hm), H = T + span + 6;
+  const shiftBy = (nodes, h) => nodes.forEach((n) => { n.y += T + (span - h) / 2; n.mid += T + (span - h) / 2; });
+  shiftBy(left, hl); shiftBy(right, hr);
+  const ym = T + (span - hm) / 2;
+
+  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img",
+    "aria-label": `${monthName(month)}: ${usd(income, false)} income, ${usd(spent, false)} spending` });
+  const ribbon = (x0, a, x1, b, h) => {
+    const c = (x0 + x1) / 2;
+    return `M${x0},${a}C${c},${a} ${c},${b} ${x1},${b}V${b + h}C${c},${b + h} ${c},${a + h} ${x0},${a + h}Z`;
+  };
+  const clip = (t) => t.length > (narrow ? 14 : 22) ? t.slice(0, narrow ? 13 : 21) + "…" : t;
+  const label = (n, x, anchor) => [
+    svg("text", { x, y: n.mid - 2, "text-anchor": anchor, class: "name" }, clip(n.name)),
+    svg("text", { x, y: n.mid + 13, "text-anchor": anchor, class: "amt" }, usd(n.v, false))];
+  const dim = (n) => only && n.pick !== only;
+  let at = ym;
+  for (const n of left) {
+    const f = svg("path", { class: "flow", d: ribbon(xl + NW, n.y, xm, at, n.h), fill: n.color, opacity: only ? 0.08 : 0.18 });
+    const g = svg("g", {}, f, svg("rect", { x: xl, y: n.y, width: NW, height: n.h, rx: 2, fill: n.color }), ...label(n, xl - 8, "end"));
+    hover(g, n.say); s.append(g); at += n.h;
+  }
+  at = ym;
+  for (const n of right) {
+    const f = svg("path", { class: "flow", d: ribbon(xm + NW, at, xr, n.y, n.h), fill: n.color, opacity: dim(n) ? 0.08 : only ? 0.45 : 0.22 });
+    const g = svg("g", n.pick ? { style: "cursor:pointer" } : {}, f,
+      svg("rect", { x: xr, y: n.y, width: NW, height: n.h, rx: 2, fill: n.color, opacity: dim(n) ? 0.35 : 1 }), ...label(n, xr + NW + 8, "start"));
+    hover(g, n.say);
+    g.addEventListener("mouseenter", () => { if (!only) f.setAttribute("opacity", 0.45); });
+    g.addEventListener("mouseleave", () => { if (!only) f.setAttribute("opacity", 0.22); });
+    // A click filters the transactions, the same as the category bars.
+    if (n.pick) g.addEventListener("click", () => { only = only === n.pick ? null : n.pick; spending(); });
+    s.append(g); at += n.h;
+  }
+  const middle = income >= spent ? "Income" : "Spending";
+  s.append(svg("rect", { x: xm, y: ym, width: NW, height: hm, rx: 2, fill: income >= spent ? "#2b2620" : "#b0482a" }),
+    svg("text", { x: xm + NW / 2, y: ym - 10, "text-anchor": "middle", class: "name" }, `${middle} ${usd(base, false)}`));
+  box.replaceChildren(s);
+}
+let sankeyWidth = 0;
+addEventListener("resize", () => {
+  const w = $("main").clientWidth;
+  if (data && w !== sankeyWidth) { sankeyWidth = w; sankey(); }
+});
 
 async function go(m) {
   month = m; only = null;
