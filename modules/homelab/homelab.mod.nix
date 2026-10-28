@@ -251,11 +251,12 @@
           web = true;
           build = "/var/lib/libri-build/current";
           providerKeys = true;
+          # Full ids, so the picker can show each model's version.
           models = [
-            "opus"
-            "sonnet"
-            "haiku"
-            "fable"
+            "claude-opus-5-5"
+            "claude-sonnet-5-5"
+            "claude-haiku-5-5"
+            "claude-fable-5-1"
           ];
           efforts = [
             "low"
