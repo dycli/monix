@@ -250,6 +250,7 @@
           door = false;
           web = true;
           build = "/var/lib/libri-build/current";
+          providerKeys = true;
           models = [
             "opus"
             "sonnet"

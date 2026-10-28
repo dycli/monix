@@ -156,6 +156,8 @@
 
       # Each web chat's port, after the doors, by sorted name.
       chatPort = n: 8950 + lib.lists.findFirstIndex (m: m == n) 0 (attrNames cfg.instances) + 1;
+      # The loopback port of an instance's own OpenCode server.
+      openCodePort = n: chatPort n + 100;
 
       # The web chat's page, built once and served by each assistant.
       web = pkgs.buildNpmPackage {
@@ -463,6 +465,26 @@
             optionalAttrs (i.models != [ ]) { YEOMAN_MODELS = concatStringsSep "," i.models; }
             // optionalAttrs (i.efforts != [ ]) { YEOMAN_EFFORTS = concatStringsSep "," i.efforts; };
           forget = optionalAttrs (i.forgetAfter != null) { YEOMAN_FORGET = toString i.forgetAfter; };
+          # OpenCode and omp on the host's provider keys, as the seat has
+          # them: each harness reads the keys from its own config, so the
+          # yeoman holds none.
+          keys = {
+            keyFile = config.secrets.opencode-key.path;
+            deepseekKeyFile = config.secrets.deepseek-key.path;
+            abliterationKeyFile = config.secrets.abliteration-key.path;
+          };
+          openCodeConfig = pkgs.writeText "${n}-opencode.json" (
+            lib.strings.toJSON {
+              "$schema" = "https://opencode.ai/config.json";
+              provider = lib.ship.opencode.providers keys;
+            }
+          );
+          ompModels = pkgs.writeText "${n}-omp-models.yml" (lib.ship.opencode.ompModels keys);
+          # omp reads its providers only from its home.
+          linkOmpModels = pkgs.writeShellScript "${n}-omp-models" ''
+            ${pkgs.coreutils}/bin/mkdir -p ${state}/.omp/agent
+            ${pkgs.coreutils}/bin/ln -sfn ${ompModels} ${state}/.omp/agent/models.yml
+          '';
         in
         if i.seat then
           {
@@ -650,6 +672,10 @@
                   YEOMAN_URL = "http://127.0.0.1:${toString config.inference.port}/v1";
                   YEOMAN_MODEL = i.localModel;
                 }
+                // optionalAttrs i.providerKeys {
+                  OPENCODE_CONFIG = toString openCodeConfig;
+                  YEOMAN_OPENCODE_PORT = toString (openCodePort n);
+                }
                 // optionalAttrs (i.style != null) { YEOMAN_STYLE = i.style; }
                 // optionalAttrs (i.voice != null) { YEOMAN_VOICE = i.voice; }
                 // optionalAttrs i.web {
@@ -712,13 +738,19 @@
                   ]
                   ++ optional (shared' != null) "${sitesDir}/${shared'}";
                 }
-                // optionalAttrs i.web { SocketBindAllow = singleton "tcp:${toString (chatPort n)}"; }
-                // optionalAttrs (i.computer || shared' != null) {
+                // optionalAttrs (i.web || i.providerKeys) {
+                  SocketBindAllow =
+                    optional i.web "tcp:${toString (chatPort n)}"
+                    ++ optional i.providerKeys "tcp:${toString (openCodePort n)}";
+                }
+                // optionalAttrs (i.computer || shared' != null || i.providerKeys) {
                   SupplementaryGroups =
                     sandbox.SupplementaryGroups
                     ++ optional i.computer computers.deskGroup
-                    ++ optional (shared' != null) "yeoman-${shared'}";
+                    ++ optional (shared' != null) "yeoman-${shared'}"
+                    ++ optional i.providerKeys "opencode-auth";
                 }
+                // optionalAttrs i.providerKeys { ExecStartPre = linkOmpModels; }
                 // optionalAttrs i.computer {
                   # Through the fence to its own runner and browser.
                   IPAddressAllow = fence.IPAddressAllow ++ [
@@ -931,6 +963,18 @@
                       site/) to run instead of the ship's own. The seat may
                       restart the instance's units, so a rebuild needs no
                       deploy.
+                    '';
+                  };
+
+                  providerKeys = mkOption {
+                    type = types.bool;
+                    default = false;
+                    description = ''
+                      Whether OpenCode and omp reach the host's model
+                      providers (OpenCode Zen and Go, DeepSeek,
+                      abliteration.ai): the instance reads the opencode-auth
+                      keys, each harness's config names them, and OpenCode's
+                      server gets a loopback port.
                     '';
                   };
 

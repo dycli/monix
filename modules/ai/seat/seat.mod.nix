@@ -178,22 +178,11 @@ in
       home.file.".config/muse/AGENTS.md" = instructions;
       home.file.".omp/agent/AGENTS.md" = instructions;
 
-      # omp's built-in providers on the keys OpenCode uses. A leading `!`
-      # makes omp read the key from the command's output at request time,
-      # so no key enters the Nix store and a rotated secret needs no
-      # activation. JSON is valid YAML.
-      home.file.".omp/agent/models.yml".text =
-        let
-          keyFrom = file: { apiKey = "!cat ${file}"; };
-        in
-        toJSON {
-          providers = {
-            deepseek = keyFrom osConfig.secrets.deepseek-key.path;
-            abliteration = keyFrom osConfig.secrets.abliteration-key.path;
-            opencode-zen = keyFrom osConfig.secrets.opencode-key.path;
-            opencode-go = keyFrom osConfig.secrets.opencode-key.path;
-          };
-        };
+      home.file.".omp/agent/models.yml".text = opencode.ompModels {
+        keyFile = osConfig.secrets.opencode-key.path;
+        deepseekKeyFile = osConfig.secrets.deepseek-key.path;
+        abliterationKeyFile = osConfig.secrets.abliteration-key.path;
+      };
       home.file.".claude/rules/AGENTS.md" = instructions;
 
       # The baseURL uses the seat-plane address because the slice fence
