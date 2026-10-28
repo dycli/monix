@@ -81,6 +81,7 @@
       inherit (lib.strings)
         readFile
         concatStringsSep
+        concatMapStringsSep
         toSentenceCase
         replaceStrings
         ;
@@ -298,6 +299,10 @@
         n: i:
         let
           state = "/var/lib/${n}";
+          # A development instance runs whatever build its link points at.
+          yeomanBin = if i.build == null then getExe yeoman else "${i.build}/bin/yeoman";
+          hippoBin = if i.build == null then getExe hippo else "${i.build}/bin/hippo";
+          siteRoot = if i.build == null then web else "${i.build}/site";
           creds = "/run/credentials/${n}.service";
           env = {
             HOME = state;
@@ -347,7 +352,7 @@
             mcpServers = {
               yeoman = {
                 type = "stdio";
-                command = getExe yeoman;
+                command = yeomanBin;
                 args = [
                   "tools"
                   state
@@ -402,7 +407,7 @@
           # is made in the runtime directory and the bot pointed at it.
           start =
             if cfg.homeTokenFile == null then
-              getExe yeoman
+              yeomanBin
             else
               getExe (
                 pkgs.writeShellApplication {
@@ -414,7 +419,7 @@
                   text = ''
                     umask 077
                     sed "s|@HOME_TOKEN@|$(cat "$CREDENTIALS_DIRECTORY/home")|" ${mcp} > "$RUNTIME_DIRECTORY/mcp.json"
-                    YEOMAN_MCP="$RUNTIME_DIRECTORY/mcp.json" exec ${getExe yeoman}
+                    YEOMAN_MCP="$RUNTIME_DIRECTORY/mcp.json" exec ${yeomanBin}
                   '';
                 }
               );
@@ -490,7 +495,7 @@
                   YEOMAN_MODEL = cfg.model;
                   YEOMAN_SEAT_MODE = "1";
                   YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
-                  YEOMAN_SITE_ROOT = web;
+                  YEOMAN_SITE_ROOT = siteRoot;
                   YEOMAN_SITE_URL = host (if shared' == null then n else shared');
                 }
                 // optionalAttrs (shared' != null) {
@@ -513,7 +518,7 @@
                 StateDirectory = n;
                 StateDirectoryMode = "0700";
                 WorkingDirectory = seat.home;
-                ExecStart = getExe yeoman;
+                ExecStart = yeomanBin;
                 # A restart ends the turn under way; the next message
                 # starts afresh from the memory.
                 Restart = "always";
@@ -598,7 +603,7 @@
                     n
                     "${n}/hippo"
                   ];
-                  ExecStart = "${getExe hippo} serve chat";
+                  ExecStart = "${hippoBin} serve chat";
                   Restart = "always";
                   RestartSec = 5;
                 };
@@ -649,7 +654,7 @@
                 // optionalAttrs (i.voice != null) { YEOMAN_VOICE = i.voice; }
                 // optionalAttrs i.web {
                   YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
-                  YEOMAN_SITE_ROOT = web;
+                  YEOMAN_SITE_ROOT = siteRoot;
                   # Names this server to push services, and the site to its
                   # notifications.
                   YEOMAN_SITE_URL = host (if shared' == null then n else shared');
@@ -728,6 +733,7 @@
       alerted = attrNames (filterAttrs (_: i: i.alerts) cfg.instances);
       # The instances that run as a user of their own: all but the seat's.
       ownUsers = filterAttrs (_: i: !i.seat) cfg.instances;
+      built = filterAttrs (_: i: i.build != null) cfg.instances;
       inSites = concatMap (s: cfg.sites.${s}.members) (attrNames cfg.sites);
     in
     {
@@ -913,6 +919,18 @@
                       sent to the person by name reaches this assistant.
                       One per person; every assistant has its own mailbox
                       either way, reached by its name.
+                    '';
+                  };
+
+                  build = mkOption {
+                    type = types.nullOr types.str;
+                    default = null;
+                    example = "/var/lib/libri-build/current";
+                    description = ''
+                      A link to a development build (bin/yeoman, bin/hippo,
+                      site/) to run instead of the ship's own. The seat may
+                      restart the instance's units, so a rebuild needs no
+                      deploy.
                     '';
                   };
 
@@ -1294,6 +1312,29 @@
             mode = "2770";
           };
         }) cfg.sites;
+
+        # A development instance's build link lives in a directory the seat
+        # owns, and the seat restarts its units after rebuilding the link.
+        systemd.tmpfiles.settings.yeoman-builds = lib.attrsets.mapAttrs' (_: i: {
+          name = dirOf i.build;
+          value.d = {
+            user = topology.seat.user;
+            group = topology.seat.user;
+            mode = "0755";
+          };
+        }) built;
+        security.polkit.extraConfig = mkIf (built != { }) ''
+          polkit.addRule(function (action, subject) {
+            if (action.id == "org.freedesktop.systemd1.manage-units" &&
+                [${
+                  concatMapStringsSep ", " (n: ''"${n}.service", "${n}-hippo.service"'') (attrNames built)
+                }].indexOf(action.lookup("unit")) >= 0 &&
+                ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
+                subject.user == "${topology.seat.user}") {
+              return polkit.Result.YES;
+            }
+          });
+        '';
 
         # Setgid, so what one assistant writes stays the group's.
         systemd.tmpfiles.settings.yeoman-household = {
