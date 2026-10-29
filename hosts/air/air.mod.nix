@@ -11,13 +11,7 @@
       {
         imports = [
           self.nixosModules.web
-          self.nixosModules.alerts
         ];
-
-        # Sokka on Water posts Air's alerts. A virtual machine has no disks
-        # for smartd to watch.
-        alerts.relay.to = lib.ship.topology.hostTailnetAddr;
-        alerts.smart.enable = false;
 
         primaryUser = "aang";
 

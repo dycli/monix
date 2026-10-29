@@ -78,7 +78,6 @@
           MemorySwapMax = "4G";
         };
         systemd.services.nix-daemon.serviceConfig.Slice = "work.slice";
-        systemd.services.raava.serviceConfig.Slice = "work.slice";
 
         # The chats' own cargo and evaluators run in paseo, outside the
         # daemon's fence; on 2026-10-17 paseo peaked at 16G with 11G in zram.
@@ -101,11 +100,9 @@
           refresh = "git-mirror.service";
           mustRun = [
             "hippo.service"
-            "sokka.service"
+            "libri.service"
             "suki.service"
-            "azula.service"
             "nginx.service"
-            "tuwunel.service"
           ];
         };
 
@@ -123,12 +120,6 @@
         };
 
         programs.gamemode.enable = true;
-
-        # EcoFlow RIVER 3 Plus over USB HID (usbhid-ups, 3746:ffff).
-        alerts.ups.enable = true;
-
-        # Air's tailnet address; its alerts reach Sokka through here.
-        alerts.relay.from = lib.lists.singleton "100.107.48.89";
 
         # The e-reader cannot join the tailnet and pulls OPDS over the LAN.
         media.calibreWebLan = {

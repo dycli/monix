@@ -18,8 +18,7 @@
       # checked without a scrub. Monthly, at idle IO priority. Metadata is
       # DUP even on one device and so is repairable; file data on a single
       # device is only reported. `btrfs scrub start -B` exits non-zero on
-      # uncorrectable errors, which OnFailure (alerts.mod.nix) turns into
-      # an alert.
+      # uncorrectable errors, which leaves the unit failed in the journal.
       services.btrfs.autoScrub.enable = true;
     };
 }

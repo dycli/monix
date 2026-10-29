@@ -69,15 +69,6 @@
             # The standard integration bundle.
             default_config = { };
 
-            # An automation that calls rest_command.ship_alert with a
-            # `message` wakes the assistant (alerts.mod.nix's door).
-            rest_command.ship_alert = {
-              url = "http://127.0.0.1:${toString config.alerts.port}/";
-              method = "post";
-              content_type = "text/plain";
-              payload = "{{ message }}";
-            };
-
             homeassistant = {
               name = "Home";
               unit_system = "us_customary";

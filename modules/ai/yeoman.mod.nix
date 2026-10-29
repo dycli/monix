@@ -1,14 +1,13 @@
 # The yeoman (yeoman/), the household's assistant program: one endless
-# Matrix chat with no sessions, run once per person (`yeoman.instances`,
-# Sokka for one, Suki for another), each with its own account, memory,
-# book and chat. Each message from its person becomes one
+# web chat with no sessions, run once per person (`yeoman.instances`:
+# Bridge's Libri for Dylan, Suki for Gab), each with its own memory, book
+# and chat. Each message from its person becomes one
 # fresh model call over the prompt, the whole memory and the message;
 # message and answer both go into that instance's own hippo store, so the
 # next call remembers them.
 #
-# Each instance is three units under its own static user: the bot, the
-# hippo service that is the store's only writer, and the account
-# bootstrap. Model calls run the claude CLI on the ship's Claude subscription
+# Each instance is two units under its own static user: the assistant and
+# the hippo service that is the store's only writer. Model calls run the claude CLI on the ship's Claude subscription
 # token (or an instance's own API key, `claudeKeyFile`), without built-in tools or settings; their only tools come over
 # MCP: the instance's own server (`yeoman tools`: web search and fetch in
 # front of Parallel's keyless server, reminders, lists, memory tools that
@@ -28,10 +27,8 @@
 # anyone put text in front of the model, so fetch opens only links a
 # search returned or the person wrote: nothing it read can ride out in a
 # link it made up. The bot sends due reminders itself, runs
-# due routines as requests and sends the answers, reads photos and files
-# sent to it without keeping them, and on the one instance that takes
-# them, reads the host's alerts from their spool and sends its own account
-# of them (alerts.mod.nix). An instance with `computer = true` also drives
+# due routines as requests and sends the answers, and reads photos and files
+# sent to it without keeping them. An instance with `computer = true` also drives
 # a browser of its own on the host (assistant-browser.mod.nix) over
 # Playwright MCP, reads its desk for screenshots, runs code in a microVM
 # (yeoman-computer.mod.nix), and can start a task:
@@ -255,54 +252,6 @@
       # would forbid --strict-mcp-config.
       claudeEtc = pkgs.writeTextDir "managed-settings.json" "{}";
 
-      # Idempotent: logs in first, else walks the registration-token flow.
-      register = pkgs.writeShellApplication {
-        name = "yeoman-register";
-        runtimeInputs = [
-          pkgs.curl
-          pkgs.jq
-        ];
-        text = ''
-          hs="http://127.0.0.1:${toString config.matrix.port}"
-          localpart=''${MATRIX_USER#@}; localpart=''${localpart%%:*}
-          mcurl() {
-            curl -s --connect-timeout 5 --max-time 30 \
-              -H "Content-Type: application/json" "$@"
-          }
-
-          # /proc/<pid>/cmdline is world-readable: jq reads the secrets from
-          # the environment, request bodies ride stdin, and the bearer
-          # header goes to curl as a -K - config.
-          login=$(jq -n '{type:"m.login.password",
-              identifier:{type:"m.id.user",user:env.MATRIX_USER},
-              password:env.MATRIX_PASSWORD}' \
-            | mcurl -X POST "$hs/_matrix/client/v3/login" -d @-)
-          tok=$(jq -r '.access_token // empty' <<< "$login")
-          if [ -n "$tok" ]; then
-            printf 'header = "Authorization: Bearer %s"\n' "$tok" \
-              | mcurl -K - -X POST "$hs/_matrix/client/v3/logout" \
-                  -d '{}' > /dev/null || true
-            echo "account $MATRIX_USER exists"
-            exit 0
-          fi
-
-          session=$(mcurl -X POST "$hs/_matrix/client/v3/register" -d '{}' \
-            | jq -er .session)
-          out=$(localpart="$localpart" session="$session" jq -n \
-              '{username:env.localpart, password:env.MATRIX_PASSWORD,
-                inhibit_login:true,
-                auth:{type:"m.login.registration_token",
-                      token:env.TUWUNEL_REGISTRATION_TOKEN, session:env.session}}' \
-            | mcurl -X POST "$hs/_matrix/client/v3/register" -d @-)
-          if jq -e '.user_id // empty' <<< "$out" > /dev/null; then
-            echo "registered $MATRIX_USER"
-          else
-            echo "registration failed: $out" >&2
-            exit 1
-          fi
-        '';
-      };
-
       # An instance on Libri (`build`) reads its
       # settings from one TOML file (Libri's README, "Config"; the table in
       # its yeoman/src/host.rs): each setting this module gives goes there
@@ -357,10 +306,6 @@
         YEOMAN_SEAT = "household.seat";
         YEOMAN_A2A = "household.peers";
         YEOMAN_PERSONAS = "household.personas";
-        YEOMAN_ALERTS = "household.alerts";
-        YEOMAN_HOMESERVER = "matrix.homeserver";
-        YEOMAN_MATRIX = "matrix.account";
-        YEOMAN_USERS = "matrix.users";
       };
       # A unit's environment split into Libri's config file and what stays.
       libriConfig =
@@ -580,8 +525,6 @@
             BindReadOnlyPaths = singleton "${claudeEtc}:/etc/claude-code";
           };
           seat = topology.seat;
-          # Matrix only with an account: without one, the site alone.
-          matrix = i.credentialsEnvFile != null;
           models =
             optionalAttrs (i.models != [ ]) { YEOMAN_MODELS = concatStringsSep "," i.models; }
             // optionalAttrs (i.efforts != [ ]) { YEOMAN_EFFORTS = concatStringsSep "," i.efforts; };
@@ -681,25 +624,6 @@
           }
         else
           {
-            "${n}-register" = mkIf matrix {
-              description = "${i.name} Matrix account bootstrap";
-              wantedBy = singleton "multi-user.target";
-              wants = singleton "tuwunel.service";
-              after = singleton "tuwunel.service";
-              serviceConfig =
-                sandbox
-                // fence
-                // {
-                  Type = "oneshot";
-                  RemainAfterExit = true;
-                  ExecStart = getExe register;
-                  EnvironmentFile = [
-                    i.credentialsEnvFile
-                    cfg.registrationEnvFile
-                  ];
-                };
-            };
-
             # The memory's door, after the seat's on 8940, by sorted name.
             "${n}-door" = mkIf (i.doorPassphraseFile != null) (
               lib.ship.hippoDoor {
@@ -763,20 +687,8 @@
             ${n} = libriUnit {
               description = "${i.name}, ${i.person}'s household assistant";
               wantedBy = singleton "multi-user.target";
-              wants = [
-                "${n}-hippo.service"
-              ]
-              ++ optionals matrix [
-                "tuwunel.service"
-                "${n}-register.service"
-              ];
-              after = [
-                "${n}-hippo.service"
-              ]
-              ++ optionals matrix [
-                "tuwunel.service"
-                "${n}-register.service"
-              ];
+              wants = singleton "${n}-hippo.service";
+              after = singleton "${n}-hippo.service";
               environment =
                 env
                 // shared
@@ -790,11 +702,6 @@
                 }
                 // models
                 // forget
-                // optionalAttrs matrix {
-                  YEOMAN_HOMESERVER = "http://127.0.0.1:${toString config.matrix.port}";
-                  YEOMAN_USERS = concatStringsSep "," i.users;
-                  YEOMAN_MATRIX = "${creds}/matrix";
-                }
                 // optionalAttrs (i.localModel != null) {
                   # Local inference takes no MCP, so it answers without tools.
                   YEOMAN_BACKEND = "http";
@@ -821,7 +728,6 @@
                   YEOMAN_APP = cfg.sites.${shared'}.name;
                   YEOMAN_SESSIONS = "${sitesDir}/${shared'}/sessions";
                 }
-                // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
                 # Watches read the money here, not in the tools.
                 // {
                   YEOMAN_TZ = config.time.timeZone;
@@ -850,7 +756,6 @@
                   LoadCredential = [
                     claudeCredential
                   ]
-                  ++ optional matrix "matrix:${i.credentialsEnvFile}"
                   ++ optional (i.newsKeyFile != null) "news:${i.newsKeyFile}"
                   ++ optional (cfg.homeTokenFile != null) "home:${cfg.homeTokenFile}"
                   ++ optional (i.fastmailTokenFile != null) "fastmail:${i.fastmailTokenFile}"
@@ -865,7 +770,6 @@
                     site.dir
                     house
                   ]
-                  ++ optional i.alerts config.alerts.spool
                   ++ optionals i.computer [
                     pc.desk
                     (browsers.desk n)
@@ -896,7 +800,6 @@
 
           };
 
-      alerted = attrNames (filterAttrs (_: i: i.alerts) cfg.instances);
       # The instances that run as a user of their own: all but the seat's.
       ownUsers = filterAttrs (_: i: !i.seat) cfg.instances;
       built = filterAttrs (_: i: i.build != null) cfg.instances;
@@ -924,27 +827,6 @@
                     type = types.str;
                     example = "Alice";
                     description = "The person it serves, by first name.";
-                  };
-
-                  users = mkOption {
-                    type = types.listOf types.str;
-                    default = [ ];
-                    example = singleton "@alice:chat.example.com";
-                    description = ''
-                      Who it talks with: it joins rooms they invite it to and
-                      answers only them.
-                    '';
-                  };
-
-                  credentialsEnvFile = mkOption {
-                    type = types.nullOr types.str;
-                    default = null;
-                    description = ''
-                      Required unless seat is on.
-                      agenix env file with MATRIX_USER=@name:server and
-                      MATRIX_PASSWORD=..., the assistant's own Matrix
-                      account, registered on first start.
-                    '';
                   };
 
                   passwordFile = mkOption {
@@ -1019,15 +901,8 @@
                     default = false;
                     description = ''
                       Whether it serves a web chat at the root of its site,
-                      <name>.<domain> on the tailnet, beside its pages;
-                      sign-in codes are approved in its Matrix room.
+                      <name>.<domain> on the tailnet, beside its pages.
                     '';
-                  };
-
-                  alerts = mkOption {
-                    type = types.bool;
-                    default = false;
-                    description = "Whether it posts the host's alerts.";
                   };
 
                   money = mkOption {
@@ -1160,7 +1035,7 @@
                       Whether this is the seat itself in a web chat: each
                       message runs Claude Code as the seat user, with its
                       settings, hooks, MCP servers, built-in tools and
-                      memory; no Matrix, sandbox or memory of its own.
+                      memory; no sandbox or memory of its own.
                     '';
                   };
 
@@ -1195,7 +1070,7 @@
                     type = types.listOf types.str;
                     description = ''
                       Its assistants, each with web on; the first answers by
-                      default and takes the sign-ins, in its Matrix room.
+                      default.
                     '';
                   };
                 };
@@ -1213,14 +1088,6 @@
           description = ''
             Web chats shared by several assistants, by host label: each
             member answers at <label>.<domain> when the page picks it.
-          '';
-        };
-
-        registrationEnvFile = mkOption {
-          type = types.str;
-          description = ''
-            agenix env file with TUWUNEL_REGISTRATION_TOKEN=..., used only by
-            the account-registration oneshots.
           '';
         };
 
@@ -1295,18 +1162,14 @@
       config = {
         assertions = [
           {
-            assertion = length alerted <= 1;
-            message = "yeoman: only one instance can take the alerts.";
-          }
-          {
             assertion = lib.lists.all (n: cfg.instances ? ${n} && cfg.instances.${n}.web) inSites;
             message = "yeoman: a site lists only instances with web on.";
           }
           {
-            assertion = lib.lists.all (
-              i: (i.credentialsEnvFile != null || i.web) && !(i.seat && i.forgetAfter != null)
-            ) (lib.attrsets.attrValues cfg.instances);
-            message = "yeoman: an instance needs Matrix or web on, and the seat can't forget.";
+            assertion = lib.lists.all (i: i.web && !(i.seat && i.forgetAfter != null)) (
+              lib.attrsets.attrValues cfg.instances
+            );
+            message = "yeoman: an instance needs web on, and the seat can't forget.";
           }
           {
             assertion = lib.lists.allUnique (
@@ -1350,10 +1213,6 @@
             users = singleton n;
           }
         ) (filterAttrs (_: i: i.computer) cfg.instances);
-
-        # Sensors and the receiver write alerts in as root or the reader;
-        # nobody else may, since what it posts its memory keeps.
-        alerts.reader = mkIf (alerted != [ ]) (head alerted);
 
         # yeoman-image holds the household's one Codex login, on the ChatGPT
         # subscription; the assistants reach only its socket. Log in once,
@@ -1474,7 +1333,7 @@
                   )
                   |> lib.attrsets.listToAttrs
                 )
-                # Sign-in asks in the first one's Matrix room, whichever
+                # Sign-in asks go to the first one, whichever
                 # assistant the page shows; the session it grants is shared.
                 // {
                   "= /api/ask".proxyPass = first;

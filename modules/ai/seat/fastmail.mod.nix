@@ -1,6 +1,7 @@
 # Dylan's Fastmail (mail, calendar, contacts) for the seat, through
-# Fastmail's own MCP server on the token Sokka holds, so Bridge's daily chat
-# (Libri) reads mail and calendar as Sokka does. As in cloudflare.mod.nix,
+# Fastmail's own MCP server, so Bridge's daily chat (Libri) reads mail and
+# calendar. The token keeps the name it had when Sokka held it; renaming it
+# means re-keying the .age file, which waits for the next token rotation. As in cloudflare.mod.nix,
 # mcp-proxy reads the token from its environment, keeping it out of every
 # client config and process argv. Sending is denied in the managed settings:
 # the seat drafts, Dylan sends.
@@ -34,8 +35,6 @@
       users.groups.fastmail-dylan = { };
       users.users.${seat.user}.extraGroups = singleton "fastmail-dylan";
 
-      # Sokka's unit takes it as a systemd credential, read as root, so the
-      # group changes nothing for Sokka.
       secrets.sokka-fastmail-mcp-token = {
         file = ../../../hosts/water/secrets/sokka-fastmail-mcp-token.age;
         group = "fastmail-dylan";

@@ -5,7 +5,7 @@
 #
 # Each night the backup pauses only Immich, dumps its PostgreSQL database,
 # takes read-only Btrfs snapshots of the SSD and of the OS subvolume (for
-# the state still on the OS disk: Matrix, Home Assistant, Minecraft,
+# the state still on the OS disk: Home Assistant, Minecraft,
 # Prowlarr, Seerr, the assistants, KeePass) and sends both to the
 # encrypted Restic repository on the 8-TB HDD. A backup counts only once
 # its own restore checks pass; Sunday maintenance prunes and reads back 5%
@@ -32,11 +32,9 @@
 
       # State on the OS disk that no rebuild can recreate, relative to /.
       osPaths = [
-        "var/lib/private/tuwunel"
         "var/lib/hass"
         "var/lib/private/prowlarr"
         "var/lib/private/seerr"
-        "var/lib/sokka"
         "var/lib/suki"
         "var/lib/yeoman-pages"
         "var/lib/bridge"

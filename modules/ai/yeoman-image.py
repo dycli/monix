@@ -1,4 +1,4 @@
-"""Sokka's pictures: a stdio MCP server in front of two artists.
+"""The assistants' pictures: a stdio MCP server in front of two artists.
 
 ChatGPT is the image service (`yeoman-image`), which holds the
 household's one Codex login and answers a description with a PNG. Grok

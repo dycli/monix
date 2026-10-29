@@ -5,67 +5,6 @@
 # rename here is caught before deploy.
 
 [[tour]]
-id = "message"
-title = "A message to Sokka"
-summary = "What happens between typing a message and reading Sokka's answer."
-
-[[tour.step]]
-title = "Two doors"
-view = "wiring"
-focus = ["monix:modules/ai/yeoman.mod.nix", "monix:modules/homelab/matrix.mod.nix"]
-text = """
-Sokka is one program, the yeoman, run once per person. You reach it through
-a door: an encrypted Matrix room served by tuwunel, or the web chat at
-si.su.is. The yeoman starts after tuwunel, since it logs in there."""
-
-[[tour.step]]
-title = "Matrix in"
-view = "map"
-focus = ["monix:modules/ai/yeoman/src/matrix.rs", "monix:modules/ai/yeoman/src/door.rs"]
-text = """
-matrix.rs keeps the device keys and room state on disk, so a restart resumes
-the same encrypted session. door.rs hides which door a message came from:
-the rest of the program just answers, reminds and asks for approval."""
-
-[[tour.step]]
-title = "One call per message"
-view = "map"
-focus = ["monix:modules/ai/yeoman/src/main.rs", "monix:modules/ai/yeoman/src/model.rs"]
-text = """
-There are no sessions. Each message becomes one fresh model call that sees
-the prompt, the whole memory and the new message. model.rs decides which
-backend runs it: the claude CLI on the subscription, or a local model."""
-
-[[tour.step]]
-title = "Memory"
-view = "map"
-focus = ["monix:modules/ai/yeoman/src/hippo.rs", "monix:modules/ai/seat/hippo"]
-text = """
-The memory is Sokka's own hippo service. Both the message and the answer go
-into it, so the next call remembers them. hippo is a separate Rust program
-shared with the coding seat."""
-
-[[tour.step]]
-title = "Tools"
-view = "map"
-focus = ["monix:modules/ai/yeoman/src/tools.rs", "monix:modules/ai/yeoman/src/weather.rs", "monix:modules/ai/yeoman/src/fastmail.rs"]
-text = """
-During the call the model can use Sokka's tools: weather, lists, media and
-more. They run as their own MCP server and can reach the household's things
-but never the Matrix keys, so text from a web search cannot steer them
-elsewhere. Mail and calendar come from Fastmail's own MCP server; the model
-cannot send, only draft for the captain's approval."""
-
-[[tour.step]]
-title = "The web door"
-view = "wiring"
-focus = ["monix:modules/ai/yeoman.mod.nix", "monix:modules/homelab/ship-proxy.mod.nix"]
-text = """
-The same yeoman serves the web chat on a local port, and ship-proxy puts it
-on si.su.is with TLS. History comes from hippo, so Matrix and web read as
-one conversation."""
-
-[[tour]]
 id = "deploy"
 title = "From commit to running"
 summary = "How a pushed change reaches the machines, and how it backs out."

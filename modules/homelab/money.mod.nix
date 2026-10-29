@@ -3,7 +3,7 @@
 # transactions, holdings and card statements into finance.db every six hours
 # (under /var/lib/money/<environment>), and serves the page: net worth,
 # spending by category, holdings, and a Banks tab where we link a bank. Its own user is the wall: nothing
-# else, Sokka included, can read the keys or the tokens. The `finance` group
+# else, the assistants included, can read the keys or the tokens. The `finance` group
 # reads finance.db and nothing more; the `money` group may also change what
 # the page shows (categories, budget lines, hand-kept accounts) through
 # /run/money.sock, the same API without the page.
