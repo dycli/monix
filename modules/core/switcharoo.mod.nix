@@ -143,8 +143,11 @@
             [[ $(systemctl show -P TriggeredBy "$unit") == *.timer* ]] || echo "$unit"
           done)
           [[ -z $broke ]] || healthy=0
+          # Judge the new generation by its own list, so a deploy that retires
+          # a service isn't failed for no longer running it.
+          mapfile -t must < "$system/etc/switcharoo/must-run"
           missing=""
-          for unit in ${escapeShellArgs cfg.mustRun}; do
+          for unit in "''${must[@]}"; do
             systemctl is-active --quiet "$unit" || missing+="$unit "
           done
           [[ -z $missing ]] || healthy=0
@@ -275,6 +278,8 @@
           "sshd.service"
         ]
         ++ optional config.services.tailscale.enable "tailscaled.service";
+
+        environment.etc."switcharoo/must-run".text = lib.strings.concatLines cfg.mustRun;
 
         environment.systemPackages = singleton cli;
 
