@@ -4,8 +4,9 @@
 //! or drops it on 👎. No tool the model holds can act, so no text it reads
 //! can make it.
 
-use crate::mail;
+use crate::fastmail;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -14,10 +15,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Act {
     Mail {
-        account: Option<String>,
+        /// The address it goes from; Fastmail picks when left out.
+        #[serde(default)]
+        from: Option<String>,
         to: String,
         subject: String,
         body: String,
+        /// The id of the email it answers, when it is a reply.
+        #[serde(default)]
+        reply: Option<String>,
     },
 }
 
@@ -34,39 +40,62 @@ impl Act {
     pub fn show(&self) -> String {
         match self {
             Act::Mail {
-                account,
+                from,
                 to,
                 subject,
                 body,
+                reply,
             } => {
-                let from = account
+                let from = from
                     .as_ref()
                     .map(|a| format!(" from {a}"))
                     .unwrap_or_default();
+                let what = if reply.is_some() { "Reply" } else { "Draft" };
                 format!(
-                    "Draft to {to}{from}\nSubject: {subject}\n\n{body}\n\n👍 sends it, 👎 drops it."
+                    "{what} to {to}{from}\nSubject: {subject}\n\n{body}\n\n👍 sends it, 👎 drops it."
                 )
             }
         }
     }
 
     /// Carries the act out; the model never reaches this. Mail goes out
-    /// from the account in the accounts file at YEOMAN_MAIL, over the SMTP
-    /// server at YEOMAN_SMTP.
+    /// through Fastmail's send tool, with the token at YEOMAN_FASTMAIL.
     pub fn carry_out(&self) -> Result<String, String> {
         match self {
+            Act::Mail { to, .. } => {
+                let fastmail = fastmail::from_env()?.ok_or("no mail here")?;
+                fastmail.call("send_email", self.arguments())?;
+                Ok(format!("Sent to {to}."))
+            }
+        }
+    }
+
+    /// Fastmail's send_email arguments: the body goes as plain text,
+    /// exactly as the room saw it.
+    fn arguments(&self) -> Value {
+        match self {
             Act::Mail {
-                account,
+                from,
                 to,
                 subject,
                 body,
+                reply,
             } => {
-                let host = std::env::var("YEOMAN_SMTP").map_err(|_| "no mail here")?;
-                let file = std::env::var("YEOMAN_MAIL").map_err(|_| "no mail here")?;
-                let text = fs::read_to_string(file).map_err(|e| format!("mail accounts: {e}"))?;
-                let accounts = mail::accounts(&text)?;
-                let from = mail::pick(&accounts, account.as_deref())?;
-                mail::send(&host, from, to, subject, body)
+                let to: Vec<Value> = to
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|a| !a.is_empty())
+                    .map(|a| json!({"email": a}))
+                    .collect();
+                let mut v = json!({"to": to, "subject": subject, "body": body, "format": "text"});
+                if let Some(f) = from {
+                    v["from"] = json!(f);
+                }
+                if let Some(id) = reply {
+                    v["mode"] = json!("reply");
+                    v["emailId"] = json!(id);
+                }
+                v
             }
         }
     }
@@ -172,10 +201,11 @@ mod tests {
 
     fn mail() -> Act {
         Act::Mail {
-            account: None,
+            from: None,
             to: "a@b.c".into(),
             subject: "Hi".into(),
             body: "Hello.".into(),
+            reply: None,
         }
     }
 
@@ -215,6 +245,28 @@ mod tests {
     fn the_room_sees_the_whole_draft() {
         let s = mail().show();
         assert!(s.starts_with("Draft to a@b.c\nSubject: Hi\n\nHello.\n\n👍"));
+    }
+
+    #[test]
+    fn a_reply_goes_to_each_address_as_plain_text() {
+        let act = Act::Mail {
+            from: Some("me@x.org".into()),
+            to: "a@b.c, d@e.f".into(),
+            subject: "Re: Hi".into(),
+            body: "Yes.".into(),
+            reply: Some("M1".into()),
+        };
+        let v = act.arguments();
+        assert_eq!(v["to"], json!([{"email": "a@b.c"}, {"email": "d@e.f"}]));
+        assert_eq!(
+            (v["mode"].as_str(), v["emailId"].as_str()),
+            (Some("reply"), Some("M1"))
+        );
+        assert_eq!(
+            (v["format"].as_str(), v["from"].as_str()),
+            (Some("text"), Some("me@x.org"))
+        );
+        assert!(mail().arguments().get("mode").is_none());
     }
 
     fn tempdir() -> PathBuf {

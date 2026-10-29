@@ -4,10 +4,9 @@
 //! an item is due are the same for every source, so a new source is one
 //! more arm of `Sources::items`.
 
-use crate::calendar::Calendar;
+use crate::fastmail::{self, Fastmail};
 use crate::finance::Finance;
-use crate::mail::{Account, Imap};
-use chrono::{Duration, NaiveDate, NaiveDateTime};
+use chrono::{DateTime, Duration, Local, NaiveDate, NaiveDateTime};
 use rusqlite::{Connection, OptionalExtension, params};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -37,13 +36,13 @@ create table if not exists watch_seen (
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Source {
-    /// New mail in the inbox: account, from, subject.
+    /// New mail in the inbox: from, subject, and the rest Fastmail gives.
     Mail,
     /// New transactions: merchant, amount (spending positive), category,
     /// kind (spend, income, transfer…), account, pending.
     Money,
-    /// Calendar events as they come up: summary, calendar, location,
-    /// start, end; `before` sets how many minutes ahead.
+    /// Calendar events as they come up: title, start, location, and the
+    /// rest Fastmail gives; `before` sets how many minutes ahead.
     Calendar,
 }
 
@@ -280,14 +279,14 @@ pub fn describe(i: &Item) -> String {
 
 /// What the watches can look at, read from the same settings as the tools.
 pub struct Sources {
-    pub mail: Option<(String, Vec<Account>)>,
-    pub calendar: Option<Calendar>,
+    pub fastmail: Option<Fastmail>,
     pub finance: Option<Finance>,
 }
 
 impl Sources {
-    /// The items a source has now: mail since yesterday, transactions from
-    /// the last ten days, events from now to two days on. Blocks.
+    /// The items a source has now: the newest mail in the inbox,
+    /// transactions from the last ten days, events from now to two days
+    /// on. Blocks.
     pub fn items(&self, source: Source, now: NaiveDateTime) -> Result<Vec<Item>, String> {
         match source {
             Source::Mail => self.mail(now),
@@ -298,36 +297,31 @@ impl Sources {
 
     pub fn has(&self, source: Source) -> bool {
         match source {
-            Source::Mail => self.mail.is_some(),
+            Source::Mail | Source::Calendar => self.fastmail.is_some(),
             Source::Money => self.finance.is_some(),
-            Source::Calendar => self.calendar.is_some(),
         }
     }
 
+    fn fastmail(&self) -> Result<&Fastmail, String> {
+        self.fastmail
+            .as_ref()
+            .ok_or("There is no mail or calendar here.".into())
+    }
+
     fn mail(&self, now: NaiveDateTime) -> Result<Vec<Item>, String> {
-        let (host, accounts) = self.mail.as_ref().ok_or("There is no mail here.")?;
-        let since = (now.date() - Duration::days(1))
-            .format("%d-%b-%Y")
-            .to_string();
-        let mut out = Vec::new();
-        for a in accounts {
-            let mut imap = Imap::login(host, a)?;
-            imap.open("INBOX")?;
-            let uids = imap.search(&[("SINCE", &since)])?;
-            for h in imap.headers(&uids, "INBOX")? {
-                let mut fields = Map::new();
-                fields.insert("account".into(), json!(a.name));
-                for k in ["from", "subject", "date", "uid"] {
-                    fields.insert(k.into(), h[k].clone());
-                }
-                out.push(Item {
-                    key: format!("{}/{}", a.name, h["uid"]),
-                    at: now,
-                    fields,
-                });
-            }
-        }
-        Ok(out)
+        // The newest fifty: a watch looks every other minute, and what it
+        // has seen it keeps for sixty days.
+        let found = self
+            .fastmail()?
+            .call("search_email", json!({"query": "in:inbox", "limit": 50}))?;
+        Ok(keyed(fastmail::records(&found)?)?
+            .into_iter()
+            .map(|(key, fields)| Item {
+                key,
+                at: now,
+                fields,
+            })
+            .collect())
     }
 
     fn money(&self, now: NaiveDateTime) -> Result<Vec<Item>, String> {
@@ -347,33 +341,78 @@ impl Sources {
     }
 
     fn calendar(&self, now: NaiveDateTime) -> Result<Vec<Item>, String> {
-        let cal = self.calendar.as_ref().ok_or("There is no calendar here.")?;
-        let today = now.date().format("%Y-%m-%d").to_string();
-        let events: Vec<Value> =
-            serde_json::from_str(&cal.events(&today, 2, None)?).map_err(|e| e.to_string())?;
-        Ok(events
+        let found = self.fastmail()?.call(
+            "search_events",
+            json!({"after": "now", "before": "2 days from now", "limit": 50}),
+        )?;
+        let events: Vec<_> = keyed(fastmail::records(&found)?)?
             .into_iter()
-            .filter_map(|e| {
-                let start = e["start"].as_str()?;
-                let at = NaiveDateTime::parse_from_str(start, AT)
-                    .or_else(|_| {
-                        NaiveDate::parse_from_str(start, "%Y-%m-%d")
-                            .map(|d| d.and_hms_opt(0, 0, 0).unwrap())
-                    })
-                    .ok()?;
-                // Only what is still ahead: the rest has had its turn.
-                if at < now {
-                    return None;
-                }
-                let key = format!("{}/{start}", e["uid"].as_str().unwrap_or_default());
-                let Value::Object(mut fields) = e else {
-                    return None;
-                };
-                fields.remove("uid");
-                Some(Item { key, at, fields })
+            .map(|(key, fields)| {
+                let at = fields.get("start").and_then(Value::as_str).and_then(start);
+                (key, at, fields)
             })
-            .collect())
+            .collect();
+        // Events none of whose starts read would never fire: say so.
+        if !events.is_empty() && events.iter().all(|(_, at, _)| at.is_none()) {
+            return Err(format!(
+                "fastmail: events without a start I can read: {}",
+                found.to_string().chars().take(300).collect::<String>()
+            ));
+        }
+        let items = events
+            .into_iter()
+            .filter_map(|(key, at, fields)| {
+                let at = at?;
+                // Only what is still ahead: the rest has had its turn.
+                (at >= now).then(|| Item {
+                    // A repeat keeps its id; its start tells it apart.
+                    key: format!("{key}/{at}"),
+                    at,
+                    fields,
+                })
+            })
+            .collect();
+        Ok(items)
     }
+}
+
+type Keyed = (String, Map<String, Value>);
+
+/// Records with their ids, the id taken out of the fields the model sees.
+/// Records without one could never be told apart, so they are an error.
+fn keyed(records: Vec<Map<String, Value>>) -> Result<Vec<Keyed>, String> {
+    records
+        .into_iter()
+        .map(|mut fields| {
+            let id = fields.remove("id").ok_or_else(|| {
+                let seen = Value::Object(fields.clone()).to_string();
+                format!(
+                    "fastmail: a record without an id: {}",
+                    seen.chars().take(300).collect::<String>()
+                )
+            })?;
+            Ok((
+                id.as_str().map(str::to_owned).unwrap_or(id.to_string()),
+                fields,
+            ))
+        })
+        .collect()
+}
+
+/// An event's start in local time: with an offset, converted; without,
+/// taken as local; a bare day, its midnight.
+fn start(s: &str) -> Option<NaiveDateTime> {
+    if let Ok(t) = DateTime::parse_from_rfc3339(s) {
+        return Some(t.with_timezone(&Local).naive_local());
+    }
+    ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", AT]
+        .iter()
+        .find_map(|f| NaiveDateTime::parse_from_str(s, f).ok())
+        .or_else(|| {
+            NaiveDate::parse_from_str(s, "%Y-%m-%d")
+                .ok()
+                .and_then(|d| d.and_hms_opt(0, 0, 0))
+        })
 }
 
 #[cfg(test)]
@@ -399,6 +438,28 @@ mod tests {
         let db = Connection::open_in_memory().unwrap();
         db.execute_batch(WATCHES).unwrap();
         db
+    }
+
+    #[test]
+    fn an_event_starts_in_local_time_in_any_of_its_forms() {
+        assert_eq!(start("2026-10-29T09:30:00"), Some(t("2026-10-29 09:30")));
+        assert_eq!(start("2026-10-29"), Some(t("2026-10-29 00:00")));
+        let utc = DateTime::parse_from_rfc3339("2026-10-29T13:30:00Z").unwrap();
+        assert_eq!(
+            start("2026-10-29T13:30:00Z"),
+            Some(utc.with_timezone(&Local).naive_local())
+        );
+        assert_eq!(start("soon"), None);
+    }
+
+    #[test]
+    fn records_keep_their_id_as_the_key_only() {
+        let Value::Object(r) = json!({"id": "M1", "subject": "Hi"}) else {
+            panic!()
+        };
+        let (key, fields) = keyed(vec![r]).unwrap().remove(0);
+        assert_eq!((key.as_str(), fields.len()), ("M1", 1));
+        assert!(keyed(vec![Map::new()]).is_err());
     }
 
     #[test]

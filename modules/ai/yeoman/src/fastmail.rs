@@ -1,11 +1,12 @@
 //! Fastmail's own MCP server (api.fastmail.com/mcp), as yeoman itself calls
 //! it: at start, to learn which tools send, so the model never holds them
-//! (see `sends`). The model reaches the rest of the server on its own.
+//! (see `sends`); for the mail and calendar watches; and to send the drafts
+//! the person approves. The model reaches the rest of the server on its own.
 //!
 //! Streamable HTTP by hand over ureq, not rmcp's client: every caller here
 //! is blocking, and a call is three posts (initialize, initialized, call).
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use std::fs;
 use std::time::Duration;
 use ureq::Agent;
@@ -35,6 +36,52 @@ impl Fastmail {
         let mut session = Session::open(self)?;
         let v = session.request("tools/list", json!({}))?;
         Ok(v["tools"].as_array().cloned().unwrap_or_default())
+    }
+
+    /// Calls a tool: its structured content if it gives one, else its text,
+    /// read as JSON when it is.
+    pub fn call(&self, tool: &str, arguments: Value) -> Result<Value, String> {
+        let mut session = Session::open(self)?;
+        let v = session.request("tools/call", json!({"name": tool, "arguments": arguments}))?;
+        result(v).map_err(|e| format!("fastmail: {tool}: {e}"))
+    }
+}
+
+fn result(v: Value) -> Result<Value, String> {
+    let text: String = v["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if v["isError"].as_bool() == Some(true) {
+        return Err(text);
+    }
+    if let Some(s) = v.get("structuredContent").filter(|s| !s.is_null()) {
+        return Ok(s.clone());
+    }
+    Ok(serde_json::from_str(&text).unwrap_or(Value::String(text)))
+}
+
+/// The records in a tool's answer: the answer itself when it is a list,
+/// else the first field holding a list of objects ("emails", "events").
+pub fn records(v: &Value) -> Result<Vec<Map<String, Value>>, String> {
+    let objects = |a: &Vec<Value>| -> Vec<Map<String, Value>> {
+        a.iter().filter_map(|x| x.as_object().cloned()).collect()
+    };
+    match v {
+        Value::Array(a) => Ok(objects(a)),
+        Value::Object(o) => Ok(o
+            .values()
+            .filter_map(Value::as_array)
+            .find(|a| a.iter().any(Value::is_object))
+            .map(objects)
+            .unwrap_or_default()),
+        other => Err(format!(
+            "fastmail: an answer that holds no records: {}",
+            other.to_string().chars().take(300).collect::<String>()
+        )),
     }
 }
 
@@ -144,6 +191,21 @@ mod tests {
         let stream = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{}}\n\n";
         assert!(answer(stream, 3).is_some());
         assert!(answer(stream, 4).is_none());
+    }
+
+    #[test]
+    fn reads_structured_content_or_json_text_and_finds_the_records() {
+        let text = json!({"content": [{"type": "text", "text": "{\"emails\":[{\"id\":\"M1\"}],\"total\":1}"}]});
+        let v = result(text).unwrap();
+        assert_eq!(records(&v).unwrap()[0]["id"], "M1");
+        let structured = json!({"content": [], "structuredContent": [{"id": "E1"}]});
+        assert_eq!(
+            records(&result(structured).unwrap()).unwrap()[0]["id"],
+            "E1"
+        );
+        let failed = json!({"content": [{"type": "text", "text": "no"}], "isError": true});
+        assert_eq!(result(failed).unwrap_err(), "no");
+        assert!(records(&json!("Nothing found.")).is_err());
     }
 
     #[test]

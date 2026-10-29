@@ -48,12 +48,13 @@ shared with the coding seat."""
 [[tour.step]]
 title = "Tools"
 view = "map"
-focus = ["monix:modules/ai/yeoman/src/tools.rs", "monix:modules/ai/yeoman/src/calendar.rs", "monix:modules/ai/yeoman/src/weather.rs", "monix:modules/ai/yeoman/src/mail.rs"]
+focus = ["monix:modules/ai/yeoman/src/tools.rs", "monix:modules/ai/yeoman/src/weather.rs", "monix:modules/ai/yeoman/src/fastmail.rs"]
 text = """
-During the call the model can use Sokka's tools: calendar, weather, mail,
-lists, media and more. They run as their own MCP server and can reach the
-household's things but never the Matrix keys, so text from a web search
-cannot steer them elsewhere."""
+During the call the model can use Sokka's tools: weather, lists, media and
+more. They run as their own MCP server and can reach the household's things
+but never the Matrix keys, so text from a web search cannot steer them
+elsewhere. Mail and calendar come from Fastmail's own MCP server; the model
+cannot send, only draft for the captain's approval."""
 
 [[tour.step]]
 title = "The web door"

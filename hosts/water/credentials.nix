@@ -36,7 +36,6 @@ in
     instances.sokka = {
       credentialsEnvFile = config.secrets.matrix-sokka-env.path;
       web = true;
-      mailCredentialsFile = config.secrets.sokka-mail-json.path;
       fastmailTokenFile = config.secrets.sokka-fastmail-mcp-token.path;
       money = true;
     };
@@ -47,17 +46,14 @@ in
     instances.suki = {
       credentialsEnvFile = config.secrets.matrix-suki-env.path;
       web = true;
-      mailCredentialsFile = config.secrets.suki-mail-json.path;
       fastmailTokenFile = config.secrets.suki-fastmail-mcp-token.path;
       money = true;
       claudeKeyFile = config.secrets.suki-claude-key.path;
     };
     registrationEnvFile = config.secrets.matrix-registration-env.path;
     claudeTokenFile = config.secrets.agent-claude-token.path;
-    calendarCredentialsFile = config.secrets.yeoman-caldav-json.path;
     homeTokenFile = config.secrets.yeoman-home-token.path;
     requestsKeyFile = config.secrets.yeoman-requests-key.path;
-    mailServer = "imap.migadu.com";
     # Portsmouth, NH.
     weather = "43.07,-70.76";
     # The household's money, read-only.
@@ -71,11 +67,8 @@ in
     matrix-sokka-env.file = ./secrets/matrix-sokka.env.age;
     matrix-suki-env.file = ./secrets/matrix-suki.env.age;
     matrix-azula-env.file = ./secrets/matrix-azula.env.age;
-    yeoman-caldav-json.file = ./secrets/yeoman-caldav.json.age;
-    sokka-mail-json.file = ./secrets/sokka-mail.json.age;
     sokka-fastmail-mcp-token.file = ./secrets/sokka-fastmail-mcp-token.age;
     suki-fastmail-mcp-token.file = ./secrets/suki-fastmail-mcp-token.age;
-    suki-mail-json.file = ./secrets/suki-mail.json.age;
     suki-claude-key.file = ./secrets/suki-claude-key.age;
     yeoman-home-token.file = ./secrets/yeoman-home-token.age;
     yeoman-requests-key.file = ./secrets/yeoman-requests-key.age;
@@ -111,23 +104,18 @@ in
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
   systemd.services.sokka.restartTriggers = [
     ./secrets/matrix-sokka.env.age
-    ./secrets/yeoman-caldav.json.age
-    ./secrets/sokka-mail.json.age
     ./secrets/sokka-fastmail-mcp-token.age
     ./secrets/yeoman-home-token.age
     ./secrets/yeoman-requests-key.age
   ];
   systemd.services.azula.restartTriggers = [
     ./secrets/matrix-azula.env.age
-    ./secrets/yeoman-caldav.json.age
     ./secrets/yeoman-home-token.age
     ./secrets/yeoman-requests-key.age
   ];
   systemd.services.suki.restartTriggers = [
     ./secrets/matrix-suki.env.age
-    ./secrets/suki-mail.json.age
     ./secrets/suki-fastmail-mcp-token.age
-    ./secrets/yeoman-caldav.json.age
     ./secrets/yeoman-home-token.age
     ./secrets/yeoman-requests-key.age
   ];

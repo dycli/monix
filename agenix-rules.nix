@@ -60,11 +60,6 @@ in
   "hosts/water/secrets/matrix-sokka.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-suki.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/matrix-azula.env.age".publicKeys = singleton water ++ admin;
-  # Sokka's CalDAV accounts: [{"name","url","username","password"}, ...].
-  "hosts/water/secrets/yeoman-caldav.json.age".publicKeys = singleton water ++ admin;
-  # Sokka's IMAP accounts: [{"name","username","password"}, ...].
-  "hosts/water/secrets/sokka-mail.json.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/suki-mail.json.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/suki-claude-key.age".publicKeys = singleton water ++ admin;
   # A Home Assistant long-lived access token, raw, for the assistants' home tools.
   "hosts/water/secrets/yeoman-home-token.age".publicKeys = singleton water ++ admin;
@@ -87,7 +82,8 @@ in
   "hosts/water/secrets/git-mirror-token.age".publicKeys = singleton water ++ admin;
   # Immich API key, raw, album.read + asset.view only, for the frame's photos.
   "hosts/water/secrets/frame-immich-key.age".publicKeys = singleton water ++ admin;
-  # CalDAV account for the frame, JSON like yeoman-caldav, read-only Fastmail app password.
+  # The frame's CalDAV account, [{"name","url","username","password"}],
+  # a read-only Fastmail app password.
   "hosts/water/secrets/frame-caldav.json.age".publicKeys = singleton water ++ admin;
   # PLAID_CLIENT_ID=..., PLAID_SANDBOX_SECRET=..., PLAID_SECRET=... (production),
   # for the plaid sync service only.

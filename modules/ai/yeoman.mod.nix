@@ -85,7 +85,6 @@
         concatStringsSep
         concatMapStringsSep
         toSentenceCase
-        replaceStrings
         ;
       inherit (lib.options) mkOption;
       inherit (lib.attrsets)
@@ -365,7 +364,6 @@
                   shared
                   // {
                     inherit (env) HIPPO_DIR;
-                    YEOMAN_CALDAV = "${creds}/caldav";
                     YEOMAN_TZ = config.time.timeZone;
                     YEOMAN_YTDLP = getExe pkgs.yt-dlp;
                   }
@@ -378,9 +376,8 @@
                   // optionalAttrs i.money {
                     YEOMAN_MONEY = "/run/money.sock";
                   }
-                  // optionalAttrs (i.mailCredentialsFile != null) {
-                    YEOMAN_MAIL = "${creds}/mail";
-                    YEOMAN_IMAP = cfg.mailServer;
+                  // optionalAttrs (i.fastmailTokenFile != null) {
+                    YEOMAN_FASTMAIL = "${creds}/fastmail";
                   };
               };
               image = {
@@ -713,10 +710,8 @@
                   YEOMAN_SESSIONS = "${sitesDir}/${shared'}/sessions";
                 }
                 // optionalAttrs i.alerts { YEOMAN_ALERTS = config.alerts.spool; }
-                # Watches read the mail, calendars and money here, not in
-                # the tools.
+                # Watches read the money here, not in the tools.
                 // {
-                  YEOMAN_CALDAV = "${creds}/caldav";
                   YEOMAN_TZ = config.time.timeZone;
                 }
                 // optionalAttrs (cfg.financeDb != null) {
@@ -726,11 +721,6 @@
                 # the watches and approved drafts.
                 // optionalAttrs (i.fastmailTokenFile != null) {
                   YEOMAN_FASTMAIL = "${creds}/fastmail";
-                }
-                // optionalAttrs (i.mailCredentialsFile != null) {
-                  YEOMAN_MAIL = "${creds}/mail";
-                  YEOMAN_SMTP = cfg.smtpServer;
-                  YEOMAN_IMAP = cfg.mailServer;
                 };
               serviceConfig =
                 sandbox
@@ -740,10 +730,8 @@
                   ExecStart = start;
                   LoadCredential = [
                     claudeCredential
-                    "caldav:${cfg.calendarCredentialsFile}"
                   ]
                   ++ optional matrix "matrix:${i.credentialsEnvFile}"
-                  ++ optional (i.mailCredentialsFile != null) "mail:${i.mailCredentialsFile}"
                   ++ optional (i.newsKeyFile != null) "news:${i.newsKeyFile}"
                   ++ optional (cfg.homeTokenFile != null) "home:${cfg.homeTokenFile}"
                   ++ optional (i.fastmailTokenFile != null) "fastmail:${i.fastmailTokenFile}"
@@ -836,16 +824,6 @@
                       agenix env file with MATRIX_USER=@name:server and
                       MATRIX_PASSWORD=..., the assistant's own Matrix
                       account, registered on first start.
-                    '';
-                  };
-
-                  mailCredentialsFile = mkOption {
-                    type = types.nullOr types.str;
-                    default = null;
-                    description = ''
-                      agenix JSON file with the person's IMAP accounts:
-                      [{"name", "username", "password"}, ...]; null for no
-                      mail.
                     '';
                   };
 
@@ -1090,14 +1068,6 @@
           description = "File holding a Claude Code OAuth token.";
         };
 
-        calendarCredentialsFile = mkOption {
-          type = types.str;
-          description = ''
-            agenix JSON file with the shared CalDAV accounts:
-            [{"name", "url", "username", "password"}, ...].
-          '';
-        };
-
         homeTokenFile = mkOption {
           type = types.nullOr types.str;
           default = null;
@@ -1125,19 +1095,6 @@
             agenix file holding Seerr's API key, raw, for requesting films
             and shows; shared by the instances. Null leaves requests out.
           '';
-        };
-
-        mailServer = mkOption {
-          type = types.str;
-          example = "imap.example.com";
-          description = "IMAP server of the mail accounts, over TLS on 993.";
-        };
-
-        smtpServer = mkOption {
-          type = types.str;
-          default = replaceStrings [ "imap." ] [ "smtp." ] cfg.mailServer;
-          defaultText = "mailServer with imap. replaced by smtp.";
-          description = "SMTP server of the same accounts, over TLS on 465.";
         };
 
         model = mkOption {

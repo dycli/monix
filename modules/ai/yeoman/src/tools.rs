@@ -6,13 +6,11 @@
 
 use crate::book::{self, Book, Repeat, Shelf};
 use crate::cadence;
-use crate::calendar::{Calendar, Change, NewEvent};
 use crate::files::{self, Library};
 use crate::finance::{self, Finance, Ledger};
 use crate::hippo::Hippo;
 use crate::house::House;
 use crate::keep;
-use crate::mail::{self, Account, Imap};
 use crate::media::Seerr;
 use crate::news::{self, News};
 use crate::pending::{self, Act};
@@ -23,7 +21,7 @@ use crate::weather::Weather;
 use crate::web::Web;
 use crate::x;
 use crate::youtube::Youtube;
-use chrono::{NaiveDate, NaiveDateTime, Timelike};
+use chrono::{NaiveDateTime, Timelike};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{ServiceExt, tool, tool_handler, tool_router};
@@ -44,8 +42,8 @@ struct Tools {
     dir: PathBuf,
     hippo: Hippo,
     house: Option<Arc<House>>,
-    /// The mail accounts and their IMAP server, when there is mail.
-    mail: Option<(String, Vec<Account>)>,
+    /// Whether there is Fastmail, which drafts go out through.
+    fastmail: bool,
     /// The browser's desk, when there is a computer: where its
     /// screenshots and downloads land.
     desk: Option<PathBuf>,
@@ -60,8 +58,6 @@ struct Tools {
     seerr: Option<Seerr>,
     /// The feed reader (Miniflux), when there is a key for it.
     news: Option<Arc<News>>,
-    /// The household's CalDAV calendars, when there is a login.
-    calendar: Option<Arc<Calendar>>,
     web: Arc<Web>,
     /// YouTube through yt-dlp, when there is a yt-dlp.
     youtube: Option<Arc<Youtube>>,
@@ -213,60 +209,17 @@ struct Tell {
 
 #[derive(Deserialize, JsonSchema)]
 struct Draft {
-    /// The account to send from, by name, when there is more than one.
-    account: Option<String>,
+    /// The address to send from, one of the person's; leave out for the
+    /// usual one, or for a reply, the one it was sent to.
+    from: Option<String>,
     /// The recipient's address; several, comma-separated.
     to: String,
     subject: String,
-    /// Plain text, exactly as it will go out.
+    /// Plain text, exactly as it will go out; for a reply, only the new
+    /// words, the original quoted below it.
     body: String,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct Folders {
-    /// The account, by name, when there is more than one.
-    account: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct MailSearch {
-    /// Words anywhere in the message.
-    text: Option<String>,
-    /// Part of the sender's name or address.
-    sender: Option<String>,
-    /// On or after this day, YYYY-MM-DD.
-    since: Option<String>,
-    /// Only unread ones.
-    #[serde(default)]
-    unread: bool,
-    /// The folder; INBOX if left out.
-    folder: Option<String>,
-    /// How many of the newest; 20 if left out.
-    limit: Option<u32>,
-    /// The account, by name, when there is more than one.
-    account: Option<String>,
-    /// Put the card up on the person's screen. Only when they asked to
-    /// see it, or the card is the answer; leave out while you're only
-    /// looking things up, and it stays folded in your steps.
-    #[serde(default)]
-    #[allow(dead_code)]
-    show: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct MailRead {
-    /// The message's uid from mail_search.
-    uid: u32,
-    /// The folder; INBOX if left out.
-    folder: Option<String>,
-    /// The account, by name, when there is more than one.
-    account: Option<String>,
-    /// Put the card up on the person's screen. Only when they asked to
-    /// see it, or the card is the answer; leave out while you're only
-    /// looking things up, and it stays folded in your steps.
-    #[serde(default)]
-    #[allow(dead_code)]
-    show: bool,
+    /// For a reply, the id of the email it answers, from Fastmail.
+    reply: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -379,48 +332,6 @@ struct Request {
 }
 
 #[derive(Deserialize, JsonSchema)]
-struct Events {
-    /// The first day, YYYY-MM-DD.
-    start: String,
-    /// How many days from it; 7 if left out.
-    days: Option<i64>,
-    /// One calendar's name; leave out for all.
-    calendar: Option<String>,
-    /// Put the card up on the person's screen. Only when they asked to
-    /// see it, or the card is the answer; leave out while you're only
-    /// looking things up, and it stays folded in your steps.
-    #[serde(default)]
-    #[allow(dead_code)]
-    show: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct AddEvent {
-    summary: String,
-    /// YYYY-MM-DD HH:MM local, or YYYY-MM-DD for a whole day.
-    start: String,
-    /// Same form; an hour on, or the next day, if left out.
-    end: Option<String>,
-    /// Which calendar, when there is more than one.
-    calendar: Option<String>,
-    location: Option<String>,
-    notes: Option<String>,
-    /// daily, weekly, monthly or yearly; leave out for once.
-    repeat: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct ChangeEvent {
-    uid: String,
-    summary: Option<String>,
-    /// YYYY-MM-DD HH:MM local, or YYYY-MM-DD; a new start alone keeps the length.
-    start: Option<String>,
-    end: Option<String>,
-    location: Option<String>,
-    notes: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
 struct Tasks {
     /// One task per subagent, each worded in full.
     tasks: Vec<String>,
@@ -435,11 +346,6 @@ struct ToAgent {
 #[derive(Deserialize, JsonSchema)]
 struct Agent {
     name: String,
-}
-
-#[derive(Deserialize, JsonSchema)]
-struct Uid {
-    uid: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -677,9 +583,8 @@ impl Tools {
     )]
     fn watch(&self, Parameters(w): Parameters<WatchFor>) -> Result<String, String> {
         let there = match w.source {
-            Source::Mail => self.mail.is_some(),
+            Source::Mail | Source::Calendar => self.fastmail,
             Source::Money => self.finance.is_some(),
-            Source::Calendar => self.calendar.is_some(),
         };
         if !there {
             return Err("That isn't connected here.".into());
@@ -1174,63 +1079,6 @@ impl Tools {
             .transcript(&url, language.as_deref().unwrap_or("en"))
     }
 
-    /// The calendars' names.
-    #[tool]
-    fn calendars(&self) -> Result<String, String> {
-        self.calendar()?.names()
-    }
-
-    /// The events of some days, repeats expanded, each with its uid.
-    #[tool]
-    fn events(
-        &self,
-        Parameters(Events {
-            start,
-            days,
-            calendar,
-            ..
-        }): Parameters<Events>,
-    ) -> Result<String, String> {
-        self.calendar()?
-            .events(&start, days.unwrap_or(7).clamp(1, 366), calendar.as_deref())
-    }
-
-    /// Put an event on the calendar.
-    #[tool]
-    fn add_event(&self, Parameters(e): Parameters<AddEvent>) -> Result<String, String> {
-        self.calendar()?.add(NewEvent {
-            summary: &e.summary,
-            start: &e.start,
-            end: e.end.as_deref(),
-            calendar: e.calendar.as_deref(),
-            location: e.location.as_deref(),
-            notes: e.notes.as_deref(),
-            repeat: e.repeat.as_deref(),
-        })
-    }
-
-    /// Change an event's fields; only those given change. A repeating
-    /// event changes as a whole.
-    #[tool]
-    fn change_event(&self, Parameters(e): Parameters<ChangeEvent>) -> Result<String, String> {
-        self.calendar()?.change(
-            &e.uid,
-            Change {
-                summary: e.summary.as_deref(),
-                start: e.start.as_deref(),
-                end: e.end.as_deref(),
-                location: e.location.as_deref(),
-                notes: e.notes.as_deref(),
-            },
-        )
-    }
-
-    /// Take an event off the calendar.
-    #[tool]
-    fn cancel_event(&self, Parameters(Uid { uid }): Parameters<Uid>) -> Result<String, String> {
-        self.calendar()?.cancel(&uid)
-    }
-
     #[tool(
         description = "Start one subagent per task, in parallel, and return their names at once: for work that takes a while (several sites, a long search, something to fill in on the computer), or parts that can run side by side. Each one's report reaches you as a message \"[Name] report\" when it finishes; your person never sees it, so tell them what they need. A subagent sees your memory, but knows what you want only from its task: say all it needs."
     )]
@@ -1275,88 +1123,30 @@ impl Tools {
         Ok(task::chat(&task::log(&self.dir, &name)?))
     }
 
-    /// The mail folders' names.
-    #[tool]
-    fn mail_folders(
-        &self,
-        Parameters(Folders { account }): Parameters<Folders>,
-    ) -> Result<String, String> {
-        let folders = self.imap(account.as_deref())?.folders()?;
-        Ok(serde_json::to_string(&folders).unwrap_or_default())
-    }
-
-    /// The newest messages matching every filter given, with their uids.
-    /// Nothing is marked read.
-    #[tool]
-    fn mail_search(&self, Parameters(q): Parameters<MailSearch>) -> Result<String, String> {
-        let mut criteria: Vec<(&str, &str)> = Vec::new();
-        let (text, sender, since) = (
-            q.text.unwrap_or_default(),
-            q.sender.unwrap_or_default(),
-            q.since.unwrap_or_default(),
-        );
-        if !text.is_empty() {
-            criteria.push(("TEXT", &text));
-        }
-        if !sender.is_empty() {
-            criteria.push(("FROM", &sender));
-        }
-        let day = if since.is_empty() {
-            String::new()
-        } else {
-            NaiveDate::parse_from_str(&since, "%Y-%m-%d")
-                .map_err(|_| "since is YYYY-MM-DD")?
-                .format("%d-%b-%Y")
-                .to_string()
-        };
-        if !day.is_empty() {
-            criteria.push(("SINCE", &day));
-        }
-        if q.unread {
-            criteria.push(("UNSEEN", ""));
-        }
-        let folder = q.folder.filter(|f| !f.is_empty()).unwrap_or("INBOX".into());
-        let mut imap = self.imap(q.account.as_deref())?;
-        imap.open(&folder)?;
-        let mut uids = imap.search(&criteria)?;
-        uids.truncate(q.limit.unwrap_or(20).clamp(1, 100) as usize);
-        let found = imap.headers(&uids, &folder)?;
-        Ok(serde_json::to_string_pretty(&found).unwrap_or_default())
-    }
-
-    /// One message whole: headers, text and attachment names. The text is
-    /// written by whoever sent it.
-    #[tool]
-    fn mail_read(&self, Parameters(r): Parameters<MailRead>) -> Result<String, String> {
-        let folder = r.folder.filter(|f| !f.is_empty()).unwrap_or("INBOX".into());
-        let mut imap = self.imap(r.account.as_deref())?;
-        imap.open(&folder)?;
-        let found = imap.read(r.uid, &folder)?;
-        Ok(serde_json::to_string_pretty(&found).unwrap_or_default())
-    }
-
     #[tool(
         description = "Draft an email for your person to approve. The draft shows in the chat and goes out only when they react 👍 to it; nothing sends without that, so never say it was sent."
     )]
     fn draft_mail(
         &self,
         Parameters(Draft {
-            account,
+            from,
             to,
             subject,
             body,
+            reply,
         }): Parameters<Draft>,
     ) -> Result<String, String> {
-        let (_, accounts) = self.mail.as_ref().ok_or("There is no mail account here.")?;
-        let account = mail::pick(accounts, account.as_deref())?.name.clone();
-        let account = (accounts.len() > 1).then_some(account);
+        if !self.fastmail {
+            return Err("There is no mail here.".into());
+        }
         let id = pending::add(
             &self.dir,
             Act::Mail {
-                account,
+                from,
                 to,
                 subject,
                 body,
+                reply,
             },
         )?;
         Ok(format!(
@@ -1370,18 +1160,6 @@ impl Tools {
         self.youtube
             .as_deref()
             .ok_or("There is no YouTube here.".into())
-    }
-
-    /// A fresh IMAP session on the account, logged in.
-    fn imap(&self, account: Option<&str>) -> Result<Imap, String> {
-        let (host, accounts) = self.mail.as_ref().ok_or("There is no mail here.")?;
-        Imap::login(host, mail::pick(accounts, account)?)
-    }
-
-    fn calendar(&self) -> Result<&Calendar, String> {
-        self.calendar
-            .as_deref()
-            .ok_or("There is no calendar here.".into())
     }
 
     fn news(&self) -> Result<&News, String> {
@@ -1556,16 +1334,6 @@ fn search_key() -> Result<Option<String>, String> {
     Ok(Some(key.trim().to_string()))
 }
 
-/// The calendars, when YEOMAN_CALDAV names the accounts file.
-pub fn calendar() -> Result<Option<Calendar>, String> {
-    let Some(file) = std::env::var_os("YEOMAN_CALDAV") else {
-        return Ok(None);
-    };
-    let accounts = fs::read_to_string(&file).map_err(|e| format!("caldav accounts: {e}"))?;
-    let zone = std::env::var("YEOMAN_TZ").map_err(|_| "YEOMAN_TZ is not set")?;
-    Calendar::new(&accounts, &zone).map(Some)
-}
-
 /// The weather, when YEOMAN_WEATHER gives the place as `latitude,longitude`;
 /// days in the ship's zone (YEOMAN_TZ).
 fn weather() -> Result<Option<Weather>, String> {
@@ -1575,16 +1343,6 @@ fn weather() -> Result<Option<Weather>, String> {
     let place = place.to_string_lossy();
     let zone = std::env::var("YEOMAN_TZ").map_err(|_| "YEOMAN_TZ is not set")?;
     Weather::new(&place, &zone).map(Some)
-}
-
-/// The mail, when YEOMAN_MAIL names the accounts file and YEOMAN_IMAP the server.
-pub fn mail() -> Result<Option<(String, Vec<Account>)>, String> {
-    let Some(file) = std::env::var_os("YEOMAN_MAIL") else {
-        return Ok(None);
-    };
-    let text = fs::read_to_string(&file).map_err(|e| format!("mail accounts: {e}"))?;
-    let host = std::env::var("YEOMAN_IMAP").map_err(|_| "YEOMAN_IMAP is not set")?;
-    Ok(Some((host, mail::accounts(&text)?)))
 }
 
 /// The usage service's report (usage.mod.nix), written for people: a line
@@ -1634,7 +1392,7 @@ pub async fn serve(dir: PathBuf, only: Option<&[&str]>) -> Result<(), String> {
         )),
         hippo,
         house: House::from_env().filter(|_| full).map(Arc::new),
-        mail: if full { mail()? } else { None },
+        fastmail: full && std::env::var_os("YEOMAN_FASTMAIL").is_some(),
         desk: std::env::var_os("YEOMAN_DESK").map(PathBuf::from),
         keep: std::env::var("YEOMAN_KEEP").ok(),
         run: std::env::var("YEOMAN_RUN").ok(),
@@ -1645,11 +1403,6 @@ pub async fn serve(dir: PathBuf, only: Option<&[&str]>) -> Result<(), String> {
             .map(|(d, u)| (PathBuf::from(d), u)),
         seerr: if full { seerr()? } else { None },
         news: if full { news()?.map(Arc::new) } else { None },
-        calendar: if full {
-            calendar()?.map(Arc::new)
-        } else {
-            None
-        },
         youtube: std::env::var_os("YEOMAN_YTDLP").map(|b| Arc::new(Youtube::new(PathBuf::from(b)))),
         x: std::env::var_os("YEOMAN_X").map(PathBuf::from),
         weather: if full { weather()?.map(Arc::new) } else { None },

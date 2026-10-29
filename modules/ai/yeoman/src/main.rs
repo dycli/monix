@@ -6,7 +6,6 @@
 
 mod book;
 mod cadence;
-mod calendar;
 mod call;
 mod door;
 mod fastmail;
@@ -16,7 +15,6 @@ mod forget;
 mod hippo;
 mod house;
 mod keep;
-mod mail;
 mod matrix;
 mod media;
 mod model;
@@ -168,17 +166,19 @@ given you just part of the work. Your final reply is your report to \
 task asks for, and what failed. {name} may send you more messages, even \
 while you work: answer the last.";
 
-/// Added when the door draws the calendar's events and the lists as cards.
-const CARDS: &str = "\n\n{person}'s page draws what the events, list, mail, weather, \
+/// Added when the door draws the lists, weather and money as cards.
+const CARDS: &str = "\n\n{person}'s page draws what the list, weather, \
 transactions and markets tools return as cards, folded into your steps. Set \
 `show` on a call to put its card up over the talk: when {person} asks to see \
-something, or the card is the answer (the week's calendar, this month's \
-spending); never while you're searching or reading to answer. Don't repeat \
-what a shown card shows: say in a line or two what stands out (what's next, a \
-clash, a free stretch) or that it's done.";
+something, or the card is the answer (this month's spending); never while \
+you're searching or reading to answer. Don't repeat what a shown card shows: \
+say in a line or two what stands out or that it's done.";
 
-/// Added when the assistant reads the person's mail.
-const MAIL: &str = "\n\nWhen you tell {person} about their mail, a digest or \
+/// Added when the assistant reaches the person's Fastmail.
+const MAIL: &str = "\n\nThe fastmail tools reach {person}'s mail, calendar and \
+contacts. You cannot send: draft_mail shows a draft to {person}, and it \
+goes out on their 👍; for a reply, give it the email's id. When you tell \
+{person} about their mail, a digest or \
 the latest few, sort it rather than recite it: first what needs them (a \
 reply, a date, a payment), one short line each, the sender in bold and \
 then what it wants; then what's worth knowing; then the rest counted in a \
@@ -530,7 +530,7 @@ fn system(model: &dyn Model, cards: bool, head: &str, name: &str, person: &str) 
     } else {
         ""
     };
-    let mail = if model.tools() && std::env::var_os("YEOMAN_MAIL").is_some() {
+    let mail = if model.tools() && std::env::var_os("YEOMAN_FASTMAIL").is_some() {
         MAIL
     } else {
         ""
@@ -1020,11 +1020,7 @@ async fn remind<D: Door>(
     let mailbox = house.as_ref().map(|h| h.mailbox());
     let seatbox = house.as_ref().and_then(|h| h.seatbox());
     let sources = Arc::new(watch::Sources {
-        mail: tools::mail().unwrap_or_else(|e| {
-            eprintln!("yeoman: watch: {e}");
-            None
-        }),
-        calendar: tools::calendar().unwrap_or_else(|e| {
+        fastmail: fastmail::from_env().unwrap_or_else(|e| {
             eprintln!("yeoman: watch: {e}");
             None
         }),
@@ -1040,7 +1036,7 @@ async fn remind<D: Door>(
         let Some(door) = last() else {
             continue;
         };
-        // Watches look every other minute: mail and calendars are a
+        // Watches look every other minute: mail and calendar are a
         // server away, and the money syncs only every few hours.
         ticks += 1;
         if ticks % 4 == 1 {
