@@ -241,11 +241,13 @@
           ];
         };
         # Libri, the product grown from yeoman and hippo (~bridge/ark/libri),
-        # run from the seat's latest build of it, with its own memory, so
-        # building it never touches the chats in daily use
+        # run from the seat's latest build of it as the seat itself: Bridge
+        # with the seat's tools and memory, Dylan's daily chat
         # (/var/lib/bridge/harness.md).
         libri = {
+          name = "Bridge";
           person = "Dylan";
+          seat = true;
           # Sokka is Dylan's door: a message to Dylan goes there.
           door = false;
           web = true;
@@ -275,12 +277,6 @@
           style = "You are Azula: sharp, imperious and unfiltered. Say what you think without hedging or moralizing.";
         };
       };
-
-      # Libri's memory starts as a snapshot of the seat's, copied once while
-      # its store is absent; the unit then makes it libri's own. Remove once
-      # /var/lib/libri/hippo exists.
-      systemd.tmpfiles.settings.libri-seed."/var/lib/libri/hippo".C.argument =
-        "/home/bridge/ark/libri-hippo-seed";
 
       news.apiKeys = singleton "sokka";
 

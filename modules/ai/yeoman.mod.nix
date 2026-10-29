@@ -497,10 +497,11 @@
             }
           );
           ompModels = pkgs.writeText "${n}-omp-models.yml" (lib.ship.opencode.ompModels keys);
-          # omp reads its providers only from its home.
+          # omp reads its providers only from its home: the seat's for a seat.
+          ompHome = if i.seat then seat.home else state;
           linkOmpModels = pkgs.writeShellScript "${n}-omp-models" ''
-            ${pkgs.coreutils}/bin/mkdir -p ${state}/.omp/agent
-            ${pkgs.coreutils}/bin/ln -sfn ${ompModels} ${state}/.omp/agent/models.yml
+            ${pkgs.coreutils}/bin/mkdir -p ${ompHome}/.omp/agent
+            ${pkgs.coreutils}/bin/ln -sfn ${ompModels} ${ompHome}/.omp/agent/models.yml
           '';
         in
         if i.seat then
@@ -545,6 +546,7 @@
                   YEOMAN_SESSIONS = "${sitesDir}/${shared'}/sessions";
                 }
                 // optionalAttrs (i.voice != null) { YEOMAN_VOICE = i.voice; }
+                // optionalAttrs i.providerKeys { OPENCODE_CONFIG = toString openCodeConfig; }
                 // models;
               serviceConfig = {
                 User = seat.user;
@@ -553,7 +555,9 @@
                   "yeoman-x"
                   "usage"
                 ]
-                ++ optional (shared' != null) "yeoman-${shared'}";
+                ++ optional (shared' != null) "yeoman-${shared'}"
+                ++ optional i.providerKeys "opencode-auth";
+                ExecStartPre = mkIf i.providerKeys linkOmpModels;
                 StateDirectory = n;
                 StateDirectoryMode = "0700";
                 WorkingDirectory = seat.home;
