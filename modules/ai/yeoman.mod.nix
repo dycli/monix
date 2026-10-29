@@ -43,7 +43,9 @@
 # cookie picks which one nginx sends it to, one sign-in serves them all,
 # and each one's pages sit under /<unit>/.
 # With `homeTokenFile` set, both reach Home Assistant's own MCP server as
-# well, its tools withheld on quoted turns like the rest that act.
+# well, its tools withheld on quoted turns like the rest that act. An
+# instance with `fastmailTokenFile` reaches its person's Fastmail (mail,
+# calendar, contacts) through Fastmail's own MCP server the same way.
 #
 # The instances share a household directory their common group can write:
 # shared lists, and a mailbox each. A message goes only to those it names,
@@ -402,13 +404,31 @@
                 url = "http://127.0.0.1:${toString config.shipProxy.routes.ha.port}/api/mcp";
                 headers.Authorization = "Bearer @HOME_TOKEN@";
               };
+            }
+            // optionalAttrs (i.fastmailTokenFile != null) {
+              fastmail = {
+                type = "http";
+                url = "https://api.fastmail.com/mcp";
+                headers.Authorization = "Bearer @FASTMAIL_TOKEN@";
+              };
             };
           };
 
-          # With the home on, the MCP file holds a token, so a private copy
-          # is made in the runtime directory and the bot pointed at it.
+          # With a token in the MCP file, a private copy is made in the
+          # runtime directory and the bot pointed at it.
+          tokens =
+            optional (cfg.homeTokenFile != null) {
+              mark = "HOME_TOKEN";
+              credential = "home";
+            }
+            ++ optional (i.fastmailTokenFile != null) {
+              mark = "FASTMAIL_TOKEN";
+              credential = "fastmail";
+            };
+          substitute =
+            t: "-e \"s|@${t.mark}@|$(tr -d '\\r\\n' < \"$CREDENTIALS_DIRECTORY/${t.credential}\")|\"";
           start =
-            if cfg.homeTokenFile == null then
+            if tokens == [ ] then
               yeomanBin
             else
               getExe (
@@ -420,7 +440,7 @@
                   ];
                   text = ''
                     umask 077
-                    sed "s|@HOME_TOKEN@|$(cat "$CREDENTIALS_DIRECTORY/home")|" ${mcp} > "$RUNTIME_DIRECTORY/mcp.json"
+                    sed ${concatStringsSep " " (map substitute tokens)} ${mcp} > "$RUNTIME_DIRECTORY/mcp.json"
                     YEOMAN_MCP="$RUNTIME_DIRECTORY/mcp.json" exec ${yeomanBin}
                   '';
                 }
@@ -721,6 +741,7 @@
                   ++ optional (i.mailCredentialsFile != null) "mail:${i.mailCredentialsFile}"
                   ++ optional (i.newsKeyFile != null) "news:${i.newsKeyFile}"
                   ++ optional (cfg.homeTokenFile != null) "home:${cfg.homeTokenFile}"
+                  ++ optional (i.fastmailTokenFile != null) "fastmail:${i.fastmailTokenFile}"
                   ++ optional (cfg.requestsKeyFile != null) "requests:${cfg.requestsKeyFile}"
                   ++ optional (cfg.searchKeyFile != null) "search:${cfg.searchKeyFile}";
                   RuntimeDirectory = n;
@@ -820,6 +841,16 @@
                       agenix JSON file with the person's IMAP accounts:
                       [{"name", "username", "password"}, ...]; null for no
                       mail.
+                    '';
+                  };
+
+                  fastmailTokenFile = mkOption {
+                    type = types.nullOr types.str;
+                    default = null;
+                    description = ''
+                      agenix file holding the person's Fastmail MCP API
+                      token, whose scopes Fastmail enforces; null for no
+                      Fastmail.
                     '';
                   };
 

@@ -475,7 +475,7 @@ pub struct Claude {
 const ACTS: &str = "mcp__yeoman__remind,mcp__yeoman__cadence,mcp__yeoman__cancel_reminder,mcp__yeoman__list_add,\
 mcp__yeoman__share_list,mcp__yeoman__list_remove,mcp__yeoman__tell,mcp__yeoman__draft_mail,mcp__yeoman__add_event,\
 mcp__yeoman__change_event,mcp__yeoman__cancel_event,mcp__image__make_image,mcp__yeoman__web_fetch,\
-mcp__computer,mcp__home,mcp__yeoman__media_request,mcp__yeoman__spawn,mcp__yeoman__tell_agent,mcp__yeoman__cancel_task,\
+mcp__computer,mcp__home,mcp__fastmail,mcp__yeoman__media_request,mcp__yeoman__spawn,mcp__yeoman__tell_agent,mcp__yeoman__cancel_task,\
 mcp__yeoman__show_page,mcp__yeoman__money_change,mcp__yeoman__watch,mcp__yeoman__unwatch,mcp__yeoman__run_code";
 
 /// The yeoman's own hold on its subagents, which they don't share: as in
