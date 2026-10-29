@@ -343,6 +343,8 @@
         YEOMAN_MINIFLUX = "tools.miniflux";
         YEOMAN_FINANCE = "tools.finance";
         YEOMAN_X = "x.socket";
+        YEOMAN_PASSWORD_FILE = "daemon.password_file";
+        YEOMAN_ORIGINS = "daemon.origins";
         YEOMAN_VOICE = "x.voice";
         YEOMAN_SCREEN = "computer.screen";
         YEOMAN_SCREEN_SIZE = "computer.screen_size";
@@ -826,6 +828,12 @@
                 # the watches and approved drafts.
                 // optionalAttrs (i.fastmailTokenFile != null) {
                   YEOMAN_FASTMAIL = "${creds}/fastmail";
+                }
+                // optionalAttrs (i.passwordFile != null) {
+                  YEOMAN_PASSWORD_FILE = "${creds}/password";
+                }
+                // optionalAttrs (i.origins != [ ]) {
+                  YEOMAN_ORIGINS = concatStringsSep "," i.origins;
                 };
               serviceConfig =
                 sandbox
@@ -840,6 +848,7 @@
                   ++ optional (i.newsKeyFile != null) "news:${i.newsKeyFile}"
                   ++ optional (cfg.homeTokenFile != null) "home:${cfg.homeTokenFile}"
                   ++ optional (i.fastmailTokenFile != null) "fastmail:${i.fastmailTokenFile}"
+                  ++ optional (i.passwordFile != null) "password:${i.passwordFile}"
                   ++ optional (cfg.requestsKeyFile != null) "requests:${cfg.requestsKeyFile}"
                   ++ optional (cfg.searchKeyFile != null) "search:${cfg.searchKeyFile}";
                   RuntimeDirectory = n;
@@ -929,6 +938,27 @@
                       agenix env file with MATRIX_USER=@name:server and
                       MATRIX_PASSWORD=..., the assistant's own Matrix
                       account, registered on first start.
+                    '';
+                  };
+
+                  passwordFile = mkOption {
+                    type = types.nullOr types.str;
+                    default = null;
+                    description = ''
+                      agenix file holding the password a device signs in
+                      to this instance with, once, for a revocable token of
+                      its own (Libri's `daemon.password_file`); null for
+                      pairing links only.
+                    '';
+                  };
+
+                  origins = mkOption {
+                    type = types.listOf types.str;
+                    default = [ ];
+                    example = [ "https://libri.su.is" ];
+                    description = ''
+                      Other origins whose Libri app may talk to this
+                      instance with a device token (`daemon.origins`).
                     '';
                   };
 
