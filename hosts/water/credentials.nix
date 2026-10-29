@@ -27,7 +27,7 @@ in
   frame = {
     immichKeyFile = config.secrets.frame-immich-key.path;
     album = "frame";
-    calendarCredentialsFile = config.secrets.yeoman-caldav-json.path;
+    calendarCredentialsFile = config.secrets.frame-caldav-json.path;
     # Portsmouth, NH.
     weather = "43.07,-70.76";
   };
@@ -87,6 +87,7 @@ in
     frigate-env.file = ./secrets/frigate.env.age;
     git-mirror-token.file = ./secrets/git-mirror-token.age;
     frame-immich-key.file = ./secrets/frame-immich-key.age;
+    frame-caldav-json.file = ./secrets/frame-caldav.json.age;
     plaid-env.file = ./secrets/plaid.env.age;
     sabnzbd-secrets = {
       file = ./secrets/sabnzbd-secrets.ini.age;
@@ -101,7 +102,7 @@ in
   systemd.services.endgrain-tunnel.restartTriggers = singleton ./secrets/endgrain-cloudflare-tunnel-token.age;
   systemd.services.frame.restartTriggers = [
     ./secrets/frame-immich-key.age
-    ./secrets/yeoman-caldav.json.age
+    ./secrets/frame-caldav.json.age
   ];
   systemd.services.money.restartTriggers = singleton ./secrets/plaid.env.age;
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
