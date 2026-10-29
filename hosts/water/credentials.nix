@@ -52,8 +52,8 @@ in
       # Libri's product build, which the seat moves forward only to a
       # commit already proven on Dylan's (/var/lib/bridge/harness.md).
       build = "/var/lib/libri-build/suki";
-      # The app at libri.su.is talks to Suki too, signed in by her
-      # password (passwordFile, once its secret is written).
+      # The app at libri.su.is talks to Suki too; no password, the
+      # tailnet is the gate at home.
       origins = [ "https://libri.su.is" ];
     };
     registrationEnvFile = config.secrets.matrix-registration-env.path;
