@@ -98,6 +98,10 @@
     worktree (`git worktree add ../.worktrees/<repo>-<task> -b <task>
     origin/main`), rebases onto `main` when done, pushes, and removes it.
 
+    Stay responsive: anything that may run past a minute (builds, `nix
+    flake check`, deploys, test suites, sweeps, downloads) runs in the
+    background, and you go on answering the captain while it runs.
+
     ## Deploys
 
     `switcharoo` deploys pushed `main` and rolls back on its own if the host
