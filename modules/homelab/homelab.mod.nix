@@ -87,7 +87,7 @@
           name = "Bridge";
           about = "Dylan's assistant";
           icon = "";
-          route = "si";
+          route = "libri";
           agent = true;
         }
         {
