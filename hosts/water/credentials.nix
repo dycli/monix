@@ -49,6 +49,9 @@ in
       fastmailTokenFile = config.secrets.suki-fastmail-mcp-token.path;
       money = true;
       claudeKeyFile = config.secrets.suki-claude-key.path;
+      # Libri's product build, which the seat moves forward only to a
+      # commit already proven on Dylan's (/var/lib/bridge/harness.md).
+      build = "/var/lib/libri-build/suki";
     };
     registrationEnvFile = config.secrets.matrix-registration-env.path;
     claudeTokenFile = config.secrets.agent-claude-token.path;

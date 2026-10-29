@@ -303,7 +303,7 @@
         '';
       };
 
-      # A development instance runs Libri (`build`), which reads its
+      # An instance on Libri (`build`) reads its
       # settings from one TOML file (Libri's README, "Config"; the table in
       # its yeoman/src/host.rs): each setting this module gives goes there
       # under the key Libri names it by. The rest stays in the environment:
@@ -385,8 +385,8 @@
         n: i:
         let
           state = "/var/lib/${n}";
-          # A development instance runs whatever build its link points at.
-          yeomanBin = if i.build == null then getExe yeoman else "${i.build}/bin/yeoman";
+          # An instance on Libri runs whatever build its link points at.
+          yeomanBin = if i.build == null then getExe yeoman else "${i.build}/bin/libri";
           hippoBin = if i.build == null then getExe hippo else "${i.build}/bin/hippo";
           siteRoot = if i.build == null then web else "${i.build}/site";
           creds = "/run/credentials/${n}.service";
@@ -526,7 +526,7 @@
                 }
               );
 
-          # A development instance's unit with its settings in Libri's
+          # An instance on Libri: its unit with its settings in Libri's
           # config file; any other's as it is.
           libriUnit =
             unit:
@@ -1078,8 +1078,8 @@
                     default = null;
                     example = "/var/lib/libri-build/current";
                     description = ''
-                      A link to a development build (bin/yeoman, bin/hippo,
-                      site/) to run instead of the ship's own. The seat may
+                      A link to a Libri build (bin/libri, bin/hippo, site/)
+                      to run instead of the ship's yeoman. The seat may
                       restart the instance's units, so a rebuild needs no
                       deploy.
                     '';
@@ -1455,7 +1455,7 @@
           };
         }) cfg.sites;
 
-        # A development instance's build link lives in a directory the seat
+        # An instance's Libri build link lives in a directory the seat
         # owns, and the seat restarts its units after rebuilding the link.
         systemd.tmpfiles.settings.yeoman-builds = lib.attrsets.mapAttrs' (_: i: {
           name = dirOf i.build;
