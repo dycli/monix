@@ -56,7 +56,7 @@ in
     calendarCredentialsFile = config.secrets.yeoman-caldav-json.path;
     homeTokenFile = config.secrets.yeoman-home-token.path;
     requestsKeyFile = config.secrets.yeoman-requests-key.path;
-    mailServer = "imap.fastmail.com";
+    mailServer = "imap.migadu.com";
     # Portsmouth, NH.
     weather = "43.07,-70.76";
     # The household's money, read-only.
