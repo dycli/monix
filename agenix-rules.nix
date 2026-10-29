@@ -78,6 +78,8 @@ in
   "hosts/water/secrets/cloudflare-dns-token.env.age".publicKeys = singleton water ++ admin;
   # Cloudflare account token, raw, "Read all resources", for the seat's Cloudflare MCP.
   "hosts/water/secrets/cloudflare-read-token.age".publicKeys = singleton water ++ admin;
+  # Fastmail API token, raw, type MCP, for the seat's Fastmail MCP.
+  "hosts/water/secrets/fastmail-mcp-token.age".publicKeys = singleton water ++ admin;
   # FRIGATE_RTSP_PASSWORD=...
   "hosts/water/secrets/frigate.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/git-mirror-token.age".publicKeys = singleton water ++ admin;
