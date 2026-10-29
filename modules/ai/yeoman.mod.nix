@@ -650,6 +650,9 @@
                 }
                 // optionalAttrs (i.voice != null) { YEOMAN_VOICE = i.voice; }
                 // optionalAttrs i.providerKeys { OPENCODE_CONFIG = toString openCodeConfig; }
+                // optionalAttrs (i.origins != [ ]) {
+                  YEOMAN_ORIGINS = concatStringsSep "," i.origins;
+                }
                 // models;
               serviceConfig = {
                 User = seat.user;
