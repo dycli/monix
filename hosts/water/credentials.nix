@@ -52,9 +52,10 @@ in
       # Libri's product build, which the seat moves forward only to a
       # commit already proven on Dylan's (/var/lib/bridge/harness.md).
       build = "/var/lib/libri-build/suki";
-      # Lets the libri.su.is app in once Suki's build has moved past
-      # 22075f4, which added the setting; her pinned build refuses it.
-      # origins = [ "https://libri.su.is" ];
+      # The app at libri.su.is talks to her at suki.su.is, with no
+      # sign-in on the tailnet.
+      open = true;
+      origins = [ "https://libri.su.is" ];
     };
     registrationEnvFile = config.secrets.matrix-registration-env.path;
     claudeTokenFile = config.secrets.agent-claude-token.path;

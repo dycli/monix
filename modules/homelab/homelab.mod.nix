@@ -178,6 +178,14 @@
 
       matrix.serverName = "chat.su.is";
 
+      # The Libri app on its own, as Paseo's app stands apart from its
+      # daemons: it opens empty, and Settings adds each server by address
+      # (si.su.is, suki.su.is). Served from the seat's latest build.
+      shipProxy.routes.libri-app = {
+        subdomain = "libri";
+        root = "/var/lib/libri-build/current/site";
+      };
+
       yeoman.instances = {
         sokka = {
           person = "Dylan";
@@ -252,9 +260,10 @@
           door = false;
           web = true;
           build = "/var/lib/libri-build/current";
-          # The server's name for the app at libri.su.is; libri.su.is
-          # itself still reaches the chat until the app stands apart.
-          aliases = [ "si" ];
+          # The server at si.su.is; the app at libri.su.is talks to it,
+          # with no sign-in on the tailnet.
+          subdomain = "si";
+          open = true;
           origins = [ "https://libri.su.is" ];
           providerKeys = true;
           # Full ids, so the picker can show each model's version.

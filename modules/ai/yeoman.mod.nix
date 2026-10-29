@@ -343,6 +343,7 @@
         YEOMAN_MINIFLUX = "tools.miniflux";
         YEOMAN_FINANCE = "tools.finance";
         YEOMAN_X = "x.socket";
+        YEOMAN_OPEN = "daemon.open";
         YEOMAN_PASSWORD_FILE = "daemon.password_file";
         YEOMAN_ORIGINS = "daemon.origins";
         YEOMAN_VOICE = "x.voice";
@@ -406,7 +407,7 @@
           shared' = siteOf n;
           site = {
             dir = "${pages}/${n}";
-            url = if shared' == null then host n else "${host shared'}/${n}";
+            url = if shared' == null then host i.subdomain else "${host shared'}/${n}";
           };
           shared =
             households
@@ -639,7 +640,7 @@
                   YEOMAN_SEAT_MODE = "1";
                   YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
                   YEOMAN_SITE_ROOT = siteRoot;
-                  YEOMAN_SITE_URL = host (if shared' == null then n else shared');
+                  YEOMAN_SITE_URL = host (if shared' == null then i.subdomain else shared');
                 }
                 // optionalAttrs (shared' != null) {
                   YEOMAN_PERSONAS = concatStringsSep "," (
@@ -653,6 +654,7 @@
                 // optionalAttrs (i.origins != [ ]) {
                   YEOMAN_ORIGINS = concatStringsSep "," i.origins;
                 }
+                // optionalAttrs i.open { YEOMAN_OPEN = "1"; }
                 // models;
               serviceConfig = {
                 User = seat.user;
@@ -810,7 +812,7 @@
                   YEOMAN_SITE_ROOT = siteRoot;
                   # Names this server to push services, and the site to its
                   # notifications.
-                  YEOMAN_SITE_URL = host (if shared' == null then n else shared');
+                  YEOMAN_SITE_URL = host (if shared' == null then i.subdomain else shared');
                 }
                 // optionalAttrs (shared' != null) {
                   YEOMAN_PERSONAS = concatStringsSep "," (
@@ -837,7 +839,8 @@
                 }
                 // optionalAttrs (i.origins != [ ]) {
                   YEOMAN_ORIGINS = concatStringsSep "," i.origins;
-                };
+                }
+                // optionalAttrs i.open { YEOMAN_OPEN = "1"; };
               serviceConfig =
                 sandbox
                 // fence
@@ -965,13 +968,23 @@
                     '';
                   };
 
-                  aliases = mkOption {
-                    type = types.listOf types.str;
-                    default = [ ];
-                    example = [ "si" ];
+                  subdomain = mkOption {
+                    type = types.str;
+                    default = name;
+                    example = "si";
                     description = ''
-                      Other host labels under the ship's domain that reach
-                      this instance's web chat besides its own name.
+                      The host label under the ship's domain that reaches
+                      this instance; its name by default.
+                    '';
+                  };
+
+                  open = mkOption {
+                    type = types.bool;
+                    default = false;
+                    description = ''
+                      Lets any device that reaches the instance use it with
+                      no sign-in (Libri's `daemon.open`), as Paseo's daemon
+                      trusts its network: the tailnet is the gate.
                     '';
                   };
 
@@ -1392,30 +1405,18 @@
               n: i:
               if i.web then
                 {
+                  inherit (i) subdomain;
                   port = chatPort n;
                   # Server-sent events stream as they come; uploads may be
                   # as big as the chat takes (UPLOAD_MAX in site.rs).
                   proxyExtra = "proxy_buffering off; client_max_body_size 100m;";
                 }
               else
-                { root = "${pages}/${n}"; }
+                {
+                  inherit (i) subdomain;
+                  root = "${pages}/${n}";
+                }
             )
-          )
-          // (
-            cfg.instances
-            |> filterAttrs (n: i: i.web && !(elem n inSites))
-            |> mapAttrsToList (
-              n: i:
-              map (a: {
-                name = a;
-                value = {
-                  port = chatPort n;
-                  proxyExtra = "proxy_buffering off; client_max_body_size 100m;";
-                };
-              }) i.aliases
-            )
-            |> lib.lists.concatLists
-            |> lib.attrsets.listToAttrs
           )
           // mapAttrs (s: site: {
             port = chatPort (head site.members);
