@@ -4,6 +4,7 @@
 //! prompt, its whole memory (its hippo view) and the new message. Both the
 //! message and the answer go into hippo, so the next call remembers them.
 
+mod a2a;
 mod book;
 mod cadence;
 mod call;

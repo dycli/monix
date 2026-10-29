@@ -171,7 +171,11 @@ impl House {
     pub fn post(&self, to: &[String], text: &str) -> Result<Vec<String>, String> {
         let (seat, them) = self.find(to)?;
         let mut sent = Vec::new();
-        if seat {
+        if seat && let Some(url) = crate::a2a::url("seat") {
+            crate::a2a::send(&url, &crate::a2a::token(&self.dir)?, &self.me, text.trim())
+                .map_err(|e| format!("{}: {e}", self.seat.clone().unwrap_or_default()))?;
+            sent.extend(self.seat.clone());
+        } else if seat {
             let note = format!(
                 "## {} from {} ({}'s assistant)\n{}\n\n",
                 chrono::Local::now().format("%Y-%m-%d %H:%M"),
@@ -187,11 +191,31 @@ impl House {
             sent.extend(self.seat.clone());
         }
         for a in them {
-            leave(&self.dir.join("mail").join(&a.unit), &self.me, text)
-                .map_err(|e| format!("mailbox {}: {e}", a.unit))?;
+            match crate::a2a::url(&a.unit) {
+                Some(url) => crate::a2a::send(&url, &crate::a2a::token(&self.dir)?, &self.me, text)
+                    .map_err(|e| format!("{}: {e}", a.name))?,
+                None => leave(&self.dir.join("mail").join(&a.unit), &self.me, text)
+                    .map_err(|e| format!("mailbox {}: {e}", a.unit))?,
+            }
             sent.push(a.name.clone());
         }
         Ok(sent)
+    }
+
+    /// Takes a message that came over A2A from `from` (a member's unit, or
+    /// `seat`) into the box a note from them would have reached.
+    pub fn take(&self, from: &str, text: &str) -> Result<(), String> {
+        let (dir, from) = if from == "seat" {
+            (self.seatbox().ok_or("There is no seat here.")?, "seat")
+        } else {
+            let a = self
+                .agents
+                .iter()
+                .find(|a| a.unit == from && a.unit != self.me)
+                .ok_or_else(|| format!("{from} is not in the household."))?;
+            (self.mailbox(), a.unit.as_str())
+        };
+        leave(&dir, from, text.trim()).map_err(|e| format!("{}: {e}", dir.display()))
     }
 }
 
@@ -253,8 +277,12 @@ pub fn tell(to: &str, text: &str) -> Result<(), String> {
         })
         .collect::<Result<Vec<_>, _>>()?;
     for a in them {
-        leave(&dir.join("seat").join(&a.unit), "seat", text.trim())
-            .map_err(|e| format!("{}: {e}", a.unit))?;
+        match crate::a2a::url(&a.unit) {
+            Some(url) => crate::a2a::send(&url, &crate::a2a::token(&dir)?, "seat", text.trim()),
+            None => leave(&dir.join("seat").join(&a.unit), "seat", text.trim())
+                .map_err(|e| e.to_string()),
+        }
+        .map_err(|e| format!("{}: {e}", a.unit))?;
     }
     Ok(())
 }

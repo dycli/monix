@@ -127,7 +127,20 @@
         );
         # The ship's seat is in the household by this name (house.rs).
         YEOMAN_SEAT = "Bridge";
+        # Where each member takes A2A messages (a2a.rs): every assistant's
+        # web chat on loopback, and `seat`, the seat's daily chat.
+        YEOMAN_A2A = concatStringsSep "," (
+          (
+            cfg.instances
+            |> filterAttrs (_: i: i.web && !i.seat)
+            |> mapAttrsToList (n: _: "${n}=http://127.0.0.1:${toString (chatPort n)}")
+          )
+          ++ optional (cfg.instances ? ${seatChat}) "seat=http://127.0.0.1:${toString (chatPort seatChat)}"
+        );
       };
+      # The seat's daily chat, which takes the household's messages to the
+      # seat; Raava's chat retires once Libri has proven itself.
+      seatChat = "libri";
 
       # The seat's side of the household: `tell NAME TEXT` leaves a note for
       # an assistant, `inbox` prints the assistants' notes to the seat (also
@@ -136,7 +149,7 @@
         name = "tell";
         runtimeInputs = singleton yeoman;
         text = ''
-          export YEOMAN_HOUSE=${house} YEOMAN_MEMBERS=${lib.strings.escapeShellArg households.YEOMAN_MEMBERS}
+          export YEOMAN_HOUSE=${house} YEOMAN_MEMBERS=${lib.strings.escapeShellArg households.YEOMAN_MEMBERS} YEOMAN_A2A=${lib.strings.escapeShellArg households.YEOMAN_A2A}
           exec yeoman tell "$@"
         '';
       };

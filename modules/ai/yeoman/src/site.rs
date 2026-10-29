@@ -1138,6 +1138,8 @@ pub async fn serve(
         .route("/api/speak/{key}", get(spoken))
         .route("/api/voices", get(voices))
         .route("/api/usage", get(usage))
+        .route(crate::a2a::CARD, get(agent_card))
+        .route(crate::a2a::PATH, post(a2a_message))
         .route("/api/model", get(model_now).post(model_pick))
         .route("/api/effort", get(effort_now).post(effort_pick))
         .route("/api/forget", get(forget_now).post(forget_pick))
@@ -1779,6 +1781,64 @@ fn limits(text: &str) -> Vec<Limit> {
             })
         })
         .collect()
+}
+
+/// This assistant's A2A Agent Card, where it is in a household.
+async fn agent_card() -> Response {
+    let (Some(house), Ok(at)) = (
+        crate::house::House::from_env(),
+        std::env::var("YEOMAN_SITE"),
+    ) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    Json(crate::a2a::card(
+        house.name(),
+        house.person(),
+        &format!("http://{at}"),
+    ))
+    .into_response()
+}
+
+/// A message from another in the household over A2A, with the household's
+/// token: it goes into the box their note would have reached.
+async fn a2a_message(headers: HeaderMap, body: axum::body::Bytes) -> Response {
+    let Some(house) = crate::house::House::from_env() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let token = match crate::a2a::token(&house.dir) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("yeoman: a2a: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    let given = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .unwrap_or_default();
+    // Compared in constant time, so the token can't be guessed a byte at a time.
+    let same = given.len() == token.len()
+        && given
+            .bytes()
+            .zip(token.bytes())
+            .fold(0u8, |d, (a, b)| d | (a ^ b))
+            == 0;
+    if !same {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Ok(request) = serde_json::from_slice::<Value>(&body) else {
+        let parse = serde_json::json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": "Not JSON."}});
+        return Json(parse).into_response();
+    };
+    let answer = match crate::a2a::take(&request) {
+        Ok((from, text)) => match house.take(&from, &text) {
+            Ok(()) => crate::a2a::taken(&request, house.name()),
+            Err(e) => crate::a2a::failed(&request, &e),
+        },
+        Err(e) => e,
+    };
+    Json(answer).into_response()
 }
 
 /// How full each subscription window is. A failed read keeps the last
