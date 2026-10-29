@@ -85,6 +85,8 @@ in
   "hosts/water/secrets/git-mirror-token.age".publicKeys = singleton water ++ admin;
   # Immich API key, raw, album.read + asset.view only, for the frame's photos.
   "hosts/water/secrets/frame-immich-key.age".publicKeys = singleton water ++ admin;
+  # CalDAV account for the frame, JSON like yeoman-caldav, read-only Fastmail app password.
+  "hosts/water/secrets/frame-caldav.json.age".publicKeys = singleton water ++ admin;
   # PLAID_CLIENT_ID=..., PLAID_SANDBOX_SECRET=..., PLAID_SECRET=... (production),
   # for the plaid sync service only.
   "hosts/water/secrets/plaid.env.age".publicKeys = singleton water ++ admin;
