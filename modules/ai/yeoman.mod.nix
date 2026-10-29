@@ -303,6 +303,76 @@
         '';
       };
 
+      # A development instance runs Libri (`build`), which reads its
+      # settings from one TOML file (Libri's README, "Config"; the table in
+      # its yeoman/src/host.rs): each setting this module gives goes there
+      # under the key Libri names it by. The rest stays in the environment:
+      # what Libri does not read as a setting (HOME, PATH, OPENCODE_CONFIG),
+      # and the household's dir and members, which the development build
+      # unsets (Libri flake.nix `default`) to keep itself out of the
+      # household; they move into the file when that wrapper's settings do.
+      libriKeys = {
+        YEOMAN_NAME = "name";
+        YEOMAN_APP = "app";
+        YEOMAN_PERSON = "person";
+        YEOMAN_TZ = "timezone";
+        YEOMAN_STYLE = "style";
+        YEOMAN_SITE = "daemon.listen";
+        YEOMAN_SITE_URL = "daemon.url";
+        YEOMAN_SITE_ROOT = "daemon.site";
+        YEOMAN_PAGES = "daemon.pages";
+        YEOMAN_PAGES_URL = "daemon.pages_url";
+        YEOMAN_SESSIONS = "daemon.sessions";
+        HIPPO_DIR = "hippo.dir";
+        YEOMAN_BACKEND = "harness.default";
+        YEOMAN_MODEL = "harness.model";
+        YEOMAN_MODELS = "harness.models";
+        YEOMAN_EFFORTS = "harness.efforts";
+        YEOMAN_SEAT_MODE = "harness.seat";
+        YEOMAN_MCP = "harness.mcp";
+        YEOMAN_CLAUDE = "harness.claude.command";
+        YEOMAN_OPENCODE_PORT = "harness.opencode.port";
+        YEOMAN_URL = "harness.http.url";
+        YEOMAN_HOME = "tools.home";
+        YEOMAN_NEWS = "tools.news";
+        YEOMAN_FORGET = "tools.forget";
+        YEOMAN_SEARCH_KEY = "tools.search_key";
+        YEOMAN_USAGE = "tools.usage";
+        YEOMAN_REQUESTS = "tools.requests";
+        YEOMAN_SEERR = "tools.seerr";
+        YEOMAN_MINIFLUX = "tools.miniflux";
+        YEOMAN_FINANCE = "tools.finance";
+        YEOMAN_X = "x.socket";
+        YEOMAN_VOICE = "x.voice";
+        YEOMAN_SCREEN = "computer.screen";
+        YEOMAN_SCREEN_SIZE = "computer.screen_size";
+        YEOMAN_DESK = "computer.desk";
+        YEOMAN_KEEP = "computer.keep";
+        YEOMAN_RUN = "computer.run";
+        YEOMAN_RUNS = "computer.runs";
+        YEOMAN_UNIT = "household.unit";
+        YEOMAN_SEAT = "household.seat";
+        YEOMAN_A2A = "household.peers";
+        YEOMAN_PERSONAS = "household.personas";
+        YEOMAN_ALERTS = "household.alerts";
+        YEOMAN_HOMESERVER = "matrix.homeserver";
+        YEOMAN_MATRIX = "matrix.account";
+        YEOMAN_USERS = "matrix.users";
+      };
+      # A unit's environment split into Libri's config file and what stays.
+      libriConfig =
+        n: environment:
+        let
+          given = filterAttrs (k: _: libriKeys ? ${k}) environment;
+          settings = lib.foldl' lib.recursiveUpdate { } (
+            mapAttrsToList (k: v: lib.setAttrByPath (lib.splitString "." libriKeys.${k}) v) given
+          );
+        in
+        {
+          environment = filterAttrs (k: _: !(libriKeys ? ${k})) environment;
+          file = (pkgs.formats.toml { }).generate "${n}-libri.toml" settings;
+        };
+
       # The homeserver and resolver on loopback, and the internet for the
       # model; not the tailnet, the LAN or the seat's loopback address.
       fence = {
@@ -451,10 +521,28 @@
                   text = ''
                     umask 077
                     sed ${concatStringsSep " " (map substitute tokens)} ${mcp} > "$RUNTIME_DIRECTORY/mcp.json"
-                    YEOMAN_MCP="$RUNTIME_DIRECTORY/mcp.json" exec ${yeomanBin}
+                    YEOMAN_MCP="$RUNTIME_DIRECTORY/mcp.json" exec ${yeomanBin} "$@"
                   '';
                 }
               );
+
+          # A development instance's unit with its settings in Libri's
+          # config file; any other's as it is.
+          libriUnit =
+            unit:
+            if i.build == null then
+              unit
+            else
+              let
+                c = libriConfig n unit.environment;
+              in
+              unit
+              // {
+                inherit (c) environment;
+                serviceConfig = unit.serviceConfig // {
+                  ExecStart = "${unit.serviceConfig.ExecStart} --config ${c.file}";
+                };
+              };
 
           sandbox = lib.ship.hardened.tenant // {
             User = n;
@@ -522,7 +610,7 @@
             # The seat itself behind the yeoman's site: Claude Code as
             # Bridge runs it, with the seat's login, rules, memory and
             # privileges, as paseo does. hippo's watcher keeps its turns.
-            ${n} = {
+            ${n} = libriUnit {
               description = "Bridge in ${i.person}'s web chat (${i.name})";
               wantedBy = singleton "multi-user.target";
               after = singleton "hippo.service";
@@ -665,7 +753,7 @@
                 };
             };
 
-            ${n} = {
+            ${n} = libriUnit {
               description = "${i.name}, ${i.person}'s household assistant";
               wantedBy = singleton "multi-user.target";
               wants = [
