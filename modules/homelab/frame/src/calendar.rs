@@ -71,6 +71,9 @@ impl Calendar {
             .http_status_as_error(false)
             // PROPFIND and REPORT are WebDAV verbs, not HTTP's own.
             .allow_non_standard_methods(true)
+            // `call` follows redirects itself: ureq drops the login on a
+            // redirect and may turn PROPFIND into GET.
+            .max_redirects(0)
             .build();
         Ok(Calendar {
             accounts,
@@ -91,15 +94,36 @@ impl Calendar {
             "Basic {}",
             B64.encode(format!("{}:{}", account.username, account.password))
         );
-        let req = Request::builder()
-            .method(method)
-            .uri(url)
-            .header("Authorization", auth)
-            .header("Depth", depth)
-            .header("Content-Type", "application/xml; charset=utf-8")
-            .body(body)
-            .map_err(|e| format!("caldav: {e}"))?;
-        let mut resp = self.agent.run(req).map_err(|e| format!("caldav: {e}"))?;
+        let mut url = url.to_owned();
+        let mut hops = 0;
+        let mut resp = loop {
+            let req = Request::builder()
+                .method(method)
+                .uri(&url)
+                .header("Authorization", &auth)
+                .header("Depth", depth)
+                .header("Content-Type", "application/xml; charset=utf-8")
+                .body(body)
+                .map_err(|e| format!("caldav: {e}"))?;
+            let resp = self.agent.run(req).map_err(|e| format!("caldav: {e}"))?;
+            let to = resp
+                .headers()
+                .get("Location")
+                .and_then(|l| l.to_str().ok())
+                .map(|l| join(&url, l));
+            // Only within the same server, so the login goes nowhere else.
+            match to {
+                Some(to)
+                    if resp.status().is_redirection()
+                        && hops < 5
+                        && origin(&to) == origin(&url) =>
+                {
+                    url = to;
+                    hops += 1;
+                }
+                _ => break resp,
+            }
+        };
         let status = resp.status().as_u16();
         let text = resp
             .body_mut()
@@ -129,7 +153,14 @@ impl Calendar {
     fn collections(&self, account: &Account) -> Result<Vec<(String, String)>, String> {
         const PROPS: &str =
             "<D:resourcetype/><D:displayname/><D:current-user-principal/><C:calendar-home-set/>";
-        let xml = self.propfind(account, &account.url, "0", PROPS)?;
+        // A bare server address starts at its well-known entry (RFC 6764),
+        // as Fastmail's does; its root answers 404.
+        let start = if account.url.trim_end_matches('/') == origin(&account.url) {
+            format!("{}/.well-known/caldav", origin(&account.url))
+        } else {
+            account.url.clone()
+        };
+        let xml = self.propfind(account, &start, "0", PROPS)?;
         let doc = parse(&xml)?;
         let answers = responses(&doc);
         let (href, me) = answers.first().ok_or("caldav: empty answer")?;
@@ -267,11 +298,14 @@ fn join(base: &str, href: &str) -> String {
     if href.starts_with("http://") || href.starts_with("https://") {
         return href.to_owned();
     }
-    let origin = base
-        .find("://")
-        .and_then(|i| base[i + 3..].find('/').map(|j| &base[..i + 3 + j]))
-        .unwrap_or(base.trim_end_matches('/'));
-    format!("{origin}{href}")
+    format!("{}{href}", origin(base))
+}
+
+/// `https://host` of a URL, without path or trailing slash.
+fn origin(url: &str) -> &str {
+    url.find("://")
+        .and_then(|i| url[i + 3..].find('/').map(|j| &url[..i + 3 + j]))
+        .unwrap_or(url.trim_end_matches('/'))
 }
 
 // --- iCalendar ---
