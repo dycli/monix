@@ -84,8 +84,8 @@
           route = "calibre";
         }
         {
-          name = "Hippo";
-          about = "Dylan's assistants";
+          name = "Bridge";
+          about = "Dylan's assistant";
           icon = "";
           route = "si";
           agent = true;
@@ -252,6 +252,10 @@
           door = false;
           web = true;
           build = "/var/lib/libri-build/current";
+          # The server's name for the app at libri.su.is; libri.su.is
+          # itself still reaches the chat until the app stands apart.
+          aliases = [ "si" ];
+          origins = [ "https://libri.su.is" ];
           providerKeys = true;
           # Full ids, so the picker can show each model's version.
           models = [
@@ -280,14 +284,5 @@
 
       news.apiKeys = singleton "sokka";
 
-      yeoman.sites.si = {
-        name = "Hippo";
-        members = [
-          "sokka"
-          "azula"
-          "raava"
-          "amnesia"
-        ];
-      };
     };
 }

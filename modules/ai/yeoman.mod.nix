@@ -962,6 +962,16 @@
                     '';
                   };
 
+                  aliases = mkOption {
+                    type = types.listOf types.str;
+                    default = [ ];
+                    example = [ "si" ];
+                    description = ''
+                      Other host labels under the ship's domain that reach
+                      this instance's web chat besides its own name.
+                    '';
+                  };
+
                   fastmailTokenFile = mkOption {
                     type = types.nullOr types.str;
                     default = null;
@@ -1387,6 +1397,22 @@
               else
                 { root = "${pages}/${n}"; }
             )
+          )
+          // (
+            cfg.instances
+            |> filterAttrs (n: i: i.web && !(elem n inSites))
+            |> mapAttrsToList (
+              n: i:
+              map (a: {
+                name = a;
+                value = {
+                  port = chatPort n;
+                  proxyExtra = "proxy_buffering off; client_max_body_size 100m;";
+                };
+              }) i.aliases
+            )
+            |> lib.lists.concatLists
+            |> lib.attrsets.listToAttrs
           )
           // mapAttrs (s: site: {
             port = chatPort (head site.members);
