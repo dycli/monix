@@ -122,6 +122,9 @@
 
         programs.gamemode.enable = true;
 
+        # EcoFlow RIVER 3 Plus over USB HID (usbhid-ups, 3746:ffff).
+        ups.enable = true;
+
         # The e-reader cannot join the tailnet and pulls OPDS over the LAN.
         media.calibreWebLan = {
           interface = "enp209s0f0np0";
