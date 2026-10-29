@@ -176,6 +176,8 @@
 
       services.syncthing.enable = true;
 
+      matrix.serverName = "chat.su.is";
+
       # The Libri app on its own, as Paseo's app stands apart from its
       # daemons: it opens empty, and Settings adds each server by address
       # (si.su.is, suki.su.is). Served from the seat's latest build.

@@ -457,6 +457,10 @@ routes, so adding a service touches one file. The names resolve publicly
 but route only inside the tailnet, and an explicit default vhost catches any
 name with no route.
 
+**A private Matrix server.** tuwunel at chat.su.is, federation off and
+registration token-gated, for people's own Matrix clients. No assistant
+listens on it.
+
 **Fenced by default.** Each service gets a network fence and only the paths
 its job needs, even where a shared group would allow more. Software that
 ships no isolation of its own takes the `vendor` preset.

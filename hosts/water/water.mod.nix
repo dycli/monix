@@ -103,6 +103,7 @@
             "libri.service"
             "suki.service"
             "nginx.service"
+            "tuwunel.service"
           ];
         };
 

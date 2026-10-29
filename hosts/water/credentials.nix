@@ -14,6 +14,8 @@ in
 
   shipProxy.acmeTokenFile = config.secrets.cloudflare-dns-token.path;
 
+  matrix.registrationTokenEnvFile = config.secrets.matrix-registration-env.path;
+  matrix.tunnelTokenFile = config.secrets.matrix-cloudflare-tunnel-token.path;
   immich.tunnelTokenFile = config.secrets.immich-cloudflare-tunnel-token.path;
   endgrain.tunnelTokenFile = config.secrets.endgrain-cloudflare-tunnel-token.path;
 
@@ -56,10 +58,12 @@ in
   secrets = {
     katara-password.file = ./secrets/katara-password.age;
     agent-claude-token.file = ./secrets/agent-claude-token.age;
+    matrix-registration-env.file = ./secrets/matrix-registration.env.age;
     suki-fastmail-mcp-token.file = ./secrets/suki-fastmail-mcp-token.age;
     suki-claude-key.file = ./secrets/suki-claude-key.age;
     yeoman-home-token.file = ./secrets/yeoman-home-token.age;
     yeoman-requests-key.file = ./secrets/yeoman-requests-key.age;
+    matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     immich-cloudflare-tunnel-token.file = ./secrets/immich-cloudflare-tunnel-token.age;
     endgrain-cloudflare-tunnel-token.file = ./secrets/endgrain-cloudflare-tunnel-token.age;
     cloudflare-dns-token = {
@@ -79,6 +83,7 @@ in
 
   # This agenix pin has no restartUnits, so each encrypted source is an
   # explicit trigger on its long-running consumer; oneshots need none.
+  systemd.services.matrix-tunnel.restartTriggers = singleton ./secrets/matrix-cloudflare-tunnel-token.age;
   systemd.services.immich-tunnel.restartTriggers = singleton ./secrets/immich-cloudflare-tunnel-token.age;
   systemd.services.endgrain-tunnel.restartTriggers = singleton ./secrets/endgrain-cloudflare-tunnel-token.age;
   systemd.services.frame.restartTriggers = [
@@ -87,6 +92,7 @@ in
   ];
   systemd.services.money.restartTriggers = singleton ./secrets/plaid.env.age;
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
+  systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
   systemd.services.suki.restartTriggers = [
     ./secrets/suki-fastmail-mcp-token.age
     ./secrets/yeoman-home-token.age
