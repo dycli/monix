@@ -9,6 +9,7 @@ mod cadence;
 mod calendar;
 mod call;
 mod door;
+mod fastmail;
 mod files;
 mod finance;
 mod forget;

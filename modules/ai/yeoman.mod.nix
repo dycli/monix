@@ -722,6 +722,11 @@
                 // optionalAttrs (cfg.financeDb != null) {
                   YEOMAN_FINANCE = cfg.financeDb;
                 }
+                # Its own Fastmail calls: the send barring at start, then
+                # the watches and approved drafts.
+                // optionalAttrs (i.fastmailTokenFile != null) {
+                  YEOMAN_FASTMAIL = "${creds}/fastmail";
+                }
                 // optionalAttrs (i.mailCredentialsFile != null) {
                   YEOMAN_MAIL = "${creds}/mail";
                   YEOMAN_SMTP = cfg.smtpServer;

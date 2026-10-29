@@ -60,6 +60,7 @@ pub fn from_env() -> Result<Box<dyn Model>, String> {
             model: var("YEOMAN_MODEL").unwrap_or_else(|| "sonnet".into()),
             effort: var("YEOMAN_EFFORT"),
             mcp: var("YEOMAN_MCP").map(mcp).transpose()?,
+            barred: barred(),
             keep: var("YEOMAN_KEEP"),
             seat: var("YEOMAN_SEAT_MODE").is_some(),
         })),
@@ -461,6 +462,9 @@ pub struct Claude {
     pub effort: Option<String>,
     /// An MCP config file and the servers it names, all allowed.
     pub mcp: Option<(String, Vec<String>)>,
+    /// Tools of those servers the model never holds: Fastmail's sending
+    /// ones, as only an approved draft goes out.
+    pub barred: Vec<String>,
     /// The computer's keeper, when there is a computer: the browser is
     /// leased for a while whenever a reply drives it.
     pub keep: Option<String>,
@@ -594,6 +598,10 @@ impl Model for Claude {
             }
             if !run.acts {
                 denied.push(ACTS);
+            }
+            let barred = self.barred.join(",");
+            if !barred.is_empty() {
+                denied.push(&barred);
             }
             if !denied.is_empty() {
                 cmd.args(["--disallowedTools", &denied.join(",")]);
@@ -869,6 +877,34 @@ fn block(f: &Attachment) -> Value {
         Attachment::Pdf(data) => json!({"type": "document",
                 "source": {"type": "base64", "media_type": "application/pdf",
                            "data": B64.encode(data)}}),
+    }
+}
+
+/// Fastmail's sending tools, as its server lists them at start; when the
+/// list cannot be had, the whole server, so a send can never slip through.
+fn barred() -> Vec<String> {
+    let client = match crate::fastmail::from_env() {
+        Ok(Some(c)) => c,
+        Ok(None) => return Vec::new(),
+        Err(e) => {
+            eprintln!("yeoman: {e}");
+            return vec!["mcp__fastmail".into()];
+        }
+    };
+    match client.tools() {
+        Ok(tools) => {
+            for t in &tools {
+                eprintln!("yeoman: fastmail tool {} {}", t["name"], t["inputSchema"]);
+            }
+            crate::fastmail::sends(&tools)
+                .into_iter()
+                .map(|n| format!("mcp__fastmail__{n}"))
+                .collect()
+        }
+        Err(e) => {
+            eprintln!("yeoman: fastmail tools: {e}");
+            vec!["mcp__fastmail".into()]
+        }
     }
 }
 
