@@ -56,9 +56,6 @@ in
   "hosts/water/secrets/matrix-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/immich-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/endgrain-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/matrix-sokka.env.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/matrix-suki.env.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/matrix-azula.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/suki-claude-key.age".publicKeys = singleton water ++ admin;
   # A Home Assistant long-lived access token, raw, for the assistants' home tools.
   "hosts/water/secrets/yeoman-home-token.age".publicKeys = singleton water ++ admin;
@@ -73,7 +70,7 @@ in
   # Cloudflare account token, raw, "Read all resources", for the seat's Cloudflare MCP.
   "hosts/water/secrets/cloudflare-read-token.age".publicKeys = singleton water ++ admin;
   # Fastmail API tokens, raw, type MCP (read, change, send), one per assistant;
-  # yeoman bars the model from sending and sends only what the captain approves.
+  # Libri bars the model from sending and sends only what the captain approves.
   "hosts/water/secrets/sokka-fastmail-mcp-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/suki-fastmail-mcp-token.age".publicKeys = singleton water ++ admin;
   # FRIGATE_RTSP_PASSWORD=...

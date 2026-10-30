@@ -299,9 +299,9 @@ config keys both builds read. Libri's own README covers the program.
 What the host adds: pictures, drawn by a small socket-activated service with
 Codex on the household's ChatGPT subscription, which alone holds that login;
 `usage`, which reports each subscription's limits and who used them; and
-`run_code`'s microVM under cloud-hypervisor (`yeoman-computer.mod.nix`), which
+`run_code`'s microVM under cloud-hypervisor (`assistant-computer.mod.nix`), which
 runs code with no network, in a folder the host fills, on a host-only bridge
-with NAT to public addresses only (`yeoman-network.mod.nix`). Nothing of the
+with NAT to public addresses only (`assistant-network.mod.nix`). Nothing of the
 household goes in: no tailnet, no store share, no secret.
 
 The instances share a household directory their common group can write:

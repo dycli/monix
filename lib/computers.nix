@@ -1,5 +1,5 @@
-# The assistants' code runners (yeoman-computer.mod.nix), their own network
-# (yeoman-network.mod.nix) and the assistant that drives them
+# The assistants' code runners (assistant-computer.mod.nix), their own network
+# (assistant-network.mod.nix) and the assistant that drives them
 # (libri.mod.nix) agree on these.
 lib:
 let
@@ -22,7 +22,7 @@ in
     "1.1.1.1"
   ];
 
-  # The runner of the assistant's code (yeoman-computer/runner.py).
+  # The runner of the assistant's code (assistant-computer/runner.py).
   runPort = 8934;
 
   # Each assistant's desk, shared with its runner.

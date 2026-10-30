@@ -2,7 +2,7 @@
 # the endless web chat of its own Libri, with its own memory. `libri` is the
 # seat itself behind that chat, Bridge for Dylan on the seat's logins, tools
 # and hippo. `suki` is Gab's, sandboxed under her own user, with her own hippo
-# unit and a computer for code (yeoman-computer.mod.nix). Each runs whatever
+# unit and a computer for code (assistant-computer.mod.nix). Each runs whatever
 # build its link in /var/lib/libri-build points at, so the seat rebuilds
 # without a deploy.
 #
@@ -12,7 +12,7 @@
 # builds know: an unknown key stops a build from starting.
 #
 # Model calls reach only what the instance's MCP file names. Suki has pictures
-# (yeoman-image.py), drawn by the image service, the only assistant-side
+# (assistant-image.py), drawn by the image service, the only assistant-side
 # holder of a Codex login, Home Assistant's own MCP server, and Fastmail's.
 #
 # The instances share a household directory their common group can write:
@@ -110,7 +110,7 @@
       image = pkgs.writers.writePython3Bin "yeoman-image-mcp" {
         libraries = singleton pkgs.python3Packages.mcp;
         flakeIgnore = singleton "E501";
-      } (readFile ./yeoman-image.py);
+      } (readFile ./assistant-image.py);
 
       # One connection, one picture: the description on stdin, the PNG out.
       # Codex keeps each thread's pictures under its thread id.

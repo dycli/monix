@@ -2,12 +2,12 @@
 # usual data libraries and a shell with file converters, in a folder of
 # the desk the host fills with the files it needs and keeps what it
 # writes. The runner has no network at all; the guest's own network is
-# the internet only (yeoman-network.mod.nix), and nothing of the
+# the internet only (assistant-network.mod.nix), and nothing of the
 # household is in it: no tailnet, no store share, no secret.
 { self, ... }:
 {
-  flake.nixosModules.lab = self.nixosModules.yeoman-computer;
-  flake.nixosModules.yeoman-computer =
+  flake.nixosModules.lab = self.nixosModules.assistant-computer;
+  flake.nixosModules.assistant-computer =
     {
       config,
       lib,
@@ -37,7 +37,7 @@
           config =
             { pkgs, ... }:
             let
-              runner = pkgs.writers.writePython3Bin "desk-runner" { } (readFile ./yeoman-computer/runner.py);
+              runner = pkgs.writers.writePython3Bin "desk-runner" { } (readFile ./assistant-computer/runner.py);
               # What the code has to hand: the data libraries for Python,
               # and converters for pictures, sound and film, documents and
               # archives for the shell.

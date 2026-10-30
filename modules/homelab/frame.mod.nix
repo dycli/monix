@@ -49,7 +49,7 @@
         calendarCredentialsFile = mkOption {
           type = types.nullOr types.str;
           default = null;
-          description = "yeoman's CalDAV accounts JSON; null = no calendar.";
+          description = "CalDAV accounts JSON; null = no calendar.";
         };
         weather = mkOption {
           type = types.nullOr types.str;

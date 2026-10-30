@@ -4,8 +4,8 @@
 # The lock makes a second check wait for the first instead.
 #
 # `ship-check` alone runs `nix flake check`. Named checks build only those,
-# plus the cheap style gates: `ship-check yeoman water` for a change inside
-# yeoman's crate. A host name stands for its system build.
+# plus the cheap style gates: `ship-check money water` for a change inside
+# a crate. A host name stands for its system build.
 { self, ... }:
 {
   flake.nixosModules.seat = self.nixosModules.ship-check;
