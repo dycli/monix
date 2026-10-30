@@ -276,6 +276,7 @@ in
           ];
           environment = compactor // {
             HOME = seat.home;
+            HIPPO_AGENT = "Bridge";
           };
           serviceConfig = lib.ship.hardened.tenant // {
             User = seat.user;

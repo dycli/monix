@@ -262,6 +262,14 @@
       seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
         mcpServers = removeAttrs config.seat.mcpServers [ "fastmail" ];
       };
+      # Libri's assistant calls itself Libri; an instance here is itself by
+      # this rule text, on every prompt, Temp and calls included.
+      identity =
+        i: role:
+        pkgs.writeText "${lib.strings.toLower i.name}-identity.md" ''
+          You go by ${i.name}, not Libri: you are ${role}, and wherever these
+          instructions say Libri they mean you.
+        '';
       # The ship's guide for any harness, as Libri's turns read no rule files.
       seatGuide = pkgs.writeText "seat-libri-guide.md" (
         "You are the ship's engineer.\n\n" + lib.ship.guide.system + lib.ship.guide.engineer
@@ -594,8 +602,10 @@
                   YEOMAN_BACKEND = "claude";
                   YEOMAN_CLAUDE = "claude";
                   YEOMAN_MODEL = cfg.model;
-                  # The seat's hippo keeps Paseo's and the cockpit's chats too.
-                  LIBRI_HIPPO_SHARED = "1";
+                  # The seat's hippo keeps Paseo's and the cockpit's chats too;
+                  # the title its history already goes under.
+                  LIBRI_HIPPO_SHARED = i.name;
+                  YEOMAN_IDENTITY = toString (identity i "the ship's engineer");
                   YEOMAN_MCP = toString seatMcp;
                   YEOMAN_INSTRUCTIONS = toString seatGuide;
                   YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
@@ -717,6 +727,7 @@
                   YEOMAN_CLAUDE = getExe claude;
                   YEOMAN_MODEL = cfg.model;
                   YEOMAN_MCP = toString mcp;
+                  YEOMAN_IDENTITY = toString (identity i "${i.person}'s household assistant");
                   # An assistant: Libri's tools only, no shell or files.
                   YEOMAN_CODING = "0";
                   # Its compactor is its hippo unit's, not Libri's Settings.
