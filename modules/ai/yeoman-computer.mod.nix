@@ -3,9 +3,7 @@
 # the desk the host fills with the files it needs and keeps what it
 # writes. The runner has no network at all; the guest's own network is
 # the internet only (yeoman-network.mod.nix), and nothing of the
-# household is in it: no tailnet, no store share, no secret. The
-# assistant's browser is not here but on the host (assistant-browser.mod.nix),
-# where the GPU draws it.
+# household is in it: no tailnet, no store share, no secret.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.yeoman-computer;
@@ -178,7 +176,7 @@
             options.computer = mkOption {
               type = types.bool;
               default = false;
-              description = "Whether the assistant has a browser and a computer for code of its own.";
+              description = "Whether the assistant has a computer for code of its own.";
             };
           }
         );

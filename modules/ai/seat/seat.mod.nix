@@ -8,20 +8,16 @@
   ...
 }:
 let
-  # The seat's own browser on its host (assistant-browser.mod.nix), over HTTP
-  # on the browser's loopback address. Parallel's keyless search, the one the
-  # assistants use, answers in well under a second where the launchers' own
-  # search takes several and reads worse on technical lookups.
-  browserServers = {
-    browser.url = "http://${lib.ship.browsers.addr seatBrowser}:${toString lib.ship.browsers.mcpPort}/mcp";
+  # Parallel's keyless search, the one the assistants use, answers in well
+  # under a second where the launchers' own search takes several and reads
+  # worse on technical lookups.
+  sharedServers = {
     web.url = "https://search.parallel.ai/mcp";
     cloudflare = {
       command = "/run/current-system/sw/bin/kestrel-cloudflare-mcp";
       args = [ ];
     };
   };
-  # The seat's browser's index (lib/browsers.nix).
-  seatBrowser = 1;
 in
 {
   flake.homeModules.cockpit =
@@ -198,7 +194,7 @@ in
             deepseekKeyFile = osConfig.secrets.deepseek-key.path;
             abliterationKeyFile = osConfig.secrets.abliteration-key.path;
             extraMcp =
-              browserServers
+              sharedServers
               |> mapAttrs (
                 _: server:
                 if server ? url then
@@ -272,12 +268,12 @@ in
         claudeMcp = lib.options.mkOption {
           inherit (json) type;
           default = { };
-          description = "Claude Code's managed MCP servers beyond the browsers, for every launcher.";
+          description = "Claude Code's managed MCP servers beyond the shared ones, for every launcher.";
         };
         mcpServers = lib.options.mkOption {
           inherit (json) type;
           readOnly = true;
-          description = "Every launcher's MCP servers, in Claude Code's shape: the browsers and `claudeMcp`.";
+          description = "Every launcher's MCP servers, in Claude Code's shape: the shared ones and `claudeMcp`.";
         };
         codexConfig = lib.options.mkOption {
           inherit (toml) type;
@@ -349,20 +345,14 @@ in
         # Address filter on every process this user runs, both directions and
         # all interfaces, including the tailnet, which Tailscale ACLs cannot
         # restrict per-user. Filtering is port-blind, so admitting 127.0.0.1
-        # would expose every loopback service; llama-swap and the seat's
-        # browser get dedicated loopback addresses instead.
+        # would expose every loopback service; llama-swap gets a dedicated
+        # loopback address instead.
         systemd.slices."user-${toString seat.uid}".sliceConfig = {
           IPAddressAllow = [
             "127.0.0.53/32"
             "${topology.seatInferenceAddr}/32"
-            "${lib.ship.browsers.addr seatBrowser}/32"
           ];
           IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
-        };
-
-        ship.browsers.${seat.user} = {
-          index = seatBrowser;
-          users = singleton seat.user;
         };
 
         # Must exist before the first session keys its project state to it.
@@ -397,7 +387,7 @@ in
           json.generate "claude-managed-settings.json" cfg.claudeSettings;
 
         seat.codexConfig.mcp_servers =
-          browserServers
+          sharedServers
           |> mapAttrs (
             _: server:
             server
@@ -418,7 +408,7 @@ in
         # asks for a wheel password.
         seat.claudeSettings.permissions.allow = [ "Bash(switcharoo)" ];
         seat.mcpServers =
-          browserServers
+          sharedServers
           |> mapAttrs (_: server: server // { type = if server ? url then "http" else "stdio"; })
           |> (servers: servers // config.seat.claudeMcp);
         environment.etc."claude-code/managed-mcp.json".text = toJSON {

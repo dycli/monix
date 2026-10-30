@@ -23,10 +23,8 @@
 # search returned or the person wrote: nothing it read can ride out in a
 # link it made up. The bot sends due reminders itself, runs
 # due routines as requests and sends the answers, and reads photos and files
-# sent to it without keeping them. An instance with `computer = true` also drives
-# a browser of its own on the host (assistant-browser.mod.nix) over
-# Playwright MCP, reads its desk for screenshots, runs code in a microVM
-# (yeoman-computer.mod.nix), and can start a task:
+# sent to it without keeping them. An instance with `computer = true` also
+# runs code in a microVM (yeoman-computer.mod.nix), and can start a task:
 # a turn of its own with no clock on it, run on the tick, for work that
 # outlives the message. Each has a site, `<n>.<domain>` on the tailnet
 # proxy: `show_page` writes a page of HTML there and hands back its link.
@@ -64,7 +62,6 @@
       inherit (lib.lists)
         singleton
         optional
-        optionals
         length
         head
         elem
@@ -91,7 +88,6 @@
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib) types;
       inherit (lib.ship)
-        browsers
         fences
         computers
         topology
@@ -104,8 +100,6 @@
       pages = "/var/lib/yeoman-pages";
       # Each shared site's sign-ins, in a directory its assistants' group owns.
       sitesDir = "/var/lib/yeoman-sites";
-      # After the seat's: an assistant's browser follows its runner's index.
-      browserIndex = n: 10 + (computers.indexes cfg.instances).${n};
       siteOf = n: findFirst (s: elem n cfg.sites.${s}.members) null (attrNames cfg.sites);
       host = sub: "https://${sub}.${config.shipProxy.domain}";
       # Who is in the household, as house.rs reads it: unit=Name=Person, and
@@ -253,13 +247,9 @@
         lib.strings.toJSON (lib.attrsets.removeAttrs config.seat.claudeSettings [ "hooks" ])
       );
       # What Libri adds to its own tools on the seat's turns. Fastmail isn't
-      # here: Libri's connection relays it, and refuses sending. Nor is the
-      # browser: Libri has no browser use for now (libri-browser.md).
+      # here: Libri's connection relays it, and refuses sending.
       seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
-        mcpServers = removeAttrs config.seat.mcpServers [
-          "browser"
-          "fastmail"
-        ];
+        mcpServers = removeAttrs config.seat.mcpServers [ "fastmail" ];
       };
       # Libri's assistant calls itself Libri; an instance here is itself by
       # this rule text, on every prompt, Temp and calls included.
@@ -315,10 +305,6 @@
         YEOMAN_OPEN = "daemon.open";
         YEOMAN_PASSWORD_FILE = "daemon.password_file";
         YEOMAN_ORIGINS = "daemon.origins";
-        YEOMAN_SCREEN = "computer.screen";
-        YEOMAN_SCREEN_SIZE = "computer.screen_size";
-        YEOMAN_DESK = "computer.desk";
-        YEOMAN_KEEP = "computer.keep";
         YEOMAN_RUN = "computer.run";
         YEOMAN_RUNS = "computer.runs";
         YEOMAN_UNIT = "household.unit";
@@ -376,7 +362,6 @@
           pc = optionalAttrs i.computer {
             addr = computers.addr (computers.indexes cfg.instances).${n};
             desk = "${computers.desks}/${n}";
-            browser = browsers.addr (browserIndex n);
           };
           # The assistant's site: pages it writes, served by the proxy.
           shared' = siteOf n;
@@ -393,12 +378,8 @@
               YEOMAN_PAGES_URL = site.url;
             }
             // optionalAttrs i.computer {
-              YEOMAN_DESK = browsers.desk n;
-              YEOMAN_KEEP = "http://${pc.browser}:${toString browsers.keepPort}";
               YEOMAN_RUN = "http://${pc.addr}:${toString computers.runPort}";
               YEOMAN_RUNS = pc.desk;
-              YEOMAN_SCREEN = "${host "${n}-screen"}/vnc.html?autoconnect=1&resize=scale&show_dot=1";
-              YEOMAN_SCREEN_SIZE = browsers.screen;
             }
             // optionalAttrs (cfg.homeTokenFile != null) { YEOMAN_HOME = "1"; }
             // optionalAttrs (cfg.searchKeyFile != null) { YEOMAN_SEARCH_KEY = "${creds}/search"; }
@@ -454,13 +435,6 @@
                   type = "stdio";
                   command = getExe image;
                   args = singleton "${state}/outbox";
-                };
-              }
-              // optionalAttrs i.computer {
-                # Playwright MCP, driving its browser on the host.
-                computer = {
-                  type = "http";
-                  url = "http://${pc.browser}:${toString browsers.mcpPort}/mcp";
                 };
               }
               // optionalAttrs (cfg.homeTokenFile != null) {
@@ -881,10 +855,7 @@
                     site.dir
                     house
                   ]
-                  ++ optionals i.computer [
-                    pc.desk
-                    (browsers.desk n)
-                  ]
+                  ++ optional i.computer pc.desk
                   ++ optional (shared' != null) "${sitesDir}/${shared'}";
                 }
                 // optionalAttrs (i.web || i.providerKeys) {
@@ -901,11 +872,8 @@
                 }
                 // optionalAttrs i.providerKeys { ExecStartPre = linkOmpModels; }
                 // optionalAttrs i.computer {
-                  # Through the fence to its own runner and browser.
-                  IPAddressAllow = fence.IPAddressAllow ++ [
-                    pc.addr
-                    pc.browser
-                  ];
+                  # Through the fence to its own runner.
+                  IPAddressAllow = fence.IPAddressAllow ++ singleton pc.addr;
                 };
             };
 
@@ -1292,14 +1260,6 @@
             message = "yeoman: an instance belongs to one site at most.";
           }
         ];
-
-        ship.browsers = mapAttrs' (
-          n: _:
-          nameValuePair n {
-            index = browserIndex n;
-            users = singleton n;
-          }
-        ) (filterAttrs (_: i: i.computer) cfg.instances);
 
         # yeoman-image holds the household's one Codex login, on the ChatGPT
         # subscription; the assistants reach only its socket. Log in once,
