@@ -186,6 +186,21 @@
         root = "/var/lib/libri-build/current/site";
       };
 
+      # The Android app's newest signed build, at the fixed address
+      # Obtainium polls for updates: libri.su.is/android/libri.apk. The
+      # seat copies each build here; the signing key stays in its home.
+      systemd.tmpfiles.settings.libri-android."/var/lib/libri-android".d = {
+        user = lib.ship.topology.seat.user;
+        group = "nginx";
+        mode = "2750";
+      };
+      services.nginx.virtualHosts."libri.${config.shipProxy.domain}".locations."/android/" = {
+        alias = "/var/lib/libri-android/";
+        extraConfig = ''
+          types { application/vnd.android.package-archive apk; }
+        '';
+      };
+
       yeoman.instances = {
         suki = {
           person = "Gab";
