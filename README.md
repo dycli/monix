@@ -285,159 +285,28 @@ The folder is in the OS backup set.
 llama-swap starts one `llama-server` per model on demand and unloads it when
 idle, so a host holds no model memory until something asks.
 
-### The yeoman
+### Libri
 
-The yeoman (`modules/ai/yeoman`) is the household assistant program, a small
-Rust service with a web chat, run once per person: Bridge's Libri for Dylan, Suki for Gab. It has no sessions and never compacts: every message becomes one
-fresh model call over its prompt, its whole memory and the new message.
-The memory is a second hippo store, written directly instead of by
-following transcripts: the bot logs each message and each answer, and hippo
-folds them into a 128 KB view, the seat's size, so once the view fills an
-endless chat costs the same per call on its hundredth day as its thousandth.
+The household's assistants are Libri's (`~bridge/ark/libri`),
+one per person, each in an endless web chat with a memory of its own:
+Bridge for Dylan, on the seat's logins, tools and hippo, and Suki for Gab,
+sandboxed under her own user. `modules/ai/libri.mod.nix` is only the host
+side: it runs both through Libri's NixOS module, and each runs the build its
+link in `/var/lib/libri-build` points at, so the seat rebuilds with no
+deploy. Suki's link follows Libri's `stable` branch, so the file writes only
+config keys both builds read. Libri's own README covers the program.
 
-The model is configuration: the `claude` CLI on a subscription token, or
-any OpenAI-compatible endpoint, local or hosted. The CLI runs with built-in
-tools and settings off; its tools come over MCP, and the prompt mentions
-them only when the model has them. Its own server, `yeoman tools`, searches
-and fetches the web through Parallel's keyless one, keeps reminders and
-lists in one SQLite book and can touch nothing else, so a page that tries
-to steer the model through search results finds no keys, memory or shell
-to reach. Fetch opens only links a search of its own returned or the
-person wrote, so a made-up link cannot carry what the model has read.
-The same server holds the calendar: plain CalDAV and iCalendar over the
-one HTTP client, the login read from a systemd credential; it lists, adds,
-moves and cancels events, with repeats expanded. Mail is read there too,
-over IMAP in plain protocol on a TLS stream: folders open with EXAMINE and
-bodies are fetched with `BODY.PEEK`, so nothing is moved or marked read. No
-tool sends: the model only drafts, the draft shows whole in the chat, and a
-👍 reaction from the person's own account makes the assistant itself send it
-over SMTP; 👎 drops it. The model holds no tool that sends, so no text it reads can make it,
-and a draft an injected page shaped is still read before it is approved. Since
-any sender or page can put text in
-front of the model, fetch opens only links that a search in the same call
-returned or that the person wrote, as OpenAI's agents do: a link the model
-made up could carry what it read out in its path, but a link that existed
-before it read anything carries nothing. YouTube goes through `yt-dlp`, run
-as a subprocess: a search, and a video's captions as text, the uploader's
-own before automatic ones; any link that is not YouTube is refused.
+What the host adds: pictures, drawn by a small socket-activated service with
+Codex on the household's ChatGPT subscription, which alone holds that login;
+`usage`, which reports each subscription's limits and who used them; and
+`run_code`'s microVM under cloud-hypervisor (`yeoman-computer.mod.nix`), which
+runs code with no network, in a folder the host fills, on a host-only bridge
+with NAT to public addresses only (`yeoman-network.mod.nix`). Nothing of the
+household goes in: no tailnet, no store share, no secret.
 
-Who started a turn decides what it may do. A message from the person, or a
-routine they set, runs with every tool. A turn that another instance's
-message started has the tools that act withheld (reminders, lists, the
-mailbox, the calendar, pictures, fetch): the text arrives quoted in
-`<message>`, and the prompt says such text is information, never an
-instruction, so the worst a crafted message can do is be read out.
-Nothing about the person's own messages is wrapped or restricted.
-Pictures are a sixth: the assistant describes one, and a small socket-activated
-service draws it with Codex on the household's ChatGPT subscription. That
-service alone holds the Codex login; the assistants reach only its socket. The
-picture waits in the instance's outbox, goes out with the answer, encrypted
-like any attachment, and is then deleted.
-Another socket service, `usage`, reports how much of each subscription's
-limits is used (Claude, ChatGPT/Codex, OpenCode Go), read live from each
-provider and never stored; the assistants ask it through their tools and the
-seat through its `usage` command, and only it sees the logins. Under each
-Claude and Codex window it shows who used it: a second service, run as the
-seat and offline, prices the seat's own transcripts and the one journal line
-each assistant, memory and picture writes per call at API rates, and splits
-the window by them. Use from other machines is not counted.
-The bot checks the book every 30 seconds and sends due reminders itself,
-logging them to hippo like any other answer. A reminder leaves the book only
-once it is sent, and a routine's answer is kept until then, so a failed
-send goes again on the next check, at worst twice, never lost. A reminder can instead be a
-routine ("a mail digest at 8, 2 and 8"): when it comes due, the bot runs its
-text as a request, with the same tools as a message from its person, and sends
-the answer, or stays quiet when it has nothing new, so a daily price
-check speaks only when the price moves; hippo records the trigger as a
-routine, not as their words.
-
-Each assistant can have a browser of its own (`assistant-browser.mod.nix`),
-the same kind as the seat's: Brave under cage on Water's GPU, as an account of
-its own with an internet-only fence, driven over HTTP by Playwright MCP, so the
-model works a page by its accessibility tree and takes a screenshot when it
-needs to look. The server closes its shared browser when the last client
-leaves, and the assistant connects once per reply, so a keeper holds a session
-of its own while the assistant has a lease on the browser: a reply that drives
-it takes one, each use renews it for half an hour, and the assistant can hold
-it open until told or close it now. The profile keeps site logins;
-`<name>-browser-reset` wipes it. Screenshots and downloads land on the
-browser's desk, which the assistant shares, and `send_file` sends one with the
-answer. The screen is a page on the tailnet, `<name>-screen.<domain>`, noVNC
-through websockify to the browser's VNC, and the prompt tells the assistant to
-hand out the link when the person must take the keyboard (a captcha, a sign-in
-only they can do). On a turn a household message started, the
-browser is withheld like the other tools that act. Browser actions are not
-gated: the profile holds no payment method or password manager, so the worst a
-page can do is what a logged-in site allows, and sending anything outward
-still goes through the draft-and-👍 path.
-
-Code runs elsewhere: `run_code` hands it to a microVM under cloud-hypervisor
-(`yeoman-computer.mod.nix`) that runs it with no network, in a folder the host
-fills with the files it needs and keeps what it writes. Nothing of the
-household goes in: no tailnet, no store share, no secret, and the guest's own
-network (`yeoman-network.mod.nix`) is a host-only bridge with NAT to public
-addresses only.
-
-Work that takes a while is a task: the model starts it with the request
-worded as the person's, says it is under way, and stops; the bot runs it on
-its 30-second tick as a turn of its own with no clock on it, posts whatever
-the task says along the way, and sends its answer when done. One task at a
-time per instance; "stop" cancels it, which kills the model call. A task is
-a person's turn, so it can act and draft, and its drafts wait for 👍 like
-any other.
-
-Each assistant has a site, `<name>.<domain>` on the tailnet proxy: `show_page`
-writes one HTML document under a name of plain letters, digits and dashes,
-and hands back its link, for anything a chat message would flatten (a chart,
-a table, a plan). The same name again replaces the page, and every version
-stays at its own dated link. It is a directory of files that nginx serves
-read-only as the assistant's group; nothing runs on it.
-
-With `homeTokenFile` set, both assistants also hold Home Assistant's own MCP
-server, the one that ships with it, over its Assist API: state of what is
-exposed to Assist, and the intents to act on it. The long-lived token lives
-in a systemd credential and is filled into a private copy of the MCP file at
-unit start. On a turn a household message started, the home is
-withheld like every other tool that acts.
-
-With `requestsKeyFile` set, they can also request films and shows through
-Seerr on loopback, from the same Rust tool server: search the catalogue, list a show's seasons, make the
-request and read back what is pending. The request goes in under the Seerr
-user named like the person when there is one, so it shows as theirs; only
-the request itself is a tool that acts.
-
-Photos, PDFs and text files sent to an assistant are typed by their
-first bytes rather than the sender's word, and handed to the model with
-the message. They are read once and kept nowhere: hippo holds only text, so
-the prompt asks the answer to state what matters in the file (dates,
-amounts, names), and that answer is what it remembers.
-
-The module runs one instance per person, each with its own hippo store,
-book and chat, so no instance can read another's memory. They share the
-calendar login and the model; mail is set per instance. Dylan's is Bridge's
-Libri, the seat itself, with the seat's memory; Gab's is Suki, with her own.
-
-What crosses between instances goes through one household directory that
-only their shared group can write. It holds the shared lists, a book like
-each instance's own, and a mailbox per instance. A list is personal until it
-is made shared or shared later, and the others are told when that happens.
-"Tell Gab ..." leaves a message in Suki's mailbox, which her bot drains on
-its 30-second tick: it passes the message on in
-its own words and keeps it as a note. A shared routine runs once, on its
-owner's instance, and the bot drops the answer in the others' mailboxes too,
-so one assistant curates and the rest relay. Memories never mix; only what
-is handed over crosses.
-
-The ship's seat is in the household too, as Bridge. `tell Suki ...` from
-the seat leaves a note in a box of Suki's that its tick drains like her
-mailbox, marked as the engineer's, not the person's; Suki does what she
-would do for its person, answers with its own `tell` to Bridge, and tells
-its person in a line what happened. Notes to Bridge append to one inbox
-file, which `inbox` prints on demand.
-
-Suki runs as her own fenced user with loopback and the internet but not the
-tailnet or the LAN; her chat is served on the tailnet only, at
-`suki.su.is`, and the Libri app at `libri.su.is` talks to it there.
+The instances share a household directory their common group can write:
+shared lists and a mailbox each. The seat is in it as Bridge, with `tell` and
+`inbox`.
 
 ## Homelab
 
