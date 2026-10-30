@@ -228,6 +228,14 @@
         umask 077
         printf 'ANTHROPIC_API_KEY=%s\n' "$(< "$CREDENTIALS_DIRECTORY/claude-key")" > "$RUNTIME_DIRECTORY/claude.env"
       '';
+      # The seat's claude on the setup token, the same way, not the browser
+      # login in ~/.claude: that one rotates, and a refused renewal blanked it
+      # on 10-30. The unit's other harnesses inherit it, but they run as the
+      # seat, which could read that login anyway.
+      claudeToken = pkgs.writeShellScript "claude-token" ''
+        umask 077
+        printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$(< "$CREDENTIALS_DIRECTORY/claude-token")" > "$RUNTIME_DIRECTORY/claude.env"
+      '';
       # The tokens rise from their credentials into a private copy of the file.
       sukiMcpTokens = pkgs.writeShellScript "suki-mcp-tokens" ''
         umask 077
@@ -468,7 +476,14 @@
               "usage"
               "opencode-auth"
             ];
-            ExecStartPre = linkOmpModels;
+            LoadCredential = "claude-token:${config.secrets.agent-claude-token.path}";
+            RuntimeDirectory = "libri";
+            RuntimeDirectoryMode = "0700";
+            ExecStartPre = [
+              linkOmpModels
+              claudeToken
+            ];
+            EnvironmentFile = "-%t/%N/claude.env";
             WorkingDirectory = seat.home;
             NoNewPrivileges = false;
             ProtectSystem = false;

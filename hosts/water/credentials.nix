@@ -36,6 +36,7 @@ in
     katara-password.file = ./secrets/katara-password.age;
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
     suki-fastmail-mcp-token.file = ./secrets/suki-fastmail-mcp-token.age;
+    agent-claude-token.file = ./secrets/agent-claude-token.age;
     suki-claude-key.file = ./secrets/suki-claude-key.age;
     yeoman-home-token.file = ./secrets/yeoman-home-token.age;
     yeoman-requests-key.file = ./secrets/yeoman-requests-key.age;
@@ -69,6 +70,7 @@ in
   systemd.services.money.restartTriggers = singleton ./secrets/plaid.env.age;
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
+  systemd.services.libri.restartTriggers = singleton ./secrets/agent-claude-token.age;
   systemd.services.suki.restartTriggers = [
     ./secrets/suki-fastmail-mcp-token.age
     ./secrets/yeoman-home-token.age
