@@ -64,12 +64,7 @@
           default = "claude";
           model = "opus";
         };
-        tools = {
-          home = "1";
-          usage = "/run/usage.sock";
-          requests = "/run/credentials/${unit}.service/requests";
-          seerr = "http://127.0.0.1:${toString config.shipProxy.routes.q.port}";
-        };
+        tools.usage = "/run/usage.sock";
       };
       site = unit: subdomain: {
         listen = "127.0.0.1:${toString ports.${unit}}";
@@ -323,6 +318,11 @@
             coding = "0";
           };
           tools = {
+            # Only the stable build Suki runs has these tools; Libri itself
+            # dropped them, so they go with her move onto it.
+            home = "1";
+            requests = "/run/credentials/suki.service/requests";
+            seerr = "http://127.0.0.1:${toString config.shipProxy.routes.q.port}";
             finance = "/var/lib/money/${config.money.environment}/finance.db";
             money = "/run/money.sock";
             # Portsmouth, NH.
@@ -469,9 +469,6 @@
               "opencode-auth"
             ];
             ExecStartPre = linkOmpModels;
-            # The tool server reads this file and exits if it can't, leaving
-            # each turn without it.
-            LoadCredential = singleton "requests:${config.secrets.yeoman-requests-key.path}";
             WorkingDirectory = seat.home;
             NoNewPrivileges = false;
             ProtectSystem = false;
