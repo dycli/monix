@@ -281,7 +281,7 @@
 
       # An instance on Libri (`build`) reads its
       # settings from one TOML file (Libri's README, "Config"; the table in
-      # its yeoman/src/host.rs): each setting this module gives goes there
+      # its libri/src/host.rs): each setting this module gives goes there
       # under the key Libri names it by. The rest stays in the environment:
       # what Libri does not read as a setting (HOME, PATH, OPENCODE_CONFIG),
       # and the household's dir and members, which the development build
@@ -346,6 +346,17 @@
           environment = filterAttrs (k: _: !(libriKeys ? ${k})) environment;
           file = (pkgs.formats.toml { }).generate "${n}-libri.toml" settings;
         };
+
+      # The seat's Libri reads LIBRI_*, the names the settings left in the
+      # environment go by since its rename. Both are set so the seat's unit
+      # and its build link can change in either order; the YEOMAN_ copies
+      # go once the link has held the renamed build for a deploy.
+      libriNames =
+        environment:
+        environment
+        // lib.attrsets.mapAttrs' (k: nameValuePair "LIBRI_${lib.strings.removePrefix "YEOMAN_" k}") (
+          filterAttrs (k: _: lib.strings.hasPrefix "YEOMAN_" k) environment
+        );
 
       # The homeserver and resolver on loopback, and the internet for the
       # model; not the tailnet, the LAN or the seat's loopback address.
@@ -512,7 +523,7 @@
               in
               unit
               // {
-                inherit (c) environment;
+                environment = if i.seat then libriNames c.environment else c.environment;
                 serviceConfig = unit.serviceConfig // {
                   ExecStart = "${unit.serviceConfig.ExecStart} --config ${c.file}";
                 };
