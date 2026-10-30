@@ -21,7 +21,7 @@
         type = "stdio";
         # Libri's development build, as the libri unit runs it, and the
         # unit's state directory, where the sign-in lives.
-        command = "/var/lib/libri-build/current/bin/libri";
+        command = "${lib.ship.topology.seat.libriBuild}/bin/libri";
         args = [
           "fastmail-mcp"
           "/var/lib/libri"

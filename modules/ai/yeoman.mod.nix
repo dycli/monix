@@ -653,6 +653,48 @@
                 BindReadOnlyPaths = singleton "${seatClaudeEtc}:/etc/claude-code";
               };
             };
+
+            # An up unit isn't a working Libri. This proves its site, its
+            # memory and one model call through it; a failure here makes
+            # switcharoo roll the deploy back.
+            "${n}-ready" = {
+              description = "Proves ${i.name}'s Libri answers";
+              wantedBy = singleton "multi-user.target";
+              after = [
+                "${n}.service"
+                "hippo.service"
+              ];
+              restartTriggers = [
+                config.systemd.units."${n}.service".unit
+                config.systemd.units."hippo.service".unit
+              ];
+              unitConfig.RequiresMountsFor = seat.hippo;
+              environment.HIPPO_DIR = seat.hippo;
+              path = [
+                pkgs.coreutils
+                pkgs.curl
+                pkgs.jq
+                pkgs.socat
+              ];
+              serviceConfig = {
+                Type = "oneshot";
+                RemainAfterExit = true;
+                User = seat.user;
+                TimeoutStartSec = 110;
+              };
+              script = ''
+                site=http://127.0.0.1:${toString (chatPort n)}/api/host
+                for _ in $(seq 40); do
+                  curl -fsS -m3 -o /dev/null "$site" && break
+                  sleep 1
+                done
+                curl -fsS -m3 -o /dev/null "$site"
+                timeout 30 ${i.build}/bin/hippo status >/dev/null
+                printf '%s\n' '{"system":"Answer in one word.","memory":null,"prompt":"Say ready."}' |
+                  socat -t60 -T60 - UNIX-CONNECT:${seat.hippo}/compactor.sock |
+                  jq -e '.text | length > 0'
+              '';
+            };
           }
         else
           {
@@ -1044,7 +1086,7 @@
                   build = mkOption {
                     type = types.nullOr types.str;
                     default = null;
-                    example = "/var/lib/libri-build/current";
+                    example = "/var/lib/libri-build/libri";
                     description = ''
                       A link to a Libri build (bin/libri, bin/hippo, site/)
                       to run instead of the ship's yeoman. The seat may

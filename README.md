@@ -184,7 +184,7 @@ hippo is the seat's episodic memory, written in Rust, with seven dependencies.
 The design follows Victor Taelin's OptChat: keep every message, and fold the
 whole history into a fixed-size summary that any session can read. Its source
 lives in Libri (`~/ark/libri/hippo`), and the seat runs the build Libri's deploy
-keeps at `/var/lib/libri-build/current`; `modules/ai/seat/hippo.mod.nix` holds
+keeps at `/var/lib/libri-build/libri`; `modules/ai/seat/hippo.mod.nix` holds
 only its service. [dycli/hippo](https://github.com/dycli/hippo) keeps what monix
 last pushed there.
 

@@ -8,7 +8,7 @@ let
   # at, as Libri does (deploy_libri.sh keeps the link).
   package =
     lib: pkgs:
-    lib.ship.libriHippo pkgs "/var/lib/libri-build/current" {
+    lib.ship.libriHippo pkgs lib.ship.topology.seat.libriBuild {
       HIPPO_DIR = lib.ship.topology.seat.hippo;
       HIPPO_ARCHIVE = lib.ship.topology.seat.transcripts;
     };

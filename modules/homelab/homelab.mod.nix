@@ -183,7 +183,7 @@
       # (si.su.is, suki.su.is). Served from the seat's latest build.
       shipProxy.routes.libri-app = {
         subdomain = "libri";
-        root = "/var/lib/libri-build/current/site";
+        root = "${lib.ship.topology.seat.libriBuild}/site";
       };
 
       # The Android app's newest signed build, at the fixed address
@@ -217,7 +217,7 @@
           person = "Dylan";
           seat = true;
           web = true;
-          build = "/var/lib/libri-build/current";
+          build = lib.ship.topology.seat.libriBuild;
           # The server at si.su.is; the app at libri.su.is talks to it,
           # with no sign-in on the tailnet.
           subdomain = "si";
