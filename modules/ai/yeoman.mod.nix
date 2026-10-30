@@ -706,6 +706,14 @@
                   sleep 1
                 done
                 curl -fsS -m3 -o /dev/null "$site"
+                # The tool server: the daemon checks it itself, as its
+                # credentials are in its own unit. Empty while that runs; a
+                # build older than the check has no such field and passes.
+                for _ in $(seq 45); do
+                  curl -fsS -m3 "$site" | jq -e 'has("tools") and .tools == null' >/dev/null || break
+                  sleep 1
+                done
+                curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null
                 # hippo is Type=simple: "started" comes seconds before its socket.
                 for _ in $(seq 40); do
                   timeout 5 ${i.build}/bin/hippo status >/dev/null && break
