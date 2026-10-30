@@ -370,11 +370,11 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1793392557,
-        "narHash": "sha256-9zzJ+zWS1CDue0n2/mNhQ+CXlz59ZjzsO9iEtgywI/4=",
+        "lastModified": 1793392997,
+        "narHash": "sha256-GxgvNEXhmoQeoPD92jvm3qHAAPzuI/0lJqZOR+L7oAw=",
         "ref": "portable",
-        "rev": "1b45166a3f2dd3e6d9398e13fb630d6a5face9ef",
-        "revCount": 390,
+        "rev": "63ab7557b6face297e5a97b502ee490cd43ac8b0",
+        "revCount": 392,
         "type": "git",
         "url": "file:///home/bridge/ark/libri"
       },
