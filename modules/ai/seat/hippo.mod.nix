@@ -43,15 +43,9 @@ in
     }:
     let
       inherit (lib.lists) singleton;
-      inherit (lib.ship) fences topology;
+      inherit (lib.ship) topology;
       inherit (lib.strings) toJSON;
       inherit (topology) seat;
-      inherit (lib.modules) mkIf;
-      inherit (lib.options) mkOption;
-      inherit (lib) types;
-
-      door = config.hippo.door;
-      doorPort = 8940;
 
       # The compactor reaches its model through Libri, on the socket in the
       # store: the person picks it in Libri's Settings, and hippo holds no
@@ -128,19 +122,6 @@ in
         '';
     in
     {
-      options.hippo.door = {
-        passphraseFile = mkOption {
-          type = types.nullOr types.str;
-          default = null;
-          description = "Passphrase for the seat's door (hippo.<domain> -> http://127.0.0.1:${toString doorPort}), 12 characters or more; null = no door.";
-        };
-        tunnelTokenFile = mkOption {
-          type = types.nullOr types.str;
-          default = null;
-          description = "Cloudflare Tunnel connector token carrying every hippo door out, the yeomen's too; null = no tunnel.";
-        };
-      };
-
       config = {
         seat.claudeSettings.hooks = {
           PreCompact = singleton {
@@ -296,43 +277,6 @@ in
             # The primary user reads the store through the seat's group.
             UMask = "0027";
           };
-        };
-
-        # The doors: each memory, read-only, as a remote MCP server for
-        # apps outside the ship (Claude, Grok), on its own hostname and
-        # passphrase (lib/hippo-door.nix); this one is the seat's. One
-        # tunnel carries every door; hostnames map to ports dashboard-side.
-        systemd.services.hippo-door = mkIf (door.passphraseFile != null) (
-          lib.ship.hippoDoor {
-            hippo = package lib pkgs;
-            service = "hippo.service";
-            dir = seat.hippo;
-            inherit (seat) user;
-            agent = "Bridge";
-            person = "Dylan";
-            port = doorPort;
-            host = "hippo.${config.shipProxy.domain}";
-            inherit (door) passphraseFile;
-          }
-        );
-
-        systemd.services.hippo-tunnel = mkIf (door.tunnelTokenFile != null) {
-          description = "Cloudflare Tunnel for the hippo doors";
-          wantedBy = singleton "multi-user.target";
-          wants = singleton "network-online.target";
-          after = singleton "network-online.target";
-          serviceConfig = {
-            DynamicUser = true;
-            LoadCredential = singleton "token:${door.tunnelTokenFile}";
-            ExecStart = "${lib.meta.getExe pkgs.cloudflared} tunnel --no-autoupdate run --token-file %d/token";
-            Restart = "always";
-            RestartSec = 5;
-            # Cloudflare's edge and loopback only; 127.0.0.0/8 is denied
-            # because the allow is a /24.
-            IPAddressAllow = fences.loopback;
-            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
-          };
-          environment.TUNNEL_TRANSPORT_PROTOCOL = "http2";
         };
       };
     };

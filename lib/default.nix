@@ -14,7 +14,6 @@ inputs.nixpkgs.lib.extend (
       keys = import ../keys.nix;
       opencode = import ./opencode.nix final;
       rustTool = import ./rust-tool.nix final inputs.crate2nix;
-      hippoDoor = import ./hippo-door.nix final;
       # hippo as Libri's deploy last built it at `build`, with `env` set: the
       # repository that holds it isn't on GitHub, so this host's flake can't
       # fetch it.
