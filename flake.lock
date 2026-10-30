@@ -359,6 +359,31 @@
         "type": "github"
       }
     },
+    "libri": {
+      "inputs": {
+        "crate2nix": [
+          "crate2nix"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": "rust-overlay"
+      },
+      "locked": {
+        "lastModified": 1793387150,
+        "narHash": "sha256-7mRtWR6aHFi+PxgoUaUxGqEFhqZCJpBENuAHfgE7JTs=",
+        "ref": "portable",
+        "rev": "cc47e2e8d0227cd9e9dd2c297857cd0c9b5fad47",
+        "revCount": 369,
+        "type": "git",
+        "url": "file:///home/bridge/ark/libri"
+      },
+      "original": {
+        "ref": "portable",
+        "type": "git",
+        "url": "file:///home/bridge/ark/libri"
+      }
+    },
     "microvm": {
       "inputs": {
         "nixpkgs": [
@@ -562,7 +587,7 @@
         "nix-bun": "nix-bun",
         "nixpkgs": "nixpkgs_4",
         "nixpkgs-darwin-x64": "nixpkgs-darwin-x64",
-        "rust-overlay": "rust-overlay"
+        "rust-overlay": "rust-overlay_2"
       },
       "locked": {
         "lastModified": 1792664545,
@@ -633,6 +658,7 @@
         "home-manager": "home-manager",
         "hyprqt6engine": "hyprqt6engine",
         "lantern": "lantern",
+        "libri": "libri",
         "microvm": "microvm",
         "nix-minecraft": "nix-minecraft",
         "nix4nvchad": "nix4nvchad",
@@ -644,6 +670,27 @@
       }
     },
     "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "libri",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793261817,
+        "narHash": "sha256-fAvtOccUXHVAH5wXK+ABYUUC47W2qTb9T9EefLcS9ME=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "afcefd09c71e63663a46e4ce5e09968584f2c709",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "rust-overlay_2": {
       "inputs": {
         "nixpkgs": [
           "omp",

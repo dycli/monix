@@ -48,7 +48,7 @@
 # note an instance drains on its tick, marked as the engineer's, and an
 # instance's `tell` to Bridge appends to `seat/inbox`, which the seat's
 # sessions load as a rule and `inbox` prints.
-{ self, ... }:
+{ inputs, self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.yeoman;
   flake.nixosModules.yeoman =
@@ -133,10 +133,9 @@
       # loaded into its sessions as a rule), `inbox clear` empties it.
       tell = pkgs.writeShellApplication {
         name = "tell";
-        runtimeInputs = singleton yeoman;
         text = ''
-          export YEOMAN_HOUSE=${house} YEOMAN_MEMBERS=${lib.strings.escapeShellArg households.YEOMAN_MEMBERS} YEOMAN_A2A=${lib.strings.escapeShellArg households.YEOMAN_A2A}
-          exec yeoman tell "$@"
+          export LIBRI_HOUSE=${house} LIBRI_MEMBERS=${lib.strings.escapeShellArg households.YEOMAN_MEMBERS} LIBRI_A2A=${lib.strings.escapeShellArg households.YEOMAN_A2A}
+          exec ${getExe inputs.libri.packages.${pkgs.stdenv.hostPlatform.system}.daemon} tell "$@"
         '';
       };
       inbox = pkgs.writeShellApplication {
@@ -151,33 +150,10 @@
         '';
       };
 
-      yeoman = lib.ship.rustTool pkgs { src = ./yeoman; };
-
       # Each web chat's port, after the doors, by sorted name.
       chatPort = n: 8950 + lib.lists.findFirstIndex (m: m == n) 0 (attrNames cfg.instances) + 1;
       # The loopback port of an instance's own OpenCode server.
       openCodePort = n: chatPort n + 100;
-
-      # The web chat's page, built once and served by each assistant.
-      web = pkgs.buildNpmPackage {
-        pname = "yeoman-site";
-        version = "0";
-        src = ./yeoman/site;
-        npmDepsHash = "sha256-up5No3KEeil1Qw2s38eQR/FugCZFh/Bxs5Bg4C8qulc=";
-        # rolldown and tsgo ship prebuilt Linux binaries.
-        nativeBuildInputs = [
-          pkgs.autoPatchelfHook
-          pkgs.resvg
-        ];
-        buildInputs = singleton pkgs.stdenv.cc.cc.lib;
-        # Home screens want the icon as PNG at these sizes.
-        installPhase = ''
-          cp -r dist $out
-          for s in 180 192 512; do
-            resvg -w $s -h $s public/_site/icon.svg $out/_site/icon-$s.png
-          done
-        '';
-      };
 
       image = pkgs.writers.writePython3Bin "yeoman-image-mcp" {
         libraries = singleton pkgs.python3Packages.mcp;
@@ -349,10 +325,10 @@
         n: i:
         let
           state = "/var/lib/${n}";
-          # An instance on Libri runs whatever build its link points at.
-          yeomanBin = if i.build == null then getExe yeoman else "${i.build}/bin/libri";
+          # An instance runs whatever build its link points at.
+          yeomanBin = "${i.build}/bin/libri";
           hippoBin = "${i.build}/bin/hippo";
-          siteRoot = if i.build == null then web else "${i.build}/site";
+          siteRoot = "${i.build}/site";
           creds = "/run/credentials/${n}.service";
           env = {
             HOME = state;
@@ -487,23 +463,19 @@
                 }
               );
 
-          # An instance on Libri: its unit with its settings in Libri's
-          # config file; any other's as it is.
+          # Its unit with its settings in Libri's config file.
           libriUnit =
             unit:
-            if i.build == null then
-              unit
-            else
-              let
-                c = libriConfig n unit.environment;
-              in
-              unit
-              // {
-                environment = libriNames c.environment;
-                serviceConfig = unit.serviceConfig // {
-                  ExecStart = "${unit.serviceConfig.ExecStart} --config ${c.file}";
-                };
+            let
+              c = libriConfig n unit.environment;
+            in
+            unit
+            // {
+              environment = libriNames c.environment;
+              serviceConfig = unit.serviceConfig // {
+                ExecStart = "${unit.serviceConfig.ExecStart} --config ${c.file}";
               };
+            };
 
           sandbox = lib.ship.hardened.tenant // {
             User = n;
@@ -881,7 +853,6 @@
 
       # The instances that run as a user of their own: all but the seat's.
       ownUsers = filterAttrs (_: i: !i.seat) cfg.instances;
-      built = filterAttrs (_: i: i.build != null) cfg.instances;
       inSites = concatMap (s: cfg.sites.${s}.members) (attrNames cfg.sites);
     in
     {
@@ -1074,14 +1045,12 @@
                   };
 
                   build = mkOption {
-                    type = types.nullOr types.str;
-                    default = null;
+                    type = types.str;
                     example = "/var/lib/libri-build/libri";
                     description = ''
-                      A link to a Libri build (bin/libri, bin/hippo, site/)
-                      to run instead of the ship's yeoman. The seat may
-                      restart the instance's units, so a rebuild needs no
-                      deploy.
+                      A link to a Libri build (bin/libri, bin/hippo, site/).
+                      The seat may restart the instance's units, so a
+                      rebuild needs no deploy.
                     '';
                   };
 
@@ -1425,12 +1394,12 @@
             group = topology.seat.user;
             mode = "0755";
           };
-        }) built;
-        security.polkit.extraConfig = mkIf (built != { }) ''
+        }) cfg.instances;
+        security.polkit.extraConfig = mkIf (cfg.instances != { }) ''
           polkit.addRule(function (action, subject) {
             if (action.id == "org.freedesktop.systemd1.manage-units" &&
                 ["hippo.service", ${
-                  concatMapStringsSep ", " (n: ''"${n}.service", "${n}-hippo.service"'') (attrNames built)
+                  concatMapStringsSep ", " (n: ''"${n}.service", "${n}-hippo.service"'') (attrNames cfg.instances)
                 }].indexOf(action.lookup("unit")) >= 0 &&
                 ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
                 subject.user == "${topology.seat.user}") {

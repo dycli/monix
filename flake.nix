@@ -69,6 +69,14 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
+  # The assistant Water runs. Its repository has no remote: this resolves on
+  # Water alone, the one host that imports it.
+  inputs.libri = {
+    url = "git+file:///home/bridge/ark/libri?ref=portable";
+    inputs.nixpkgs.follows = "nixpkgs";
+    inputs.crate2nix.follows = "crate2nix";
+  };
+
   # The market-data platform; the tape recorder is built from it.
   inputs.lantern = {
     url = "github:dycli/lantern";

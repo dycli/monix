@@ -28,13 +28,12 @@
 # Patches on packages the ship builds.
 !*.patch
 
-# The assistants' web page (modules/ai/yeoman/site).
+# Web sources.
 !*.ts
 !*.tsx
 !*.css
 !*.html
 !*.jinja
-!modules/ai/yeoman/site/public/sw.js
 
 # The homepage's assets (modules/homelab/frame): its scripts, font and
 # Glance's licence.
