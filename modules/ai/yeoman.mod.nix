@@ -604,7 +604,9 @@
                   YEOMAN_NAME = i.name;
                   YEOMAN_PERSON = i.person;
                   YEOMAN_BACKEND = "claude";
-                  YEOMAN_CLAUDE = "claude";
+                  # The setup token, not the browser login in ~/.claude: that
+                  # one rotates, and a refused renewal blanked it on 10-30.
+                  YEOMAN_CLAUDE = getExe claude;
                   YEOMAN_MODEL = cfg.model;
                   # The seat's hippo keeps Paseo's and the cockpit's chats too;
                   # the title its history already goes under.
@@ -643,7 +645,8 @@
                 # `shared` names these files; the tool server reads them and
                 # exits if one can't be read, leaving each turn without it.
                 LoadCredential =
-                  optional (i.newsKeyFile != null) "news:${i.newsKeyFile}"
+                  singleton claudeCredential
+                  ++ optional (i.newsKeyFile != null) "news:${i.newsKeyFile}"
                   ++ optional (cfg.requestsKeyFile != null) "requests:${cfg.requestsKeyFile}"
                   ++ optional (cfg.searchKeyFile != null) "search:${cfg.searchKeyFile}";
                 StateDirectory = n;
