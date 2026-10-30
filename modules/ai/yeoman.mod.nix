@@ -640,6 +640,12 @@
                 ++ optional (shared' != null) "yeoman-${shared'}"
                 ++ optional i.providerKeys "opencode-auth";
                 ExecStartPre = mkIf i.providerKeys linkOmpModels;
+                # `shared` names these files; the tool server reads them and
+                # exits if one can't be read, leaving each turn without it.
+                LoadCredential =
+                  optional (i.newsKeyFile != null) "news:${i.newsKeyFile}"
+                  ++ optional (cfg.requestsKeyFile != null) "requests:${cfg.requestsKeyFile}"
+                  ++ optional (cfg.searchKeyFile != null) "search:${cfg.searchKeyFile}";
                 StateDirectory = n;
                 StateDirectoryMode = "0700";
                 WorkingDirectory = seat.home;
