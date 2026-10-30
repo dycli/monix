@@ -347,10 +347,10 @@
           file = (pkgs.formats.toml { }).generate "${n}-libri.toml" settings;
         };
 
-      # The seat's Libri reads LIBRI_*, the names the settings left in the
-      # environment go by since its rename. Both are set so the seat's unit
-      # and its build link can change in either order; the YEOMAN_ copies
-      # go once the link has held the renamed build for a deploy.
+      # Libri reads LIBRI_*, the names the settings left in the environment
+      # go by since its rename. Both are set so a unit and its build link can
+      # change in either order; the YEOMAN_ copies go once both links have
+      # held the renamed build for a deploy.
       libriNames =
         environment:
         environment
@@ -420,63 +420,73 @@
             };
 
           mcp = (pkgs.formats.json { }).generate "${n}-mcp.json" {
-            mcpServers = {
-              yeoman = {
-                type = "stdio";
-                command = yeomanBin;
-                args = [
-                  "tools"
-                  state
-                ];
-                env =
-                  shared
-                  // {
-                    inherit (env) HIPPO_DIR;
-                    YEOMAN_TZ = config.time.timeZone;
-                    YEOMAN_YTDLP = getExe pkgs.yt-dlp;
-                  }
-                  // optionalAttrs (cfg.weather != null) {
-                    YEOMAN_WEATHER = cfg.weather;
-                  }
-                  // optionalAttrs (cfg.financeDb != null) {
-                    YEOMAN_FINANCE = cfg.financeDb;
-                  }
-                  // optionalAttrs i.money {
-                    YEOMAN_MONEY = "/run/money.sock";
-                  }
-                  // optionalAttrs (i.fastmailTokenFile != null) {
-                    YEOMAN_FASTMAIL = "${creds}/fastmail";
-                  };
+            mcpServers =
+              let
+                toolServer = {
+                  type = "stdio";
+                  command = yeomanBin;
+                  args = [
+                    "tools"
+                    state
+                  ];
+                  env =
+                    shared
+                    // {
+                      inherit (env) HIPPO_DIR;
+                      YEOMAN_TZ = config.time.timeZone;
+                      YEOMAN_YTDLP = getExe pkgs.yt-dlp;
+                    }
+                    // optionalAttrs (cfg.weather != null) {
+                      YEOMAN_WEATHER = cfg.weather;
+                    }
+                    // optionalAttrs (cfg.financeDb != null) {
+                      YEOMAN_FINANCE = cfg.financeDb;
+                    }
+                    // optionalAttrs i.money {
+                      YEOMAN_MONEY = "/run/money.sock";
+                    }
+                    // optionalAttrs (i.fastmailTokenFile != null) {
+                      YEOMAN_FASTMAIL = "${creds}/fastmail";
+                    };
+                };
+              in
+              {
+                # A build takes its own name's entry for its tool server's
+                # settings, and the other's as one server more until the
+                # copies go (libriNames).
+                yeoman = toolServer;
+                libri = toolServer // {
+                  env = libriNames toolServer.env;
+                };
+                image = {
+                  type = "stdio";
+                  command = getExe image;
+                  args = singleton "${state}/outbox";
+                };
+              }
+              // optionalAttrs i.computer {
+                # Playwright MCP, driving its browser on the host.
+                computer = {
+                  type = "http";
+                  url = "http://${pc.browser}:${toString browsers.mcpPort}/mcp";
+                };
+              }
+              // optionalAttrs (cfg.homeTokenFile != null) {
+                # Home Assistant's own MCP server; the token is filled in at
+                # unit start from the credential, into a copy of this file.
+                home = {
+                  type = "http";
+                  url = "http://127.0.0.1:${toString config.shipProxy.routes.ha.port}/api/mcp";
+                  headers.Authorization = "Bearer @HOME_TOKEN@";
+                };
+              }
+              // optionalAttrs (i.fastmailTokenFile != null) {
+                fastmail = {
+                  type = "http";
+                  url = "https://api.fastmail.com/mcp";
+                  headers.Authorization = "Bearer @FASTMAIL_TOKEN@";
+                };
               };
-              image = {
-                type = "stdio";
-                command = getExe image;
-                args = singleton "${state}/outbox";
-              };
-            }
-            // optionalAttrs i.computer {
-              # Playwright MCP, driving its browser on the host.
-              computer = {
-                type = "http";
-                url = "http://${pc.browser}:${toString browsers.mcpPort}/mcp";
-              };
-            }
-            // optionalAttrs (cfg.homeTokenFile != null) {
-              # Home Assistant's own MCP server; the token is filled in at
-              # unit start from the credential, into a copy of this file.
-              home = {
-                type = "http";
-                url = "http://127.0.0.1:${toString config.shipProxy.routes.ha.port}/api/mcp";
-                headers.Authorization = "Bearer @HOME_TOKEN@";
-              };
-            }
-            // optionalAttrs (i.fastmailTokenFile != null) {
-              fastmail = {
-                type = "http";
-                url = "https://api.fastmail.com/mcp";
-                headers.Authorization = "Bearer @FASTMAIL_TOKEN@";
-              };
-            };
           };
 
           # With a token in the MCP file, a private copy is made in the
@@ -506,7 +516,7 @@
                   text = ''
                     umask 077
                     sed ${concatStringsSep " " (map substitute tokens)} ${mcp} > "$RUNTIME_DIRECTORY/mcp.json"
-                    YEOMAN_MCP="$RUNTIME_DIRECTORY/mcp.json" exec ${yeomanBin} "$@"
+                    YEOMAN_MCP="$RUNTIME_DIRECTORY/mcp.json" LIBRI_MCP="$RUNTIME_DIRECTORY/mcp.json" exec ${yeomanBin} "$@"
                   '';
                 }
               );
@@ -523,7 +533,7 @@
               in
               unit
               // {
-                environment = if i.seat then libriNames c.environment else c.environment;
+                environment = libriNames c.environment;
                 serviceConfig = unit.serviceConfig // {
                   ExecStart = "${unit.serviceConfig.ExecStart} --config ${c.file}";
                 };
