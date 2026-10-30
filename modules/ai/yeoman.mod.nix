@@ -680,7 +680,7 @@
                 Type = "oneshot";
                 RemainAfterExit = true;
                 User = seat.user;
-                TimeoutStartSec = 110;
+                TimeoutStartSec = 180;
               };
               script = ''
                 site=http://127.0.0.1:${toString (chatPort n)}/api/host
@@ -689,7 +689,16 @@
                   sleep 1
                 done
                 curl -fsS -m3 -o /dev/null "$site"
+                # hippo is Type=simple: "started" comes seconds before its socket.
+                for _ in $(seq 40); do
+                  timeout 5 ${i.build}/bin/hippo status >/dev/null && break
+                  sleep 1
+                done
                 timeout 30 ${i.build}/bin/hippo status >/dev/null
+                for _ in $(seq 20); do
+                  [ -S ${seat.hippo}/compactor.sock ] && break
+                  sleep 1
+                done
                 printf '%s\n' '{"system":"Answer in one word.","memory":null,"prompt":"Say ready."}' |
                   socat -t60 -T60 - UNIX-CONNECT:${seat.hippo}/compactor.sock |
                   jq -e '.text | length > 0'
