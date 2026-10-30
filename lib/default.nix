@@ -23,9 +23,9 @@ inputs.nixpkgs.lib.extend (
         pkgs: build: env:
         pkgs.writeShellApplication {
           name = "hippo";
-          text = final.concatStrings (
-            final.mapAttrsToList (k: v: "export ${k}=\"\${${k}:-${v}}\"\n") env
-          ) + "exec ${build}/bin/hippo \"$@\"\n";
+          text =
+            final.concatStrings (final.mapAttrsToList (k: v: "export ${k}=\"\${${k}:-${v}}\"\n") env)
+            + "exec ${build}/bin/hippo \"$@\"\n";
         };
 
       # `ship.host "name" module` is a flake-parts module defining
