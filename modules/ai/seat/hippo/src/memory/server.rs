@@ -323,6 +323,7 @@ fn handle(req: &Request, shared: &Arc<Shared>) -> Result<String, String> {
                 return Err("Usage: post <title> <kind> <text>".into());
             };
             let kind = match kind.as_str() {
+                "user" => Kind::User,
                 "talk" => Kind::Talk,
                 "note" => Kind::Note,
                 "work" => Kind::Work,
