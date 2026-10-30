@@ -16,14 +16,9 @@
 # over IMAP, YouTube search and captions through yt-dlp, which reaches
 # YouTube only, and film and show requests, going over Seerr on loopback
 # only with `requestsKeyFile` set), which reaches only its book, its hippo
-# and those services, and pictures (yeoman-image.py), drawn either by the
-# image service, the only assistant-side holder of a Codex login (the
-# seat keeps its own, for paseo), or by Grok
-# Imagine through the X service, and X, read by Grok's x_search through
-# the X service (`yeoman x`, yeoman/src/x.rs) that alone holds the
-# subscription's xAI sign-in; `yeoman tools`
-# also reads the subscription
-# limits from the usage service (usage.mod.nix). Mail and pages let
+# and those services, and pictures (yeoman-image.py), drawn by the image
+# service, the only assistant-side holder of a Codex login (the seat keeps
+# its own, for paseo); `yeoman tools` also reads the subscription limits from the usage service (usage.mod.nix). Mail and pages let
 # anyone put text in front of the model, so fetch opens only links a
 # search returned or the person wrote: nothing it read can ride out in a
 # link it made up. The bot sends due reminders itself, runs
@@ -317,11 +312,9 @@
         YEOMAN_SEERR = "tools.seerr";
         YEOMAN_MINIFLUX = "tools.miniflux";
         YEOMAN_FINANCE = "tools.finance";
-        YEOMAN_X = "x.socket";
         YEOMAN_OPEN = "daemon.open";
         YEOMAN_PASSWORD_FILE = "daemon.password_file";
         YEOMAN_ORIGINS = "daemon.origins";
-        YEOMAN_VOICE = "x.voice";
         YEOMAN_SCREEN = "computer.screen";
         YEOMAN_SCREEN_SIZE = "computer.screen_size";
         YEOMAN_DESK = "computer.desk";
@@ -396,7 +389,6 @@
             // {
               YEOMAN_UNIT = n;
               YEOMAN_USAGE = "/run/usage.sock";
-              YEOMAN_X = "/run/yeoman-x.sock";
               YEOMAN_PAGES = site.dir;
               YEOMAN_PAGES_URL = site.url;
             }
@@ -544,7 +536,6 @@
             Group = n;
             SupplementaryGroups = [
               "yeoman-image"
-              "yeoman-x"
               "yeoman-household"
               "usage"
             ]
@@ -644,7 +635,6 @@
                   YEOMAN_APP = cfg.sites.${shared'}.name;
                   YEOMAN_SESSIONS = "${sitesDir}/${shared'}/sessions";
                 }
-                // optionalAttrs (i.voice != null) { YEOMAN_VOICE = i.voice; }
                 // optionalAttrs i.providerKeys { OPENCODE_CONFIG = toString openCodeConfig; }
                 // optionalAttrs (i.origins != [ ]) {
                   YEOMAN_ORIGINS = concatStringsSep "," i.origins;
@@ -655,8 +645,7 @@
                 User = seat.user;
                 Group = seat.user;
                 SupplementaryGroups = [
-                  "yeoman-x"
-                  "usage"
+                      "usage"
                 ]
                 ++ optional (shared' != null) "yeoman-${shared'}"
                 ++ optional i.providerKeys "opencode-auth";
@@ -836,7 +825,6 @@
                   YEOMAN_OPENCODE_PORT = toString (openCodePort n);
                 }
                 // optionalAttrs (i.style != null) { YEOMAN_STYLE = i.style; }
-                // optionalAttrs (i.voice != null) { YEOMAN_VOICE = i.voice; }
                 // optionalAttrs i.web {
                   YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
                   YEOMAN_SITE_ROOT = siteRoot;
@@ -1057,16 +1045,6 @@
                       A model of the local inference server (inference.mod.nix)
                       to answer and condense its memory with, without tools;
                       null = Claude.
-                    '';
-                  };
-
-                  voice = mkOption {
-                    type = types.nullOr types.str;
-                    default = null;
-                    example = "eve";
-                    description = ''
-                      The xAI voice the site reads replies aloud in, through
-                      yeoman-x's sign-in; null = no read-aloud button.
                     '';
                   };
 
@@ -1328,9 +1306,6 @@
         # with the codex from the unit's script (not on PATH), after
         # `sudo install -d -o yeoman-image -g yeoman-image -m 700 /var/lib/yeoman-image`:
         # sudo -u yeoman-image env HOME=/var/lib/yeoman-image CODEX_HOME=/var/lib/yeoman-image <codex> login --device-auth
-        # yeoman-x holds the xAI sign-in the same way; once, after
-        # `sudo install -d -o yeoman-x -g yeoman-x -m 700 /var/lib/yeoman-x`:
-        # sudo -u yeoman-x env HOME=/var/lib/yeoman-x <yeoman> x login
         users.users =
           mapAttrs
             (n: _: {
@@ -1342,7 +1317,6 @@
               ownUsers
               // {
                 yeoman-image = { };
-                yeoman-x = { };
               }
             )
           // {
@@ -1354,7 +1328,6 @@
           // lib.attrsets.mapAttrs' (s: _: nameValuePair "yeoman-${s}" { }) cfg.sites
           // {
             yeoman-image = { };
-            yeoman-x = { };
             yeoman-household = { };
           };
         environment.systemPackages = [
@@ -1558,18 +1531,6 @@
           };
         };
 
-        systemd.sockets.yeoman-x = {
-          description = "X search for the household assistants";
-          wantedBy = singleton "sockets.target";
-          socketConfig = {
-            ListenStream = "/run/yeoman-x.sock";
-            Accept = true;
-            MaxConnections = 4;
-            SocketMode = "0660";
-            SocketGroup = "yeoman-x";
-          };
-        };
-
         systemd.services = mkMerge (
           mapAttrsToList services cfg.instances
           ++ singleton {
@@ -1593,23 +1554,6 @@
                   StandardError = "journal";
                   # Hides the seat's Codex config and its MCP servers.
                   BindReadOnlyPaths = singleton "${pkgs.emptyDirectory}:/etc/codex";
-                };
-            };
-            "yeoman-x@" = {
-              description = "One X search for a household assistant";
-              environment.HOME = "/var/lib/yeoman-x";
-              serviceConfig =
-                lib.ship.hardened.tenant
-                // fence
-                // {
-                  User = "yeoman-x";
-                  Group = "yeoman-x";
-                  StateDirectory = "yeoman-x";
-                  StateDirectoryMode = "0700";
-                  ExecStart = "${getExe yeoman} x";
-                  StandardInput = "socket";
-                  StandardOutput = "socket";
-                  StandardError = "journal";
                 };
             };
           }

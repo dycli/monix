@@ -206,7 +206,6 @@
           person = "Gab";
           style = "Gab likes a slightly warmer tone.";
           computer = true;
-          voice = "ara";
         };
         # Libri, the product grown from yeoman and hippo (~bridge/ark/libri),
         # run from the seat's latest build of it as the seat itself: Bridge
