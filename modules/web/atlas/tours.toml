@@ -107,7 +107,7 @@ grows at its end, so the model's prompt cache keeps working."""
 [[tour.step]]
 title = "Who uses it"
 view = "wiring"
-focus = ["monix:modules/ai/seat/hippo.mod.nix", "monix:modules/ai/yeoman.mod.nix"]
+focus = ["monix:modules/ai/seat/hippo.mod.nix", "monix:modules/ai/libri.mod.nix"]
 text = """
 The coding seat runs one hippo over every coding chat; each assistant runs
 its own. They are the same binary."""

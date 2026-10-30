@@ -4,7 +4,7 @@
 # tool both read it; only this service sees the logins. Claude's usage
 # endpoint takes only a full login, so it reads the seat's, which the seat
 # keeps fresh, and never renews it; Codex runs on the household login
-# (yeoman.mod.nix) and renews that itself. Undocumented endpoints; expect
+# (libri.mod.nix) and renews that itself. Undocumented endpoints; expect
 # them to change.
 { self, ... }:
 {

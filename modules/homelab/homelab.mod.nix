@@ -200,45 +200,5 @@
           types { application/vnd.android.package-archive apk; }
         '';
       };
-
-      yeoman.instances = {
-        suki = {
-          person = "Gab";
-          style = "Gab likes a slightly warmer tone.";
-          computer = true;
-        };
-        # Libri, the product grown from yeoman and hippo (~bridge/ark/libri),
-        # run from the seat's latest build of it as the seat itself: Bridge
-        # with the seat's tools and memory, Dylan's daily chat
-        # (/var/lib/bridge/harness.md).
-        libri = {
-          name = "Bridge";
-          person = "Dylan";
-          seat = true;
-          web = true;
-          build = lib.ship.topology.seat.libriBuild;
-          # The server at si.su.is; the app at libri.su.is talks to it,
-          # with no sign-in on the tailnet.
-          subdomain = "si";
-          open = true;
-          origins = [ "https://libri.su.is" ];
-          providerKeys = true;
-          # Full ids, so the picker can show each model's version.
-          models = [
-            "claude-opus-5-5"
-            "claude-sonnet-5-5"
-            "claude-haiku-5-5"
-            "claude-fable-5-1"
-          ];
-          efforts = [
-            "low"
-            "medium"
-            "high"
-            "xhigh"
-            "max"
-          ];
-        };
-      };
-
     };
 }

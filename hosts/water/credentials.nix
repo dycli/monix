@@ -32,32 +32,8 @@ in
     weather = "43.07,-70.76";
   };
 
-  yeoman = {
-    instances.suki = {
-      web = true;
-      fastmailTokenFile = config.secrets.suki-fastmail-mcp-token.path;
-      money = true;
-      claudeKeyFile = config.secrets.suki-claude-key.path;
-      # Libri's product build, which the seat moves forward only to a
-      # commit already proven on Dylan's (/var/lib/bridge/harness.md).
-      build = "/var/lib/libri-build/suki";
-      # The app at libri.su.is talks to her at suki.su.is, with no
-      # sign-in on the tailnet.
-      open = true;
-      origins = [ "https://libri.su.is" ];
-    };
-    claudeTokenFile = config.secrets.agent-claude-token.path;
-    homeTokenFile = config.secrets.yeoman-home-token.path;
-    requestsKeyFile = config.secrets.yeoman-requests-key.path;
-    # Portsmouth, NH.
-    weather = "43.07,-70.76";
-    # The household's money, read-only.
-    financeDb = "/var/lib/money/${config.money.environment}/finance.db";
-  };
-
   secrets = {
     katara-password.file = ./secrets/katara-password.age;
-    agent-claude-token.file = ./secrets/agent-claude-token.age;
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
     suki-fastmail-mcp-token.file = ./secrets/suki-fastmail-mcp-token.age;
     suki-claude-key.file = ./secrets/suki-claude-key.age;

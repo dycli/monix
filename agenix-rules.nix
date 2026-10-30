@@ -32,7 +32,6 @@ in
   ++ admin;
 
   "hosts/water/secrets/katara-password.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/agent-claude-token.age".publicKeys = singleton water ++ admin;
   "secrets/opencode-key.age".publicKeys = [
     water
     fire

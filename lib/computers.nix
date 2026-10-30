@@ -1,14 +1,9 @@
 # The assistants' code runners (yeoman-computer.mod.nix), their own network
 # (yeoman-network.mod.nix) and the assistant that drives them
-# (yeoman.mod.nix) agree on these.
+# (libri.mod.nix) agree on these.
 lib:
 let
-  inherit (lib.attrsets)
-    attrNames
-    filterAttrs
-    listToAttrs
-    nameValuePair
-    ;
+  inherit (lib.attrsets) listToAttrs nameValuePair;
   inherit (lib.lists) imap1;
 in
 {
@@ -17,14 +12,9 @@ in
   subnet = "10.101.0.0/24";
   # The nth computer, from 1.
   addr = index: "10.101.0.${toString (10 + index)}";
-  # Each owner's index, by sorted instance name; a rename costs the
-  # computer nothing but its address.
-  indexes =
-    instances:
-    filterAttrs (_: i: i.computer) instances
-    |> attrNames
-    |> imap1 (i: n: nameValuePair n i)
-    |> listToAttrs;
+  # Each owner's index, from 1; a rename costs the computer nothing but its
+  # address.
+  indexes = imap1 (i: n: nameValuePair n i) [ "suki" ] |> listToAttrs;
   # Public resolvers: the guest is internet-only and must not depend on
   # the host's.
   nameservers = [

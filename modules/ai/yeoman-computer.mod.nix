@@ -18,14 +18,12 @@
       inherit (lib.attrsets) attrNames listToAttrs nameValuePair;
       inherit (lib.lists) concatLists singleton;
       inherit (lib.meta) getExe;
-      inherit (lib.options) mkOption;
       inherit (lib.strings) fixedWidthString;
-      inherit (lib) readFile types;
+      inherit (lib) readFile;
       inherit (lib.ship) computers;
 
-      indexed = computers.indexes config.yeoman.instances;
-      owners = attrNames indexed;
-      addr = n: computers.addr indexed.${n};
+      owners = attrNames computers.indexes;
+      addr = n: computers.addr computers.indexes.${n};
 
       vm = n: "${n}-pc";
       desk = n: "${computers.desks}/${n}";
@@ -33,7 +31,7 @@
       guest =
         n:
         let
-          mac = "02:00:01:00:00:${fixedWidthString 2 "0" (toString indexed.${n})}";
+          mac = "02:00:01:00:00:${fixedWidthString 2 "0" (toString computers.indexes.${n})}";
         in
         {
           config =
@@ -95,7 +93,7 @@
                 # running guest.
                 storeOnDisk = true;
                 # systemd-notify from the guest.
-                vsock.cid = 200 + indexed.${n};
+                vsock.cid = 200 + computers.indexes.${n};
                 shares = singleton {
                   proto = "virtiofs";
                   tag = "desk";
@@ -170,18 +168,6 @@
         };
     in
     {
-      options.yeoman.instances = mkOption {
-        type = types.attrsOf (
-          types.submodule {
-            options.computer = mkOption {
-              type = types.bool;
-              default = false;
-              description = "Whether the assistant has a computer for code of its own.";
-            };
-          }
-        );
-      };
-
       config = {
         microvm.vms = owners |> map (n: nameValuePair (vm n) (guest n)) |> listToAttrs;
 

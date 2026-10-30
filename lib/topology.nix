@@ -17,7 +17,7 @@
     # bridge, the seat's notes and plans (notes.mod.nix).
     notes = "/var/lib/bridge";
   };
-  # The assistants' household (yeoman.mod.nix); the seat is in it too.
+  # The assistants' household (libri.mod.nix); the seat is in it too.
   household = "/var/lib/yeoman-household";
 
   hostTailnetAddr = "100.102.113.74";
