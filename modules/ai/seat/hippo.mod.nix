@@ -4,14 +4,13 @@
 # Design: README, "hippo".
 { self, ... }:
 let
+  # Libri's repository holds hippo; the seat runs the build its link points
+  # at, as Libri does (deploy_libri.sh keeps the link).
   package =
     lib: pkgs:
-    lib.ship.rustTool pkgs {
-      src = ./hippo;
-      env = {
-        HIPPO_DIR = lib.ship.topology.seat.hippo;
-        HIPPO_ARCHIVE = lib.ship.topology.seat.transcripts;
-      };
+    lib.ship.libriHippo pkgs "/var/lib/libri-build/current" {
+      HIPPO_DIR = lib.ship.topology.seat.hippo;
+      HIPPO_ARCHIVE = lib.ship.topology.seat.transcripts;
     };
 in
 {
@@ -45,7 +44,6 @@ in
     let
       inherit (lib.lists) singleton;
       inherit (lib.ship) fences topology;
-      inherit (lib.attrsets) removeAttrs;
       inherit (lib.strings) toJSON;
       inherit (topology) seat;
       inherit (lib.modules) mkIf;
@@ -55,16 +53,10 @@ in
       door = config.hippo.door;
       doorPort = 8940;
 
-      # The compactor's model, through the seat's own claude CLI and
-      # subscription: Haiku at high effort, as UniiChat runs it. A memory
-      # rebuilt on it answered 40/40 real questions, as Sonnet medium did,
-      # at about a seventh of the cost (/var/lib/bridge/hippo.md).
-      compactor = {
-        HIPPO_BACKEND = "claude";
-        HIPPO_CLAUDE = "/etc/profiles/per-user/${seat.user}/bin/claude";
-        HIPPO_MODEL = "haiku";
-        HIPPO_EFFORT = "high";
-      };
+      # The compactor reaches its model through Libri, on the socket in the
+      # store: the person picks it in Libri's Settings, and hippo holds no
+      # login and no key.
+      compactor.HIPPO_BACKEND = "libri";
 
       compactWindow = 200000;
 
@@ -74,6 +66,8 @@ in
         name: body:
         pkgs.writeShellScript name ''
           [ "$(${pkgs.coreutils}/bin/id -u)" = ${toString seat.uid} ] || exit 0
+          # Under Libri, which brings the view and folds it itself.
+          [ -z "''${LIBRI_RUNNING:-}" ] || exit 0
           ${body}
         '';
 
@@ -132,13 +126,6 @@ in
           [ -n "$id" ] || exit 0
           ${pkgs.coreutils}/bin/timeout 5 ${lib.meta.getExe (package lib pkgs)} chat ${harness} "$id" | ${pkgs.gnused}/bin/sed '1s/^/\n/' || true
         '';
-
-      # The compactor's own claude calls get the seat's managed settings
-      # without hooks or managed MCP servers: those would open the browser on
-      # every call, and forbid --strict-mcp-config.
-      claudeEtc = pkgs.writeTextDir "managed-settings.json" (
-        toJSON (removeAttrs config.seat.claudeSettings (singleton "hooks"))
-      );
     in
     {
       options.hippo.door = {
@@ -297,28 +284,14 @@ in
             WorkingDirectory = seat.hippo;
             Restart = "always";
             RestartSec = 5;
-            # Reads the seat's transcripts; writes its own store, and the claude
-            # CLI's state and refreshed credentials.
+            # Reads the seat's transcripts; writes its own store.
             ProtectHome = "read-only";
             # SQLite needs OpenCode's WAL index writable even to read.
             ReadWritePaths = [
               seat.hippo
               "-${seat.home}/.local/share/opencode"
-              "${seat.home}/.claude"
-              "${seat.home}/.claude.json"
             ];
-            BindReadOnlyPaths = singleton "${claudeEtc}:/etc/claude-code";
-            RestrictAddressFamilies = [
-              "AF_UNIX"
-              "AF_INET"
-              "AF_INET6"
-            ];
-            # The seat's own fence: the internet, the resolver and local inference.
-            IPAddressAllow = [
-              "127.0.0.53/32"
-              "${topology.seatInferenceAddr}/32"
-            ];
-            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
+            RestrictAddressFamilies = [ "AF_UNIX" ];
             # The primary user reads the store through the seat's group.
             UMask = "0027";
           };

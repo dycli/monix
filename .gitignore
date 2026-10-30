@@ -56,7 +56,6 @@
 !*.tsv
 
 # hippo's transcript fixtures: real shapes, neutral text.
-!modules/ai/seat/hippo/tests/fixtures/**/*.jsonl
 
 # Build artifacts and runtime junk trump the whitelist (later rules win).
 target/

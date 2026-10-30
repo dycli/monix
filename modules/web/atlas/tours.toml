@@ -81,7 +81,7 @@ summary = "The memory every assistant shares: a log, a tree of summaries and a v
 [[tour.step]]
 title = "The log"
 view = "map"
-focus = ["monix:modules/ai/seat/hippo/src/memory/store.rs"]
+focus = ["libri:hippo/src/memory/store.rs"]
 text = """
 Every message is kept word for word, append-only, one line each. Nothing is
 ever rewritten."""
@@ -89,7 +89,7 @@ ever rewritten."""
 [[tour.step]]
 title = "The tree"
 view = "map"
-focus = ["monix:modules/ai/seat/hippo/src/memory/tree.rs", "monix:modules/ai/seat/hippo/src/memory/compactor.rs"]
+focus = ["libri:hippo/src/memory/tree.rs", "libri:hippo/src/memory/compactor.rs"]
 text = """
 A model writes a one-line summary of each message, then of each pair, each
 four, and so on up. The compactor runs those calls in message order, a few
@@ -98,7 +98,7 @@ at a time."""
 [[tour.step]]
 title = "The view"
 view = "map"
-focus = ["monix:modules/ai/seat/hippo/src/memory/view.rs"]
+focus = ["libri:hippo/src/memory/view.rs"]
 text = """
 The view tiles the whole history with summaries: recent messages close up,
 older ones folded into wider lines. It stays under a byte budget and only

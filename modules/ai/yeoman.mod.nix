@@ -163,7 +163,6 @@
       };
 
       yeoman = lib.ship.rustTool pkgs { src = ./yeoman; };
-      hippo = lib.ship.rustTool pkgs { src = ./seat/hippo; };
 
       # Each web chat's port, after the doors, by sorted name.
       chatPort = n: 8950 + lib.lists.findFirstIndex (m: m == n) 0 (attrNames cfg.instances) + 1;
@@ -251,6 +250,22 @@
       # Hides the host's managed settings and MCP servers (the seat's), which
       # would forbid --strict-mcp-config.
       claudeEtc = pkgs.writeTextDir "managed-settings.json" "{}";
+      # The seat's Libri keeps the managed settings (the seat's permissions),
+      # without their hooks, which Libri brings itself, and without the MCP
+      # list: Claude Code takes no other while one exists, and Libri hands it
+      # its own each turn.
+      seatClaudeEtc = pkgs.writeTextDir "managed-settings.json" (
+        lib.strings.toJSON (lib.attrsets.removeAttrs config.seat.claudeSettings [ "hooks" ])
+      );
+      # What Libri adds to its own tools on the seat's turns. Fastmail isn't
+      # here: Libri's connection relays it, and refuses sending.
+      seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
+        mcpServers = removeAttrs config.seat.mcpServers [ "fastmail" ];
+      };
+      # The ship's guide for any harness, as Libri's turns read no rule files.
+      seatGuide = pkgs.writeText "seat-libri-guide.md" (
+        "You are the ship's engineer.\n\n" + lib.ship.guide.system + lib.ship.guide.engineer
+      );
 
       # An instance on Libri (`build`) reads its
       # settings from one TOML file (Libri's README, "Config"; the table in
@@ -277,7 +292,6 @@
         YEOMAN_MODEL = "harness.model";
         YEOMAN_MODELS = "harness.models";
         YEOMAN_EFFORTS = "harness.efforts";
-        YEOMAN_SEAT_MODE = "harness.seat";
         YEOMAN_MCP = "harness.mcp";
         YEOMAN_CLAUDE = "harness.claude.command";
         YEOMAN_OPENCODE_PORT = "harness.opencode.port";
@@ -335,7 +349,7 @@
           state = "/var/lib/${n}";
           # An instance on Libri runs whatever build its link points at.
           yeomanBin = if i.build == null then getExe yeoman else "${i.build}/bin/libri";
-          hippoBin = if i.build == null then getExe hippo else "${i.build}/bin/hippo";
+          hippoBin = "${i.build}/bin/hippo";
           siteRoot = if i.build == null then web else "${i.build}/site";
           creds = "/run/credentials/${n}.service";
           env = {
@@ -553,9 +567,9 @@
         in
         if i.seat then
           {
-            # The seat itself behind the yeoman's site: Claude Code as
-            # Bridge runs it, with the seat's login, rules, memory and
-            # privileges, as paseo does. hippo's watcher keeps its turns.
+            # The seat itself behind Libri's site: Bridge, on the seat's
+            # logins and privileges, with Libri's tools, the ship's guide and
+            # the seat's hippo, in which Libri keeps its own chat.
             ${n} = libriUnit {
               description = "Bridge in ${i.person}'s web chat (${i.name})";
               wantedBy = singleton "multi-user.target";
@@ -580,7 +594,10 @@
                   YEOMAN_BACKEND = "claude";
                   YEOMAN_CLAUDE = "claude";
                   YEOMAN_MODEL = cfg.model;
-                  YEOMAN_SEAT_MODE = "1";
+                  # The seat's hippo keeps Paseo's and the cockpit's chats too.
+                  LIBRI_HIPPO_SHARED = "1";
+                  YEOMAN_MCP = toString seatMcp;
+                  YEOMAN_INSTRUCTIONS = toString seatGuide;
                   YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
                   YEOMAN_SITE_ROOT = siteRoot;
                   YEOMAN_SITE_URL = host (if shared' == null then i.subdomain else shared');
@@ -619,6 +636,7 @@
                 RestartSec = 10;
                 # Each turn's claude and what it runs; paseo's bound.
                 MemoryHigh = "12G";
+                BindReadOnlyPaths = singleton "${seatClaudeEtc}:/etc/claude-code";
               };
             };
           }
@@ -627,7 +645,7 @@
             # The memory's door, after the seat's on 8940, by sorted name.
             "${n}-door" = mkIf (i.doorPassphraseFile != null) (
               lib.ship.hippoDoor {
-                inherit hippo;
+                hippo = lib.ship.libriHippo pkgs i.build { };
                 service = "${n}-hippo.service";
                 dir = env.HIPPO_DIR;
                 user = n;
@@ -699,6 +717,10 @@
                   YEOMAN_CLAUDE = getExe claude;
                   YEOMAN_MODEL = cfg.model;
                   YEOMAN_MCP = toString mcp;
+                  # An assistant: Libri's tools only, no shell or files.
+                  YEOMAN_CODING = "0";
+                  # Its compactor is its hippo unit's, not Libri's Settings.
+                  HIPPO_BACKEND = if i.localModel != null then "http" else "claude";
                 }
                 // models
                 // forget
@@ -1192,20 +1214,6 @@
           }
         ];
 
-        # The seat's agents, for the claude runs a seat instance starts: the
-        # yeoman names its state in YEOMAN_AGENTS, and any other claude on the
-        # seat (paseo's) finds no tools here.
-        seat.claudeMcp = mkIf (lib.lists.any (i: i.seat) (lib.attrsets.attrValues cfg.instances)) {
-          yeoman = {
-            type = "stdio";
-            command = getExe yeoman;
-            args = singleton "agents";
-            # Four small tools the seat always needs: load them up front, so
-            # its first spawn of a turn isn't a schemaless call that fails.
-            alwaysLoad = true;
-          };
-        };
-
         ship.browsers = mapAttrs' (
           n: _:
           nameValuePair n {
@@ -1387,7 +1395,7 @@
         security.polkit.extraConfig = mkIf (built != { }) ''
           polkit.addRule(function (action, subject) {
             if (action.id == "org.freedesktop.systemd1.manage-units" &&
-                [${
+                ["hippo.service", ${
                   concatMapStringsSep ", " (n: ''"${n}.service", "${n}-hippo.service"'') (attrNames built)
                 }].indexOf(action.lookup("unit")) >= 0 &&
                 ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&

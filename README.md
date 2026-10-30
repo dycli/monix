@@ -180,18 +180,13 @@ at `bridge-screen`.
 
 ### hippo
 
-hippo is the seat's episodic memory, written in Rust in
-`modules/ai/seat/hippo`, with seven dependencies. The design follows Victor
-Taelin's OptChat: keep every message, and fold the whole history into a
-fixed-size summary that any session can read. It is developed here and
-mirrored to [dycli/hippo](https://github.com/dycli/hippo) as its own repo,
-with its own flake and README, by
-
-```
-git subtree push --prefix=modules/ai/seat/hippo git@github.com:dycli/hippo.git main
-```
-
-after a push that touches it.
+hippo is the seat's episodic memory, written in Rust, with seven dependencies.
+The design follows Victor Taelin's OptChat: keep every message, and fold the
+whole history into a fixed-size summary that any session can read. Its source
+lives in Libri (`~/ark/libri/hippo`), and the seat runs the build Libri's deploy
+keeps at `/var/lib/libri-build/current`; `modules/ai/seat/hippo.mod.nix` holds
+only its service. [dycli/hippo](https://github.com/dycli/hippo) keeps what monix
+last pushed there.
 
 It runs in two modes from one memory. The seat's hippo runs in code mode,
 following the coding harnesses' transcripts beside their own context; Suki's

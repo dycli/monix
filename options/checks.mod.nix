@@ -16,7 +16,6 @@
       crates = {
         endgrain.path = "modules/homelab/endgrain";
         frame.path = "modules/homelab/frame";
-        hippo.path = "modules/ai/seat/hippo";
         money.path = "modules/homelab/money";
         yeoman.path = "modules/ai/yeoman";
       };

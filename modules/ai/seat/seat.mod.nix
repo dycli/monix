@@ -274,6 +274,11 @@ in
           default = { };
           description = "Claude Code's managed MCP servers beyond the browsers, for every launcher.";
         };
+        mcpServers = lib.options.mkOption {
+          inherit (json) type;
+          readOnly = true;
+          description = "Every launcher's MCP servers, in Claude Code's shape: the browsers and `claudeMcp`.";
+        };
         codexConfig = lib.options.mkOption {
           inherit (toml) type;
           default = { };
@@ -412,11 +417,12 @@ in
         # otherwise refuse. Fenced deploys stay the captain's: `--approve`
         # asks for a wheel password.
         seat.claudeSettings.permissions.allow = [ "Bash(switcharoo)" ];
+        seat.mcpServers =
+          browserServers
+          |> mapAttrs (_: server: server // { type = if server ? url then "http" else "stdio"; })
+          |> (servers: servers // config.seat.claudeMcp);
         environment.etc."claude-code/managed-mcp.json".text = toJSON {
-          mcpServers =
-            browserServers
-            |> mapAttrs (_: server: server // { type = if server ? url then "http" else "stdio"; })
-            |> (servers: servers // config.seat.claudeMcp);
+          inherit (config.seat) mcpServers;
         };
       };
     };
