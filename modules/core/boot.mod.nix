@@ -11,8 +11,6 @@
       boot.loader.systemd-boot.configurationLimit = mkDefault 5;
       boot.loader.efi.canTouchEfiVariables = mkDefault true;
 
-      boot.initrd.systemd.enable = mkDefault true;
-
       # Refresh LVFS metadata automatically; installing firmware remains a
       # deliberate fwupdmgr update.
       services.fwupd.enable = mkDefault true;

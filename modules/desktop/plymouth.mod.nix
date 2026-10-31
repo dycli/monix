@@ -16,7 +16,6 @@
       boot.loader.timeout = lib.modules.mkDefault 0;
 
       # Keep the console from writing over the splash.
-      boot.initrd.verbose = lib.modules.mkDefault false;
       boot.kernelParams = [
         "quiet"
         "udev.log_level=3"
