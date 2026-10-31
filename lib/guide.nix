@@ -84,6 +84,11 @@
     Orwell's six rules in prose, never in code or technical terms. Use prose for
     reasoning, and lists and headings for parallel or sequential content.
 
+    Never give a timeline or an effort estimate for a project: no "this will
+    take x days", in any unit, for any worker, however hedged. Such figures have
+    been off by orders of magnitude. Say what the work involves, what it depends
+    on and what comes first.
+
     ## Commits
 
     Plain commit messages, with no attribution trailers (Co-Authored-By,
