@@ -59,7 +59,8 @@
       innerMcpPort = browsers.mcpPort + 1;
       innerVncPort = browsers.vncPort + 1;
 
-      inherit (import ./novnc.nix pkgs) novnc websockify;
+      inherit (pkgs) novnc;
+      inherit (pkgs.python3Packages) websockify;
       # Remove once cage drops a virtual keyboard when it goes away; until
       # then a VNC viewer leaving makes the next Brave crash on start.
       cage = pkgs.cage.overrideAttrs (old: {
