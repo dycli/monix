@@ -13,7 +13,17 @@
         # Nixpkgs builds these plugins against its own compositor package.
         plugins = [
           pkgs.hyprlandPlugins.hyprbars
-          pkgs.hyprlandPlugins.hy3
+          # Nixpkgs ships Hyprland 0.57 with hy3 still at 0.56.0.1, which no
+          # longer compiles. Remove this override when nixpkgs moves hy3 up.
+          (pkgs.hyprlandPlugins.hy3.overrideAttrs {
+            version = "0.57.0";
+            src = pkgs.fetchFromGitHub {
+              owner = "outfoxxed";
+              repo = "hy3";
+              tag = "hl0.57.0";
+              hash = "sha256-9qAw3Xsa0xN9b5ERiWEGL1fBq37GLskcrBj/6ax8PU4=";
+            };
+          })
         ];
 
         # Plugin-coupled config belongs in these guarded blocks, not in
