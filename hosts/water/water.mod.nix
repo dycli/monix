@@ -90,6 +90,10 @@
           serviceConfig.Slice = "work.slice";
           restartIfChanged = false;
         };
+        # Libri's workers run cargo, Gradle and QEMU, so they share that budget:
+        # on 2026-10-31 Libri at 12G outside it and the slice at 18G took all
+        # 30G and the kernel killed the desktop.
+        systemd.services.libri.serviceConfig.Slice = "work.slice";
 
         boot.loader.timeout = 5;
 
