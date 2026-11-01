@@ -16,7 +16,7 @@ import time
 from urllib.parse import parse_qs, urlsplit
 
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 
 FOREVER = float("inf")
 
@@ -56,7 +56,7 @@ class Keeper:
         print("let the browser go", flush=True)
 
     async def session(self) -> None:
-        async with streamablehttp_client(self.mcp) as (read, write, _):
+        async with streamable_http_client(self.mcp) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 # The browser launches on the first tool call.
