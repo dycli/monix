@@ -39,6 +39,9 @@
           # Low enough that the compositor's blur still reads as frost; the
           # hyprland window rule thins it further on unfocused terminals.
           background-opacity = 0.7;
+          # Ghostty 1.4 speaks ext-background-effect, which makes blur the
+          # client's choice: left off, Hyprland skips its own blur here too.
+          background-blur = true;
           confirm-close-surface = false;
           window-decoration = "none";
 
