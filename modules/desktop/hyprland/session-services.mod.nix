@@ -237,6 +237,12 @@
         Service = {
           Type = "simple";
           ExecStart = getExe pkgs.hyprlock;
+          # hyprlock 0.9.6 aborts when the monitor drops on wake
+          # (hyprwm/hyprlock#1064). The session stays locked, so bringing the
+          # locker back restores the password prompt. Remove once upstream
+          # survives losing its Wayland objects.
+          Restart = "on-failure";
+          RestartSec = 2;
         };
       };
 
