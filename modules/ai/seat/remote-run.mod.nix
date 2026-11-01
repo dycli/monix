@@ -6,7 +6,7 @@ let
 in
 {
   flake.homeModules.cockpit =
-    { osConfig, pkgs, ... }:
+    { pkgs, ... }:
     let
       program = pkgs.writers.writePython3Bin "remote_run" {
         flakeIgnore = [
@@ -26,7 +26,6 @@ in
             openssh
           ];
           text = ''
-            export BOAT_KEY_FILE=${osConfig.secrets.boat-api-key.path}
             exec ${lib.getExe program} "$@"
           '';
         }

@@ -12,11 +12,13 @@ noEnv, and the API key stays here. See remote-build.md in the bridge notes."""
 
 import argparse
 import fcntl
+import http.client
 import json
 import os
 import re
 import shlex
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -30,7 +32,10 @@ from pathlib import Path
 
 # The builder. The steps after start() only ever see an ssh destination, so the
 # build machine replaces boat here and in start().
-BUILDER = "https://boat.dev/api/v1"
+BUILDER = "http://boat/api/v1"
+# nginx adds the API key on this socket, and allows only the calls made here;
+# boat.mod.nix holds the list. The seat never holds the key.
+SOCKET = os.environ.get("BOAT_SOCKET", "/run/boat-proxy/boat.sock")
 # The saved snapshot every run starts from.
 BASE = "nix-base"
 # Sandboxes at once, counting every active one on the account; runs past this queue.
@@ -50,7 +55,6 @@ PREFIX = "remote-run-"
 USER = "user"
 NIX_PROFILE = "/nix/var/nix/profiles/default"
 STATE = Path(os.environ.get("XDG_STATE_HOME", "~/.local/state")).expanduser() / "remote_run"
-KEY_FILES = (os.environ.get("BOAT_KEY_FILE", ""), os.path.expanduser("~/boat_api_key"))
 # What this script exits with for its own failures, as `docker run` does.
 FAILED = 125
 # How long a job may lose its connection before the run gives up on the sandbox.
@@ -144,6 +148,14 @@ class Refused(Exception):
         self.body = body
 
 
+def answer(error):
+    """An error's body; nginx answers in HTML when it cannot reach boat."""
+    try:
+        return json.load(error)
+    except ValueError:
+        return {"message": error.reason}
+
+
 def stop(signum, _frame):
     raise Stopped(signum)
 
@@ -159,15 +171,21 @@ def stamp(at):
     return datetime.fromisoformat(at.replace("Z", "+00:00")).timestamp()
 
 
+class SocketConnection(http.client.HTTPConnection):
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(SOCKET)
+
+
+class SocketHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(SocketConnection, req)
+
+
 class Boat:
     def __init__(self):
-        for path in KEY_FILES:
-            try:
-                self.key = Path(path).read_text().strip()
-                return
-            except OSError:
-                continue
-        raise Failure("no boat.dev API key is readable")
+        self.opener = urllib.request.build_opener(SocketHandler())
 
     def call(self, method, path, body=None, headers=None):
         """One API call; retries what a lost answer or a bad moment on boat's side costs."""
@@ -175,15 +193,15 @@ class Boat:
             BUILDER + path,
             method=method,
             data=json.dumps(body).encode() if body is not None else None,
-            headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json", "User-Agent": "remote_run/1", **(headers or {})},
+            headers={"Content-Type": "application/json", "User-Agent": "remote_run/1", **(headers or {})},
         )
         for attempt in range(6):
             try:
-                with urllib.request.urlopen(request, timeout=60) as reply:
+                with self.opener.open(request, timeout=60) as reply:
                     return json.load(reply)
             except urllib.error.HTTPError as e:
                 if e.code < 500 or e.code == 503 or attempt == 5:
-                    raise Refused(e.code, json.load(e)) from None
+                    raise Refused(e.code, answer(e)) from None
             except (urllib.error.URLError, TimeoutError):
                 if attempt == 5:
                     raise
