@@ -42,7 +42,7 @@ REFRESH_TTL = "8h"
 # Worktrees whose checks seed the base.
 SEEDS = ("~/ark/monix", "~/ark/libri")
 # Each seed's commands beyond its flake check, by repository name.
-SEED_SHELLS = {"libri": ("nix develop -c true", "nix develop .#android-emulator -c true")}
+SEED_SHELLS = {"libri": ("nix develop .#android -c true", "nix develop .#android-emulator -c true")}
 
 # Every sandbox of ours is named from this. Names and not labels mark them,
 # because a create with `from` drops its labels without saying so.
@@ -55,6 +55,9 @@ KEY_FILES = (os.environ.get("BOAT_KEY_FILE", ""), os.path.expanduser("~/boat_api
 FAILED = 125
 # How long a job may lose its connection before the run gives up on the sandbox.
 RECONNECT_SECONDS = 300
+# Boat scrubs withheld secrets from a fork before it lets a key in, seen past
+# 300s when several forks start together.
+START_SECONDS = 1800
 LOG_DAYS = 14
 
 # The installer rewrites nix.conf, so the settings go in after it. 16 GB holds
@@ -277,7 +280,7 @@ class Run:
     def connect(self):
         identity = Path(self.keys.name) / "id_ed25519"
         subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", identity], check=True)
-        deadline = time.time() + 300
+        deadline = time.time() + START_SECONDS
         while True:
             try:
                 reply = self.boat.call("POST", f"/sandboxes/{self.sandbox}/sshkey", {"key": identity.with_suffix(".pub").read_text().strip()})
@@ -287,6 +290,7 @@ class Run:
                 if not starting or time.time() > deadline:
                     raise
                 time.sleep(3)
+        self.say("sandbox accepts keys")
         host, port = reply["sshEndpoint"].rsplit(":", 1)
         known = Path(self.keys.name) / "known_hosts"
         known.write_text(f"sandbox {reply['hostKey']}\n")
@@ -304,9 +308,7 @@ class Run:
 
     def prepare(self, forked):
         """A fork waits out hydration: until then the store crawls, and a job
-        spanning its end loses the daemon. A store's worth of files is what
-        makes the wait, 12 minutes for nix-base, and it pays for itself in
-        any job that touches Nix."""
+        spanning its end loses the daemon."""
         if forked:
             self.say("waiting for the fork's disk to hydrate")
             while not self.boat.call("GET", f"/sandboxes/{self.sandbox}")["sandbox"].get("hydrated"):
