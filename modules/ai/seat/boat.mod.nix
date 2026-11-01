@@ -24,12 +24,17 @@
       authorization = "/run/nginx/boat-authorization.conf";
       writeAuthorization = pkgs.writeShellApplication {
         name = "write-boat-authorization";
-        runtimeInputs = singleton pkgs.coreutils;
+        runtimeInputs = [
+          pkgs.acl
+          pkgs.coreutils
+        ];
         text = ''
           umask 077
           printf 'proxy_set_header Authorization "Bearer %s";\n' "$(cat ${secret.path})" > ${authorization}
           chown nginx:nginx ${authorization}
-          chgrp ${seat.user} /run/boat-proxy
+          # An entry, not chgrp: systemd puts a runtime directory back to the unit's
+          # owner before each later start step, and an access entry stays through that.
+          setfacl -m u:${seat.user}:x /run/boat-proxy
         '';
       };
     in
