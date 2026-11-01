@@ -227,8 +227,8 @@ to the system prompt and takes a fresh one after compaction. Muse Code
 kills a hook that prints over 16 KB, so twelve start hooks each print one
 slice of under 15,000 bytes, which Muse joins in order.
 
-**Session compaction.** Claude Code and Codex compact at 200k tokens, and
-they and OpenCode write a short handoff instead of the usual summary:
+**Session compaction.** Each harness compacts at its own limit, and Claude
+Code, Codex and OpenCode write a short handoff instead of the usual summary:
 Claude Code's from a PreCompact hook, Codex's from its `compact_prompt`,
 OpenCode's from the plugin. Muse's summary prompt is not configurable, so
 it keeps its own. A session comes

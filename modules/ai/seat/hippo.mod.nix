@@ -29,8 +29,6 @@ in
       # Code loads it at session start and again after each compaction.
       home.file.".claude/rules/hippo-view.md".source =
         config.lib.file.mkOutOfStoreSymlink "${lib.ship.topology.seat.hippo}/view.md";
-      # Seat sessions compact at 200k tokens; the view carries the history.
-      home.sessionVariables.CLAUDE_CODE_AUTO_COMPACT_WINDOW = "200000";
     };
 
   flake.nixosModules.seat = self.nixosModules.hippo;
@@ -57,8 +55,6 @@ in
       # store: the person picks it in Libri's Settings, and hippo holds no
       # login and no key.
       compactor.HIPPO_BACKEND = "libri";
-
-      compactWindow = 200000;
 
       # Managed settings and system config, and so their hooks, reach every
       # user on the host; the hooks speak only to the seat.
@@ -180,7 +176,6 @@ in
             };
           };
           compact_prompt = handoffText;
-          model_auto_compact_token_limit = compactWindow;
           features.memories = false;
         };
 
@@ -247,10 +242,6 @@ in
             },
           });
         '';
-
-        # Seat sessions compact at 200k tokens; the view carries the history.
-        # The variable, unlike the setting, leaves other users' sessions alone.
-        systemd.services.paseo.environment.CLAUDE_CODE_AUTO_COMPACT_WINDOW = toString compactWindow;
 
         systemd.tmpfiles.rules = singleton "d ${seat.hippo} 0750 ${seat.user} ${seat.user} -";
 
