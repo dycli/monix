@@ -1,6 +1,5 @@
 # The AI seat: one fenced, unprivileged account where Claude Code, Codex and
-# OpenCode share the ship guide, the project state and hippo. Its home is
-# composed here; the primary user's agent CLIs come from `dev` instead.
+# OpenCode share the project state and hippo. Its home is composed here; the primary user's agent CLIs come from `dev` instead.
 {
   inputs,
   lib,
@@ -25,165 +24,21 @@ let
 in
 {
   flake.homeModules.cockpit =
-    {
-      config,
-      lib,
-      osConfig,
-      pkgs,
-      ...
-    }:
+    { lib, osConfig, ... }:
     let
-      inherit (lib.ship) guide opencode topology;
-      inherit (lib.attrsets) genAttrs mapAttrs;
-      inherit (lib.lists) concatMap map singleton;
-      inherit (lib.strings) removePrefix toJSON;
-
-      # Existing hand-written files are adopted on the first switch.
-      instructions = {
-        force = true;
-        text = guide.system + guide.engineer;
-      };
-
-      userHome = config.home.homeDirectory;
-      monixDir = "${userHome}/ark/monix";
-      holdDir = "${userHome}/hold";
-      cockpitDir = "${userHome}/cockpit";
-
-      gitReadCommands = [
-        "status*"
-        "diff*"
-        "log*"
-        "show*"
-        "blame*"
-        "rev-parse*"
-        "merge-base*"
-        "ls-files*"
-        "ls-tree*"
-        "cat-file*"
-        "branch --show-current*"
-        "remote -v"
-        "tag --list*"
-      ];
-
-      # OpenCode has only static globs where Claude has a read-only
-      # classifier, so this list exists for OpenCode alone.
-      bashAllow = [
-        # hippo must never prompt.
-        "hippo"
-        "hippo *"
-        "nix build *"
-        "nix eval *"
-        "nix flake *"
-        "nix run nixpkgs#shellcheck *"
-        "nix search *"
-        "tailscale status*"
-      ]
-      ++ concatMap (command: [
-        "git ${command}"
-        "git -C * ${command}"
-      ]) gitReadCommands
-      ++ [
-        # No push rule: pushing is never unattended.
-        "git -C ${monixDir} add *"
-        "git -C ${monixDir} commit *"
-        "journalctl*"
-        "systemctl status*"
-        "systemctl show*"
-        "systemctl cat*"
-        "systemctl list-units*"
-        "systemctl list-timers*"
-        "systemctl list-unit-files*"
-        "systemctl list-dependencies*"
-        "systemctl is-active*"
-        "systemctl is-enabled*"
-        "systemctl is-failed*"
-        "systemctl --failed*"
-        "systemctl --user status*"
-        "systemctl --user show*"
-        "systemctl --user cat*"
-        "systemctl --user is-active*"
-        "systemctl --user list-units*"
-        "systemctl --user list-timers*"
-        "echo *"
-        "grep *"
-        "rg *"
-        "ls"
-        "ls *"
-        "head *"
-        "tail *"
-        "wc *"
-        "stat *"
-        "du *"
-        "df"
-        "df *"
-        "file *"
-        "readlink *"
-        "realpath *"
-        "command -v *"
-        "pgrep *"
-        "tree *"
-        "sleep *"
-        "mkdir -p *"
-      ];
-
-      writableDirs = [
-        monixDir
-      ];
-
-      # OpenCode strips the leading slash for file-tool paths, but
-      # external_directory checks the same path in absolute form.
-      bothForms = concatMap (path: [
-        "${path}/**"
-        "${removePrefix "/" path}/**"
-      ]);
-
-      # OpenCode evaluates the final matching rule; keep the catch-all first.
-      allowOnly = patterns: { "*" = "ask"; } // genAttrs patterns (_: "allow");
-
-      permission = {
-        bash = allowOnly bashAllow;
-        # Claude permits reads inside its working directory; OpenCode needs
-        # them listed.
-        read = allowOnly (
-          bothForms (
-            writableDirs
-            ++ [
-              cockpitDir
-              holdDir
-            ]
-          )
-        );
-        edit = allowOnly (bothForms writableDirs);
-        external_directory = allowOnly (map (path: "${path}/**") writableDirs);
-        glob = "allow";
-        grep = "allow";
-        list = "allow";
-        task = "allow";
-        # OpenCode cannot scope webfetch by domain.
-        webfetch = "ask";
-        todowrite = "allow";
-        question = "allow";
-        skill = "allow";
-      }
-      // opencode.permissions;
+      inherit (lib.ship) opencode topology;
+      inherit (lib.attrsets) mapAttrs;
+      inherit (lib.lists) singleton;
+      inherit (lib.strings) toJSON;
     in
     {
       home.sessionVariables = opencode.environment;
-
-      # The ship guide, as each harness's global instructions. Claude's
-      # AGENTS.md discovery is project-scoped, so it gets a user rule.
-      home.file.".config/agents/AGENTS.md" = instructions;
-      home.file.".codex/AGENTS.md" = instructions;
-      home.file.".config/opencode/AGENTS.md" = instructions;
-      home.file.".config/muse/AGENTS.md" = instructions;
-      home.file.".omp/agent/AGENTS.md" = instructions;
 
       home.file.".omp/agent/models.yml".text = opencode.ompModels {
         keyFile = osConfig.secrets.opencode-key.path;
         deepseekKeyFile = osConfig.secrets.deepseek-key.path;
         abliterationKeyFile = osConfig.secrets.abliteration-key.path;
       };
-      home.file.".claude/rules/AGENTS.md" = instructions;
 
       # The baseURL uses the seat-plane address because the slice fence
       # admits that /32, not 127.0.0.1.
@@ -214,28 +69,6 @@ in
                     enabled = true;
                   }
               );
-            inherit permission;
-            # Appended after OpenCode's built-in agent rules.
-            agent.plan.permission = permission // {
-              edit = "deny";
-              task = {
-                "*" = "allow";
-                general = "deny";
-              };
-            };
-            agent.explore.permission = {
-              "*" = "deny";
-              inherit (permission)
-                bash
-                external_directory
-                glob
-                grep
-                list
-                read
-                webfetch
-                ;
-            }
-            // opencode.permissions;
           }
         );
       };
@@ -252,7 +85,6 @@ in
     let
       inherit (lib.attrsets) mapAttrs;
       inherit (lib.lists) singleton;
-      inherit (lib.strings) toJSON;
       inherit (lib.ship) fences topology;
       inherit (topology) seat;
 
@@ -269,25 +101,15 @@ in
           default = { };
           description = "Claude Code managed settings, for every launcher.";
         };
-        claudeMcp = lib.options.mkOption {
-          inherit (json) type;
-          default = { };
-          description = "Claude Code's managed MCP servers beyond the browsers, for every launcher.";
-        };
         mcpServers = lib.options.mkOption {
           inherit (json) type;
           readOnly = true;
-          description = "Every launcher's MCP servers, in Claude Code's shape: the browsers and `claudeMcp`.";
+          description = "The seat's MCP servers, in Claude Code's shape.";
         };
         codexConfig = lib.options.mkOption {
           inherit (toml) type;
           default = { };
           description = "Codex's system config layer.";
-        };
-        museHooks = lib.options.mkOption {
-          inherit (json) type;
-          default = { };
-          description = "Muse Code's managed hooks, by event.";
         };
       };
 
@@ -319,22 +141,6 @@ in
             self.homeModules.default
             self.homeModules.dev
             self.homeModules.cockpit
-            (
-              { lib, ... }:
-              {
-                # Muse writes its own preferences to settings.json, so the managed
-                # hooks key is merged in rather than the file owned.
-                home.activation.museManagedHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-                  settings=$HOME/.config/muse/settings.json
-                  mkdir -p "$(dirname "$settings")"
-                  [ -s "$settings" ] || echo '{}' > "$settings"
-                  ${pkgs.jq}/bin/jq '.schema_version = 1
-                    | .managed_hooks_path = "/etc/muse/managed-hooks.json"' \
-                    "$settings" > "$settings.tmp"
-                  mv "$settings.tmp" "$settings"
-                '';
-              }
-            )
           ];
           home.username = seat.user;
           home.homeDirectory = seat.home;
@@ -384,15 +190,9 @@ in
         ];
 
         # Authentication, project trust and session state remain per-user;
-        # host-owned MCP endpoints are immutable layers shared by every
-        # agent frontend.
+        # the host's policy is an immutable layer under every launcher.
         environment.etc."codex/config.toml".source =
           toml.generate "codex-system-config.toml" cfg.codexConfig;
-        # Muse has no system settings layer on Linux, only a managed hooks
-        # file named from each user's settings; the seat's points here.
-        environment.etc."muse/managed-hooks.json".source = json.generate "muse-managed-hooks.json" {
-          hooks = cfg.museHooks;
-        };
         environment.etc."claude-code/managed-settings.json".source =
           json.generate "claude-managed-settings.json" cfg.claudeSettings;
 
@@ -407,9 +207,6 @@ in
               tool_timeout_sec = 120;
             }
           );
-        # hippo is the only memory; Claude's own would be a second writable
-        # truth. Managed settings reach every launcher, Paseo included.
-        seat.claudeSettings.autoMemoryEnabled = false;
         # Plain commits: Claude Code otherwise adds Co-Authored-By, PR text
         # and session links. Codex adds none unless codex_git_commit is on.
         seat.claudeSettings.attribution = false;
@@ -419,11 +216,7 @@ in
         seat.claudeSettings.permissions.allow = [ "Bash(switcharoo)" ];
         seat.mcpServers =
           browserServers
-          |> mapAttrs (_: server: server // { type = if server ? url then "http" else "stdio"; })
-          |> (servers: servers // config.seat.claudeMcp);
-        environment.etc."claude-code/managed-mcp.json".text = toJSON {
-          inherit (config.seat) mcpServers;
-        };
+          |> mapAttrs (_: server: server // { type = if server ? url then "http" else "stdio"; });
       };
     };
 }

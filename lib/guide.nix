@@ -16,7 +16,7 @@
     in a reply; summaries keep little tool output, so state what you learned that
     will matter later.
 
-    The view, loaded at session start and after each compaction, is the whole
+    The view, loaded with every message, is the whole
     shared history (yours and parallel chats) as one-line summaries, oldest first.
     Each line `id+n|text` covers n messages from id, tagged by kind: user (the
     captain's words), talk, tool, echo, work (a subagent's report), note.

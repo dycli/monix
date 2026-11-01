@@ -247,28 +247,22 @@
         '';
       };
 
-      # Hides the host's managed settings and MCP servers (the seat's), which
-      # would forbid --strict-mcp-config.
-      claudeEtc = pkgs.writeTextDir "managed-settings.json" "{}";
-      # The seat's Libri keeps the managed settings (the seat's permissions),
-      # without their hooks, which Libri brings itself, and without the MCP
-      # list: Claude Code takes no other while one exists, and Libri hands it
-      # its own each turn.
-      seatClaudeEtc = pkgs.writeTextDir "managed-settings.json" (
-        lib.strings.toJSON (lib.attrsets.removeAttrs config.seat.claudeSettings [ "hooks" ])
-      );
-      # What Libri adds to its own tools on the seat's turns. Fastmail isn't
-      # here: Libri's connection relays it, and refuses sending. Nor is the
-      # browser: Libri has no browser use for now (libri-browser.md). Nor is
+      # What Libri adds to its own tools on the seat's turns. The browser
+      # isn't here: Libri has no browser use for now (libri-browser.md). Nor is
       # web: Libri's own web_search and web_fetch reach Parallel for every
       # harness, with its retries.
       seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
         mcpServers = removeAttrs config.seat.mcpServers [
           "browser"
-          "fastmail"
           "web"
         ];
       };
+      # The host's Brave with its saved logins, in the Codex and OpenCode
+      # configs for the terminal, as `browser` or under an assistant's name
+      # as `computer`: no Libri turn reaches it (libri-browser.md). Unit
+      # environment rather than libriKeys, as a Libri older than the setting
+      # refuses a config file's key it doesn't know.
+      withheldMcp = "browser,computer";
       # Libri's assistant calls itself Libri; an instance here is itself by
       # this rule text, on every prompt, Temp and calls included.
       identity =
@@ -277,7 +271,7 @@
           You go by ${i.name}, not Libri: you are ${role}, and wherever these
           instructions say Libri they mean you.
         '';
-      # The ship's guide for any harness, as Libri's turns read no rule files.
+      # The ship's guide for any harness.
       seatGuide = pkgs.writeText "seat-libri-guide.md" (
         "You are the ship's engineer.\n\n" + lib.ship.guide.system + lib.ship.guide.engineer
       );
@@ -549,10 +543,7 @@
               "claude-key:${i.claudeKeyFile}"
             else
               "claude-token:${cfg.claudeTokenFile}";
-          claudeUnit = {
-            LoadCredential = claudeCredential;
-            BindReadOnlyPaths = singleton "${claudeEtc}:/etc/claude-code";
-          };
+          claudeUnit.LoadCredential = claudeCredential;
           seat = topology.seat;
           models =
             optionalAttrs (i.models != [ ]) { YEOMAN_MODELS = concatStringsSep "," i.models; }
@@ -614,6 +605,7 @@
                   LIBRI_HIPPO_SHARED = i.name;
                   YEOMAN_IDENTITY = toString (identity i "the ship's engineer");
                   YEOMAN_MCP = toString seatMcp;
+                  YEOMAN_MCP_WITHHELD = withheldMcp;
                   YEOMAN_INSTRUCTIONS = toString seatGuide;
                   YEOMAN_SITE = "127.0.0.1:${toString (chatPort n)}";
                   YEOMAN_SITE_ROOT = siteRoot;
@@ -659,7 +651,6 @@
                 RestartSec = 10;
                 # Each turn's claude and what it runs; paseo's bound.
                 MemoryHigh = "12G";
-                BindReadOnlyPaths = singleton "${seatClaudeEtc}:/etc/claude-code";
               };
             };
 
@@ -791,6 +782,7 @@
                   YEOMAN_CLAUDE = getExe claude;
                   YEOMAN_MODEL = cfg.model;
                   YEOMAN_MCP = toString mcp;
+                  YEOMAN_MCP_WITHHELD = withheldMcp;
                   YEOMAN_IDENTITY = toString (identity i "${i.person}'s household assistant");
                   # An assistant: Libri's tools only, no shell or files.
                   YEOMAN_CODING = "0";

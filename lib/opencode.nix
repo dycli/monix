@@ -49,7 +49,7 @@ let
     };
 in
 {
-  inherit environment permissions providers;
+  inherit environment providers;
 
   # omp's models.yml: its built-in providers on the keys OpenCode uses. A
   # leading `!` makes omp read the key from the command's output at
@@ -75,7 +75,7 @@ in
 
   # An opencode.json whose `local` provider is a llama-swap endpoint, beside
   # the cloud providers. The ai-sdk loader requires a non-empty apiKey;
-  # llama-swap ignores it. The shared permissions win over the caller's.
+  # llama-swap ignores it.
   config =
     {
       name,
@@ -85,14 +85,12 @@ in
       deepseekKeyFile,
       abliterationKeyFile,
       extraMcp ? { },
-      permission ? { },
-      agent ? { },
     }:
     {
       "$schema" = "https://opencode.ai/config.json";
       inherit lsp;
       mcp = mcp // extraMcp;
-      permission = permission // permissions;
+      permission = permissions;
       provider = providers { inherit keyFile deepseekKeyFile abliterationKeyFile; } // {
         local = {
           npm = "@ai-sdk/openai-compatible";
@@ -103,6 +101,5 @@ in
           };
         };
       };
-    }
-    // lib.attrsets.optionalAttrs (agent != { }) { inherit agent; };
+    };
 }
