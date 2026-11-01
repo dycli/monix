@@ -14,12 +14,14 @@ import argparse
 import fcntl
 import json
 import os
+import re
 import shlex
 import signal
 import subprocess
 import sys
 import tempfile
 import time
+import traceback
 import urllib.error
 import urllib.request
 import uuid
@@ -42,7 +44,9 @@ SEEDS = ("~/ark/monix", "~/ark/libri")
 # Each seed's commands beyond its flake check, by repository name.
 SEED_SHELLS = {"libri": ("nix develop -c true", "nix develop .#android-emulator -c true")}
 
-LABEL = "remote_run"
+# Every sandbox of ours is named from this. Names and not labels mark them,
+# because a create with `from` drops its labels without saying so.
+PREFIX = "remote-run-"
 USER = "user"
 NIX_PROFILE = "/nix/var/nix/profiles/default"
 STATE = Path(os.environ.get("XDG_STATE_HOME", "~/.local/state")).expanduser() / "remote_run"
@@ -78,11 +82,20 @@ CONF
 sudo systemctl restart nix-daemon
 """
 
+# Every sandbox boots with /dev/kvm closed to the Nix build users. A fork's
+# daemon socket comes up 644 root and goes dead when hydration ends; only a
+# restart after hydration cures it. Both socket lines go when a boat restore
+# keeps the socket systemd made.
+PREPARE = r"""
+sudo chmod 666 /dev/kvm
+[[ -e {profile} ]] || exit 0
+sudo systemctl restart nix-daemon.socket
+sudo chmod 666 /nix/var/nix/daemon-socket/socket
+"""
+
 # Runs detached, so a dropped connection costs a reconnect and not the job.
-# The sandbox boots with /dev/kvm closed to the Nix build users.
 JOB = r"""
 [[ -e {profile}/etc/profile.d/nix-daemon.sh ]] && . {profile}/etc/profile.d/nix-daemon.sh
-sudo chmod 666 /dev/kvm
 (
   peak=0
   while :; do
@@ -191,20 +204,21 @@ class Run:
         self.boat = boat
         self.id = uuid.uuid4().hex[:8]
         self.sandbox = None
+        self.began = time.time()
         STATE.mkdir(parents=True, exist_ok=True)
         (STATE / "logs").mkdir(exist_ok=True)
         now = time.time()
         for old in (STATE / "logs").iterdir():
             if now - old.stat().st_mtime > LOG_DAYS * 86400:
                 old.unlink()
-        self.name = f"remote-run-{repository}-{self.id}"
+        self.name = f"{PREFIX}{re.sub('[^a-z0-9-]', '-', repository.lower())[:40]}-{self.id}"
         self.log_path = STATE / "logs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{repository}-{self.id}.log"
         self.log = self.log_path.open("ab")
         self.keys = tempfile.TemporaryDirectory(prefix="remote_run-")
         self.ssh_config = Path(self.keys.name) / "config"
 
     def say(self, text):
-        line = f"remote_run: {text}\n".encode()
+        line = f"remote_run: [{time.time() - self.began:.0f}s] {text}\n".encode()
         self.log.write(line)
         self.log.flush()
         sys.stderr.buffer.write(line)
@@ -214,7 +228,7 @@ class Run:
         """Removes our sandboxes that outlived their TTL, and returns the account's active ones."""
         active = []
         for s in self.boat.sandboxes():
-            state, ours = s["state"], (s.get("labels") or {}).get("owner") == LABEL
+            state, ours = s["state"], s["name"].startswith(PREFIX)
             expired = s.get("archiveAfter") and stamp(s["archiveAfter"]) < time.time()
             if ours and (expired or state in ("archived", "error")):
                 self.say(f"removing {s['id']}, left from an earlier run ({state})")
@@ -230,7 +244,6 @@ class Run:
             "name": self.name,
             "type": size,
             "ttlSeconds": ttl,
-            "labels": {"owner": LABEL, "run": self.id},
             "noEnv": True,
             "monitoring": False,
             "snapshots": snapshots,
@@ -289,6 +302,18 @@ class Run:
                 raise Failure("the sandbox never answered ssh")
             time.sleep(3)
 
+    def prepare(self, forked):
+        """A fork waits out hydration: until then the store crawls, and a job
+        spanning its end loses the daemon. A store's worth of files is what
+        makes the wait, 12 minutes for nix-base, and it pays for itself in
+        any job that touches Nix."""
+        if forked:
+            self.say("waiting for the fork's disk to hydrate")
+            while not self.boat.call("GET", f"/sandboxes/{self.sandbox}")["sandbox"].get("hydrated"):
+                time.sleep(10)
+            self.say("hydrated")
+        self.quietly(self.ssh("bash -s"), input=PREPARE.format(profile=NIX_PROFILE).encode())
+
     def ssh(self, command):
         return ["ssh", "-F", str(self.ssh_config), "sandbox", command]
 
@@ -314,10 +339,13 @@ class Run:
         finally:
             packer.kill()
         if (Path(top) / "flake.nix").exists():
-            # The locked inputs, private ones too; ones the base holds cost a query.
+            # The locked inputs only, private ones too; the source is already
+            # there, and a store import crawls while a fork hydrates, so a run
+            # whose lock the base already holds should copy nothing.
+            flake = subprocess.run(["nix", "flake", "archive", "--no-write-lock-file", "--dry-run", "--json", f"git+file://{top}"], capture_output=True, check=True)
             store = f"ssh-ng://sandbox?remote-program={NIX_PROFILE}/bin/nix-daemon"
             env = {**os.environ, "NIX_SSHOPTS": f"-F {self.ssh_config}"}
-            self.quietly(["nix", "flake", "archive", "--no-write-lock-file", "--to", store, f"git+file://{top}"], env=env)
+            self.quietly(["nix", "copy", "--no-check-sigs", "--to", store, *sorted(inputs(json.loads(flake.stdout)))], env=env)
 
     def attach(self):
         """Streams the job's log, reconnecting after a dropped connection."""
@@ -374,22 +402,30 @@ class Run:
         self.say(f"cost ${spent['dollars']:.3f}, {spent['seconds'] / 3600:.2f} included hours")
 
     def destroy(self):
-        """Deletes by label, so a create whose answer never came is caught too.
-        If this cannot reach boat, the TTL stops the sandbox and the next run reaps it."""
+        """Deletes by name, so a create whose answer never came is caught too.
+        If this cannot reach boat, the TTL ends the sandbox."""
         for attempt in range(4):
             try:
-                for s in self.boat.sandboxes(f"&label=run%3D{self.id}"):
+                for s in self.boat.sandboxes(f"&namePrefix={self.name}"):
                     self.boat.delete(s["id"])
                     self.say(f"deleted {s['id']}")
                 return
             except (OSError, Refused) as e:
                 self.say(f"deleting failed ({e}); attempt {attempt + 1}")
                 time.sleep(5)
-        self.say("could not delete the sandbox; its TTL will stop it and the next run removes it")
+        self.say("could not delete the sandbox; its TTL will end it")
 
     def close(self):
         self.keys.cleanup()
         self.log.close()
+
+
+def inputs(flake):
+    """The store paths of a `nix flake archive --json` tree, itself left out."""
+    found = set()
+    for child in flake.get("inputs", {}).values():
+        found |= {child["path"]} | inputs(child)
+    return found
 
 
 def worktree():
@@ -405,6 +441,7 @@ def run_command(run, args, command):
     includes = [os.path.relpath(os.path.join(os.getcwd(), p), top) for p in args.include]
     run.start(args.size, seconds(args.ttl), args.base)
     run.connect()
+    run.prepare(bool(args.base))
     run.send(top, includes)
     run.say(f"source sent; running: {command}")
     code = run.job(command, prefix)
@@ -421,6 +458,7 @@ def refresh_base(run, args):
     in place until the new one has passed."""
     run.start(args.size, seconds(REFRESH_TTL), None, snapshots=True)
     run.connect()
+    run.prepare(False)
     run.quietly(run.ssh("bash -s"), input=BOOTSTRAP.encode())
     for seed in args.seeds or SEEDS:
         top = os.path.expanduser(seed)
@@ -430,7 +468,7 @@ def refresh_base(run, args):
         code = run.job(" && ".join(steps))
         if code:
             raise Failure(f"{top} did not pass, so {args.base} stays as it was")
-    run.quietly(run.ssh("rm -rf ~/work ~/job.* ~/.ssh/authorized_keys"))
+    run.quietly(run.ssh("rm -rf ~/work ~/job.* ~/nix-install.log ~/.android ~/.gradle ~/.ssh/authorized_keys; sed -i /ASCII_TOKEN/d ~/.bashrc"))
     run.boat.call("POST", "/saved-snapshots", {"sandboxId": run.sandbox, "name": args.base})
     while True:
         saved = run.boat.call("GET", f"/saved-snapshots/{args.base}")["snapshot"]
@@ -475,8 +513,10 @@ def main():
         code = refresh_base(run, args) if args.action == "refresh-base" else run_command(run, args, text)
     except Stopped as s:
         code = s.code
-    except (Failure, Refused, OSError, subprocess.CalledProcessError) as e:
+    except Failure as e:
         print(f"remote_run: {e}", file=sys.stderr)
+    except Exception:
+        traceback.print_exc()
     finally:
         for caught in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
             signal.signal(caught, signal.SIG_IGN)
