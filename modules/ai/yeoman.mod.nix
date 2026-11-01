@@ -259,11 +259,14 @@
       );
       # What Libri adds to its own tools on the seat's turns. Fastmail isn't
       # here: Libri's connection relays it, and refuses sending. Nor is the
-      # browser: Libri has no browser use for now (libri-browser.md).
+      # browser: Libri has no browser use for now (libri-browser.md). Nor is
+      # web: Libri's own web_search and web_fetch reach Parallel for every
+      # harness, with its retries.
       seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
         mcpServers = removeAttrs config.seat.mcpServers [
           "browser"
           "fastmail"
+          "web"
         ];
       };
       # Libri's assistant calls itself Libri; an instance here is itself by
