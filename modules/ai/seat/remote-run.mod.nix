@@ -2,6 +2,7 @@
 { lib, ... }:
 let
   inherit (lib.lists) singleton;
+  inherit (lib.strings) readFile;
 in
 {
   flake.homeModules.cockpit =
@@ -11,7 +12,7 @@ in
         flakeIgnore = [
           "E501"
         ];
-      } (builtins.readFile ./remote_run.py);
+      } (readFile ./remote_run.py);
     in
     {
       # nix stays the system's, from PATH, so the client matches the daemon.
