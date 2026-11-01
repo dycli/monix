@@ -271,10 +271,8 @@
           You go by ${i.name}, not Libri: you are ${role}, and wherever these
           instructions say Libri they mean you.
         '';
-      # The ship's guide for any harness.
-      seatGuide = pkgs.writeText "seat-libri-guide.md" (
-        "You are the ship's engineer.\n\n" + lib.ship.guide.system + lib.ship.guide.engineer
-      );
+      # What is true of this ship, for any harness.
+      seatGuide = pkgs.writeText "seat-libri-guide.md" lib.ship.guide;
 
       # An instance on Libri (`build`) reads its
       # settings from one TOML file (Libri's README, "Config"; the table in
