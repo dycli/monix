@@ -21,9 +21,6 @@
 
         nixpkgs.hostPlatform = "x86_64-linux";
 
-        # sshd answers on the trusted tailscale0 only.
-        services.openssh.openFirewall = false;
-
         # Advertised tailnet exit node; "server" enables the forwarding
         # sysctls. Devices opt in per network from the client.
         services.tailscale.useRoutingFeatures = "server";
