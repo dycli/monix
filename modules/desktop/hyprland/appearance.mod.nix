@@ -47,6 +47,8 @@
           misc = {
             disable_hyprland_logo = true;
             disable_splash_rendering = true;
+            # Lets a restarted hyprlock take over a lock whose client crashed.
+            allow_session_lock_restore = true;
           };
 
           cursor = {

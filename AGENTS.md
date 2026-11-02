@@ -4,8 +4,9 @@ All harnesses use this file for repository instructions. Do not add a
 `CLAUDE.md` wrapper. Claude Code 2.1.281 or later reads `AGENTS.md` natively,
 including sessions with telemetry disabled.
 
-Global instructions exist only on the AI seat: `modules/ai/seat/seat.mod.nix`
-writes the ship guide (`lib/guide.nix`) where each harness looks for them.
+Global instructions reach each harness on the AI seat through Libri's prompt.
+`lib/guide.nix` holds what is true of this host, as `harness.instructions`; the
+engineer's rules are in Libri's state, edited in its Settings.
 
 This repository follows the **Dendritic Pattern**: every `*.mod.nix` file in the
 tree is a flake-parts module and is discovered automatically by `flake.nix`.

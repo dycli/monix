@@ -70,6 +70,8 @@ in
   "hosts/water/secrets/cloudflare-dns-token.env.age".publicKeys = singleton water ++ admin;
   # Cloudflare account token, raw, "Read all resources", for the seat's Cloudflare MCP.
   "hosts/water/secrets/cloudflare-read-token.age".publicKeys = singleton water ++ admin;
+  # boat.dev API key, preset ci, for remote builds. The file holds the bare key.
+  "hosts/water/secrets/boat-api-key.age".publicKeys = singleton water ++ admin;
   # Fastmail API tokens, raw, type MCP (read, change, send), one per assistant;
   # Libri bars the model from sending and sends only what the captain approves.
   "hosts/water/secrets/sokka-fastmail-mcp-token.age".publicKeys = singleton water ++ admin;

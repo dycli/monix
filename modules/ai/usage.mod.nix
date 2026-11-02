@@ -1,5 +1,5 @@
-# usage: every subscription's limits (Claude, ChatGPT/Codex, OpenCode Go),
-# read live from each provider on each connection to /run/usage.sock and
+# usage: every subscription's limits (Claude, ChatGPT/Codex, OpenCode Go,
+# boat.dev), read live from each provider on each connection to /run/usage.sock and
 # never stored. The seat's `usage` and the household assistants' `usage`
 # tool both read it; only this service sees the logins. Claude's usage
 # endpoint takes only a full login, so it reads the seat's, which the seat
@@ -10,7 +10,12 @@
 {
   flake.nixosModules.lab = self.nixosModules.usage;
   flake.nixosModules.usage =
-    { lib, pkgs, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     let
       inherit (lib.attrsets) removeAttrs;
       inherit (lib.lists) singleton;
@@ -95,6 +100,7 @@
           LoadCredential = [
             "claude:${seat.home}/.claude/.credentials.json"
             "opencode:${seat.home}/.local/share/opencode/auth.json"
+            "boat:${config.secrets.boat-api-key.path}"
           ];
           ExecStart = getExe report;
           # AF_UNIX reaches usage-share.

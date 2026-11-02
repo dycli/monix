@@ -266,6 +266,11 @@
             repeating = true;
           }
         )
+        # The key is itself a modifier, so its own Alt may or may not be in the
+        # mask when the press is matched.
+        (mkBind "Alt_R" ''hl.dsp.global("hex:dictation")'' "Start or stop dictation" {
+          ignore_mods = true;
+        })
         (mkBind "XF86MonBrightnessUp"
           ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call osd brightnessUp")''
           "Brightness up"

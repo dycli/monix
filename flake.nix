@@ -84,6 +84,12 @@
     inputs.crate2nix.follows = "crate2nix";
   };
 
+  # Must follow nixpkgs: a separate glibc stops Vulkan and the window.
+  inputs.hex = {
+    url = "github:anomalyco/hex";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
   inputs.paseo = {
     url = "github:getpaseo/paseo";
     inputs.nixpkgs.follows = "nixpkgs";

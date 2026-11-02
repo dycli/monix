@@ -147,22 +147,14 @@
         '';
       };
 
-      # The seat's Libri keeps the managed settings (the seat's permissions),
-      # without their hooks, which Libri brings itself, and without the MCP
-      # list: Claude Code takes no other while one exists, and Libri hands it
-      # its own each turn.
-      seatClaudeEtc = pkgs.writeTextDir "managed-settings.json" (
-        lib.strings.toJSON (lib.attrsets.removeAttrs config.seat.claudeSettings [ "hooks" ])
-      );
-      # What Libri adds to its own tools on the seat's turns. Fastmail isn't
-      # here: Libri's connection relays it, and refuses sending.
+      # What Libri adds to its own tools on the seat's turns. Not web:
+      # Libri's own web_search and web_fetch reach Parallel for every
+      # harness, with its retries.
       seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
-        mcpServers = removeAttrs config.seat.mcpServers [ "fastmail" ];
+        mcpServers = removeAttrs config.seat.mcpServers [ "web" ];
       };
-      # The ship's guide for any harness, as Libri's turns read no rule files.
-      seatGuide = pkgs.writeText "seat-libri-guide.md" (
-        "You are the ship's engineer.\n\n" + lib.ship.guide.system + lib.ship.guide.engineer
-      );
+      # What is true of this ship, for any harness.
+      seatGuide = pkgs.writeText "seat-libri-guide.md" lib.ship.guide;
       # OpenCode and omp on the host's provider keys, as the seat has them:
       # each harness reads the keys from its own config, so Libri holds none.
       keys = {
@@ -272,9 +264,6 @@
             "AF_INET"
             "AF_INET6"
           ];
-          # Hides the seat's managed settings and MCP servers, which would
-          # forbid --strict-mcp-config.
-          BindReadOnlyPaths = singleton "${pkgs.writeTextDir "managed-settings.json" "{}"}:/etc/claude-code";
           EnvironmentFile = "-%t/%N/claude.env";
         };
     in
@@ -494,7 +483,6 @@
             RestartSec = 10;
             # Each turn's claude and what it runs; paseo's bound.
             MemoryHigh = "12G";
-            BindReadOnlyPaths = singleton "${seatClaudeEtc}:/etc/claude-code";
           };
         };
 

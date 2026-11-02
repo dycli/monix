@@ -218,32 +218,11 @@ message each, older lines cover more. Merges come in batches: past 128 KB
 the view merges down to 64 KB, then only grows, so its head stays the same
 and cached between batches. It is saved and loaded, never refolded at start,
 since a refold would differ from the live view. The service rewrites `view.md`
-atomically whenever the tree grows. On the seat, `~/.claude/rules/hippo-view.md`
-links to it, so Claude Code loads the whole view at session start and after
-every compaction with no tool call. Codex gets the same from a SessionStart
-hook in its system config, which prints the view at startup and
-after each compaction. In OpenCode a plugin appends one snapshot per session
-to the system prompt and takes a fresh one after compaction. Muse Code
-kills a hook that prints over 16 KB, so twelve start hooks each print one
-slice of under 15,000 bytes, which Muse joins in order.
+atomically whenever the tree grows.
 
-**Session compaction.** Claude Code and Codex compact at 200k tokens, and
-they and OpenCode write a short handoff instead of the usual summary:
-Claude Code's from a PreCompact hook, Codex's from its `compact_prompt`,
-OpenCode's from the plugin. Muse's summary prompt is not configurable, so
-it keeps its own. A session comes
-back as handoff plus fresh view rather than a long transcript summary.
-The view holds every chat at once, so a compacted chat could take up a
-parallel chat's work; the handoff opens by naming this chat's project, and
-a hook adds the chat's own latest messages, verbatim, after the view
-(`hippo chat`), last so the view stays cached.
-Compactions went from 97-113 seconds to 16-18. Each harness first runs
-`hippo fold`: the seat is the one reader that keeps a live context
-between reads of the view, so its raw lines only duplicate that context,
-and its cache is rewritten at compaction anyway. Folding there, instead of
-at 128 KB, is the batch at the boundary where it is free; the fresh
-context opens on a 64 KB view whose tail is the end of the last stretch at
-the usual falling resolution, and the chat itself is the raw frontier.
+**Session compaction.** Libri starts each message as a fresh harness session
+holding the whole view, so a harness compacts only when one turn fills its
+window. Its own summary then serves, and the next message starts clean.
 
 **CLI.** The agent drills down with `zoom` (a line into its two halves, down
 to the whole message), `date` and `search` (regex over
