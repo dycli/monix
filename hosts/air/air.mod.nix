@@ -19,6 +19,10 @@
         secrets.aang-password.file = ./aang-password.age;
         users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.aang-password.path;
 
+        secrets.air-tunnel-token.file = ./air-tunnel-token.age;
+        web.tunnelTokenFile = config.secrets.air-tunnel-token.path;
+        systemd.services.web-tunnel.restartTriggers = lib.lists.singleton ./air-tunnel-token.age;
+
         nixpkgs.hostPlatform = "x86_64-linux";
 
         # Advertised tailnet exit node; "server" enables the forwarding

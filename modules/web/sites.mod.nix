@@ -12,10 +12,19 @@
 {
   flake.nixosModules.web = self.nixosModules.sites;
   flake.nixosModules.sites =
-    { lib, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     let
       inherit (lib.attrsets) genAttrs listToAttrs nameValuePair;
       inherit (lib.lists) singleton;
+      inherit (lib.meta) getExe;
+      inherit (lib.modules) mkIf;
+      inherit (lib.ship) fences;
+      tokenFile = config.web.tunnelTokenFile;
 
       webRoot = "/srv/www";
 
@@ -25,8 +34,13 @@
         "cleary.org"
       ];
 
-      # Parked domains keep their certs warm and answer 503.
-      parked = singleton "cleary.is";
+      # Other names of ours send visitors to dylanc.com, path kept. They
+      # come in only through the tunnel, which speaks plain HTTP to nginx on
+      # loopback, so they need no cert.
+      redirected = [
+        "cleary.is"
+        "dylandavid.com"
+      ];
 
       extra = {
         # su.is keeps its small projects under /labs/; the old top-level
@@ -48,7 +62,38 @@
       };
     in
     {
+      options.web.tunnelTokenFile = lib.options.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "Token of the Cloudflare tunnel that carries the public sites to nginx.";
+      };
+
       config = {
+        # Cloudflare's edge reaches nginx through this outbound tunnel; its
+        # routes (hostname to loopback port) live in the tunnel's remote
+        # configuration at Cloudflare.
+        systemd.services.web-tunnel = mkIf (tokenFile != null) {
+          description = "Cloudflare Tunnel for the public sites";
+          wantedBy = singleton "multi-user.target";
+          wants = singleton "network-online.target";
+          after = [
+            "network-online.target"
+            "nginx.service"
+          ];
+          serviceConfig = {
+            DynamicUser = true;
+            LoadCredential = singleton "token:${tokenFile}";
+            ExecStart = "${getExe pkgs.cloudflared} tunnel --no-autoupdate run --token-file %d/token";
+            Restart = "always";
+            RestartSec = 5;
+            # Cloudflare's edge and loopback only; 127.0.0.0/8 is denied
+            # because the allow is a /24.
+            IPAddressAllow = fences.loopback;
+            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
+          };
+          environment.TUNNEL_TRANSPORT_PROTOCOL = "http2";
+        };
+
         services.nginx = {
           enable = true;
           recommendedTlsSettings = true;
@@ -75,11 +120,15 @@
               }
               // extra.${domain} or { }
             )
-            // genAttrs parked (domain: {
-              forceSSL = true;
-              enableACME = true;
-              locations."/".return = "503";
-            })
+            // listToAttrs (
+              map (
+                domain:
+                nameValuePair domain {
+                  serverAliases = singleton "www.${domain}";
+                  locations."/".return = "301 https://dylanc.com$request_uri";
+                }
+              ) redirected
+            )
             # www.<domain> answers with a 301 to the bare name, path kept,
             # so the bar drops the www. Each has its own cert, since
             # Cloudflare checks the origin's.
@@ -91,7 +140,7 @@
                   enableACME = true;
                   globalRedirect = domain;
                 }
-              ) (live ++ parked)
+              ) live
             );
         };
 
