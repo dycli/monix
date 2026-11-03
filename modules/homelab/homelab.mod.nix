@@ -192,8 +192,13 @@
       };
       services.nginx.virtualHosts."libri.${config.shipProxy.domain}".locations."/android/" = {
         alias = "/var/lib/libri-android/";
+        # This types block replaces nginx's whole map, so the release
+        # index needs its own html line or browsers download it.
         extraConfig = ''
-          types { application/vnd.android.package-archive apk; }
+          types {
+            application/vnd.android.package-archive apk;
+            text/html html;
+          }
         '';
       };
 
