@@ -14,7 +14,9 @@
   h1 { font: 400 30px/1.1 Georgia, serif; margin: 0; }
   nav { display: flex; gap: 4px; flex-wrap: wrap; }
   nav a { color: var(--mid); text-decoration: none; padding: 5px 12px; border-radius: 99px; }
-  nav a.switch { margin-left: auto; border: 1px solid var(--edge); }
+  nav .end { margin-left: auto; display: flex; gap: 4px; }
+  nav a.switch { border: 1px solid var(--edge); }
+  nav a.out { color: var(--soft); }
   nav a.on { background: var(--ink); color: var(--lift); }
   nav .count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 99px; background: var(--accent); color: var(--lift); font-size: 12px; text-align: center; }
   h2 { font: 400 20px Georgia, serif; margin: 0 0 10px; }
@@ -873,6 +875,11 @@ const TABS = MANAGER
   ? { schedule: loadSchedule, requests: loadRequests, usual: loadUsual, staff: loadStaff }
   : { schedule: loadSchedule, asks: loadAsks };
 $('#nav').addEventListener('click', e => {
+  if (e.target.classList.contains('out')) {
+    e.preventDefault();
+    localStorage.removeItem('view');
+    act(async () => { await fetch('/logout', { method: 'POST' }); location.replace('/'); }, e.target);
+  }
   if (!e.target.classList.contains('switch')) return;
   e.preventDefault();
   if (MANAGER) localStorage.view = 'staff'; else localStorage.removeItem('view');
@@ -882,7 +889,8 @@ $('#nav').addEventListener('click', e => {
 function show() {
   const tab = TABS[location.hash.slice(1)] ? location.hash.slice(1) : 'schedule';
   $('#nav').innerHTML = MANAGER ? `<a href="#schedule">Schedule</a><a href="#requests">Requests<span class="count" hidden></span></a><a href="#usual">Usual week</a><a href="#staff">Staff</a>` : `<a href="#schedule">Schedule</a><a href="#asks">Requests</a>`;
-  if (ROLE === 'admin') $('#nav').insertAdjacentHTML('beforeend', `<a href="#" class="switch">${MANAGER ? 'Staff view' : 'Manager view'}</a>`);
+  const sw = ROLE === 'admin' ? `<a href="#" class="switch">${MANAGER ? 'Staff view' : 'Manager view'}</a>` : '';
+  $('#nav').insertAdjacentHTML('beforeend', `<span class="end">${sw}<a href="#" class="out">Log out</a></span>`);
   for (const a of document.querySelectorAll('#nav a')) a.classList.toggle('on', a.hash === '#' + tab);
   for (const t of ['schedule', 'asks', 'requests', 'usual', 'staff']) $('#' + t).hidden = t !== tab;
   act(async () => {

@@ -1360,6 +1360,12 @@ impl Store {
         Ok(Some((t, role)))
     }
 
+    pub fn sign_out(&self, session: &str) -> Result<()> {
+        self.db
+            .execute("DELETE FROM sessions WHERE token = ?1", [session])?;
+        Ok(())
+    }
+
     /// Who a browser is. Until the manager's password is set, everyone is
     /// the manager, so the first visit can set things up.
     pub fn role(&self, session: Option<&str>) -> Result<Option<Role>> {
@@ -1648,6 +1654,18 @@ mod tests {
         assert!(s.sign_in(" flat white ").unwrap().is_some());
         s.set_password(Role::Staff, "cappuccino ").unwrap();
         assert!(s.sign_in("cappuccino").unwrap().is_some());
+    }
+
+    #[test]
+    fn signing_out_ends_only_that_session() {
+        let s = store();
+        s.set_password(Role::Staff, "macchiato").unwrap();
+        s.set_password(Role::Admin, "cortado").unwrap();
+        let (t, _) = s.sign_in("macchiato").unwrap().unwrap();
+        let (u, _) = s.sign_in("cortado").unwrap().unwrap();
+        s.sign_out(&t).unwrap();
+        assert_eq!(s.role(Some(&t)).unwrap(), None);
+        assert_eq!(s.role(Some(&u)).unwrap(), Some(Role::Admin));
     }
 
     #[test]
