@@ -1,12 +1,11 @@
-# The public web role: static sites behind nginx with HTTP-01 certs. The
-# ship's one internet-facing surface — the host exposes exactly 80/443 and
-# keeps admin access tailnet-only.
+# The public web role: static sites behind nginx, reached only through an
+# outbound Cloudflare tunnel. The host opens no public port: Cloudflare's edge
+# holds the certificates and speaks plain HTTP to nginx on loopback, and
+# admin access is tailnet-only.
 #
 # Site content is deliberately not in the store: the site repos build locally
 # and rsync to /srv/www/<domain> as the unprivileged `deploy` user.
 #
-# dylanc.com and su.is sit behind Cloudflare's proxy; HTTP-01 still works
-# because /.well-known/acme-challenge passes to the origin over plain HTTP.
 # Only the su.is apex lives here; *.su.is is the tailnet front door.
 { self, ... }:
 {
@@ -34,9 +33,7 @@
         "cleary.org"
       ];
 
-      # Other names of ours send visitors to dylanc.com, path kept. They
-      # come in only through the tunnel, which speaks plain HTTP to nginx on
-      # loopback, so they need no cert.
+      # Other names of ours send visitors to dylanc.com, path kept.
       redirected = [
         "cleary.is"
         "dylandavid.com"
@@ -96,7 +93,11 @@
 
         services.nginx = {
           enable = true;
-          recommendedTlsSettings = true;
+          # The tunnel is the only client; nothing listens beyond loopback.
+          defaultListen = singleton {
+            addr = "127.0.0.1";
+            port = 80;
+          };
           recommendedGzipSettings = true;
           recommendedOptimisation = true;
 
@@ -114,8 +115,6 @@
             genAttrs live (
               domain:
               {
-                forceSSL = true;
-                enableACME = true;
                 root = "${webRoot}/${domain}";
               }
               // extra.${domain} or { }
@@ -130,27 +129,18 @@
               ) redirected
             )
             # www.<domain> answers with a 301 to the bare name, path kept,
-            # so the bar drops the www. Each has its own cert, since
-            # Cloudflare checks the origin's.
+            # so the bar drops the www. The scheme is written out: nginx
+            # sees plain HTTP from the tunnel, while visitors arrive over
+            # HTTPS at Cloudflare's edge.
             // listToAttrs (
               map (
                 domain:
                 nameValuePair "www.${domain}" {
-                  forceSSL = true;
-                  enableACME = true;
-                  globalRedirect = domain;
+                  locations."/".return = "301 https://${domain}$request_uri";
                 }
               ) live
             );
         };
-
-        security.acme.acceptTerms = true;
-        security.acme.defaults.email = "dylan@dylandavid.com";
-
-        networking.firewall.allowedTCPPorts = [
-          80
-          443
-        ];
 
         # The rsync target for the deploy scripts. Tailscale SSH authenticates
         # it against the tailnet policy, so no key material lives here.
