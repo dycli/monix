@@ -252,6 +252,20 @@ async fn sign_in(State(app): State<App>, Form(f): Form<Password>) -> Response {
     }
 }
 
+async fn sign_out(State(app): State<App>, headers: HeaderMap) -> Response {
+    if let Some(t) = session(&headers) {
+        let done = app.lock().unwrap_or_else(|p| p.into_inner()).sign_out(&t);
+        if let Err(e) = done {
+            return reply::<()>(&app, |_| Err(e));
+        }
+    }
+    let gone = [(
+        header::SET_COOKIE,
+        format!("{COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"),
+    )];
+    (gone, Redirect::to("/")).into_response()
+}
+
 #[derive(Deserialize)]
 struct NewPassword {
     role: Role,
@@ -341,6 +355,7 @@ async fn main() {
         .merge(board_routes)
         .route("/", get(page))
         .route("/login", post(sign_in))
+        .route("/logout", post(sign_out))
         .with_state(app);
     let listen = env("ENDGRAIN_LISTEN");
     let socket = tokio::net::TcpListener::bind(&listen)
