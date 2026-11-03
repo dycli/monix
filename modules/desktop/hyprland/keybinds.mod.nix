@@ -266,11 +266,11 @@
             repeating = true;
           }
         )
-        # The key is itself a modifier, so its own Alt may or may not be in the
-        # mask when the press is matched.
-        (mkBind "Alt_R" ''hl.dsp.global("hex:dictation")'' "Start or stop dictation" {
-          ignore_mods = true;
-        })
+        # Hex registers dictation under its own shortcut setting (default
+        # Alt+Space) as "dictation-ALT-space", and Hyprland fires only ids
+        # it bound. Hex cannot request End through the portal, so the key
+        # lives here; changing Hex's shortcut in its window renames the id.
+        (mkBind "End" ''hl.dsp.global("anomaly.hex:dictation-ALT-space")'' "Start or stop dictation" { })
         (mkBind "XF86MonBrightnessUp"
           ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call osd brightnessUp")''
           "Brightness up"
