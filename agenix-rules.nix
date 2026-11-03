@@ -20,6 +20,7 @@ in
   "hosts/earth/dylan-password.age".publicKeys = singleton earth ++ admin;
 
   "hosts/air/aang-password.age".publicKeys = singleton air ++ admin;
+  "hosts/air/air-tunnel-token.age".publicKeys = singleton air ++ admin;
 
   "hosts/fire/zuko-password.age".publicKeys = singleton fire ++ admin;
 

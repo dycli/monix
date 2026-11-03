@@ -427,18 +427,18 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1793636553,
-        "narHash": "sha256-ZjwS3LD33teNPdS/7zCciuIZPvxWiKtMJeCxyUJl2xE=",
-        "ref": "portable",
-        "rev": "e6a4880709b0da7df14226ba8fd382d9072a14c2",
-        "revCount": 626,
+        "lastModified": 1793715844,
+        "narHash": "sha256-S5CH2F/d/a/TXMTP6WJ675rIIGVKsleBC1FOQJYbu50=",
+        "ref": "portable2",
+        "rev": "0c21e034276778bca21c9e5c70534516da8082cf",
+        "revCount": 664,
         "type": "git",
-        "url": "file:///home/bridge/ark/libri"
+        "url": "ssh://git@github.com/dycli/libri"
       },
       "original": {
-        "ref": "portable",
+        "ref": "portable2",
         "type": "git",
-        "url": "file:///home/bridge/ark/libri"
+        "url": "ssh://git@github.com/dycli/libri"
       }
     },
     "microvm": {

@@ -69,10 +69,11 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  # The assistant Water runs. Its repository has no remote: this resolves on
-  # Water alone, the one host that imports it.
+  # The assistant Water runs. The repository is private and Nix holds no
+  # GitHub token, so this fetches over SSH with the seat's key; a deploy,
+  # run as root, finds the locked source already in the store by its hash.
   inputs.libri = {
-    url = "git+file:///home/bridge/ark/libri?ref=portable";
+    url = "git+ssh://git@github.com/dycli/libri?ref=portable2";
     inputs.nixpkgs.follows = "nixpkgs";
     inputs.crate2nix.follows = "crate2nix";
   };

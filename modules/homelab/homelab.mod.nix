@@ -12,10 +12,6 @@
       inherit (lib.lists) singleton;
     in
     {
-      # sshd stays reachable over the tailnet, whose interface is trusted;
-      # port 22 never opens publicly.
-      services.openssh.openFirewall = lib.modules.mkDefault false;
-
       # Use MagicDNS names and the tailnet's filtering resolver.
       services.tailscale.extraSetFlags = singleton "--accept-dns=true";
 

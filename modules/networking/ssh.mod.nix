@@ -10,8 +10,9 @@
       services.openssh = {
         enable = true;
 
-        # Desktops keep the default open port for the LAN; the homelab
-        # bundle closes it (tailnet-only, tailscale0 is trusted).
+        # Every host answers SSH over the tailnet only: tailscale0 is
+        # trusted, so port 22 never opens on any other interface.
+        openFirewall = mkDefault false;
 
         settings = {
           PasswordAuthentication = mkDefault false;

@@ -19,10 +19,11 @@
         secrets.aang-password.file = ./aang-password.age;
         users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.aang-password.path;
 
-        nixpkgs.hostPlatform = "x86_64-linux";
+        secrets.air-tunnel-token.file = ./air-tunnel-token.age;
+        web.tunnelTokenFile = config.secrets.air-tunnel-token.path;
+        systemd.services.web-tunnel.restartTriggers = lib.lists.singleton ./air-tunnel-token.age;
 
-        # sshd answers on the trusted tailscale0 only.
-        services.openssh.openFirewall = false;
+        nixpkgs.hostPlatform = "x86_64-linux";
 
         # Advertised tailnet exit node; "server" enables the forwarding
         # sysctls. Devices opt in per network from the client.
