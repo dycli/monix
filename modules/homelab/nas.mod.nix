@@ -38,7 +38,6 @@
         "var/lib/private/seerr"
         "var/lib/suki"
         "var/lib/yeoman-pages"
-        "var/lib/bridge"
         "var/lib/endgrain"
         "var/lib/keepass"
         "srv/minecraft"

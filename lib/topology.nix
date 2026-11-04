@@ -14,8 +14,6 @@
     # for a change that needs monix and the build together lets a monix rollback
     # return to the build it ran with.
     libriBuild = "/var/lib/libri-build/libri";
-    # bridge, the seat's notes and plans (notes.mod.nix).
-    notes = "/var/lib/bridge";
   };
   # The assistants' household (libri.mod.nix); the seat is in it too.
   household = "/var/lib/yeoman-household";

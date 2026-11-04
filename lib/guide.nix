@@ -19,16 +19,6 @@
     memory_zoom and agent_chat do.
   - `hippo search <regex>` does what memory_search does.
 
-  ## Notes: bridge
-
-  `/var/lib/bridge` holds what is true now: plans, open items, decisions and the
-  facts behind them, one topic per short markdown page, rewritten in place.
-  hippo holds what was said. Read a project's page before planning or resuming
-  it, and update it in the same turn a plan or fact changes. `open-items.md` is
-  the running list. Names are lowercase with hyphens. Check a page untouched for
-  months against hippo. The captain reads it in Obsidian as the vault "bridge",
-  synced by Syncthing.
-
   ## Usage
 
   `usage` shows each subscription's limits (Claude, ChatGPT/Codex, OpenCode Go,
