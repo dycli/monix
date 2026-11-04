@@ -6,7 +6,8 @@
       wayland.windowManager.hyprland.settings = {
         config.input = {
           kb_layout = "us";
-          kb_options = "compose:caps";
+          # Caps Lock does nothing on its own; keybinds.mod.nix binds its keycode to Hex.
+          kb_options = "caps:none";
 
           follow_mouse = 1;
           sensitivity = 0;
