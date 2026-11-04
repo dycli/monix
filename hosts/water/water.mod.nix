@@ -17,6 +17,7 @@
           self.nixosModules.gaming
           self.nixosModules.creative
           self.nixosModules.davinci-resolve
+          self.nixosModules.agent-desktops
           self.nixosModules.radeon-7900xtx
           self.nixosModules.inference-radeon-24gb
           self.nixosModules.inference-client

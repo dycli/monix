@@ -97,9 +97,8 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  inputs.omp = {
-    url = "github:can1357/oh-my-pi";
-  };
+  # Not following our nixpkgs keeps numtide's builds reproducible as published.
+  inputs.llm-agents.url = "github:numtide/llm-agents.nix";
 
   outputs =
     inputs:

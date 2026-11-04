@@ -1,7 +1,7 @@
 # Packages that carry no configuration; anything with config has its own file.
 # The system list reaches every user on every host; the home lists are bundle
 # members.
-{ self, inputs, ... }:
+{ self, ... }:
 {
   flake.nixosModules.default = self.nixosModules.packages;
   flake.nixosModules.packages =
@@ -59,12 +59,6 @@
         "spotify"
       ];
     };
-  flake.nixosModules.dev =
-    { lib, ... }:
-    {
-      unfreePackages = lib.lists.singleton "claude-code";
-    };
-
   # The graphical session's utilities and applications.
   flake.homeModules.desktop = self.homeModules.packages-desktop;
   flake.homeModules.packages-desktop =
@@ -108,33 +102,18 @@
   flake.homeModules.dev = self.homeModules.packages-dev-extras;
   flake.homeModules.packages-dev-extras =
     { pkgs, ... }:
-    let
-      # Meta's terminal coding agent: a static binary, pinned by version from
-      # the release manifest its launcher reads (no package in nixpkgs). Bump
-      # the version and hash together; the launcher's self-update is skipped.
-      muse-code = pkgs.stdenvNoCC.mkDerivation (final: {
-        pname = "muse-code";
-        version = "1.4.6-R6000.1";
-        src = pkgs.fetchurl {
-          url = "https://lookaside.facebook.com/lookaside/muse/download/?channel=muse&version=${final.version}&file=muse-x86-linux";
-          hash = "sha256-gqSVVCllpbYlb3rNuBaTRRwoZApBnVUorYNA6pPzb28=";
-        };
-        dontUnpack = true;
-        installPhase = "install -D $src $out/bin/muse";
-        meta.mainProgram = "muse";
-      });
-      omp = inputs.omp.packages.${pkgs.stdenv.hostPlatform.system}.omp;
-    in
     {
       home.packages = [
-        muse-code
+        pkgs.antigravity-cli
+        pkgs.muse-code
         pkgs.cargo
         pkgs.claude-code
         pkgs.clippy
         pkgs.codex
         pkgs.gcc
         pkgs.opencode
-        omp
+        pkgs.omp
+        pkgs.pi
         pkgs.hugo
         # The codex plugin's hooks invoke node directly.
         pkgs.nodejs
