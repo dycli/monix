@@ -1,10 +1,12 @@
-# ship-check: monix's checks, one at a time on the host. A full check
-# evaluates every host (~10 GB) and builds each crate three times; two at
-# once ran Water out of memory on 2026-10-17 and froze it on 2026-10-22.
-# The lock makes a second check wait for the first instead.
+# ship-check: monix's checks, one at a time on the host, each in its own
+# nix process. One process evaluating all four hosts peaked at 4.9 GB; one
+# per check peaks at the largest host, 3.0 GB, for twice the evaluation time
+# (52 s, 2026-11-03). Two checks at once ran Water out of memory on
+# 2026-10-17 and froze it on 2026-10-22, so the lock makes a second check
+# wait for the first.
 #
-# `ship-check` alone runs `nix flake check`. Named checks build only those,
-# plus the cheap style gates: `ship-check yeoman water` for a change inside
+# `ship-check` alone builds every check. Named checks build only those, plus
+# the cheap style gates: `ship-check yeoman water` for a change inside
 # yeoman's crate. A host name stands for its system build.
 { self, ... }:
 {
@@ -29,7 +31,11 @@
               flock 9
             fi
             if [ $# -eq 0 ]; then
-              exec nix flake check
+              for name in ${lib.strings.concatStringsSep " " (lib.attrsets.attrNames self.checks.x86_64-linux)}; do
+                echo "ship-check: $name" >&2
+                nix build --no-link ".#checks.x86_64-linux.$name"
+              done
+              exit
             fi
             targets=()
             for name in "$@" rustfmt nixfmt nix-style secrets-rules; do
