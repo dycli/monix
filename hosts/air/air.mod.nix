@@ -1,5 +1,6 @@
 # air — cloud VPS carrying the internet-facing web role (modules/web/sites).
-# Public surface is nginx's 80/443 alone; everything else rides the tailnet.
+# No public port: the sites leave through an outbound Cloudflare tunnel and
+# everything else rides the tailnet.
 #
 # Vultr cloud instance, installed via nixos-anywhere from the live ISO.
 # Tailscale enrollment is provisioned out of band, not by the flake.

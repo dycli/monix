@@ -38,14 +38,42 @@ let
     }).rootCrate.build;
 in
 if check then
+  let
+    # The gate wants verdicts, not fast code: the crate itself compiles
+    # unoptimised (its dependencies stay the release builds the hosts use),
+    # and without the full debuginfo buildRustCrate gives a debug build,
+    # which costs rustc memory and time and which no test failure prints.
+    # Tests keep line tables, for their backtraces.
+    harness = build {
+      release = false;
+      buildTests = true;
+      extraRustcOpts = [ "-C debuginfo=line-tables-only" ];
+    };
+  in
   pkgs.linkFarm "${manifest.name}-check" {
-    tests = (build { }).override {
-      runTests = true;
-      testInputs = nativeCheckInputs;
+    # The test harness alone, run from the source tree as Cargo runs it.
+    # crate2nix's runTests also compiles the crate's binaries, to copy beside
+    # the harness for tests that run them; none of these tests do.
+    tests = pkgs.stdenvNoCC.mkDerivation {
+      name = "${manifest.name}-tests";
+      # The harness's own source, unpacked where it was compiled, so
+      # CARGO_MANIFEST_DIR still leads to the crate's test fixtures.
+      inherit (harness) src;
+      nativeBuildInputs = nativeCheckInputs;
+      buildPhase = ''
+        set -o pipefail
+        export RUST_BACKTRACE=1
+        for test in ${harness}/tests/*; do
+          "$test" 2>&1 | tee -a $out
+        done
+      '';
+      dontInstall = true;
     };
     clippy = build {
+      release = false;
       useClippy = true;
       lints.rust.warnings = "deny";
+      extraRustcOpts = [ "-C debuginfo=0" ];
       # buildRustCrate builds binaries through make without exporting the
       # driver, so they would quietly compile with plain rustc.
       preBuild = "export RUSTC_DRIVER";

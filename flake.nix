@@ -70,10 +70,11 @@
   };
 
   # The assistant Water runs. The repository is private and Nix holds no
-  # GitHub token, so this fetches over SSH with the seat's key; a deploy,
-  # run as root, finds the locked source already in the store by its hash.
+  # GitHub token, so this fetches over HTTPS through git, whose credential
+  # helper is the seat's gh sign-in; a deploy, run as root, finds the locked
+  # source already in the store by its hash.
   inputs.libri = {
-    url = "git+ssh://git@github.com/dycli/libri?ref=portable2";
+    url = "git+https://github.com/dycli/libri?ref=portable3";
     inputs.nixpkgs.follows = "nixpkgs";
     inputs.crate2nix.follows = "crate2nix";
   };
