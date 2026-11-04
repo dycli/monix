@@ -7,7 +7,8 @@
 # restart leaves alone, the way switcharoo runs outside what it switches.
 #
 # - The logic stays Libri's deploy_libri.sh, run from the commit it deploys:
-#   checks, build, wait for quiet, restart, health check, rollback.
+#   build, wait for quiet, restart, health check, rollback. It runs no
+#   checks: main takes only commits the full flake check passed.
 # - The source is the NAS mirror of GitHub, refreshed first, so only pushed
 #   main deploys and nobody's checkout is touched.
 # - It runs as the seat, whose polkit rule already lets it restart hippo and
@@ -103,7 +104,7 @@
           StateDirectory = "libri-deploy";
           StateDirectoryMode = "0755";
           ExecStart = getExe deploy;
-          # Checks and build, then up to deploy_libri.sh's 30-minute quiet wait.
+          # The build, then up to deploy_libri.sh's 30-minute quiet wait.
           TimeoutStartSec = "3h";
         };
       };
