@@ -28,7 +28,7 @@
           if hl.plugin.hy3 and hl.get_config("general.layout") == "hy3" then
             hl.plugin.hy3.move_focus("${direction}")()
           else
-            hl.dsp.focus({ direction = "${direction}" })()
+            hl.dispatch(hl.dsp.focus({ direction = "${direction}" }))
           end
         end
       '';
@@ -38,7 +38,7 @@
           if hl.plugin.hy3 and hl.get_config("general.layout") == "hy3" then
             hl.plugin.hy3.move_window("${direction}")()
           else
-            hl.dsp.window.move({ direction = "${direction}" })()
+            hl.dispatch(hl.dsp.window.move({ direction = "${direction}" }))
           end
         end
       '';

@@ -77,7 +77,7 @@
         -- keybinds.mod.nix because they come and go with the profile.
         local function scrolling_message(message)
           return function()
-            hl.dsp.layout(message)()
+            hl.dispatch(hl.dsp.layout(message))
           end
         end
         local scrolling_binds = {
