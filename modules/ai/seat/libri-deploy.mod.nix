@@ -42,6 +42,8 @@
         runtimeInputs = [
           config.nix.package
           config.systemd.package
+          # deploy_libri.sh runs under sh; the unit's PATH has none otherwise.
+          pkgs.bash
           pkgs.coreutils
           pkgs.curl
           pkgs.git
