@@ -74,7 +74,7 @@
   # helper is the seat's gh sign-in; a deploy, run as root, finds the locked
   # source already in the store by its hash.
   inputs.libri = {
-    url = "git+https://github.com/dycli/libri?ref=portable3";
+    url = "git+https://github.com/dycli/libri?ref=main";
     inputs.nixpkgs.follows = "nixpkgs";
     inputs.crate2nix.follows = "crate2nix";
   };
