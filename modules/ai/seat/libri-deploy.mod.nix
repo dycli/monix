@@ -6,21 +6,46 @@
 # rollback (11-03 16:16). Here the deploy runs in its own cgroup, which the
 # restart leaves alone, the way switcharoo runs outside what it switches.
 #
-# - The logic stays Libri's deploy_libri.sh, run from the commit it deploys:
-#   build, wait for quiet, restart, health check, rollback. It runs no
-#   checks: main takes only commits the full flake check passed.
+# - The logic is deploy_libri.sh in libri-deploy/ beside this file, run on a
+#   checkout of the commit it deploys: build, wait for quiet, restart, health
+#   check, rollback. It runs no checks: main takes only commits the full flake
+#   check passed. It lives here, not in Libri, which holds the product only;
+#   so do the ship's Android publish and proofs.
 # - The source is the NAS mirror of GitHub, refreshed first, so only pushed
 #   main deploys and nobody's checkout is touched.
 # - It runs as the seat, whose polkit rule already lets it restart hippo and
 #   Libri; polkit lets the seat start this unit and do nothing else to it.
 #   systemd runs one start at a time; a start while one runs joins it.
-# - A worker starts it with `systemctl start --no-block libri-deploy.service`
-#   and ends its turn: the deploy waits for quiet, and a worker waiting on it
+# - A worker starts it with `libri-start-deploy NAME` and ends its turn: the deploy waits for quiet, and a worker waiting on it
 #   would keep Libri busy until the quiet limit.
 # - The result is in /var/lib/libri-deploy: `status` (commit, start, end,
 #   result: live, rolled back, not deployed, already live) and `deploy.log`.
 { self, ... }:
+let
+  scripts = ./libri-deploy;
+in
 {
+  perSystem =
+    { pkgs, ... }:
+    {
+      # Each way a deploy can end, played out with nix, systemctl and curl
+      # stood in for.
+      checks.libri-deploy =
+        pkgs.runCommand "libri-deploy-check"
+          {
+            nativeBuildInputs = [
+              pkgs.python3
+              pkgs.git
+              pkgs.jq
+            ];
+          }
+          ''
+            export HOME=$TMPDIR
+            python3 -I ${scripts}/check_deploy.py ${scripts}/await_quiet.sh ${scripts}/deploy_libri.sh
+            touch $out
+          '';
+    };
+
   flake.nixosModules.seat = self.nixosModules.libri-deploy;
   flake.nixosModules.libri-deploy =
     {
@@ -71,7 +96,7 @@
 
           status=0
           DEPLOY_LIBRI_LOG=$log DEPLOY_LIBRI_LINK=${seat.libriBuild} \
-            sh "$checkout/deploy_libri.sh" || status=$?
+            sh ${scripts}/deploy_libri.sh "$checkout" || status=$?
           cat "$log"
 
           if ((status == 0)); then
@@ -88,8 +113,19 @@
           exit "$status"
         '';
       };
+      startDeploy = pkgs.writeShellScriptBin "libri-start-deploy" ''
+        exec ${pkgs.bash}/bin/sh ${scripts}/start_deploy.sh "$@"
+      '';
+      publishAndroid = pkgs.writeShellScriptBin "libri-publish-android" ''
+        exec ${pkgs.bash}/bin/bash ${scripts}/publish_android.sh "$@"
+      '';
     in
     {
+      environment.systemPackages = [
+        startDeploy
+        publishAndroid
+      ];
+
       systemd.services.libri-deploy = {
         description = "Deploy Libri main to the seat's Libri";
         # A start refreshes the mirror first; its failure leaves the last
