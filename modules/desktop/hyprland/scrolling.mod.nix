@@ -71,8 +71,43 @@
           },
         }
 
+        -- niri-style binds that exist only while scrolling is the layout, so
+        -- under hy3 and dwindle these keys reach applications as before. None
+        -- of these keys is bound anywhere else. They live here rather than in
+        -- keybinds.mod.nix because they come and go with the profile.
+        local function scrolling_message(message)
+          return function()
+            hl.dsp.layout(message)()
+          end
+        end
+        local scrolling_binds = {
+          { "SUPER + CTRL + LEFT", scrolling_message("swapcol l"), "Move column left" },
+          { "SUPER + CTRL + RIGHT", scrolling_message("swapcol r"), "Move column right" },
+          { "SUPER + CTRL + C", scrolling_message("center"), "Center column" },
+          { "SUPER + SHIFT + mouse_down", scrolling_message("focus r"), "Focus column right" },
+          { "SUPER + SHIFT + mouse_up", scrolling_message("focus l"), "Focus column left" },
+        }
+        -- niri stacks workspaces vertically and switches them with a vertical
+        -- swipe. The four-finger horizontal workspace swipe in input.mod.nix
+        -- stays as it is in every layout; this adds the vertical direction.
+        local scrolling_gesture = { fingers = 4, direction = "vertical", action = "workspace" }
+
+        local function enter_scrolling()
+          for _, b in ipairs(scrolling_binds) do
+            hl.bind(b[1], b[2], { description = b[3] })
+          end
+          hl.gesture(scrolling_gesture)
+        end
+
+        local function leave_scrolling()
+          for _, b in ipairs(scrolling_binds) do
+            hl.unbind(b[1])
+          end
+          hl.gesture({ fingers = 4, direction = "vertical", action = "unset" })
+        end
+
         -- Each Lua state starts from the config file, whose layout is never
-        -- scrolling, so "other" is already in force.
+        -- scrolling, so "other" is already in force and nothing above is bound.
         local applied_profile = "other"
 
         hl.on("config.props_refreshed", function()
@@ -81,7 +116,17 @@
             -- Set first: this hl.config schedules another refresh, which
             -- must find nothing left to do.
             applied_profile = wanted
-            hl.config(layout_profiles[wanted])
+            local profile = layout_profiles[wanted]
+            -- niri draws no titlebars. hyprbars is nil until its .so loads.
+            if hl.plugin.hyprbars then
+              profile.plugin = { hyprbars = { enabled = wanted ~= "scrolling" } }
+            end
+            hl.config(profile)
+            if wanted == "scrolling" then
+              enter_scrolling()
+            else
+              leave_scrolling()
+            end
           end
         end)
       '';
