@@ -1,15 +1,15 @@
 # Libri on Water (Libri's nix/module.nix): one assistant per person, each in
 # the endless web chat of its own Libri, with its own memory. `libri` is the
 # seat itself behind that chat, Bridge for Dylan on the seat's logins, tools
-# and hippo. `suki` is Gab's, sandboxed under her own user, with her own hippo
-# unit and a computer for code (assistant-computer.mod.nix). Each runs whatever
-# build its link in /var/lib/libri-build points at, so the seat rebuilds
-# without a deploy.
+# and hippo. `suki` is Gab's: Libri as anyone installs it, sandboxed under her
+# own user, its hippo its own child, with a computer for code
+# (assistant-computer.mod.nix). Both run the one build at seat.libriBuild,
+# which deploy_libri.sh moves and restarts both on, so a Libri change needs
+# no switch here.
 #
-# All of Libri's settings sit in its config file. The links move on their own
-# schedule and Suki's follows the branch `stable`, which reads the same keys
-# under the old YEOMAN_ environment names, so this file writes only keys both
-# builds know: an unknown key stops a build from starting.
+# All of Libri's settings sit in its config file: an unknown key stops the
+# build from starting. Each offers the harnesses on its own PATH; Suki's
+# holds only Claude Code.
 #
 # Model calls reach only what the instance's MCP file names. Suki has pictures
 # (assistant-image.py), drawn by the image service, the only assistant-side
@@ -69,7 +69,6 @@
       site = unit: subdomain: {
         listen = "127.0.0.1:${toString ports.${unit}}";
         url = host subdomain;
-        site = "/var/lib/libri-build/${unit}/site";
         pages = "${pages}/${unit}";
         pages_url = host subdomain;
         # The app at libri.su.is talks to it, with no sign-in on the tailnet.
@@ -177,25 +176,10 @@
 
       suki = "/var/lib/suki";
       sukiDesk = "${computers.desks}/suki";
-      # Her tool server, under the name her build gives its own entry. The
-      # household stays here, not in her config: her build's wrapper unsets
-      # it for the daemon (Libri flake.nix `default`), and only the tools
-      # may have it. The entry becomes `libri`, with LIBRI_ names, the day
-      # `stable` carries the rename; the daemon passes the rest down itself.
+      # The servers Gab added beside Libri's own, which the daemon hands
+      # every turn itself.
       sukiMcp = (pkgs.formats.json { }).generate "suki-mcp.json" {
         mcpServers = {
-          yeoman = {
-            type = "stdio";
-            command = "/var/lib/libri-build/suki/bin/libri";
-            args = [
-              "tools"
-              suki
-            ];
-            env = {
-              YEOMAN_HOUSE = house;
-              YEOMAN_MEMBERS = members;
-            };
-          };
           image = {
             type = "stdio";
             command = getExe image;
@@ -253,10 +237,6 @@
             "yeoman-image"
             "yeoman-household"
             "usage"
-            # Read access to the money service's finance.db, not its vault.
-            "finance"
-            # And the money service's socket, to change them.
-            "money"
             computers.deskGroup
           ];
           RestrictAddressFamilies = [
@@ -290,41 +270,35 @@
             # Full ids, so the picker can show each model's version.
             models = "claude-opus-5-5,claude-sonnet-5-5,claude-haiku-5-5,claude-fable-5-1";
             efforts = "low,medium,high,xhigh,max";
+            # llm-agents installs OpenCode 2 under this name (agent-clis.mod.nix).
+            opencode.command = "opencode2";
           };
         };
       };
 
       services.libri.instances.suki = {
-        package = "/var/lib/libri-build/suki";
+        package = seat.libriBuild;
         harnesses = singleton pkgs.claude-code;
         settings = lib.recursiveUpdate (shared "suki") {
           name = "Suki";
           person = "Gab";
           style = "Gab likes a slightly warmer tone.";
-          timezone = config.time.timeZone;
           daemon = site "suki" "suki";
           hippo = {
-            dir = "${suki}/hippo";
-            # Its compactor is its hippo unit's, not Libri's Settings.
             backend = "claude";
+            model = "haiku";
+            effort = "high";
+          };
+          # Notes to and from the other assistants and the seat.
+          household = {
+            dir = house;
+            inherit members;
           };
           harness = {
             mcp = "/run/suki/mcp.json";
             identity = toString (identity "Suki" "Gab's household assistant");
             # An assistant: Libri's tools only, no shell or files.
             coding = "0";
-          };
-          tools = {
-            # Only the stable build Suki runs has these tools; Libri itself
-            # dropped them, so they go with her move onto it.
-            home = "1";
-            requests = "/run/credentials/suki.service/requests";
-            seerr = "http://127.0.0.1:${toString config.shipProxy.routes.q.port}";
-            finance = "/var/lib/money/${config.money.environment}/finance.db";
-            money = "/run/money.sock";
-            # Portsmouth, NH.
-            weather = "43.07,-70.76";
-            ytdlp = getExe pkgs.yt-dlp;
           };
           computer = {
             run = "http://${computers.addr computers.indexes.suki}:${toString computers.runPort}";
@@ -395,7 +369,7 @@
       security.polkit.extraConfig = ''
         polkit.addRule(function (action, subject) {
           if (action.id == "org.freedesktop.systemd1.manage-units" &&
-              ["hippo.service", "libri.service", "libri-hippo.service", "suki.service", "suki-hippo.service"].indexOf(action.lookup("unit")) >= 0 &&
+              ["hippo.service", "libri.service", "libri-hippo.service", "suki.service"].indexOf(action.lookup("unit")) >= 0 &&
               ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
               subject.user == "${seat.user}") {
             return polkit.Result.YES;
@@ -545,45 +519,14 @@
           '';
         };
 
-        suki-hippo = {
-          description = "Suki's memory";
-          wantedBy = singleton "multi-user.target";
-          path = singleton pkgs.claude-code;
-          environment = {
-            HIPPO_DIR = "${suki}/hippo";
-            HIPPO_AGENT = "Suki";
-            HIPPO_VIEW = "128000";
-            HIPPO_BACKEND = "claude";
-            HIPPO_MODEL = "haiku";
-            HIPPO_EFFORT = "high";
-          };
-          serviceConfig = sukiSandbox // {
-            StateDirectory = [
-              "suki"
-              "suki/hippo"
-            ];
-            StateDirectoryMode = "0700";
-            LoadCredential = "claude-key:${config.secrets.suki-claude-key.path}";
-            RuntimeDirectory = "suki-hippo";
-            RuntimeDirectoryMode = "0700";
-            ExecStartPre = claudeKey;
-            ExecStart = "/var/lib/libri-build/suki/bin/hippo serve chat";
-            Restart = "always";
-            RestartSec = 5;
-          };
-        };
-
         suki = {
           description = "Suki, Gab's household assistant";
-          wants = singleton "suki-hippo.service";
-          after = singleton "suki-hippo.service";
           serviceConfig = sukiSandbox // {
             SupplementaryGroups = sukiSandbox.SupplementaryGroups ++ singleton computers.deskGroup;
             LoadCredential = [
               "claude-key:${config.secrets.suki-claude-key.path}"
               "home:${config.secrets.yeoman-home-token.path}"
               "fastmail:${config.secrets.suki-fastmail-mcp-token.path}"
-              "requests:${config.secrets.yeoman-requests-key.path}"
             ];
             RuntimeDirectory = "suki";
             RuntimeDirectoryMode = "0700";

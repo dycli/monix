@@ -39,7 +39,6 @@ in
     agent-claude-token.file = ./secrets/agent-claude-token.age;
     suki-claude-key.file = ./secrets/suki-claude-key.age;
     yeoman-home-token.file = ./secrets/yeoman-home-token.age;
-    yeoman-requests-key.file = ./secrets/yeoman-requests-key.age;
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     immich-cloudflare-tunnel-token.file = ./secrets/immich-cloudflare-tunnel-token.age;
     endgrain-cloudflare-tunnel-token.file = ./secrets/endgrain-cloudflare-tunnel-token.age;
@@ -74,7 +73,6 @@ in
   systemd.services.suki.restartTriggers = [
     ./secrets/suki-fastmail-mcp-token.age
     ./secrets/yeoman-home-token.age
-    ./secrets/yeoman-requests-key.age
   ];
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
