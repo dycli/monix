@@ -53,14 +53,17 @@
         hardware.amdgpu.opencl.enable = true;
 
         # Builds use every core, at idle priority, and run in a memory fence:
-        # past it a build fails, never the services beside it. Six jobs of
-        # eight cores still fill all 48 threads; the default (48 jobs, each
-        # on every core) linked enough Rust at once to thrash the desktop.
-        # MemoryHigh slows builds well before the rest of the machine swaps.
+        # past it a build fails, never the services beside it. Jobs are what
+        # cost memory: one release rustc of yeoman peaks at 4.4 GB, so six
+        # jobs could ask 27 GB of an 18 GB fence. Three jobs of sixteen cores
+        # still fill all 48 threads (jobs × cores, the Nix manual's sizing)
+        # and stay under MemoryHigh; the default (48 jobs, each on every
+        # core) linked enough Rust at once to thrash the desktop. MemoryHigh
+        # slows builds well before the rest of the machine swaps.
         nix.daemonCPUSchedPolicy = "idle";
         nix.daemonIOSchedClass = "idle";
-        nix.settings.max-jobs = 6;
-        nix.settings.cores = 8;
+        nix.settings.max-jobs = 3;
+        nix.settings.cores = 16;
         systemd.services.nix-daemon.serviceConfig = {
           MemoryHigh = "14G";
           MemoryMax = "18G";
@@ -93,7 +96,30 @@
         # Libri's workers run cargo, Gradle and QEMU, so they share that budget:
         # on 2026-10-31 Libri at 12G outside it and the slice at 18G took all
         # 30G and the kernel killed the desktop.
-        systemd.services.libri.serviceConfig.Slice = "work.slice";
+        # Inside it, the chat comes first. Libri gets its cgroup delegated:
+        # the daemon (112 MB) runs in the `server` leaf and every harness,
+        # with all it starts, in `harness` beside it (Libri's cgroup.rs). The
+        # server's memory is protected and its CPU and IO weigh fifty times
+        # the harnesses', and the service outweighs the builds beside it, so
+        # under load the agents and their compiles slow first, not the page.
+        systemd.services.libri = {
+          serviceConfig = {
+            Slice = "work.slice";
+            Delegate = true;
+            DelegateSubgroup = "server";
+            MemoryLow = "1G";
+            # The yeoman module bounds the whole unit at 12G, which once the
+            # harnesses filled it throttled the daemon with them; the bound
+            # is the harness cgroup's here.
+            MemoryHigh = lib.modules.mkForce "infinity";
+            CPUWeight = 1000;
+            IOWeight = 1000;
+          };
+          environment = {
+            LIBRI_SERVER_CGROUP = "memory.low=512M";
+            LIBRI_HARNESS_CGROUP = "cpu.weight=20 io.weight=20 memory.high=12G";
+          };
+        };
 
         boot.loader.timeout = 5;
 
