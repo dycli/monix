@@ -254,6 +254,8 @@
       services.libri.instances.libri = {
         package = seat.libriBuild;
         inherit (seat) user;
+        # One browser for agents: logged out until Dylan allows a site's logins.
+        agentBrowser.enable = true;
         settings = lib.recursiveUpdate (shared "libri") {
           name = "Bridge";
           person = "Dylan";
