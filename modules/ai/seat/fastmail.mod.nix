@@ -4,10 +4,6 @@
 # OAuth), renews it, and relays the server to each harness with the current
 # token, so no config here holds a secret. Sending is denied in the managed
 # settings: the seat drafts, Dylan sends.
-#
-# The old agenix token (sokka-fastmail-mcp-token) is no longer read; its
-# .age file and its line in the fenced agenix-rules.nix go with Suki's, once
-# Suki connects the same way.
 { self, ... }:
 {
   flake.nixosModules.seat = self.nixosModules.fastmail-mcp;

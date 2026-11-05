@@ -35,7 +35,6 @@ in
   secrets = {
     katara-password.file = ./secrets/katara-password.age;
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
-    suki-fastmail-mcp-token.file = ./secrets/suki-fastmail-mcp-token.age;
     agent-claude-token.file = ./secrets/agent-claude-token.age;
     suki-claude-key.file = ./secrets/suki-claude-key.age;
     yeoman-home-token.file = ./secrets/yeoman-home-token.age;
@@ -70,10 +69,7 @@ in
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
   systemd.services.libri.restartTriggers = singleton ./secrets/agent-claude-token.age;
-  systemd.services.suki.restartTriggers = [
-    ./secrets/suki-fastmail-mcp-token.age
-    ./secrets/yeoman-home-token.age
-  ];
+  systemd.services.suki.restartTriggers = singleton ./secrets/yeoman-home-token.age;
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
 }

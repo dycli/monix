@@ -13,7 +13,8 @@
 #
 # Model calls reach only what the instance's MCP file names. Suki has pictures
 # (assistant-image.py), drawn by the image service, the only assistant-side
-# holder of a Codex login, Home Assistant's own MCP server, and Fastmail's.
+# holder of a Codex login, and Home Assistant's own MCP server. Fastmail is a
+# sign-in in Libri's Settings > Connections, as on the seat.
 #
 # The instances share a household directory their common group can write:
 # shared lists, and a mailbox each. A message goes only to those it names; a
@@ -190,11 +191,6 @@
             url = "http://127.0.0.1:${toString config.shipProxy.routes.ha.port}/api/mcp";
             headers.Authorization = "Bearer @HOME_TOKEN@";
           };
-          fastmail = {
-            type = "http";
-            url = "https://api.fastmail.com/mcp";
-            headers.Authorization = "Bearer @FASTMAIL_TOKEN@";
-          };
         };
       };
       # Claude Code bills to the key in its environment. systemd reads the
@@ -217,7 +213,6 @@
         umask 077
         ${pkgs.gnused}/bin/sed \
           -e "s|@HOME_TOKEN@|$(${pkgs.coreutils}/bin/tr -d '\r\n' < "$CREDENTIALS_DIRECTORY/home")|" \
-          -e "s|@FASTMAIL_TOKEN@|$(${pkgs.coreutils}/bin/tr -d '\r\n' < "$CREDENTIALS_DIRECTORY/fastmail")|" \
           ${sukiMcp} > "$RUNTIME_DIRECTORY/mcp.json"
       '';
 
@@ -526,7 +521,6 @@
             LoadCredential = [
               "claude-key:${config.secrets.suki-claude-key.path}"
               "home:${config.secrets.yeoman-home-token.path}"
-              "fastmail:${config.secrets.suki-fastmail-mcp-token.path}"
             ];
             RuntimeDirectory = "suki";
             RuntimeDirectoryMode = "0700";

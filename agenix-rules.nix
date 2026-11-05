@@ -73,8 +73,6 @@ in
   "hosts/water/secrets/boat-api-key.age".publicKeys = singleton water ++ admin;
   # Fastmail API tokens, raw, type MCP (read, change, send), one per assistant;
   # Libri bars the model from sending and sends only what the captain approves.
-  "hosts/water/secrets/sokka-fastmail-mcp-token.age".publicKeys = singleton water ++ admin;
-  "hosts/water/secrets/suki-fastmail-mcp-token.age".publicKeys = singleton water ++ admin;
   # FRIGATE_RTSP_PASSWORD=...
   "hosts/water/secrets/frigate.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/git-mirror-token.age".publicKeys = singleton water ++ admin;
