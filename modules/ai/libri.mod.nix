@@ -68,13 +68,19 @@
         tools.usage = "/run/usage.sock";
       };
       site = unit: subdomain: {
-        listen = "127.0.0.1:${toString ports.${unit}}";
+        # Each person's instance is its own host on its own port, reachable
+        # at Water's tailnet address for the app served at app.libri.is, as
+        # Paseo's daemon is (0.0.0.0:6768): the firewall trusts only
+        # tailscale0, so the LAN and the bridges still cannot reach it.
+        # Chromium calls it from the https copy (after its local-network
+        # prompt), Safari from the http one.
+        listen = "0.0.0.0:${toString ports.${unit}}";
         url = host subdomain;
         pages = "${pages}/${unit}";
         pages_url = host subdomain;
-        # The app at libri.su.is talks to it, with no sign-in on the tailnet.
+        # The apps talk to it with no sign-in on the tailnet.
         open = "1";
-        origins = "https://libri.su.is";
+        origins = "https://libri.su.is,https://app.libri.is,http://app.libri.is";
       };
       # Libri's assistant calls itself Libri; an instance here is itself by
       # this rule text, on every prompt, Temp and calls included.
@@ -251,15 +257,7 @@
         settings = lib.recursiveUpdate (shared "libri") {
           name = "Bridge";
           person = "Dylan";
-          daemon = site "libri" "si" // {
-            # Also reachable at Water's tailnet address, for the app served
-            # at app.libri.is, as Paseo's daemon is (0.0.0.0:6768): the
-            # firewall trusts only tailscale0, so the LAN and the bridges
-            # still cannot reach it. Chromium calls it from the https copy
-            # (after its local-network prompt), Safari from the http one.
-            listen = "0.0.0.0:${toString ports.libri}";
-            origins = "https://libri.su.is,https://app.libri.is,http://app.libri.is";
-          };
+          daemon = site "libri" "si";
           hippo = {
             dir = seat.hippo;
             # The seat's hippo keeps Paseo's and the cockpit's chats too; the
