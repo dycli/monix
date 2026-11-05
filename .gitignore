@@ -67,3 +67,9 @@ modules/web/atlas/site/public/data/
 __pycache__/
 *.qcow2
 *.swp
+
+# libri.is and app.libri.is: their Workers' configs, script and asset files.
+!modules/ai/seat/libri-publish/*/worker.js
+!modules/ai/seat/libri-publish/*/wrangler.jsonc
+!modules/ai/seat/libri-publish/*/_headers
+!modules/ai/seat/libri-publish/*/manifest.webmanifest

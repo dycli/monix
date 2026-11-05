@@ -1,0 +1,8 @@
+# The listing and the newest-build alias change with each release; Obtainium
+# and phones must see the new one. A versioned APK never changes.
+/android/
+  Cache-Control: no-cache
+/android/libri.apk
+  Cache-Control: no-cache
+/android/libri-*.apk
+  Cache-Control: public, max-age=31536000, immutable

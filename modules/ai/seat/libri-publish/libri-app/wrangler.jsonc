@@ -1,0 +1,9 @@
+// The hosted Libri app at app.libri.is: the live site build and nothing
+// else. It calls the hosts a person adds, from their browser.
+{
+  "name": "libri-app",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": "./site" },
+  "routes": [{ "pattern": "app.libri.is", "custom_domain": true }],
+  "workers_dev": false
+}

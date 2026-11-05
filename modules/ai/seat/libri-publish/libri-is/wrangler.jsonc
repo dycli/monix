@@ -1,0 +1,14 @@
+// libri.is: the project's pages (worker.js) and, as static assets, the
+// Android releases at /android/, which publish_libri_sites.sh copies in from
+// the seat's release folder before each upload.
+{
+  "name": "libri-is-site",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": "./assets" },
+  "routes": [
+    { "pattern": "libri.is", "custom_domain": true },
+    { "pattern": "www.libri.is", "custom_domain": true }
+  ],
+  "workers_dev": false
+}
