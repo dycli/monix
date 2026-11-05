@@ -16,7 +16,8 @@
 # - It runs as the seat, whose polkit rule already lets it restart hippo and
 #   Libri; polkit lets the seat start this unit and do nothing else to it.
 #   systemd runs one start at a time; a start while one runs joins it.
-# - A worker starts it with `libri-start-deploy NAME` and ends its turn: the deploy waits for quiet, and a worker waiting on it
+# - A worker starts it with `libri-start-deploy NAME` (`--now NAME` to skip
+#   the quiet wait) and ends its turn: the deploy waits for quiet, and a worker waiting on it
 #   would keep Libri busy until the quiet limit.
 # - The result is in /var/lib/libri-deploy: `status` (commit, start, end,
 #   result: live, rolled back, not deployed, already live) and `deploy.log`.

@@ -136,6 +136,33 @@ for case, at_limit, moves in (("the default", None, True), ("stop", "stop", Fals
     check(f"{what} keeps the old build while it waits", old_while_waiting)
     shutil.rmtree(root)
 
+# --now: with work running and a ceiling that would stop the deploy, it goes
+# at once, whether the flag is there at the start or comes during the wait,
+# and the flag is spent.
+for case, late in (("at the start", False), ("during the wait", True)):
+    root, repo, stubs = scratch()
+    now = stubs / "now"
+    if not late:
+        now.touch()
+    more = dict(BUSY="1", DEPLOY_QUIET_LIMIT="600", DEPLOY_AT_LIMIT="stop", DEPLOY_LIBRI_NOW=str(now))
+    if late:
+        # The stubbed sleep sets the flag on the wait's third look.
+        (stubs / "sleep").write_text('#!/bin/sh\nn=$(($(cat "$STUBS/naps" 2>/dev/null || echo 0) + 1)); echo $n > "$STUBS/naps"\n[ $n -lt 3 ] || touch "$DEPLOY_LIBRI_NOW"\n')
+    code = deploy(repo, stubs, "ok", "200", **more)
+    log = (stubs / "log").read_text()
+    check(f"--now {case} deploys at once", code == 0 and "told to deploy now" in log, f"code {code}\n{log}")
+    check(f"--now {case} is spent", not now.exists())
+    link, staged, old_while_waiting = links(stubs)
+    check(f"--now {case} keeps the old build while it waits", old_while_waiting)
+    shutil.rmtree(root)
+
+# A --now left from a deploy that never ran doesn't hurry a later one.
+root, repo, stubs = scratch()
+now = stubs / "now"; now.touch(); os.utime(now, (0, 0))
+code = deploy(repo, stubs, "ok", "200", BUSY="1", DEPLOY_QUIET_LIMIT="1", DEPLOY_AT_LIMIT="stop", DEPLOY_LIBRI_NOW=str(now))
+check("a stale --now is dropped", code != 0 and "told to deploy now" not in (stubs / "log").read_text())
+shutil.rmtree(root)
+
 # The worker that started the deploy doesn't hold it: with only its run at
 # work, the deploy goes at once, even with the ceiling set to stop. Unnamed,
 # or named in a note too old to be this deploy's, the same run holds it.

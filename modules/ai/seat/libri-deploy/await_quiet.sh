@@ -1,8 +1,9 @@
-# Sourced by deploy_libri.sh: await_quiet TASK_URL [STARTER]
+# Sourced by deploy_libri.sh: await_quiet TASK_URL [STARTER] [NOW_FILE]
 # returns once nothing is at work, or once the wait reaches its ceiling.
 # STARTER names the worker that started the deploy (start_deploy.sh): its own
 # run doesn't count as at work, since it chose the restart and resumes after
 # it; counted, a release worker waiting on its deploy held it to the ceiling.
+# NOW_FILE, once it exists, ends the wait at once (libri-start-deploy --now).
 #
 # Quiet means no turn, worker run or Temp run for ten seconds together, so a
 # message sent just after an answer isn't cut off as its turn starts. A
@@ -28,6 +29,10 @@ await_quiet() {
       if has("busy") then [.busy[] | select(
         $s == "" or (ascii_downcase | . != "worker \($s)" and (startswith("worker \($s)-") | not)))]
       elif .typing == false then [] else null end' 2>/dev/null)
+    if [ -n "${3:-}" ] && [ -e "$3" ]; then
+      echo "told to deploy now (libri-start-deploy --now)"
+      return 0
+    fi
     if [ "$left" = "[]" ]; then
       quiet=$((quiet + 1))
     else

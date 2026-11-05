@@ -31,6 +31,11 @@ STARTER_FILE=${DEPLOY_LIBRI_STARTER:-/var/lib/libri-deploy/starter}
 STARTER=
 [ -n "$(find "$STARTER_FILE" -mmin -10 2>/dev/null)" ] && STARTER=$(head -n1 "$STARTER_FILE")
 rm -f "$STARTER_FILE"
+# libri-start-deploy --now leaves this: the quiet wait ends as soon as it
+# appears, before this deploy or during its wait. One older than ten minutes
+# is left from a deploy that never ran, and doesn't hurry this one.
+NOW_FILE=${DEPLOY_LIBRI_NOW:-/var/lib/libri-deploy/now}
+[ -z "$(find "$NOW_FILE" -mmin +10 2>/dev/null)" ] || rm -f "$NOW_FILE"
 
 here=$(cd "$(dirname "$0")" && pwd)
 exec > "$LOG" 2>&1
@@ -46,12 +51,13 @@ echo "built $built"
 # Each in turn. A turn that starts on one while the other is awaited is cut
 # by the restart, and resumes after it, as any turn at the ceiling does.
 for i in $INSTANCES; do
-  if ! await_quiet "http://127.0.0.1:${i##*:}/api/task" "$STARTER"; then
+  if ! await_quiet "http://127.0.0.1:${i##*:}/api/task" "$STARTER" "$NOW_FILE"; then
     echo "not deployed; nothing restarted"
     rm -f "$STAGE"
     exit 1
   fi
 done
+rm -f "$NOW_FILE"
 # nix build, not ln, so the link is a GC root on a host this script never
 # deployed to before.
 nix build "$built" -o "$LINK" || { echo "link not moved, not deployed"; rm -f "$STAGE"; exit 1; }
