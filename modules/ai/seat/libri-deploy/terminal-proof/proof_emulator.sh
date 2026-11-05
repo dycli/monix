@@ -26,7 +26,7 @@ for _ in $(seq 1 120); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null 
 adb install -r app/build/outputs/apk/debug/app-debug.apk 2>&1 | tail -1
 # The soft keyboard comes up even where the emulator reports a hardware one.
 adb shell settings put secure show_ime_with_hard_keyboard 1
-app=li.libri
+app=is.libri
 adb shell am start -n $app/su.libri.MainActivity >/dev/null; sleep 5; adb shell am force-stop $app
 printf '%s\n' "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>" '<map><string name="address">http://10.0.2.2:8973</string></map>' |
   adb shell "run-as $app sh -c 'mkdir -p shared_prefs && cat > shared_prefs/libri.xml'"
