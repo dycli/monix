@@ -251,7 +251,15 @@
         settings = lib.recursiveUpdate (shared "libri") {
           name = "Bridge";
           person = "Dylan";
-          daemon = site "libri" "si";
+          daemon = site "libri" "si" // {
+            # Also reachable at Water's tailnet address, for the app served
+            # at app.libri.is, as Paseo's daemon is (0.0.0.0:6768): the
+            # firewall trusts only tailscale0, so the LAN and the bridges
+            # still cannot reach it. Chromium calls it from the https copy
+            # (after its local-network prompt), Safari from the http one.
+            listen = "0.0.0.0:${toString ports.libri}";
+            origins = "https://libri.su.is,https://app.libri.is,http://app.libri.is";
+          };
           hippo = {
             dir = seat.hippo;
             # The seat's hippo keeps Paseo's and the cockpit's chats too; the
