@@ -80,7 +80,7 @@
         pages_url = host subdomain;
         # The apps talk to it with no sign-in on the tailnet.
         open = "1";
-        origins = "https://libri.su.is,https://app.libri.is,http://app.libri.is";
+        origins = "https://app.libri.is,http://app.libri.is";
       };
       # Libri's assistant calls itself Libri; an instance here is itself by
       # this rule text, on every prompt, Temp and calls included.

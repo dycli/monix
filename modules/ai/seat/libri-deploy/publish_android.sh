@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Publishes a signed Libri APK at libri.su.is/android/ for phones and Obtainium.
+# Publishes a signed Libri APK at libri.is/android/ for phones and Obtainium:
+# it adds the APK to the release folder, then starts libri-publish.service,
+# which uploads the folder to the libri.is Worker.
 # Each release stays as libri-<versionName>.apk, listed newest first on
 # index.html. Obtainium's HTML source reads the version from the newest file's
 # name, so a check offers an update only when there is one; one bare libri.apk
@@ -54,3 +56,5 @@ ln -sfn "$newest" "$D/.libri.apk" && mv -T "$D/.libri.apk" "$D/libri.apk"
 } > "$D/.index.html"
 chmod 644 "$D/.index.html" && mv "$D/.index.html" "$D/index.html"
 echo "published $name; libri.apk is $newest"
+systemctl start --no-block libri-publish.service
+echo "libri.is/android/ updates when libri-publish.service finishes (journalctl -u libri-publish)"

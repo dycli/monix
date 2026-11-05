@@ -83,7 +83,9 @@
           name = "Bridge";
           about = "Dylan's assistant";
           icon = "";
-          route = "libri";
+          # The hosted app, which reaches the seat's Libri on the tailnet.
+          url = "https://app.libri.is";
+          check = "http://127.0.0.1:${toString config.shipProxy.routes.libri.port}/api/host";
           agent = true;
         }
         {
@@ -173,33 +175,5 @@
       services.syncthing.enable = true;
 
       matrix.serverName = "chat.su.is";
-
-      # The Libri app on its own, as Paseo's app stands apart from its
-      # daemons: it opens empty, and Settings adds each server by address
-      # (si.su.is, suki.su.is). Served from the seat's latest build.
-      shipProxy.routes.libri-app = {
-        subdomain = "libri";
-        root = "${lib.ship.topology.seat.libriBuild}/site";
-      };
-
-      # The Android app's newest signed build, at the fixed address
-      # Obtainium polls for updates: libri.su.is/android/libri.apk. The
-      # seat copies each build here; the signing key stays in its home.
-      systemd.tmpfiles.settings.libri-android."/var/lib/libri-android".d = {
-        user = lib.ship.topology.seat.user;
-        group = "nginx";
-        mode = "2750";
-      };
-      services.nginx.virtualHosts."libri.${config.shipProxy.domain}".locations."/android/" = {
-        alias = "/var/lib/libri-android/";
-        # This types block replaces nginx's whole map, so the release
-        # index needs its own html line or browsers download it.
-        extraConfig = ''
-          types {
-            application/vnd.android.package-archive apk;
-            text/html html;
-          }
-        '';
-      };
     };
 }
