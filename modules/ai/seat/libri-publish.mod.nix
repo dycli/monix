@@ -37,7 +37,8 @@
           pkgs.wrangler
         ];
         text = ''
-          exec sh ${./libri-publish}/publish_libri_sites.sh
+          # writeShellApplication puts only runtimeInputs on PATH, so no bare sh.
+          exec ${pkgs.dash}/bin/dash ${./libri-publish}/publish_libri_sites.sh
         '';
       };
     in
