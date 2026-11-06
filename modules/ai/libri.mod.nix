@@ -19,8 +19,6 @@
 # The two reach each other over A2A (Libri's a2a.rs), sharing one token in
 # a directory their common group can read; a message lands in the other's
 # chat as a note, and a watch's share_with sends its answer the same way.
-# The household's shared lists wait in that directory's book.db for the
-# household MCP server (household-mcp.py), which Libri no longer serves.
 # Memories stay apart.
 { inputs, self, ... }:
 {
@@ -39,7 +37,8 @@
       inherit (lib.ship) fences computers topology;
 
       seat = topology.seat;
-      house = topology.household;
+      # The A2A token both read, made at activation.
+      a2a = "/var/lib/libri-a2a";
       # The assistants' sites: a directory each, read by nginx as its group.
       pages = "/var/lib/libri-pages";
       host = sub: "https://${sub}.${config.shipProxy.domain}";
@@ -56,7 +55,7 @@
       # What both configs say alike; `to` is the other instance.
       shared = to: names: {
         a2a = {
-          token_file = "${house}/a2a.token";
+          token_file = "${a2a}/token";
           peers = peer to names;
         };
         harness = {
@@ -211,7 +210,7 @@
           Group = "suki";
           SupplementaryGroups = [
             "codex-image"
-            "libri-household"
+            "libri-a2a"
             "usage"
             computers.deskGroup
           ];
@@ -291,12 +290,15 @@
         home = "/var/lib/codex-image";
       };
       # Bridge's Libri runs as the seat, and reads the A2A token as Suki does.
-      users.users.${seat.user}.extraGroups = singleton "libri-household";
+      users.users.${seat.user}.extraGroups = singleton "libri-a2a";
       users.groups.codex-image = { };
-      users.groups.libri-household = { };
+      users.groups.libri-a2a = { };
 
       # The state these had under their yeoman names, moved once before any
-      # unit starts on the new names. Drop once Water has switched past it.
+      # unit starts on the new names. The household's directory goes whole,
+      # mailboxes, seat boxes and shared lists alike (Dylan 11-06: "clean
+      # sweep"); only its A2A token moves out first. Drop once Water has
+      # switched past it.
       system.activationScripts.libri-yeoman-names = {
         deps = [
           "users"
@@ -304,30 +306,30 @@
         ];
         text = ''
           move() { if [ -e "$1" ] && [ ! -e "$2" ]; then mv "$1" "$2"; fi; }
-          move /var/lib/yeoman-household ${house}
           move /var/lib/yeoman-pages ${pages}
           move /var/lib/yeoman-image /var/lib/codex-image
-          # Messages left in the household's mailboxes go to each Libri's own
-          # inbox, where A2A messages now wait; the mailboxes and the seat's
-          # boxes are kept aside, not deleted.
-          deliver() {
-            [ -d "$1" ] || return 0
-            install -d -o "$3" -g "$3" -m 700 "$2"
-            for f in "$1"/*; do
-              [ -f "$f" ] || continue
-              mv "$f" "$2/$(basename "$f")"
-              chown "$3:$3" "$2/$(basename "$f")"
-            done
-          }
-          deliver ${house}/mail/libri /var/lib/libri/inbox ${seat.user}
-          deliver ${house}/mail/suki /var/lib/suki/inbox suki
-          if [ -d ${house}/mail ] || [ -d ${house}/seat ]; then
-            install -d -m 2770 -g libri-household ${house}/retired
-            move ${house}/mail ${house}/retired/mail
-            move ${house}/seat ${house}/retired/seat
-          fi
-          if [ -d ${house} ]; then chgrp -R libri-household ${house}; fi
+          install -d -o root -g libri-a2a -m 2750 ${a2a}
+          move /var/lib/yeoman-household/a2a.token ${a2a}/token
+          rm -rf /var/lib/yeoman-household
           if [ -d /var/lib/codex-image ]; then chown -R codex-image:codex-image /var/lib/codex-image; fi
+        '';
+      };
+
+      # The A2A token the two present to each other, made once and readable
+      # by their common group alone.
+      system.activationScripts.libri-a2a = {
+        deps = [
+          "users"
+          "groups"
+          "libri-yeoman-names"
+        ];
+        text = ''
+          install -d -o root -g libri-a2a -m 2750 ${a2a}
+          if [ ! -s ${a2a}/token ]; then
+            (umask 077; head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > ${a2a}/token)
+          fi
+          chown root:libri-a2a ${a2a}/token
+          chmod 0640 ${a2a}/token
         '';
       };
 
@@ -381,18 +383,6 @@
           }
         });
       '';
-
-      # Setgid, so what one assistant writes stays the group's.
-      systemd.tmpfiles.settings.libri-household =
-        lib.attrsets.genAttrs
-          [ house ]
-          (_: {
-            d = {
-              user = "root";
-              group = "libri-household";
-              mode = "2770";
-            };
-          });
 
       systemd.sockets.codex-image = {
         description = "Pictures for the household assistants";
@@ -528,7 +518,6 @@
             RestartSec = 10;
             ReadWritePaths = [
               "${pages}/suki"
-              house
               sukiDesk
             ];
             SocketBindAllow = "tcp:${toString ports.suki}";

@@ -15,9 +15,6 @@
     # return to the build it ran with.
     libriBuild = "/var/lib/libri-build/libri";
   };
-  # The assistants' household (libri.mod.nix).
-  household = "/var/lib/libri-household";
-
   hostTailnetAddr = "100.102.113.74";
   tailnetDomain = "olm-hen.ts.net";
   hostMagicDnsName = "water.olm-hen.ts.net";
