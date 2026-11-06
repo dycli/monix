@@ -12,16 +12,15 @@
 # holds only Claude Code.
 #
 # Model calls reach only what the instance's MCP file names. Suki has pictures
-# (assistant-image.py), drawn by the image service, the only assistant-side
-# holder of a Codex login, and Home Assistant's own MCP server. Fastmail is a
+# (assistant-image.py), drawn by codex-image, the only assistant-side holder
+# of a Codex login, and Home Assistant's own MCP server. Fastmail is a
 # sign-in in Libri's Settings > Connections, as on the seat.
 #
-# The instances share a household directory their common group can write:
-# shared lists, and a mailbox each. A message goes only to those it names; a
-# person's name reaches the assistant that is their door. Memories stay apart.
-# The seat is in the household as Bridge: `tell` from the seat leaves a note
-# an instance drains on its tick, and an instance's `tell` to Bridge appends
-# to `seat/inbox`, which the seat's sessions load as a rule and `inbox` prints.
+# The two are one household (Libri's house.rs): a directory their common
+# group can write, holding the shared lists and a mailbox each, and each
+# reaches the other's daemon over A2A. A message goes only to those it names;
+# a person's name reaches the assistant that is their door. Memories stay
+# apart.
 { inputs, self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.libri;
@@ -41,7 +40,7 @@
       seat = topology.seat;
       house = topology.household;
       # The assistants' sites: a directory each, read by nginx as its group.
-      pages = "/var/lib/yeoman-pages";
+      pages = "/var/lib/libri-pages";
       host = sub: "https://${sub}.${config.shipProxy.domain}";
 
       ports = {
@@ -51,15 +50,13 @@
       # Who is in the household, as house.rs reads it: unit=Name=Person, and
       # =door on the one a message to the person goes to.
       members = "libri=Bridge=Dylan=door,suki=Suki=Gab=door";
-      # Where each member takes A2A messages (a2a.rs): `seat` is the seat's
-      # daily chat.
-      peers = "suki=http://127.0.0.1:${toString ports.suki},seat=http://127.0.0.1:${toString ports.libri}";
+      # Where each member takes A2A messages (a2a.rs).
+      peers = "libri=http://127.0.0.1:${toString ports.libri},suki=http://127.0.0.1:${toString ports.suki}";
       # What both configs say alike.
       shared = unit: {
         household = {
-          inherit peers unit;
-          # The ship's seat is in the household by this name (house.rs).
-          seat = "Bridge";
+          dir = house;
+          inherit members peers unit;
         };
         harness = {
           default = "claude";
@@ -91,29 +88,7 @@
           instructions say Libri they mean you.
         '';
 
-      # The seat's side of the household: `tell NAME TEXT` leaves a note for
-      # an assistant, `inbox` prints the assistants' notes to the seat (also
-      # loaded into its sessions as a rule), `inbox clear` empties it.
-      tell = pkgs.writeShellApplication {
-        name = "tell";
-        text = ''
-          export LIBRI_HOUSE=${house} LIBRI_MEMBERS=${lib.strings.escapeShellArg members} LIBRI_A2A=${lib.strings.escapeShellArg peers}
-          exec ${getExe inputs.libri.packages.${pkgs.stdenv.hostPlatform.system}.daemon} tell "$@"
-        '';
-      };
-      inbox = pkgs.writeShellApplication {
-        name = "inbox";
-        runtimeInputs = singleton pkgs.coreutils;
-        text = ''
-          if [ "''${1-}" = clear ]; then
-            : > ${house}/seat/inbox
-          else
-            cat ${house}/seat/inbox
-          fi
-        '';
-      };
-
-      image = pkgs.writers.writePython3Bin "yeoman-image-mcp" {
+      image = pkgs.writers.writePython3Bin "codex-image-mcp" {
         libraries = singleton pkgs.python3Packages.mcp;
         flakeIgnore = singleton "E501";
       } (readFile ./assistant-image.py);
@@ -121,7 +96,7 @@
       # One connection, one picture: the description on stdin, the PNG out.
       # Codex keeps each thread's pictures under its thread id.
       draw = pkgs.writeShellApplication {
-        name = "yeoman-image";
+        name = "codex-image";
         runtimeInputs = [
           pkgs.codex
           pkgs.jq
@@ -140,7 +115,7 @@
           # One journal line per picture, where `usage` counts the
           # household's share of the subscription.
           jq -rR --arg m "$model" 'fromjson? | select(.type == "turn.completed") | .usage
-            | "yeoman-image: tokens model=\($m) input=\(.input_tokens - .cached_input_tokens) cache_read=\(.cached_input_tokens) cache_write=0 output=\(.output_tokens)"' <<< "$out" >&2
+            | "codex-image: tokens model=\($m) input=\(.input_tokens - .cached_input_tokens) cache_read=\(.cached_input_tokens) cache_write=0 output=\(.output_tokens)"' <<< "$out" >&2
           id=$(jq -rR 'fromjson? | select(.type == "thread.started") | .thread_id' <<< "$out" | head -1)
           [ -n "$id" ] || exit 1
           dir="$CODEX_HOME/generated_images/$id"
@@ -234,8 +209,8 @@
           User = "suki";
           Group = "suki";
           SupplementaryGroups = [
-            "yeoman-image"
-            "yeoman-household"
+            "codex-image"
+            "libri-household"
             "usage"
             computers.deskGroup
           ];
@@ -291,11 +266,6 @@
             model = "haiku";
             effort = "high";
           };
-          # Notes to and from the other assistants and the seat.
-          household = {
-            dir = house;
-            inherit members;
-          };
           harness = {
             mcp = "/run/suki/mcp.json";
             identity = toString (identity "Suki" "Gab's household assistant");
@@ -309,24 +279,37 @@
         };
       };
 
-      # yeoman-image holds the household's one Codex login, on the ChatGPT
+      # codex-image holds the household's one Codex login, on the ChatGPT
       # subscription; the assistants reach only its socket. Log in once,
       # with the codex from the unit's script (not on PATH), after
-      # `sudo install -d -o yeoman-image -g yeoman-image -m 700 /var/lib/yeoman-image`:
-      # sudo -u yeoman-image env HOME=/var/lib/yeoman-image CODEX_HOME=/var/lib/yeoman-image <codex> login --device-auth
-      users.users.yeoman-image = {
+      # `sudo install -d -o codex-image -g codex-image -m 700 /var/lib/codex-image`:
+      # sudo -u codex-image env HOME=/var/lib/codex-image CODEX_HOME=/var/lib/codex-image <codex> login --device-auth
+      users.users.codex-image = {
         isSystemUser = true;
-        group = "yeoman-image";
-        home = "/var/lib/yeoman-image";
+        group = "codex-image";
+        home = "/var/lib/codex-image";
       };
-      # The seat reads and writes the household's seat/ files as the group.
-      users.users.${seat.user}.extraGroups = singleton "yeoman-household";
-      users.groups.yeoman-image = { };
-      users.groups.yeoman-household = { };
-      environment.systemPackages = [
-        tell
-        inbox
-      ];
+      # Bridge's Libri runs as the seat, a household member like Suki.
+      users.users.${seat.user}.extraGroups = singleton "libri-household";
+      users.groups.codex-image = { };
+      users.groups.libri-household = { };
+
+      # The state these had under their yeoman names, moved once before any
+      # unit starts on the new names. Drop once Water has switched past it.
+      system.activationScripts.libri-yeoman-names = {
+        deps = [
+          "users"
+          "groups"
+        ];
+        text = ''
+          move() { if [ -e "$1" ] && [ ! -e "$2" ]; then mv "$1" "$2"; fi; }
+          move /var/lib/yeoman-household ${house}
+          move /var/lib/yeoman-pages ${pages}
+          move /var/lib/yeoman-image /var/lib/codex-image
+          if [ -d ${house} ]; then chgrp -R libri-household ${house}; fi
+          if [ -d /var/lib/codex-image ]; then chown -R codex-image:codex-image /var/lib/codex-image; fi
+        '';
+      };
 
       # Each serves its host itself: the chat at the root, the pages beside
       # it. Server-sent events stream as they come; uploads may be as big as
@@ -343,7 +326,7 @@
             suki = "suki";
           };
 
-      systemd.tmpfiles.settings.yeoman-pages = {
+      systemd.tmpfiles.settings.libri-pages = {
         ${pages}.d = {
           user = "root";
           group = "root";
@@ -363,7 +346,7 @@
 
       # An instance's Libri build link lives in a directory the seat owns,
       # and the seat restarts its units after rebuilding the link.
-      systemd.tmpfiles.settings.yeoman-builds."/var/lib/libri-build".d = {
+      systemd.tmpfiles.settings.libri-build."/var/lib/libri-build".d = {
         user = seat.user;
         group = seat.user;
         mode = "0755";
@@ -371,7 +354,7 @@
       security.polkit.extraConfig = ''
         polkit.addRule(function (action, subject) {
           if (action.id == "org.freedesktop.systemd1.manage-units" &&
-              ["hippo.service", "libri.service", "libri-hippo.service", "suki.service"].indexOf(action.lookup("unit")) >= 0 &&
+              ["hippo.service", "libri.service", "suki.service"].indexOf(action.lookup("unit")) >= 0 &&
               ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
               subject.user == "${seat.user}") {
             return polkit.Result.YES;
@@ -380,40 +363,31 @@
       '';
 
       # Setgid, so what one assistant writes stays the group's.
-      systemd.tmpfiles.settings.yeoman-household =
-        let
-          entry = mode: {
-            user = "root";
-            group = "yeoman-household";
-            inherit mode;
-          };
-        in
+      systemd.tmpfiles.settings.libri-household =
         lib.attrsets.genAttrs
           [
             house
             "${house}/mail"
-            "${house}/seat"
             "${house}/mail/libri"
             "${house}/mail/suki"
-            "${house}/seat/libri"
-            "${house}/seat/suki"
           ]
           (_: {
-            d = entry "2770";
-          })
-        // {
-          "${house}/seat/inbox".f = entry "0660";
-        };
+            d = {
+              user = "root";
+              group = "libri-household";
+              mode = "2770";
+            };
+          });
 
-      systemd.sockets.yeoman-image = {
+      systemd.sockets.codex-image = {
         description = "Pictures for the household assistants";
         wantedBy = singleton "sockets.target";
         socketConfig = {
-          ListenStream = "/run/yeoman-image.sock";
+          ListenStream = "/run/codex-image.sock";
           Accept = true;
           MaxConnections = 2;
           SocketMode = "0660";
-          SocketGroup = "yeoman-image";
+          SocketGroup = "codex-image";
         };
       };
 
@@ -546,19 +520,19 @@
           };
         };
 
-        "yeoman-image@" = {
+        "codex-image@" = {
           description = "One picture for a household assistant";
           environment = {
-            HOME = "/var/lib/yeoman-image";
-            CODEX_HOME = "/var/lib/yeoman-image";
+            HOME = "/var/lib/codex-image";
+            CODEX_HOME = "/var/lib/codex-image";
           };
           serviceConfig =
             lib.ship.hardened.tenant
             // fence
             // {
-              User = "yeoman-image";
-              Group = "yeoman-image";
-              StateDirectory = "yeoman-image";
+              User = "codex-image";
+              Group = "codex-image";
+              StateDirectory = "codex-image";
               StateDirectoryMode = "0700";
               ExecStart = getExe draw;
               StandardInput = "socket";

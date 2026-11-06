@@ -271,9 +271,8 @@ runs code with no network, in a folder the host fills, on a host-only bridge
 with NAT to public addresses only (`assistant-network.mod.nix`). Nothing of the
 household goes in: no tailnet, no store share, no secret.
 
-The instances share a household directory their common group can write:
-shared lists and a mailbox each. The seat is in it as Bridge, with `tell` and
-`inbox`.
+Both are one household: a directory their common group can write, with the
+shared lists and a mailbox each, and each reaches the other over A2A.
 
 ## Homelab
 

@@ -1,5 +1,5 @@
 """The assistants' pictures: a stdio MCP server in front of the image
-service (`yeoman-image`), which holds the household's one Codex login and
+service (`codex-image`), which holds the household's one Codex login and
 answers a description with a PNG. This server never sees the login. It
 leaves each picture in the instance's outbox, and the assistant sends what
 waits there with its answer, then deletes it.
@@ -12,7 +12,7 @@ import time
 
 from mcp.server.mcpserver import MCPServer
 
-SERVICE = "/run/yeoman-image.sock"
+SERVICE = "/run/codex-image.sock"
 LIMIT = 30 * 1024 * 1024
 OUTBOX = sys.argv[1]
 

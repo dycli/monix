@@ -37,7 +37,7 @@
         "var/lib/private/prowlarr"
         "var/lib/private/seerr"
         "var/lib/suki"
-        "var/lib/yeoman-pages"
+        "var/lib/libri-pages"
         "var/lib/endgrain"
         "var/lib/keepass"
         "srv/minecraft"
