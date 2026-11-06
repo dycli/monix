@@ -174,7 +174,15 @@
           provider = lib.ship.opencode.providers keys;
         }
       );
-      ompModels = pkgs.writeText "libri-omp-models.yml" (lib.ship.opencode.ompModels keys);
+      # The host's own llama-swap, at the seat-plane address its fence admits,
+      # on hosts that serve one.
+      ompLocal = lib.trivial.mapNullable (inference: {
+        baseURL = "http://${topology.seatInferenceAddr}:${toString inference.port}/v1";
+        models = inference.ompModels;
+      }) (config.inference or null);
+      ompModels = pkgs.writeText "libri-omp-models.yml" (
+        lib.ship.opencode.ompModels (keys // { local = ompLocal; })
+      );
       # omp reads its providers only from its home.
       linkOmpModels = pkgs.writeShellScript "libri-omp-models" ''
         ${pkgs.coreutils}/bin/mkdir -p ${seat.home}/.omp/agent

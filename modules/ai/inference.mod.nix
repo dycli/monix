@@ -113,6 +113,17 @@ in
                   default = [ ];
                   description = "extra model ids that resolve to this entry";
                 };
+                efforts = mkOption {
+                  type = types.attrsOf types.str;
+                  default = { };
+                  example = {
+                    high = "xhigh";
+                  };
+                  description = ''
+                    omp's thinking levels renamed to those the model's chat
+                    template accepts; a level left out is sent as named.
+                  '';
+                };
               };
             }
           );
@@ -122,6 +133,12 @@ in
           type = types.attrsOf types.anything;
           readOnly = true;
           description = "OpenCode metadata for every served model id and alias";
+        };
+
+        ompModels = mkOption {
+          type = types.listOf types.anything;
+          readOnly = true;
+          description = "omp models.yml entries for every served model id and alias";
         };
       };
 
@@ -148,6 +165,23 @@ in
           )
           |> concatLists
           |> listToAttrs;
+
+        inference.ompModels =
+          cfg.models
+          |> mapAttrsToList (
+            name: m:
+            (singleton name ++ m.aliases)
+            |> lib.lists.map (id: {
+              inherit id;
+              name = id;
+              reasoning = true;
+              input = singleton "text";
+              contextWindow = m.context;
+              maxTokens = m.output;
+              compat.reasoningEffortMap = m.efforts;
+            })
+          )
+          |> concatLists;
 
         services.llama-swap = {
           enable = true;
@@ -224,24 +258,53 @@ in
       # even long contexts fit a 24G card; q8 KV halves what remains, so Q4
       # takes 144K. Unsloth's UD-Q4_K_XL measured a hair better than plain Q4_K_M
       # at the same size and speed.
-      qwen38 = context: file: {
-        inherit context file;
-        output = 8192;
-        flags =
-          baseFlags
-          ++ [
-            # The GGUFs' own template raises on any system message after the
-            # first, which OpenCode sends; this copy renders it as a system
-            # turn instead. Drop it once the upstream template accepts them.
-            "--chat-template-file"
-            "${./qwen38.jinja}"
-            "--cache-type-k"
-            "q8_0"
-            "--cache-type-v"
-            "q8_0"
-          ]
-          ++ mtpFlags;
-      };
+      qwen38 = context: file: qwen38With { inherit context file; };
+      # Fine-tunes trained with the MTP head off ship it empty, so they run
+      # without the draft; one slot keeps the whole context for one request.
+      qwen38NoMtp =
+        context: file:
+        qwen38With {
+          inherit context file;
+          mtp = false;
+        };
+      qwen38With =
+        {
+          context,
+          file,
+          mtp ? true,
+        }:
+        {
+          inherit context file;
+          output = 8192;
+          # The template takes low, medium and xhigh and raises on any other
+          # level, which omp's minimal and high would send.
+          efforts = {
+            minimal = "low";
+            high = "xhigh";
+          };
+          flags =
+            baseFlags
+            ++ [
+              # The GGUFs' own template raises on any system message after the
+              # first, which OpenCode sends; this copy renders it as a system
+              # turn instead. Drop it once the upstream template accepts them.
+              "--chat-template-file"
+              "${./qwen38.jinja}"
+              "--cache-type-k"
+              "q8_0"
+              "--cache-type-v"
+              "q8_0"
+            ]
+            ++ (
+              if mtp then
+                mtpFlags
+              else
+                [
+                  "-np"
+                  "1"
+                ]
+            );
+        };
     in
     {
       imports = lib.lists.singleton self.nixosModules.inference;
@@ -252,6 +315,10 @@ in
         # (registry.ollama.ai/v2/orcarouter/qwen3.8-27b-uncensored/blobs/…),
         # which serves the same GGUF without Hugging Face's sign-in gate.
         "qwen3.8-27b-uncensored-q4-k-m" = qwen38 147456 "Qwen3.8-27B-Uncensored-Q4_K_M.gguf";
+        # Nous Research's Arete-27B (Qwen3.8-27B post-trained against
+        # CCP-aligned answers), bartowski's Q4_K_M of the Apache-2.0 weights.
+        # Its template is Qwen3.8's own; it was trained without the MTP head.
+        "arete-27b-q4-k-m" = qwen38NoMtp 147456 "NousResearch_Arete-27B-Q4_K_M.gguf";
       };
     };
 
