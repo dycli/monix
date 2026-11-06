@@ -272,7 +272,9 @@
         # lives here; changing Hex's shortcut in its window renames the id.
         (mkBind "End" ''hl.dsp.global("anomaly.hex:dictation-ALT-space")'' "Start or stop dictation" { })
         # Caps Lock by keycode: caps:none leaves it no keysym to bind.
-        (mkBind "code:66" ''hl.dsp.global("anomaly.hex:dictation-ALT-space")'' "Start or stop dictation" { })
+        (mkBind "code:66" ''hl.dsp.global("anomaly.hex:dictation-ALT-space")'' "Start or stop dictation"
+          { }
+        )
         (mkBind "XF86MonBrightnessUp"
           ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call osd brightnessUp")''
           "Brightness up"

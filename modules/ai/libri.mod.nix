@@ -236,24 +236,22 @@
         IPAddressAllow = fences.loopback;
         IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
       };
-      sukiSandbox =
-        lib.ship.hardened.tenant
-        // {
-          User = "suki";
-          Group = "suki";
-          SupplementaryGroups = [
-            "yeoman-image"
-            "yeoman-household"
-            "usage"
-            computers.deskGroup
-          ];
-          RestrictAddressFamilies = [
-            "AF_UNIX"
-            "AF_INET"
-            "AF_INET6"
-          ];
-          EnvironmentFile = "-%t/%N/claude.env";
-        };
+      sukiSandbox = lib.ship.hardened.tenant // {
+        User = "suki";
+        Group = "suki";
+        SupplementaryGroups = [
+          "yeoman-image"
+          "yeoman-household"
+          "usage"
+          computers.deskGroup
+        ];
+        RestrictAddressFamilies = [
+          "AF_UNIX"
+          "AF_INET"
+          "AF_INET6"
+        ];
+        EnvironmentFile = "-%t/%N/claude.env";
+      };
     in
     {
       imports = singleton inputs.libri.nixosModules.default;
