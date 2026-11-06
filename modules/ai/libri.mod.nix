@@ -16,11 +16,12 @@
 # of a Codex login, and Home Assistant's own MCP server. Fastmail is a
 # sign-in in Libri's Settings > Connections, as on the seat.
 #
-# The two are one household (Libri's house.rs): a directory their common
-# group can write, holding the shared lists and a mailbox each, and each
-# reaches the other's daemon over A2A. A message goes only to those it names;
-# a person's name reaches the assistant that is their door. Memories stay
-# apart.
+# The two reach each other over A2A (Libri's a2a.rs), sharing one token in
+# a directory their common group can read; a message lands in the other's
+# chat as a note, and a watch's share_with sends its answer the same way.
+# The household's shared lists wait in that directory's book.db for the
+# household MCP server (household-mcp.py), which Libri no longer serves.
+# Memories stay apart.
 { inputs, self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.libri;
@@ -47,16 +48,16 @@
         libri = 8951;
         suki = 8952;
       };
-      # Who is in the household, as house.rs reads it: unit=Name=Person, and
-      # =door on the one a message to the person goes to.
-      members = "libri=Bridge=Dylan=door,suki=Suki=Gab=door";
-      # Where each member takes A2A messages (a2a.rs).
-      peers = "libri=http://127.0.0.1:${toString ports.libri},suki=http://127.0.0.1:${toString ports.suki}";
-      # What both configs say alike.
-      shared = unit: {
-        household = {
-          dir = house;
-          inherit members peers unit;
+      # The other assistant, by its name and its person's, as share_with
+      # names them (a2a.rs `peers`).
+      peer =
+        unit: names:
+        concatStringsSep "," (map (n: "${n}=http://127.0.0.1:${toString ports.${unit}}") names);
+      # What both configs say alike; `to` is the other instance.
+      shared = to: names: {
+        a2a = {
+          token_file = "${house}/a2a.token";
+          peers = peer to names;
         };
         harness = {
           default = "claude";
@@ -230,7 +231,7 @@
         inherit (seat) user;
         # One browser for agents: logged out until Dylan allows a site's logins.
         agentBrowser.enable = true;
-        settings = lib.recursiveUpdate (shared "libri") {
+        settings = lib.recursiveUpdate (shared "suki" [ "Suki" "Gab" ]) {
           name = "Bridge";
           person = "Dylan";
           daemon = site "libri" "si";
@@ -256,7 +257,7 @@
       services.libri.instances.suki = {
         package = seat.libriBuild;
         harnesses = singleton pkgs.claude-code;
-        settings = lib.recursiveUpdate (shared "suki") {
+        settings = lib.recursiveUpdate (shared "libri" [ "Bridge" "Dylan" ]) {
           name = "Suki";
           person = "Gab";
           style = "Gab likes a slightly warmer tone.";
@@ -289,7 +290,7 @@
         group = "codex-image";
         home = "/var/lib/codex-image";
       };
-      # Bridge's Libri runs as the seat, a household member like Suki.
+      # Bridge's Libri runs as the seat, and reads the A2A token as Suki does.
       users.users.${seat.user}.extraGroups = singleton "libri-household";
       users.groups.codex-image = { };
       users.groups.libri-household = { };
@@ -306,6 +307,25 @@
           move /var/lib/yeoman-household ${house}
           move /var/lib/yeoman-pages ${pages}
           move /var/lib/yeoman-image /var/lib/codex-image
+          # Messages left in the household's mailboxes go to each Libri's own
+          # inbox, where A2A messages now wait; the mailboxes and the seat's
+          # boxes are kept aside, not deleted.
+          deliver() {
+            [ -d "$1" ] || return 0
+            install -d -o "$3" -g "$3" -m 700 "$2"
+            for f in "$1"/*; do
+              [ -f "$f" ] || continue
+              mv "$f" "$2/$(basename "$f")"
+              chown "$3:$3" "$2/$(basename "$f")"
+            done
+          }
+          deliver ${house}/mail/libri /var/lib/libri/inbox ${seat.user}
+          deliver ${house}/mail/suki /var/lib/suki/inbox suki
+          if [ -d ${house}/mail ] || [ -d ${house}/seat ]; then
+            install -d -m 2770 -g libri-household ${house}/retired
+            move ${house}/mail ${house}/retired/mail
+            move ${house}/seat ${house}/retired/seat
+          fi
           if [ -d ${house} ]; then chgrp -R libri-household ${house}; fi
           if [ -d /var/lib/codex-image ]; then chown -R codex-image:codex-image /var/lib/codex-image; fi
         '';
@@ -365,12 +385,7 @@
       # Setgid, so what one assistant writes stays the group's.
       systemd.tmpfiles.settings.libri-household =
         lib.attrsets.genAttrs
-          [
-            house
-            "${house}/mail"
-            "${house}/mail/libri"
-            "${house}/mail/suki"
-          ]
+          [ house ]
           (_: {
             d = {
               user = "root";
