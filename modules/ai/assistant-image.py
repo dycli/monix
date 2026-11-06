@@ -10,13 +10,13 @@ import socket
 import sys
 import time
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 SERVICE = "/run/yeoman-image.sock"
 LIMIT = 30 * 1024 * 1024
 OUTBOX = sys.argv[1]
 
-server = FastMCP("image")
+server = MCPServer("image")
 
 
 def ask(body: bytes) -> bytes:
