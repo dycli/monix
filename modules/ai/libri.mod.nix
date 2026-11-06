@@ -230,7 +230,6 @@
       };
       sukiSandbox =
         lib.ship.hardened.tenant
-        // fence
         // {
           User = "suki";
           Group = "suki";
@@ -544,8 +543,6 @@
               sukiDesk
             ];
             SocketBindAllow = "tcp:${toString ports.suki}";
-            # Through the fence to its own runner.
-            IPAddressAllow = fence.IPAddressAllow ++ singleton (computers.addr computers.indexes.suki);
           };
         };
 
