@@ -21,10 +21,11 @@
         sourceRoot = "tern";
         nativeBuildInputs = lib.lists.singleton pkgs.autoPatchelfHook;
         buildInputs = lib.lists.singleton pkgs.stdenv.cc.cc.lib;
-        # The window opens through libraries Tern loads by name at run time
-        # (dlopen), which autoPatchelf cannot see; runtimeDependencies adds
-        # them to the binary's search path.
+        # The window and remote logins (libpam) open through libraries Tern
+        # loads by name at run time (dlopen), which autoPatchelf cannot see;
+        # runtimeDependencies adds them to the binary's search path.
         runtimeDependencies = [
+          pkgs.linux-pam
           pkgs.wayland
           pkgs.libxkbcommon
           pkgs.vulkan-loader
