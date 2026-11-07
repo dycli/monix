@@ -8,7 +8,7 @@
 {
   flake.nixosModules.lab = self.nixosModules.tern;
   flake.nixosModules.tern =
-    { pkgs, lib, ... }:
+    { config, pkgs, lib, ... }:
     let
       tern = pkgs.stdenv.mkDerivation {
         pname = "tern";
