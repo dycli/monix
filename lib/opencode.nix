@@ -60,6 +60,7 @@ in
       keyFile,
       deepseekKeyFile,
       abliterationKeyFile,
+      local ? null,
     }:
     let
       keyFrom = file: { apiKey = "!cat ${file}"; };
@@ -70,6 +71,17 @@ in
         abliteration = keyFrom abliterationKeyFile;
         opencode-zen = keyFrom keyFile;
         opencode-go = keyFrom keyFile;
+      }
+      # A llama-swap endpoint, `{ baseURL, models }`, its models in omp's
+      # shape (inference.ompModels). llama-swap ignores the key, which omp
+      # requires.
+      // lib.attrsets.optionalAttrs (local != null && local.models != [ ]) {
+        local = {
+          baseUrl = local.baseURL;
+          api = "openai-completions";
+          apiKey = "local";
+          inherit (local) models;
+        };
       };
     };
 
