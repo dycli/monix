@@ -62,6 +62,8 @@
       # no password step), under the service name "tern".
       security.pam.services.tern = { };
       systemd.services.tern-remote = {
+        # Tern reads access.toml only at start.
+        restartTriggers = [ config.environment.etc."tern/access.toml".source ];
         description = "Tern remote sessions";
         wantedBy = [ "multi-user.target" ];
         after = [
