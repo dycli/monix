@@ -375,11 +375,11 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1794074146,
-        "narHash": "sha256-bbjE2NQbUOq3qWvGCsYgST9j3llfWjTXd02nfEVnxOM=",
+        "lastModified": 1794075470,
+        "narHash": "sha256-+EYZzCGnm+cTkQlF7+gJPPnLYxR4rilGo8ZyL6Bd+wE=",
         "ref": "main",
-        "rev": "655daaf264b1d1c1367c0fc8615a55c0ea642f37",
-        "revCount": 1033,
+        "rev": "831f6195e7e4d79073ebcf54c63e76b23f9ce0e7",
+        "revCount": 1036,
         "type": "git",
         "url": "https://github.com/dycli/libri"
       },
