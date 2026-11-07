@@ -375,11 +375,11 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1794000237,
-        "narHash": "sha256-+iHG4l/8nRiU2H/07y6M9ZjiOIlRVaV1q520lhCDAHU=",
+        "lastModified": 1794017336,
+        "narHash": "sha256-2zZZupfq6msFOHyKrgrBxvJAiqZxP4svlXjsVQXFqRw=",
         "ref": "main",
-        "rev": "b90e51a66ea8bd239c40669e3d9ee9e5c948b2b7",
-        "revCount": 957,
+        "rev": "1a3dabb7a85661496a9e7bda13edd0af7ad60b5a",
+        "revCount": 983,
         "type": "git",
         "url": "https://github.com/dycli/libri"
       },
@@ -645,11 +645,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1793261817,
-        "narHash": "sha256-fAvtOccUXHVAH5wXK+ABYUUC47W2qTb9T9EefLcS9ME=",
+        "lastModified": 1793956102,
+        "narHash": "sha256-dASUovwB3DUoTm6daga0hsNZZAFCCGlUS4FPBjK0OwA=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "afcefd09c71e63663a46e4ce5e09968584f2c709",
+        "rev": "74cebce67ef6671ea48fda353a5be2d229bd2920",
         "type": "github"
       },
       "original": {
