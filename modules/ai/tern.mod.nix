@@ -40,6 +40,20 @@
         "tern"
         "Tern"
       ];
-      environment.systemPackages = lib.lists.singleton tern;
+      environment.systemPackages = [
+        tern
+        # The tarball ships no icon or desktop file.
+        (pkgs.makeDesktopItem {
+          name = "tern";
+          desktopName = "Tern";
+          comment = "Terminal workspace";
+          exec = "${tern}/bin/tern %U";
+          icon = "utilities-terminal";
+          categories = [
+            "System"
+            "TerminalEmulator"
+          ];
+        })
+      ];
     };
 }
