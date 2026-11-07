@@ -62,7 +62,7 @@
         ];
         wants = [ "network-online.target" ];
         serviceConfig = {
-          ExecStart = "${tern}/bin/tern remote serve --listen 0.0.0.0:8377 --state-dir /var/lib/tern --access /etc/tern/access.toml --relay none";
+          ExecStart = "${tern}/bin/tern remote serve --listen 0.0.0.0:8377 --state-dir /var/lib/tern --access /etc/tern/access.toml";
           StateDirectory = "tern";
           StateDirectoryMode = "0700";
           Restart = "on-failure";
