@@ -35,6 +35,36 @@
       };
     in
     {
+      # Sessions run as bridge, so the agents' sign-ins and clutter stay out
+      # of Dylan's home. The system service (root, logins through PAM) lets
+      # a tailnet login act as a local user without SSH keys. katara's own
+      # `tern remote serve --user` keeps UDP 8376, so this one takes 8377.
+      # tailscale = true is safe here: tailscale0 is the only interface the
+      # firewall trusts, so only tailscaled delivers tailnet addresses.
+      environment.etc."tern/access.toml".text = ''
+        tailscale = true
+
+        [[allow]]
+        method = "tailscale"
+        identity = "ddcleary1@gmail.com"
+        users = ["bridge"]
+      '';
+      systemd.services.tern-remote = {
+        description = "Tern remote sessions";
+        wantedBy = [ "multi-user.target" ];
+        after = [
+          "network-online.target"
+          "tailscaled.service"
+        ];
+        wants = [ "network-online.target" ];
+        serviceConfig = {
+          ExecStart = "${tern}/bin/tern remote serve --listen 0.0.0.0:8377 --state-dir /var/lib/tern --access /etc/tern/access.toml --relay none";
+          StateDirectory = "tern";
+          StateDirectoryMode = "0700";
+          Restart = "on-failure";
+        };
+      };
+
       # requireFile marks the tarball itself unfree, named "Tern".
       unfreePackages = [
         "tern"
