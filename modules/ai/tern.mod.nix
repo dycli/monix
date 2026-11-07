@@ -49,6 +49,9 @@
         identity = "ddcleary1@gmail.com"
         users = ["bridge"]
       '';
+      # Tern opens each session through PAM (account and session stages,
+      # no password step), under the service name "tern".
+      security.pam.services.tern = { };
       systemd.services.tern-remote = {
         description = "Tern remote sessions";
         wantedBy = [ "multi-user.target" ];
