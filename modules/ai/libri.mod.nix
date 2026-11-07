@@ -269,7 +269,12 @@
         settings = lib.recursiveUpdate (shared "libri") {
           name = "Bridge";
           person = "Dylan";
-          daemon = site "libri" "si" "ddcleary1@gmail.com";
+          # One address for the household: Dylan's Libri answers on the
+          # tailnet port and passes Gab's devices on to hers, by tailscaled's
+          # word on who is calling.
+          daemon = site "libri" "si" "ddcleary1@gmail.com" // {
+            forward = "gabcaminiti10@gmail.com=http://127.0.0.1:${toString ports.suki}";
+          };
           hippo = {
             dir = seat.hippo;
             # The seat's hippo (seat/hippo.mod.nix serves it); the title its
@@ -296,7 +301,11 @@
           name = "Suki";
           person = "Gab";
           style = "Gab likes a slightly warmer tone.";
-          daemon = site "suki" "suki" "gabcaminiti10@gmail.com";
+          # Reached through Dylan's Libri on the tailnet port, so loopback
+          # only; the tailnet gate stays as a second check.
+          daemon = site "suki" "suki" "gabcaminiti10@gmail.com" // {
+            listen = "127.0.0.1:${toString ports.suki}";
+          };
           hippo = {
             backend = "claude";
             model = "haiku";
