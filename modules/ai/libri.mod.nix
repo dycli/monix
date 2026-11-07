@@ -85,10 +85,6 @@
         # machine itself) stays in. Replaces open = "1", which let in every
         # tailnet device, Gab's into Dylan's instance and the other way round.
         tailnet = login;
-        # Libri before 0.9.40 ignores `tailnet` and would ask unknown callers
-        # to pair; with the gate in front, open lets in only the logins above.
-        # Remove once 0.9.40 is live on Water.
-        open = "1";
         origins = "https://app.libri.is,http://app.libri.is";
       };
       # Libri's assistant calls itself Libri; an instance here is itself by
@@ -507,16 +503,15 @@
           };
           script = ''
             site=http://127.0.0.1:${toString ports.libri}/api/host
-            for _ in $(seq 40); do
-              curl -fsS -m3 -o /dev/null "$site" && break
-              sleep 1
-            done
-            curl -fsS -m3 -o /dev/null "$site"
-            # The tool server: the daemon checks it itself, as its
-            # credentials are in its own unit. Empty while that runs; a
-            # build older than the check has no such field and passes.
-            for _ in $(seq 45); do
-              curl -fsS -m3 "$site" | jq -e 'has("tools") and .tools == null' >/dev/null || break
+            # Wait until Libri answers and its tool server is up. The tool
+            # server: the daemon checks it itself, as its credentials are in
+            # its own unit; tools is null while that runs, and a build older
+            # than the check has no such field and passes. A refused
+            # connection counts as not yet: a switch can restart Libri after
+            # the first answer, and a probe that stopped there rolled back
+            # healthy deploys.
+            for _ in $(seq 85); do
+              curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null && break
               sleep 1
             done
             curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null
