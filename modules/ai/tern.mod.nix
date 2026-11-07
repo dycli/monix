@@ -49,6 +49,14 @@
         method = "tailscale"
         identity = "ddcleary1@gmail.com"
         users = ["bridge"]
+
+        # The phone's replies outgrow the 1280-byte tailnet MTU before the
+        # tailnet check runs, so it signs in with a key in bridge's
+        # authorized_keys instead.
+        [[allow]]
+        method = "ssh-key"
+        identity = "*"
+        users = ["bridge"]
       '';
       # Tern opens each session through PAM (account and session stages,
       # no password step), under the service name "tern".
