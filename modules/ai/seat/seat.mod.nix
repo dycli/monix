@@ -16,6 +16,11 @@ let
       command = "/run/current-system/sw/bin/kestrel-cloudflare-mcp";
       args = [ ];
     };
+    # OpenCode's browse, on the seat's headless Chromium (browse.mod.nix).
+    browse = {
+      command = "/run/current-system/sw/bin/browse";
+      args = [ "mcp" ];
+    };
   };
 in
 {
