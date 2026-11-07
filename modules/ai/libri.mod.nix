@@ -67,7 +67,7 @@
         };
         tools.usage = "/run/usage.sock";
       };
-      site = unit: subdomain: {
+      site = unit: subdomain: login: {
         # Each person's instance is its own host on its own port, reachable
         # at Water's tailnet address for the app served at app.libri.is, as
         # Paseo's daemon is (0.0.0.0:6768): the firewall trusts only
@@ -80,7 +80,14 @@
         # Page links open in the Library of the app at app.libri.is, on
         # whichever host the reader has open, not at the old per-host route.
         pages_url = "https://app.libri.is";
-        # The apps talk to it with no sign-in on the tailnet.
+        # The tailnet is the sign-in: tailscaled names each caller, only this
+        # person's login gets in, signed in with no pairing; loopback (the
+        # machine itself) stays in. Replaces open = "1", which let in every
+        # tailnet device, Gab's into Dylan's instance and the other way round.
+        tailnet = login;
+        # Libri before 0.9.40 ignores `tailnet` and would ask unknown callers
+        # to pair; with the gate in front, open lets in only the logins above.
+        # Remove once 0.9.40 is live on Water.
         open = "1";
         origins = "https://app.libri.is,http://app.libri.is";
       };
@@ -266,7 +273,7 @@
         settings = lib.recursiveUpdate (shared "libri") {
           name = "Bridge";
           person = "Dylan";
-          daemon = site "libri" "si";
+          daemon = site "libri" "si" "ddcleary1@gmail.com";
           hippo = {
             dir = seat.hippo;
             # The seat's hippo (seat/hippo.mod.nix serves it); the title its
@@ -293,7 +300,7 @@
           name = "Suki";
           person = "Gab";
           style = "Gab likes a slightly warmer tone.";
-          daemon = site "suki" "suki";
+          daemon = site "suki" "suki" "gabcaminiti10@gmail.com";
           hippo = {
             backend = "claude";
             model = "haiku";
