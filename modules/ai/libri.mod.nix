@@ -267,8 +267,8 @@
           daemon = site "libri" "si";
           hippo = {
             dir = seat.hippo;
-            # The seat's hippo keeps Paseo's and the cockpit's chats too; the
-            # title its history already goes under.
+            # The seat's hippo (seat/hippo.mod.nix serves it); the title its
+            # history already goes under.
             shared = "Bridge";
           };
           harness = {
