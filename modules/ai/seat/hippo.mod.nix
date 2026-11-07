@@ -1,6 +1,9 @@
 # hippo: the AI seat's episodic memory. One service, running as the seat,
-# follows its Claude Code, Codex, Muse Code and OpenCode transcripts live and logs
-# every chat word for word; sessions read it through the `hippo` CLI.
+# keeps every chat that passes through Bridge's Libri word for word; sessions
+# read it through the `hippo` CLI. With the Libri instance's
+# `hippo.record = "all"` it also follows every Claude Code, Codex, Muse Code,
+# OpenCode and Paseo session saved in the seat's home, so a `claude` or
+# `codex` run by hand joins the memory as Dylan's words.
 # Design: README, "hippo".
 { self, ... }:
 let
@@ -39,6 +42,11 @@ in
       # store: the person picks it in Libri's Settings, and hippo holds no
       # login and no key.
       compactor.HIPPO_BACKEND = "libri";
+
+      # Libri's own key, read here because this unit, not Libri, serves the
+      # seat's hippo: chat mode keeps what Libri logs, code mode follows the
+      # home's sessions too.
+      recordAll = (config.services.libri.instances.libri.settings.hippo.record or "libri") == "all";
     in
     {
       config = {
@@ -74,17 +82,15 @@ in
           serviceConfig = lib.ship.hardened.tenant // {
             User = seat.user;
             Group = seat.user;
-            ExecStart = "${lib.meta.getExe (package lib pkgs)} serve code";
+            ExecStart = "${lib.meta.getExe (package lib pkgs)} serve ${if recordAll then "code" else "chat"}";
             WorkingDirectory = seat.hippo;
             Restart = "always";
             RestartSec = 5;
-            # Reads the seat's transcripts; writes its own store.
+            # Recording all, it reads the seat's transcripts; it writes only
+            # its own store.
             ProtectHome = "read-only";
             # SQLite needs OpenCode's WAL index writable even to read.
-            ReadWritePaths = [
-              seat.hippo
-              "-${seat.home}/.local/share/opencode"
-            ];
+            ReadWritePaths = [ seat.hippo ] ++ lib.optional recordAll "-${seat.home}/.local/share/opencode";
             RestrictAddressFamilies = [ "AF_UNIX" ];
             # The primary user reads the store through the seat's group.
             UMask = "0027";
