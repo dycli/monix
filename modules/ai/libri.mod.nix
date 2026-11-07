@@ -77,7 +77,9 @@
         listen = "0.0.0.0:${toString ports.${unit}}";
         url = host subdomain;
         pages = "${pages}/${unit}";
-        pages_url = host subdomain;
+        # Page links open in the Library of the app at app.libri.is, on
+        # whichever host the reader has open, not at the old per-host route.
+        pages_url = "https://app.libri.is";
         # The apps talk to it with no sign-in on the tailnet.
         open = "1";
         origins = "https://app.libri.is,http://app.libri.is";
