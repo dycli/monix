@@ -525,7 +525,8 @@
               [ -S ${seat.hippo}/compactor.sock ] && break
               sleep 1
             done
-            printf '%s\n' '{"system":"Answer in one word.","memory":null,"prompt":"Say ready."}' |
+            # The call names hippo's own model: Libri refuses one without.
+            printf '%s\n' '{"system":"Answer in one word.","memory":null,"prompt":"Say ready.","model":"${config.systemd.services.hippo.environment.HIPPO_MODEL}"}' |
               socat -t60 -T60 - UNIX-CONNECT:${seat.hippo}/compactor.sock |
               jq -e '.text | length > 0'
           '';
