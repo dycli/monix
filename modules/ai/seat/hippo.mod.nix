@@ -38,10 +38,15 @@ in
       inherit (lib.ship) topology;
       inherit (topology) seat;
 
-      # The compactor reaches its model through Libri, on the socket in the
-      # store: the person picks it in Libri's Settings, and hippo holds no
-      # login and no key.
-      compactor.HIPPO_BACKEND = "libri";
+      # The compactor: configuration, never a pick. Each call reaches its
+      # model through Libri, on the socket in the store, and runs on Libri's
+      # Claude harness, so hippo holds no login and no key. One that can't
+      # run fails in `hippo health`; no other model takes its place.
+      compactor = {
+        HIPPO_BACKEND = "libri";
+        HIPPO_MODEL = "haiku";
+        HIPPO_EFFORT = "high";
+      };
 
       # Libri's own key, read here because this unit, not Libri, serves the
       # seat's hippo: chat mode keeps what Libri logs, code mode follows the
