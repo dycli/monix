@@ -372,14 +372,15 @@
         "nixpkgs": [
           "nixpkgs"
         ],
+        "nixpkgs-darwin": "nixpkgs-darwin",
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1794089853,
-        "narHash": "sha256-UaKcwSV9fWcMa4R1fMtXTC3Kd+tMhWvieT8I/2lNFfQ=",
+        "lastModified": 1794109479,
+        "narHash": "sha256-BndKbbmYvQ3uRF21pLp3w0GzT0rZMcZAiJe7oX/NNU4=",
         "ref": "main",
-        "rev": "8bb4fe1046a8c9aae82783093cf991ab844eb66f",
-        "revCount": 1084,
+        "rev": "6a65f0e78b2d30dc42837a803230781365094ac7",
+        "revCount": 1094,
         "type": "git",
         "url": "https://github.com/dycli/libri"
       },
@@ -504,6 +505,22 @@
       "original": {
         "owner": "NixOS",
         "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs-darwin": {
+      "locked": {
+        "lastModified": 1793976852,
+        "narHash": "sha256-bWDN3JZcE9ovYoaD0/6WYbMtXYpUu0vd5onpK0pc/SE=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "57f1c8965649ce5bcac5118a0d2e41f1fbdc56e5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixpkgs-26.05-darwin",
         "repo": "nixpkgs",
         "type": "github"
       }
