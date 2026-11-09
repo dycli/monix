@@ -83,6 +83,6 @@ in
   # a read-only Fastmail app password.
   "hosts/water/secrets/frame-caldav.json.age".publicKeys = singleton water ++ admin;
   # PLAID_CLIENT_ID=..., PLAID_SANDBOX_SECRET=..., PLAID_SECRET=... (production),
-  # for the plaid sync service only.
+  # for the money service only.
   "hosts/water/secrets/plaid.env.age".publicKeys = singleton water ++ admin;
 }

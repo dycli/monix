@@ -34,7 +34,7 @@
         (mkEnv "EDITOR" (config.desktopApps.editor))
         (mkEnv "HYPRSHOT_DIR" "/home/${osConfig.primaryUser}/box/pix/shots")
         (mkEnv "BROWSER" (getExe config.desktopApps.browser.package))
-        # Matches the Qt side's BreezeDark kdeglobals scheme.
+        # The Breeze GTK port, for the Qt side's Breeze widget style.
         (mkEnv "GTK_THEME" "Breeze-Dark")
         # HYPRCURSOR_* for the compositor, XCURSOR_* for clients.
         (mkEnv "XCURSOR_THEME" "Bibata-Modern-Amber")

@@ -2,7 +2,6 @@
 # and can read whatever the seat can, and one key read that way already reached
 # a transcript. So only root holds the key: nginx adds it to the calls remote_run
 # makes, on a socket only the seat can reach, and refuses the rest of boat's API.
-# Boat is the stopgap until the build machine: remote-build.md in the bridge notes.
 { self, ... }:
 {
   flake.nixosModules.seat = self.nixosModules.boat-key;

@@ -1,5 +1,5 @@
 # libri-publish: puts what Water has live on Libri's Cloudflare Workers, so
-# neither goes stale (app.libri.is did, 11-05, while published by hand):
+# neither goes stale:
 # libri.is with every Android release at /android/, and app.libri.is with
 # the seat's live site build. publish_libri_sites.sh beside this file holds
 # the logic; the Workers' configs and libri.is's script sit in
@@ -37,8 +37,9 @@
           pkgs.coreutils
           pkgs.wrangler
         ];
+        # writeShellApplication prepends runtimeInputs to PATH; neither they
+        # nor the unit's default PATH carry sh, so dash is named by store path.
         text = ''
-          # writeShellApplication puts only runtimeInputs on PATH, so no bare sh.
           exec ${getExe pkgs.dash} ${./libri-publish}/publish_libri_sites.sh
         '';
       };

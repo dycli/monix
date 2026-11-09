@@ -59,7 +59,8 @@
         "spotify"
       ];
     };
-  # The graphical session's utilities and applications.
+
+  # GRAPHICAL SESSION UTILITIES AND APPLICATIONS
   flake.homeModules.desktop = self.homeModules.packages-desktop;
   flake.homeModules.packages-desktop =
     { config, pkgs, ... }:
@@ -98,7 +99,7 @@
       ];
     };
 
-  # Authoring and build tools.
+  # AUTHORING AND BUILD TOOLS
   flake.homeModules.dev = self.homeModules.packages-dev-extras;
   flake.homeModules.packages-dev-extras =
     { pkgs, ... }:

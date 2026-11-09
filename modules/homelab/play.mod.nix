@@ -47,7 +47,7 @@
           '';
         };
 
-      # Tennis lived at its own host before the launcher.
+      # Links to the tennis host land on the game in the launcher.
       services.nginx.virtualHosts."tennis.${domain}" = {
         useACMEHost = domain;
         forceSSL = true;

@@ -40,8 +40,8 @@
       ];
 
       extra = {
-        # su.is keeps its small projects under /labs/; the old top-level
-        # paths send visitors there.
+        # su.is keeps its small projects under /labs/; their top-level paths
+        # redirect there.
         # Its files keep fixed names across deploys, so browsers must
         # revalidate every load (a cheap 304) or they run a stale lab; a file
         # asked for with ?v= is the exception (see $suis_cache below).

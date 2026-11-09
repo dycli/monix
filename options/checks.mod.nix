@@ -1,6 +1,8 @@
-# `nix flake check` builds the crates, runs their tests and verifies the
-# agenix rulebook. These builds omit the deployment environment the service
-# modules bake in, so they are test gates, not the production binaries.
+# The flake's checks: each crate built with its tests and clippy, every
+# host's system build (host-<name>), rustfmt, nixfmt, the nix-style grep and
+# the agenix rulebook; atlas.mod.nix and seat/libri-deploy.mod.nix add their
+# own. The crate builds omit the deployment environment the service modules
+# bake in, so they are test gates, not the production binaries.
 { self, lib, ... }:
 {
   systems = lib.lists.singleton "x86_64-linux";

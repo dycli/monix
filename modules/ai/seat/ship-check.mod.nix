@@ -1,9 +1,8 @@
 # ship-check: monix's checks, one at a time on the host, each in its own
-# nix process. One process evaluating all four hosts peaked at 4.9 GB; one
+# nix process. One process evaluating all four hosts peaks at 4.9 GB; one
 # per check peaks at the largest host, 3.0 GB, for twice the evaluation time
-# (52 s, 2026-11-03). Two checks at once ran Water out of memory on
-# 2026-10-17 and froze it on 2026-10-22, so the lock makes a second check
-# wait for the first.
+# (52 s). Two checks at once run Water out of memory, so the lock makes a
+# second check wait for the first.
 #
 # `ship-check` alone builds every check. Named checks build only those, plus
 # the cheap style gates: `ship-check money water` for a change inside a

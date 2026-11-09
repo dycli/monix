@@ -71,8 +71,8 @@
         };
         # Builds and the agents that start them share one budget, so
         # together they can't take the memory the desktop and services
-        # need: on 2026-10-22 two flake checks, six rustc and the chats
-        # filled RAM and zram and froze the host. Past MemoryHigh the slice
+        # need: two flake checks, six rustc and the chats fill RAM and zram
+        # and freeze the host. Past MemoryHigh the slice
         # slows; past MemoryMax the kernel kills its largest process (a
         # rustc or an evaluator), not the host. Swap is capped because zram
         # spends RAM too.
@@ -84,7 +84,7 @@
         systemd.services.nix-daemon.serviceConfig.Slice = "work.slice";
 
         # The chats' own cargo and evaluators run in paseo, outside the
-        # daemon's fence; on 2026-10-17 paseo peaked at 16G with 11G in zram.
+        # daemon's fence; paseo has peaked at 16G with 11G in zram.
         # MemoryHigh only slows it past 12G; no MemoryMax, so a chat is
         # never killed for a build beside it.
         # A deploy never restarts it: that would end every chat and its long
@@ -95,8 +95,8 @@
           restartIfChanged = false;
         };
         # Libri's workers run cargo, Gradle and QEMU, so they share that budget:
-        # on 2026-10-31 Libri at 12G outside it and the slice at 18G took all
-        # 30G and the kernel killed the desktop.
+        # Libri at 12G outside it and the slice at 18G take all 30G, and the
+        # kernel kills the desktop.
         # Inside it, the chat comes first. Libri gets its cgroup delegated:
         # the daemon (112 MB) runs in the `server` leaf and every harness,
         # with all it starts, in `harness` beside it (Libri's cgroup.rs). The
