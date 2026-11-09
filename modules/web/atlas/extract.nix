@@ -25,7 +25,7 @@ let
     split
     unsafeDiscardStringContext
     ;
-  inherit (lib) isAttrs;
+  inherit (lib.attrsets) isAttrs;
   inherit (lib.options) isOption showOption;
 
   src = unsafeDiscardStringContext (toString self);

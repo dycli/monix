@@ -16,6 +16,8 @@
     }:
     let
       inherit (lib.meta) getExe getExe';
+      inherit (lib.modules) mkForce;
+      inherit (lib.trivial) boolToString;
       idle = osConfig.kestrel.idle;
       wallpaper = ../../../assets/wallpapers/Bierstadt-Among-the-Sierra-Nevada-Mountains.jpg;
       lockBeforeSleep = pkgs.writeShellApplication {
@@ -88,9 +90,9 @@
             fi
           }
 
-          lock_enabled="$(read_enabled 'lockEnabled' '${lib.boolToString idle.lockEnabled}')"
+          lock_enabled="$(read_enabled 'lockEnabled' '${boolToString idle.lockEnabled}')"
           lock_minutes="$(read_minutes 'lockMinutes' '${toString idle.lockMinutes}' 1 60)"
-          display_enabled="$(read_enabled 'displayOffEnabled' '${lib.boolToString idle.displayOffEnabled}')"
+          display_enabled="$(read_enabled 'displayOffEnabled' '${boolToString idle.displayOffEnabled}')"
           display_minutes="$(read_minutes 'displayOffMinutes' '${toString idle.displayOffMinutes}' 1 60)"
           suspend_enabled="false"
           ${lib.strings.optionalString osConfig.kestrel.allowSleep ''
@@ -222,8 +224,7 @@
         systemdTarget = "graphical-session.target";
         settings = { };
       };
-      systemd.user.services.hypridle.Service.ExecStart =
-        lib.mkForce "${kestrelHypridle}/bin/kestrel-hypridle";
+      systemd.user.services.hypridle.Service.ExecStart = mkForce (getExe kestrelHypridle);
 
       # Keep the active locker outside hypridle's cgroup. Power-policy changes
       # restart hypridle, and systemd would otherwise kill its hyprlock child

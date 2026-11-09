@@ -14,7 +14,7 @@
       ...
     }:
     let
-      inherit (lib) getExe;
+      inherit (lib.meta) getExe;
       inherit (lib.lists) singleton;
       inherit (lib.modules) mkBefore;
       inherit (lib.ship.topology) seat;

@@ -13,6 +13,7 @@
     let
       inherit (lib.lists) singleton;
       inherit (lib.modules) mkIf mkMerge;
+      inherit (lib.trivial) pathExists;
 
       # Comic Code is paid, so the repo carries only agenix ciphertext of a
       # gzipped tar; the store is world-readable and world-copyable, so the
@@ -22,7 +23,7 @@
       #   cd ~/ark/monix && EDITOR="cp /tmp/comic-code.tgz" agenix -e assets/fonts/comic-code.age
       #   git add assets/fonts/comic-code.age && rm /tmp/comic-code.tgz
       comicCodeAge = ../../assets/fonts/comic-code.age;
-      hasComicCode = lib.pathExists comicCodeAge;
+      hasComicCode = pathExists comicCodeAge;
     in
     {
       config = mkMerge [

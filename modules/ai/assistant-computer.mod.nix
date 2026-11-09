@@ -18,8 +18,7 @@
       inherit (lib.attrsets) attrNames listToAttrs nameValuePair;
       inherit (lib.lists) concatLists singleton;
       inherit (lib.meta) getExe;
-      inherit (lib.strings) fixedWidthString;
-      inherit (lib) readFile;
+      inherit (lib.strings) fixedWidthString readFile;
       inherit (lib.ship) computers;
 
       owners = attrNames computers.indexes;

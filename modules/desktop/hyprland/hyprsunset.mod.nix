@@ -7,6 +7,9 @@
   flake.homeModules.hyprsunset =
     { lib, pkgs, ... }:
     let
+      inherit (lib.meta) getExe;
+      inherit (lib.modules) mkForce;
+
       kestrelHyprsunset = pkgs.writeShellApplication {
         name = "kestrel-hyprsunset";
         runtimeInputs = [ pkgs.hyprsunset ];
@@ -29,7 +32,6 @@
     in
     {
       services.hyprsunset.enable = true;
-      systemd.user.services.hyprsunset.Service.ExecStart =
-        lib.mkForce "${kestrelHyprsunset}/bin/kestrel-hyprsunset";
+      systemd.user.services.hyprsunset.Service.ExecStart = mkForce (getExe kestrelHyprsunset);
     };
 }

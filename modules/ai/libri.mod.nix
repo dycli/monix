@@ -33,8 +33,10 @@
       ...
     }:
     let
+      inherit (lib.attrsets) recursiveUpdate;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
+      inherit (lib.modules) mkForce;
       inherit (lib.strings) readFile concatStringsSep;
       inherit (lib.ship) fences computers topology;
 
@@ -250,7 +252,7 @@
         inherit (seat) user;
         # One browser for agents: logged out until Dylan allows a site's logins.
         agentBrowser.enable = true;
-        settings = lib.recursiveUpdate (shared "libri") {
+        settings = recursiveUpdate (shared "libri") {
           name = "Bridge";
           person = "Dylan";
           # One address for the household: Dylan's Libri answers on the
@@ -281,7 +283,7 @@
       services.libri.instances.suki = {
         package = seat.libriBuild;
         harnesses = singleton pkgs.claude-code;
-        settings = lib.recursiveUpdate (shared "suki") {
+        settings = recursiveUpdate (shared "suki") {
           name = "Suki";
           person = "Gab";
           style = "Gab likes a slightly warmer tone.";
@@ -430,7 +432,7 @@
           wants = singleton "hippo.service";
           environment = {
             # The seat's home-manager packages, its claude among them.
-            PATH = lib.mkForce (
+            PATH = mkForce (
               concatStringsSep ":" [
                 "/etc/profiles/per-user/${seat.user}/bin"
                 "/run/wrappers/bin"

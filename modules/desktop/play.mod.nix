@@ -8,15 +8,18 @@
   flake.nixosModules.play-desktop =
     { lib, pkgs, ... }:
     let
+      inherit (lib.lists) singleton;
+      inherit (lib.meta) getExe;
+
       play = pkgs.writeShellScript "play" ''
-        exec ${lib.getExe pkgs.brave} \
+        exec ${getExe pkgs.brave} \
           --user-data-dir="''${XDG_STATE_HOME:-$HOME/.local/state}/play" \
           --autoplay-policy=no-user-gesture-required \
           --app=https://play.su.is/ --start-fullscreen
       '';
     in
     {
-      environment.systemPackages = lib.singleton (
+      environment.systemPackages = singleton (
         pkgs.makeDesktopItem {
           name = "play";
           desktopName = "Games";

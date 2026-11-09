@@ -40,7 +40,9 @@
       ...
     }:
     let
+      inherit (lib.attrsets) genAttrs isAttrs mapAttrsToList;
       inherit (lib.lists) singleton;
+      inherit (lib.modules) mkMerge;
       inherit (lib.options) mkOption;
       inherit (lib) types;
 
@@ -159,12 +161,12 @@
       config.xdg.mimeApps = {
         enable = true;
         # Each electing app assigns its .desktop id to every mime type it owns.
-        defaultApplications = lib.mkMerge (
+        defaultApplications = mkMerge (
           config.desktopApps
-          |> lib.attrsets.mapAttrsToList (
+          |> mapAttrsToList (
             _: elected:
-            if lib.isAttrs elected && elected.desktopId != null then
-              lib.genAttrs elected.mimeTypes (_: elected.desktopId)
+            if isAttrs elected && elected.desktopId != null then
+              genAttrs elected.mimeTypes (_: elected.desktopId)
             else
               { }
           )

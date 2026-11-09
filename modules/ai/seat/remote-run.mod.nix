@@ -2,6 +2,7 @@
 { lib, ... }:
 let
   inherit (lib.lists) singleton;
+  inherit (lib.meta) getExe;
   inherit (lib.strings) readFile;
 in
 {
@@ -26,7 +27,7 @@ in
             openssh
           ];
           text = ''
-            exec ${lib.getExe program} "$@"
+            exec ${getExe program} "$@"
           '';
         }
       );

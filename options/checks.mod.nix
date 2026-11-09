@@ -11,6 +11,7 @@
       inherit (lib.attrsets) attrNames attrValues mapAttrs;
       inherit (lib.lists) elem filter singleton;
       inherit (lib.strings) hasSuffix removePrefix;
+      inherit (lib.trivial) warn;
 
       # Check name → crate directory and the tools its tests shell out to.
       crates = {
@@ -94,7 +95,7 @@
                 + lib.strings.concatMapStrings (path: "  ${path}\n") unruled
               )
             else if dangling != [ ] then
-              lib.warn "agenix-rules.nix rules awaiting their .age file: ${toString dangling}" (
+              warn "agenix-rules.nix rules awaiting their .age file: ${toString dangling}" (
                 pkgs.runCommand "secrets-rules-ok" { } "touch $out"
               )
             else

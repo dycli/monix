@@ -31,7 +31,7 @@ in
       ...
     }:
     let
-      inherit (lib.lists) singleton;
+      inherit (lib.lists) optional singleton;
       inherit (lib.ship) topology;
       inherit (topology) seat;
 
@@ -92,7 +92,7 @@ in
             # its own store.
             ProtectHome = "read-only";
             # SQLite needs OpenCode's WAL index writable even to read.
-            ReadWritePaths = [ seat.hippo ] ++ lib.optional recordAll "-${seat.home}/.local/share/opencode";
+            ReadWritePaths = [ seat.hippo ] ++ optional recordAll "-${seat.home}/.local/share/opencode";
             RestrictAddressFamilies = [ "AF_UNIX" ];
             # The primary user reads the store through the seat's group.
             UMask = "0027";
