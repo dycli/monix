@@ -62,6 +62,15 @@ Current bundles:
   apps, smart home, their front door and alerting) and the agent lab
   (cockpit seat, the household assistants and their computers,
   local inference). Needs `dev` alongside it.
+  - `seat`   — a `nixosModules` group that joins `lab`: the fenced,
+    unprivileged AI seat account and what serves it (its address fence,
+    graphical session, hippo, transcript archive, the ship-check lock,
+    Libri's deploy and publish units, the boat key and the Cloudflare and
+    Fastmail MCP servers). Files under `modules/ai/seat/` contribute to it.
+  - `cockpit` — a `homeModules` group for the seat's own home, not the
+    primary user's: `seat` imports it beside `default` and `dev` for the
+    seat user (agent CLI settings, its session, `ship-check`, `usage`,
+    `remote_run`). No host imports it directly.
 
 Rules of taste: never create a bundle without a real member and a real
 importer (no speculative structure — promote shared host config into a
@@ -168,3 +177,18 @@ parentheses. The `pipe-operators` feature is enabled in
 the flake before its first switch passes it by hand
 (`NIX_CONFIG="extra-experimental-features = pipe-operators"`). flake.nix
 itself stays pipe-free so a stock parser can always read it.
+
+## Verify
+
+- Quick, per host (`earth`, `water`, `air`, `fire`):
+  `NIX_CONFIG="extra-experimental-features = pipe-operators" nix eval --raw .#nixosConfigurations.<host>.config.system.build.toplevel.drvPath`.
+- Full gate: `ship-check` on Water, or one check at a time with
+  `nix build --no-link .#checks.x86_64-linux.<name>`. The checks
+  (`options/checks.mod.nix` and the modules that add to it): `endgrain`,
+  `frame`, `money` (crate tests and clippy), `host-earth`, `host-water`,
+  `host-air`, `host-fire`, `rustfmt`, `nixfmt`, `nix-style`,
+  `secrets-rules`, `atlas-tours`, `libri-deploy`.
+- `nix flake check --no-build` fails: crate2nix builds during evaluation.
+- Format with `nix fmt -- <files>`; bare `nix fmt` reads stdin.
+- Deploy: push `main`, then `switcharoo`. A change touching a fenced file
+  needs the captain's `switcharoo --approve`.
