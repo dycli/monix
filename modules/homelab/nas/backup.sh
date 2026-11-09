@@ -77,4 +77,3 @@ pg_restore --list /var/cache/restic-nas/restored-immich.dump > /dev/null
 rm /var/cache/restic-nas/restored-immich.dump
 restic check
 restic snapshots --latest 1
-date --iso-8601=seconds > /var/lib/nas/last-backup-success

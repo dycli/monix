@@ -135,7 +135,6 @@
           };
           nas-backup = {
             description = "Snapshot NAS services and back up to the 8-TB disk";
-            unitConfig.ConditionPathExists = "/var/lib/nas/provisioning-complete";
             unitConfig.RequiresMountsFor = "/srv/storage /srv/storage-snapshots /srv/backup";
             after = singleton "postgresql.target";
             serviceConfig = {
@@ -149,7 +148,6 @@
           };
           nas-backup-maintenance = {
             description = "Prune and check the NAS backup repository";
-            unitConfig.ConditionPathExists = "/var/lib/nas/provisioning-complete";
             unitConfig.RequiresMountsFor = "/srv/backup";
             serviceConfig = {
               Type = "oneshot";

@@ -30,6 +30,9 @@ in
     {
       home.sessionVariables = opencode.environment;
 
+      # Libri's omp turns read the same file; omp takes providers only from
+      # its home. Forced, so a stray file there never fails activation.
+      home.file.".omp/agent/models.yml".force = true;
       home.file.".omp/agent/models.yml".text = opencode.ompModels {
         keyFile = osConfig.secrets.opencode-key.path;
         deepseekKeyFile = osConfig.secrets.deepseek-key.path;

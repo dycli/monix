@@ -172,11 +172,11 @@ only through its own address on the seat plane.
 Its home is composed in Nix, and one set of managed settings applies to every
 launcher, Paseo included, so an agent started from a phone has the same rules
 as one in a terminal. It can push to this repo; only the captain switches a
-host onto a commit. For the web it drives a browser of its own over MCP: a
-visible Brave on a GPU-drawn screen on Water, under an account of its own
-with an internet-only fence, so sites see a real desktop browser on the home
-connection (`assistant-browser.mod.nix`). The captain watches or takes over
-at `bridge-screen`.
+host onto a commit. For the web it drives Libri's agent browser, Chromium on
+a private display (`agentBrowser.enable` in `libri.mod.nix`). Its own
+graphical session is a headless sway under its systemd user manager
+(`seat/desktop.mod.nix`), whose display and session bus Libri, Tern and
+Paseo share.
 
 ### hippo
 
@@ -188,10 +188,8 @@ keeps at `/var/lib/libri-build/libri`; `modules/ai/seat/hippo.mod.nix` holds
 only its service. [dycli/hippo](https://github.com/dycli/hippo) keeps what monix
 last pushed there.
 
-It runs in two modes from one memory. The seat's hippo runs in code mode,
-following the coding harnesses' transcripts beside their own context; Suki's
-runs in chat mode, where the agent logs each message and the view
-is its whole context.
+Both the seat's hippo and Suki's run in chat mode: Libri logs each message
+and the view is the agent's whole context.
 
 **Recording.** A watcher follows Claude Code, Codex, Muse Code and OpenCode transcripts
 as they are written (OpenCode through its SQLite database) and appends each

@@ -69,7 +69,7 @@
         path = singleton pkgs.systemd;
         environment = {
           SEAT_HOME = seat.home;
-          SEAT_NAME = "korra";
+          SEAT_NAME = "bridge";
         };
         serviceConfig = removeAttrs lib.ship.hardened.tenant (singleton "PrivateUsers") // {
           User = seat.user;

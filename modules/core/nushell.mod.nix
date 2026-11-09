@@ -44,6 +44,9 @@
 
       programs.nushell = {
         enable = true;
+        # The pre-26.11 behaviour, kept: nushell does not source
+        # home.sessionVariables itself.
+        loadSessionVariables = false;
         extraConfig = ''
           $env.config.show_banner = false
 

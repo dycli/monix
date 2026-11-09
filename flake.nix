@@ -7,6 +7,7 @@
 
   inputs.nixos-hardware = {
     url = "github:NixOS/nixos-hardware/master";
+    inputs.nixpkgs.follows = "nixpkgs";
   };
 
   inputs.flake-parts = {
@@ -52,10 +53,10 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  # Deliberately does not follow our nixpkgs: its server packages are cached
-  # against its own pin, and following ours forfeits those cache hits.
   inputs.nix-minecraft = {
     url = "github:Infinidoge/nix-minecraft";
+    inputs.nixpkgs.follows = "nixpkgs";
+    inputs.flake-compat.follows = "";
   };
 
   # Cargo.lock to one derivation per crate (buildRustCrate), so editing a
@@ -76,6 +77,7 @@
   inputs.libri = {
     url = "git+https://github.com/dycli/libri?ref=main";
     inputs.nixpkgs.follows = "nixpkgs";
+    inputs.nixpkgs-darwin.follows = "nixpkgs";
     inputs.crate2nix.follows = "crate2nix";
   };
 
@@ -90,6 +92,7 @@
   inputs.hex = {
     url = "github:anomalyco/hex";
     inputs.nixpkgs.follows = "nixpkgs";
+    inputs.home-manager.follows = "home-manager";
   };
 
   inputs.paseo = {

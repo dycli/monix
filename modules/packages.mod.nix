@@ -71,6 +71,9 @@
         config.desktopApps.pdfViewer.package
         config.desktopApps.imageViewer.package
         config.desktopApps.videoPlayer.package
+        config.desktopApps.browser.package
+        config.desktopApps.passwordManager.package
+        config.desktopApps.messenger.package
 
         pkgs.amdgpu_top
         pkgs.brightnessctl
@@ -83,17 +86,14 @@
         pkgs.wl-clip-persist
         pkgs.wl-clipboard
 
-        pkgs.brave
         pkgs.kdePackages.dolphin
         # ark is Dolphin's archive context menu; nothing else installs an icon
         # theme.
         pkgs.kdePackages.ark
         pkgs.kdePackages.breeze-icons
-        pkgs.keepassxc
         pkgs.libreoffice
         pkgs.obsidian
         pkgs.element-desktop
-        pkgs.signal-desktop
         (pkgs.spotify.override { deviceScaleFactor = 2; })
       ];
     };

@@ -31,21 +31,6 @@
         services.home-assistant = {
           enable = true;
 
-          # Tapo C225 1.x firmware rejects plain-RSA key exchange and
-          # python-kasa <= 0.10.2 offers only RSA-kx ciphers, so the TLS
-          # handshake fails. Drop once the nixpkgs pin (0.10.2 today)
-          # carries ECDHE.
-          package = pkgs.home-assistant.override {
-            packageOverrides = _: prev: {
-              python-kasa = prev.python-kasa.overridePythonAttrs (old: {
-                postPatch = (old.postPatch or "") + ''
-                  substituteInPlace kasa/transports/sslaestransport.py \
-                    --replace-fail '"AES256-GCM-SHA384",' '"ECDHE-RSA-AES128-GCM-SHA256", "AES256-GCM-SHA384",'
-                '';
-              });
-            };
-          };
-
           extraComponents = [
             "met"
             "backup"

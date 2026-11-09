@@ -80,7 +80,6 @@
             fi
           done
           ((failed)) && exit 1
-          date -Is >"$root/.last-success"
           echo "mirrored ''${#repos[@]} repositories"
         '';
       };

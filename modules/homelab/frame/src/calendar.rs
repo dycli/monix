@@ -1,9 +1,5 @@
 //! The household calendar, read only: every calendar on the shared CalDAV
 //! accounts, repeats expanded by the server, times in the house's zone.
-//!
-//! Discovery and the iCalendar reading are a trimmed copy of yeoman's
-//! `calendar.rs`; a shared crate replaces the copy once `lib.ship.rustTool`
-//! can build path dependencies.
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
@@ -60,7 +56,7 @@ impl Prop {
 }
 
 impl Calendar {
-    /// From yeoman's accounts file, `[{"name","url","username","password"}]`,
+    /// From the accounts file, `[{"name","url","username","password"}]`,
     /// and the zone's name.
     pub fn new(accounts: &str, zone: &str) -> Result<Self, String> {
         let accounts: Vec<Account> =

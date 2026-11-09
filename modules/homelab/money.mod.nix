@@ -59,19 +59,6 @@
         users.groups.finance = { };
         users.groups.money = { };
 
-        # The service was called plaid until 2026-10; this carries its
-        # databases over once, after the old unit stops and before the new
-        # one starts. Remove it once Water has switched past the rename.
-        system.activationScripts.money-state = {
-          deps = singleton "users";
-          text = ''
-            if [ -d /var/lib/plaid ] && [ ! -e /var/lib/money ]; then
-              mv /var/lib/plaid /var/lib/money
-              chown -R money:finance /var/lib/money
-            fi
-          '';
-        };
-
         systemd.sockets.money = {
           description = "The money page's API for the household assistants";
           wantedBy = singleton "sockets.target";

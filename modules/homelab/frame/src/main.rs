@@ -9,7 +9,7 @@
 //!   asset.view.
 //! - `FRAME_ALBUM`: the album's name.
 //! - `FRAME_TZ`: the house's time zone, e.g. `America/New_York`.
-//! - `FRAME_CALDAV_FILE` (optional): yeoman's CalDAV accounts file.
+//! - `FRAME_CALDAV_FILE` (optional): a CalDAV accounts file, `[{"name","url","username","password"}]`.
 //! - `FRAME_WEATHER` (optional): `latitude,longitude` for the forecast.
 //! - `CACHE_DIRECTORY` (optional, set by systemd): where fitted photos
 //!   are kept between requests and restarts.

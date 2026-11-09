@@ -203,7 +203,7 @@ pub async fn usage(State(app): State<Arc<App>>) -> Response {
 ///
 /// ```text
 /// claude  5h      3%  resets Mon Oct 19 00:09
-///         korra 75% (memory 17%) · sokka 24% (memory 2%) · $10 at API prices
+///         bridge 75% (memory 17%) · libri 24% (memory 2%) · $10 at API prices
 /// codex   unknown (RuntimeError: ...)
 /// ```
 mod report {
@@ -295,7 +295,7 @@ mod report {
         fn reads_windows_shares_and_failures() {
             let r = parse(concat!(
                 "claude  5h      3%  resets Mon Oct 19 00:09\n",
-                "        korra 75% (memory 17%) · sokka 24% (memory 2%) · suki 1% (memory 0%) · $10 at API prices\n",
+                "        bridge 75% (memory 17%) · libri 24% (memory 2%) · suki 1% (memory 0%) · $10 at API prices\n",
                 "claude  week    0%  resets Sun Oct 25 17:59\n",
                 "        no use logged here\n",
                 "codex   unknown (RuntimeError: failed to fetch: 401\n",
@@ -310,8 +310,8 @@ mod report {
             assert_eq!(
                 r.windows[0].shares,
                 [
-                    ("korra".into(), 75),
-                    ("sokka".into(), 24),
+                    ("bridge".into(), 75),
+                    ("libri".into(), 24),
                     ("suki".into(), 1)
                 ]
             );

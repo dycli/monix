@@ -127,7 +127,7 @@ def shares(rows):
 
 
 def split(spent):
-    """korra 71% (memory 12%) · sokka 26% · ... · $14 at API prices"""
+    """bridge 71% (memory 12%) · suki 26% · ... · $14 at API prices"""
     total = sum(spent.values())
     if not total:
         return "        no use logged here"

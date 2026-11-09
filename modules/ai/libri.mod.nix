@@ -78,12 +78,11 @@
         url = host subdomain;
         pages = "${pages}/${unit}";
         # Page links open in the Library of the app at app.libri.is, on
-        # whichever host the reader has open, not at the old per-host route.
+        # whichever host the reader has open.
         pages_url = "https://app.libri.is";
         # The tailnet is the sign-in: tailscaled names each caller, only this
         # person's login gets in, signed in with no pairing; loopback (the
-        # machine itself) stays in. Replaces open = "1", which let in every
-        # tailnet device, Gab's into Dylan's instance and the other way round.
+        # machine itself) stays in.
         tailnet = login;
         origins = "https://app.libri.is,http://app.libri.is";
       };
@@ -179,21 +178,6 @@
           provider = lib.ship.opencode.providers keys;
         }
       );
-      # The host's own llama-swap, at the seat-plane address its fence admits,
-      # on hosts that serve one.
-      ompLocal = lib.trivial.mapNullable (inference: {
-        baseURL = "http://${topology.seatInferenceAddr}:${toString inference.port}/v1";
-        models = inference.ompModels;
-      }) (config.inference or null);
-      ompModels = pkgs.writeText "libri-omp-models.yml" (
-        lib.ship.opencode.ompModels (keys // { local = ompLocal; })
-      );
-      # omp reads its providers only from its home.
-      linkOmpModels = pkgs.writeShellScript "libri-omp-models" ''
-        ${pkgs.coreutils}/bin/mkdir -p ${seat.home}/.omp/agent
-        ${pkgs.coreutils}/bin/ln -sfn ${ompModels} ${seat.home}/.omp/agent/models.yml
-      '';
-
       suki = "/var/lib/suki";
       sukiDesk = "${computers.desks}/suki";
       # The servers Gab added beside Libri's own, which the daemon hands
@@ -235,8 +219,8 @@
           ${sukiMcp} > "$RUNTIME_DIRECTORY/mcp.json"
       '';
 
-      # The homeserver and resolver on loopback, and the internet for the
-      # model; not the tailnet, the LAN or the seat's loopback address.
+      # The resolver on loopback and the internet for the model; not the
+      # tailnet, the LAN or the seat's loopback address.
       fence = {
         IPAddressAllow = fences.loopback;
         IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
@@ -391,7 +375,7 @@
       security.polkit.extraConfig = ''
         polkit.addRule(function (action, subject) {
           if (action.id == "org.freedesktop.systemd1.manage-units" &&
-              ["hippo.service", "libri.service", "libri-hippo.service", "suki.service"].indexOf(action.lookup("unit")) >= 0 &&
+              ["hippo.service", "libri.service", "suki.service"].indexOf(action.lookup("unit")) >= 0 &&
               ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
               subject.user == "${seat.user}") {
             return polkit.Result.YES;
@@ -445,10 +429,9 @@
           after = singleton "hippo.service";
           wants = singleton "hippo.service";
           environment = {
-            # The seat's own installs, its claude among them.
+            # The seat's home-manager packages, its claude among them.
             PATH = lib.mkForce (
               concatStringsSep ":" [
-                "${seat.home}/.nix-profile/bin"
                 "/etc/profiles/per-user/${seat.user}/bin"
                 "/run/wrappers/bin"
                 "/run/current-system/sw/bin"
@@ -464,10 +447,7 @@
             LoadCredential = "claude-token:${config.secrets.agent-claude-token.path}";
             RuntimeDirectory = "libri";
             RuntimeDirectoryMode = "0700";
-            ExecStartPre = [
-              linkOmpModels
-              claudeToken
-            ];
+            ExecStartPre = claudeToken;
             EnvironmentFile = "-%t/%N/claude.env";
             WorkingDirectory = seat.home;
             NoNewPrivileges = false;
@@ -477,7 +457,7 @@
             # afresh from the memory.
             Restart = "always";
             RestartSec = 10;
-            # Each turn's claude and what it runs; paseo's bound.
+            # Each turn's claude and what it runs.
             MemoryHigh = "12G";
           };
         };

@@ -74,8 +74,6 @@ in
   "hosts/water/secrets/libri-publish-cloudflare-token.age".publicKeys = singleton water ++ admin;
   # boat.dev API key, preset ci, for remote builds. The file holds the bare key.
   "hosts/water/secrets/boat-api-key.age".publicKeys = singleton water ++ admin;
-  # Fastmail API tokens, raw, type MCP (read, change, send), one per assistant;
-  # Libri bars the model from sending and sends only what the captain approves.
   # FRIGATE_RTSP_PASSWORD=...
   "hosts/water/secrets/frigate.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/git-mirror-token.age".publicKeys = singleton water ++ admin;

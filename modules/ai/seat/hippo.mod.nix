@@ -1,9 +1,6 @@
 # hippo: the AI seat's episodic memory. One service, running as the seat,
 # keeps every chat that passes through Bridge's Libri word for word; sessions
-# read it through the `hippo` CLI. With the Libri instance's
-# `hippo.record = "all"` it also follows every Claude Code, Codex, Muse Code,
-# OpenCode and Paseo session saved in the seat's home, so a `claude` or
-# `codex` run by hand joins the memory as Dylan's words.
+# read it through the `hippo` CLI.
 # Design: README, "hippo".
 { self, ... }:
 let

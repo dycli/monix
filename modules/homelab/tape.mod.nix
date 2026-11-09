@@ -4,7 +4,7 @@
 # slice of history into the same archive after showing its price. Nothing
 # reads the tape yet; the charting client comes later. Water leaves
 # `tape.keyFile` unset until the Databento subscription starts, so the
-# recorder is built but not installed.
+# recorder is neither built nor installed.
 { self, inputs, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.tape;
