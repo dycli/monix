@@ -35,7 +35,7 @@
     let
       inherit (lib.attrsets) recursiveUpdate;
       inherit (lib.lists) singleton;
-      inherit (lib.meta) getExe;
+      inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkForce;
       inherit (lib.strings) readFile concatStringsSep;
       inherit (lib.ship) fences computers topology;
@@ -216,8 +216,8 @@
       # The tokens rise from their credentials into a private copy of the file.
       sukiMcpTokens = pkgs.writeShellScript "suki-mcp-tokens" ''
         umask 077
-        ${pkgs.gnused}/bin/sed \
-          -e "s|@HOME_TOKEN@|$(${pkgs.coreutils}/bin/tr -d '\r\n' < "$CREDENTIALS_DIRECTORY/home")|" \
+        ${getExe pkgs.gnused} \
+          -e "s|@HOME_TOKEN@|$(${getExe' pkgs.coreutils "tr"} -d '\r\n' < "$CREDENTIALS_DIRECTORY/home")|" \
           ${sukiMcp} > "$RUNTIME_DIRECTORY/mcp.json"
       '';
 

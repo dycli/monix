@@ -16,6 +16,7 @@
     }:
     let
       inherit (lib.lists) singleton;
+      inherit (lib.meta) getExe';
 
       tern = pkgs.stdenv.mkDerivation {
         pname = "tern";
@@ -79,7 +80,7 @@
         ];
         wants = singleton "network-online.target";
         serviceConfig = {
-          ExecStart = "${tern}/bin/tern remote serve --listen 0.0.0.0:8377 --state-dir /var/lib/tern --access /etc/tern/access.toml";
+          ExecStart = "${getExe' tern "tern"} remote serve --listen 0.0.0.0:8377 --state-dir /var/lib/tern --access /etc/tern/access.toml";
           StateDirectory = "tern";
           StateDirectoryMode = "0700";
           Restart = "on-failure";
@@ -98,7 +99,7 @@
           name = "tern";
           desktopName = "Tern";
           comment = "Terminal workspace";
-          exec = "${tern}/bin/tern %U";
+          exec = "${getExe' tern "tern"} %U";
           icon = "utilities-terminal";
           categories = [
             "System"

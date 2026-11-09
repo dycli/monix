@@ -26,6 +26,7 @@
     }:
     let
       inherit (lib.lists) singleton;
+      inherit (lib.meta) getExe;
       inherit (lib.ship) fences;
       inherit (lib.ship.topology) seat;
 
@@ -38,7 +39,7 @@
         ];
         text = ''
           # writeShellApplication puts only runtimeInputs on PATH, so no bare sh.
-          exec ${pkgs.dash}/bin/dash ${./libri-publish}/publish_libri_sites.sh
+          exec ${getExe pkgs.dash} ${./libri-publish}/publish_libri_sites.sh
         '';
       };
     in

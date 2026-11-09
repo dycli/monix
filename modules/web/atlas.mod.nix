@@ -7,6 +7,8 @@
 # that is gone.
 { self, lib, ... }:
 let
+  inherit (lib.meta) getExe';
+
   # Evaluated from every host, so it changes with each commit to monix.
   system =
     pkgs:
@@ -84,7 +86,7 @@ in
           Type = "oneshot";
           User = "atlas";
           Group = "atlas";
-          ExecStart = "${pkgs.python3}/bin/python3 -I ${./atlas/atlas.py} scan --mirrors ${mirror} --system ${system pkgs} --out ${dir}/data/atlas.json --cache ${dir}/cache";
+          ExecStart = "${getExe' pkgs.python3 "python3"} -I ${./atlas/atlas.py} scan --mirrors ${mirror} --system ${system pkgs} --out ${dir}/data/atlas.json --cache ${dir}/cache";
           ReadWritePaths = singleton dir;
           ReadOnlyPaths = singleton mirror;
           UMask = "0027";
@@ -107,7 +109,7 @@ in
     { pkgs, ... }:
     {
       checks.atlas-tours = pkgs.runCommand "atlas-tours" { } ''
-        ${pkgs.python3}/bin/python3 -I ${./atlas/atlas.py} check \
+        ${getExe' pkgs.python3 "python3"} -I ${./atlas/atlas.py} check \
           --tree ${self} --tours ${./atlas/tours.toml} --system ${system pkgs}
         touch $out
       '';

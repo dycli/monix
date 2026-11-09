@@ -56,7 +56,7 @@ in
     }:
     let
       inherit (lib.lists) singleton;
-      inherit (lib.meta) getExe;
+      inherit (lib.meta) getExe getExe';
       inherit (lib.ship.topology) seat;
 
       source = "/srv/storage/git/dycli/libri.git";
@@ -114,10 +114,10 @@ in
         '';
       };
       startDeploy = pkgs.writeShellScriptBin "libri-start-deploy" ''
-        exec ${pkgs.bash}/bin/sh ${scripts}/start_deploy.sh "$@"
+        exec ${getExe' pkgs.bash "sh"} ${scripts}/start_deploy.sh "$@"
       '';
       publishAndroid = pkgs.writeShellScriptBin "libri-publish-android" ''
-        exec ${pkgs.bash}/bin/bash ${scripts}/publish_android.sh "$@"
+        exec ${getExe pkgs.bash} ${scripts}/publish_android.sh "$@"
       '';
     in
     {

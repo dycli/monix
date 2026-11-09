@@ -12,6 +12,7 @@
     }:
     let
       inherit (lib.lists) singleton;
+      inherit (lib.meta) getExe;
       inherit (lib.modules) mkIf mkMerge;
       inherit (lib.trivial) pathExists;
 
@@ -39,7 +40,7 @@
               mkdir -p /var/lib/fonts/comic-code.new
               # Activation runs with a minimal PATH, so tar cannot find a
               # gzip to shell out to; the store path is passed explicitly
-              if ${pkgs.gnutar}/bin/tar --use-compress-program=${pkgs.gzip}/bin/gzip \
+              if ${getExe pkgs.gnutar} --use-compress-program=${getExe pkgs.gzip} \
                 -xf "${config.secrets.comic-code.path}" -C /var/lib/fonts/comic-code.new
               then
                 chmod -R a+rX /var/lib/fonts/comic-code.new
