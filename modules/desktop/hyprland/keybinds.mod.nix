@@ -305,19 +305,22 @@
           locked = true;
         })
       ]
-      ++ (concatMap (
-        i:
-        let
-          n = toString i;
-        in
-        [
-          (mkBind "SUPER + ${n}" "hl.dsp.focus({ workspace = ${n} })" "Switch to workspace ${n}" { })
-          (mkBind "SUPER + SHIFT + ${n}" "hl.dsp.window.move({ workspace = ${n} })"
-            "Move window to workspace ${n}"
-            { }
-          )
-        ]
-      ) (range 1 9))
+      ++ (
+        range 1 9
+        |> concatMap (
+          i:
+          let
+            n = toString i;
+          in
+          [
+            (mkBind "SUPER + ${n}" "hl.dsp.focus({ workspace = ${n} })" "Switch to workspace ${n}" { })
+            (mkBind "SUPER + SHIFT + ${n}" "hl.dsp.window.move({ workspace = ${n} })"
+              "Move window to workspace ${n}"
+              { }
+            )
+          ]
+        )
+      )
       ++ [
         (mkBind "SUPER + 0" "hl.dsp.focus({ workspace = 10 })" "Switch to workspace 10" { })
         (mkBind "SUPER + SHIFT + 0" "hl.dsp.window.move({ workspace = 10 })" "Move window to workspace 10"

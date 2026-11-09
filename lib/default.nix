@@ -22,7 +22,11 @@ inputs.nixpkgs.lib.extend (
         pkgs.writeShellApplication {
           name = "hippo";
           text =
-            final.concatStrings (final.mapAttrsToList (k: v: "export ${k}=\"\${${k}:-${v}}\"\n") env)
+            (
+              env
+              |> final.attrsets.mapAttrsToList (k: v: "export ${k}=\"\${${k}:-${v}}\"\n")
+              |> final.strings.concatStrings
+            )
             + "exec ${build}/bin/hippo \"$@\"\n";
         };
 

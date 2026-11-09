@@ -201,7 +201,7 @@ in
                 _: m: {
                   # ${PORT} is llama-swap's macro, escaped so Nix passes it
                   # through verbatim.
-                  cmd = concatStringsSep " " (
+                  cmd =
                     [
                       llamaServer
                       "--port \${PORT}"
@@ -212,7 +212,7 @@ in
                       "--no-webui"
                     ]
                     ++ m.flags
-                  );
+                    |> concatStringsSep " ";
                   inherit (m) ttl aliases;
                 }
               );

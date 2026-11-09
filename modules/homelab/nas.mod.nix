@@ -73,12 +73,12 @@
       ];
       # Restored alongside the data so a restore knows where each
       # directory belongs.
-      environment.etc."nas/layout".text = concatMapStringsSep "\n" (
-        item: "${item.path} ${item.directory}"
-      ) layout;
+      environment.etc."nas/layout".text =
+        layout |> concatMapStringsSep "\n" (item: "${item.path} ${item.directory}");
 
-      fileSystems = listToAttrs (
-        map (
+      fileSystems =
+        layout
+        |> map (
           item:
           nameValuePair item.path {
             device = "/srv/storage/${item.directory}";
@@ -89,8 +89,8 @@
               "x-systemd.requires-mounts-for=/srv/storage"
             ];
           }
-        ) layout
-      );
+        )
+        |> listToAttrs;
 
       services.samba = {
         enable = true;
@@ -121,9 +121,11 @@
 
       systemd.services =
         (genAttrs services (name: {
-          unitConfig.RequiresMountsFor = concatStringsSep " " (
-            map (item: item.path) (lib.lists.filter (item: lib.lists.elem name item.services) layout)
-          );
+          unitConfig.RequiresMountsFor =
+            layout
+            |> lib.lists.filter (item: lib.lists.elem name item.services)
+            |> map (item: item.path)
+            |> concatStringsSep " ";
           bindsTo = singleton "srv-storage.mount";
           after = singleton "srv-storage.mount";
         }))

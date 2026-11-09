@@ -34,21 +34,27 @@
       formatter = pkgs.nixfmt;
 
       checks =
-        mapAttrs (
-          _: crate:
-          lib.ship.rustTool pkgs {
-            # A path, not "${self}/…": it copies the crate on its own, so the
-            # check is cached by the crate's content and a commit elsewhere
-            # doesn't rebuild every crate.
-            src = ../. + "/${crate.path}";
-            check = true;
-            nativeCheckInputs = crate.tools or [ ];
-          }
-        ) crates
+        (
+          crates
+          |> mapAttrs (
+            _: crate:
+            lib.ship.rustTool pkgs {
+              # A path, not "${self}/…": it copies the crate on its own, so the
+              # check is cached by the crate's content and a commit elsewhere
+              # doesn't rebuild every crate.
+              src = ../. + "/${crate.path}";
+              check = true;
+              nativeCheckInputs = crate.tools or [ ];
+            }
+          )
+        )
         # Every host builds, so a green check means the deploy builds too.
-        // lib.attrsets.mapAttrs' (
-          name: host: lib.attrsets.nameValuePair "host-${name}" host.config.system.build.toplevel
-        ) self.nixosConfigurations
+        // (
+          self.nixosConfigurations
+          |> lib.attrsets.mapAttrs' (
+            name: host: lib.attrsets.nameValuePair "host-${name}" host.config.system.build.toplevel
+          )
+        )
         // {
           rustfmt =
             pkgs.runCommand "rustfmt-check"

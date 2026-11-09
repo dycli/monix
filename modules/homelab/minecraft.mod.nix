@@ -179,37 +179,40 @@
 
         # nix-minecraft sandboxes these units; only the directives it
         # leaves out are added here, derived from the server list.
-        systemd.services = mapAttrs' (name: _: {
-          name = "minecraft-server-${name}";
-          value.serviceConfig = {
+        systemd.services =
+          config.services.minecraft-servers.servers
+          |> mapAttrs' (
+            name: _: {
+              name = "minecraft-server-${name}";
+              value.serviceConfig = {
+                ProtectSystem = "strict";
+                ReadWritePaths = singleton "${dataDir}/${name}";
+                NoNewPrivileges = true;
+                # ProcSubset=pid is unset: it hides /proc/mounts, which Java's
+                # NIO needs for file-store lookups, and world loading fails.
+                RemoveIPC = true;
+                UMask = mkForce "0077"; # tighter than upstream's 0007
 
-            ProtectSystem = "strict";
-            ReadWritePaths = singleton "${dataDir}/${name}";
-            NoNewPrivileges = true;
-            # ProcSubset=pid is unset: it hides /proc/mounts, which Java's
-            # NIO needs for file-store lookups, and world loading fails.
-            RemoveIPC = true;
-            UMask = mkForce "0077"; # tighter than upstream's 0007
+                # MemoryDenyWriteExecute is unset because the JVM JIT needs W+X.
+                # Spark's async-profiler probes perf_event_open, outside
+                # @system-service; EPERM makes that probe fail instead of
+                # killing the JVM mid-startup.
+                SystemCallFilter = singleton "@system-service";
+                SystemCallErrorNumber = "EPERM";
 
-            # MemoryDenyWriteExecute is unset because the JVM JIT needs W+X.
-            # Spark's async-profiler probes perf_event_open, outside
-            # @system-service; EPERM makes that probe fail instead of
-            # killing the JVM mid-startup.
-            SystemCallFilter = singleton "@system-service";
-            SystemCallErrorNumber = "EPERM";
-
-            # The internet is unmatched and so allowed, for session auth.
-            IPAddressAllow = [
-              fences.tailnet
-              "127.0.0.53/32" # resolved's stub, exempt from the deny below
-            ];
-            IPAddressDeny = [
-              "127.0.0.0/8" # other loopback services
-              "::1"
-            ]
-            ++ fences.privateRanges;
-          };
-        }) config.services.minecraft-servers.servers;
+                # The internet is unmatched and so allowed, for session auth.
+                IPAddressAllow = [
+                  fences.tailnet
+                  "127.0.0.53/32" # resolved's stub, exempt from the deny below
+                ];
+                IPAddressDeny = [
+                  "127.0.0.0/8" # other loopback services
+                  "::1"
+                ]
+                ++ fences.privateRanges;
+              };
+            }
+          );
       };
     };
 }

@@ -42,11 +42,12 @@ let
 
   nixFiles = filter (lib.strings.hasSuffix ".nix") (lib.filesystem.listFilesRecursive self);
   # The option namespaces the ship declares, found as `options.<name>`.
-  namespaces = unique (
-    concatMap (
+  namespaces =
+    nixFiles
+    |> concatMap (
       f: filter isList (split "options\\.([A-Za-z_][A-Za-z0-9_-]*)" (readFile f)) |> map head
-    ) nixFiles
-  );
+    )
+    |> unique;
 
   host =
     name: sys:
@@ -57,8 +58,9 @@ let
       nodes = concatMap walk sys.graph;
       # Named flake modules ("lab", "desktop") and the files under each.
       bundle = k: match ".*#nixosModules\\.([A-Za-z0-9_-]+)" (toString k);
-      bundles = unique (
-        concatMap (
+      bundles =
+        nodes
+        |> concatMap (
           n:
           let
             b = bundle n.key;
@@ -66,38 +68,44 @@ let
           if b == null then
             [ ]
           else
-            map (f: {
+            walk n
+            |> map (m: m.file)
+            |> rels
+            |> map (f: {
               name = head b;
               file = f;
-            }) (rels (map (m: m.file) (walk n)))
-        ) nodes
-      );
+            })
+        )
+        |> unique;
 
       leaves = o: if isOption o then singleton o else concatMap leaves (attrValues o);
       ours = filter (n: options ? ${n} && n != "flake") namespaces;
-      opts = map (o: {
-        name = showOption o.loc;
-        declared = rels o.declarations;
-        set = rels (map (d: d.file) o.definitionsWithLocations);
-      }) (concatMap (n: leaves options.${n}) ours);
+      opts =
+        ours
+        |> concatMap (n: leaves options.${n})
+        |> map (o: {
+          name = showOption o.loc;
+          declared = rels o.declarations;
+          set = rels (map (d: d.file) o.definitionsWithLocations);
+        });
 
       # Names each file defines under an attrsOf option, with the file.
       defined =
         opt:
-        concatMap (
+        opt.definitionsWithLocations
+        |> concatMap (
           d:
           let
             f = rel d.file;
           in
           if f == null || !isAttrs d.value then [ ] else map (n: { inherit n f; }) (attrNames d.value)
-        ) opt.definitionsWithLocations;
+        );
       byName =
         ds: lib.lists.groupBy (d: d.n) ds |> lib.attrsets.mapAttrs (_: ds: unique (map (d: d.f) ds));
 
       # A definition under a false mkIf names a unit the host lacks.
-      services = filterAttrs (n: _: config.systemd.services ? ${n}) (
-        byName (defined options.systemd.services)
-      );
+      services =
+        defined options.systemd.services |> byName |> filterAttrs (n: _: config.systemd.services ? ${n});
       units = attrNames services;
       wiring =
         u:
@@ -107,22 +115,29 @@ let
         in
         {
           files = services.${u};
-          after = map (lib.strings.removeSuffix ".service") (
-            unique (pick (s.after ++ s.requires ++ s.wants ++ s.bindsTo))
-          );
+          after =
+            s.after ++ s.requires ++ s.wants ++ s.bindsTo
+            |> pick
+            |> unique
+            |> map (lib.strings.removeSuffix ".service");
           description = s.description or "";
           timer = config.systemd.timers ? ${u};
         };
 
       routeFiles = if options ? shipProxy then byName (defined options.shipProxy.routes) else { };
       # The atlas's own route is skipped: its root is this very data.
-      routes = lib.attrsets.mapAttrs (n: r: {
-        subdomain = r.subdomain;
-        port = r.port;
-        static = r.root != null;
-        upstream = r.upstream;
-        files = routeFiles.${n} or [ ];
-      }) (filterAttrs (n: _: n != "atlas") (config.shipProxy.routes or { }));
+      routes =
+        config.shipProxy.routes or { }
+        |> filterAttrs (n: _: n != "atlas")
+        |> lib.attrsets.mapAttrs (
+          n: r: {
+            subdomain = r.subdomain;
+            port = r.port;
+            static = r.root != null;
+            upstream = r.upstream;
+            files = routeFiles.${n} or [ ];
+          }
+        );
 
       secrets = if options ? secrets then byName (defined options.secrets) else { };
     in

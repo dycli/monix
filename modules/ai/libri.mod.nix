@@ -338,16 +338,17 @@
       # it. Server-sent events stream as they come; uploads may be as big as
       # the chat takes (UPLOAD_MAX in site.rs).
       shipProxy.routes =
-        lib.attrsets.mapAttrs
-          (n: subdomain: {
+        {
+          libri = "si";
+          suki = "suki";
+        }
+        |> lib.attrsets.mapAttrs (
+          n: subdomain: {
             inherit subdomain;
             port = ports.${n};
             proxyExtra = "proxy_buffering off; client_max_body_size 100m;";
-          })
-          {
-            libri = "si";
-            suki = "suki";
-          };
+          }
+        );
 
       systemd.tmpfiles.settings.yeoman-pages = {
         ${pages}.d = {

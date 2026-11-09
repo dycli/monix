@@ -119,26 +119,30 @@
               }
               // extra.${domain} or { }
             )
-            // listToAttrs (
-              map (
+            // (
+              redirected
+              |> map (
                 domain:
                 nameValuePair domain {
                   serverAliases = singleton "www.${domain}";
                   locations."/".return = "301 https://dylanc.com$request_uri";
                 }
-              ) redirected
+              )
+              |> listToAttrs
             )
             # www.<domain> answers with a 301 to the bare name, path kept,
             # so the bar drops the www. The scheme is written out: nginx
             # sees plain HTTP from the tunnel, while visitors arrive over
             # HTTPS at Cloudflare's edge.
-            // listToAttrs (
-              map (
+            // (
+              live
+              |> map (
                 domain:
                 nameValuePair "www.${domain}" {
                   locations."/".return = "301 https://${domain}$request_uri";
                 }
-              ) live
+              )
+              |> listToAttrs
             );
         };
 
