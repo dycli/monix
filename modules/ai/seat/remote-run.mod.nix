@@ -20,11 +20,11 @@ in
       home.packages = singleton (
         pkgs.writeShellApplication {
           name = "remote_run";
-          runtimeInputs = with pkgs; [
-            coreutils
-            git
-            gnutar
-            openssh
+          runtimeInputs = [
+            pkgs.coreutils
+            pkgs.git
+            pkgs.gnutar
+            pkgs.openssh
           ];
           text = ''
             exec ${getExe program} "$@"

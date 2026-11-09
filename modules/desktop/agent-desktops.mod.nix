@@ -5,13 +5,16 @@
 {
   flake.homeModules.agent-desktops =
     { pkgs, ... }:
+    let
+      agents = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system};
+    in
     {
-      home.packages = with inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}; [
-        paseo-desktop
-        t3code
-        claude-desktop
-        chatgpt
-        opencode2-desktop
+      home.packages = [
+        agents.paseo-desktop
+        agents.t3code
+        agents.claude-desktop
+        agents.chatgpt
+        agents.opencode2-desktop
       ];
     };
 }

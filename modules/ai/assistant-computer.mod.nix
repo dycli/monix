@@ -41,19 +41,17 @@
               # and converters for pictures, sound and film, documents and
               # archives for the shell.
               tools = [
-                (pkgs.python3.withPackages (
-                  ps: with ps; [
-                    matplotlib
-                    numpy
-                    openpyxl
-                    pandas
-                    pillow
-                    pillow-heif
-                    pypdf
-                    python-docx
-                    reportlab
-                  ]
-                ))
+                (pkgs.python3.withPackages (ps: [
+                  ps.matplotlib
+                  ps.numpy
+                  ps.openpyxl
+                  ps.pandas
+                  ps.pillow
+                  ps.pillow-heif
+                  ps.pypdf
+                  ps.python-docx
+                  ps.reportlab
+                ]))
                 pkgs.bash
                 pkgs.coreutils
                 pkgs.file
