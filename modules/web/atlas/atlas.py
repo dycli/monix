@@ -827,8 +827,19 @@ def mirrored(root):
             continue
         for entry in sorted(os.listdir(d)):
             path = os.path.join(d, entry)
-            if entry.endswith(".git") and os.path.isdir(path):
+            # A new repository has no commits until its first push; there is nothing to draw.
+            if entry.endswith(".git") and os.path.isdir(path) and has_commits(path):
                 yield path
+
+
+def has_commits(path):
+    return (
+        subprocess.run(
+            ["git", "-c", "safe.directory=*", "-C", path, "rev-parse", "--verify", "-q", "HEAD"],
+            capture_output=True,
+        ).returncode
+        == 0
+    )
 
 
 def cmd_scan(a):
