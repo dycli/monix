@@ -142,6 +142,9 @@
           -- The ASPEED management output otherwise creates an unseen desktop.
           hl.monitor({ output = "VGA-1", disabled = true })
           hl.monitor({ output = "DP-1", mode = "preferred", position = "auto", scale = 1, vrr = 1 })
+          -- Auto HDR switches the DP-1 signal on every fullscreen toggle; the
+          -- monitor resyncs, blanking the picture and its audio for a second.
+          hl.config({ render = { cm_auto_hdr = 0 } })
         '';
 
         # Steam and its games inherit CCD 3's six cores and their SMT siblings.
