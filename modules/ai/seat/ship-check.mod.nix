@@ -8,13 +8,13 @@
 # `ship-check` alone builds every check. Named checks build only those, plus
 # the cheap style gates: `ship-check money water` for a change inside a
 # crate. A host name stands for its system build.
-{ self, ... }:
+{ self, lib, ... }:
 {
   flake.nixosModules.seat = self.nixosModules.ship-check;
   flake.nixosModules.ship-check = {
     # Every user's check takes the same lock, so it lives outside /tmp,
     # which some units keep private.
-    systemd.tmpfiles.rules = [ "f /run/ship-check.lock 0666 root root -" ];
+    systemd.tmpfiles.rules = lib.lists.singleton "f /run/ship-check.lock 0666 root root -";
   };
 
   flake.homeModules.cockpit =
@@ -23,7 +23,7 @@
       home.packages = lib.lists.singleton (
         pkgs.writeShellApplication {
           name = "ship-check";
-          runtimeInputs = [ pkgs.util-linux ];
+          runtimeInputs = lib.lists.singleton pkgs.util-linux;
           text = ''
             exec 9>/run/ship-check.lock
             if ! flock -n 9; then

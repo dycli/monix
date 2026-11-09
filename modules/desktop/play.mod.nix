@@ -26,7 +26,7 @@
           comment = "Recompiled games from play.su.is";
           exec = "${play}";
           icon = "applications-games";
-          categories = [ "Game" ];
+          categories = singleton "Game";
         }
       );
     };

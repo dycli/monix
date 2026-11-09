@@ -10,9 +10,7 @@
     lib.ship.host "air" (
       { config, ... }:
       {
-        imports = [
-          self.nixosModules.web
-        ];
+        imports = lib.lists.singleton self.nixosModules.web;
 
         primaryUser = "aang";
 

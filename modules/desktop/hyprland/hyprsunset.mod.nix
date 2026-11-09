@@ -7,12 +7,13 @@
   flake.homeModules.hyprsunset =
     { lib, pkgs, ... }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkForce;
 
       kestrelHyprsunset = pkgs.writeShellApplication {
         name = "kestrel-hyprsunset";
-        runtimeInputs = [ pkgs.hyprsunset ];
+        runtimeInputs = singleton pkgs.hyprsunset;
         text = ''
           state_root="''${XDG_STATE_HOME:-$HOME/.local/state}"
           temperature_path="$state_root/kestrel/night-light-temperature"

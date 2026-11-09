@@ -210,7 +210,7 @@ in
         # The engineer deploys routine changes; the auto-mode classifier would
         # otherwise refuse. Fenced deploys stay the captain's: `--approve`
         # asks for a wheel password.
-        seat.claudeSettings.permissions.allow = [ "Bash(switcharoo)" ];
+        seat.claudeSettings.permissions.allow = singleton "Bash(switcharoo)";
         seat.mcpServers =
           sharedServers
           |> mapAttrs (_: server: server // { type = if server ? url then "http" else "stdio"; });

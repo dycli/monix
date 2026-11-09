@@ -7,7 +7,7 @@
       home.packages = lib.lists.singleton (
         pkgs.writeShellApplication {
           name = "usage";
-          runtimeInputs = [ pkgs.socat ];
+          runtimeInputs = lib.lists.singleton pkgs.socat;
           text = "socat -t 60 -T 60 - UNIX-CONNECT:/run/usage.sock < /dev/null";
         }
       );

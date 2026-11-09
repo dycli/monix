@@ -10,9 +10,7 @@ in
     { pkgs, ... }:
     let
       program = pkgs.writers.writePython3Bin "remote_run" {
-        flakeIgnore = [
-          "E501"
-        ];
+        flakeIgnore = singleton "E501";
       } (readFile ./remote_run.py);
     in
     {

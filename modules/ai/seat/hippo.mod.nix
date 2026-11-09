@@ -92,8 +92,8 @@ in
             # its own store.
             ProtectHome = "read-only";
             # SQLite needs OpenCode's WAL index writable even to read.
-            ReadWritePaths = [ seat.hippo ] ++ optional recordAll "-${seat.home}/.local/share/opencode";
-            RestrictAddressFamilies = [ "AF_UNIX" ];
+            ReadWritePaths = singleton seat.hippo ++ optional recordAll "-${seat.home}/.local/share/opencode";
+            RestrictAddressFamilies = singleton "AF_UNIX";
             # The primary user reads the store through the seat's group.
             UMask = "0027";
           };

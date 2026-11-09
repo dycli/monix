@@ -1,5 +1,7 @@
 lib:
 let
+  inherit (lib.lists) singleton;
+
   environment = {
     OPENCODE_DISABLE_LSP_DOWNLOAD = "true";
     OPENCODE_ENABLE_EXA = "1";
@@ -7,8 +9,8 @@ let
   };
 
   lsp = {
-    nixd.command = [ "nixd" ];
-    rust.command = [ "rust-analyzer" ];
+    nixd.command = singleton "nixd";
+    rust.command = singleton "rust-analyzer";
   };
 
   mcp.context7 = {

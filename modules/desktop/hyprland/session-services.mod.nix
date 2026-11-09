@@ -15,6 +15,7 @@
       ...
     }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkForce;
       inherit (lib.trivial) boolToString;
@@ -232,8 +233,8 @@
       systemd.user.services.hyprlock = {
         Unit = {
           Description = "Hyprland screen locker";
-          PartOf = [ "graphical-session.target" ];
-          After = [ "graphical-session.target" ];
+          PartOf = singleton "graphical-session.target";
+          After = singleton "graphical-session.target";
         };
         Service = {
           Type = "simple";
@@ -254,8 +255,8 @@
       systemd.user.services.kestrel-keep-awake = {
         Unit = {
           Description = "Keep the session awake";
-          PartOf = [ "graphical-session.target" ];
-          After = [ "graphical-session.target" ];
+          PartOf = singleton "graphical-session.target";
+          After = singleton "graphical-session.target";
         };
         Service.ExecStart = lib.strings.escapeShellArgs [
           (getExe' pkgs.systemd "systemd-inhibit")

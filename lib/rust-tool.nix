@@ -12,6 +12,7 @@ lib: crate2nix: pkgs:
 }:
 let
   inherit (lib.attrsets) optionalAttrs;
+  inherit (lib.lists) singleton;
 
   manifest = (lib.trivial.importTOML "${src}/Cargo.toml").package;
 
@@ -47,7 +48,7 @@ if check then
     harness = build {
       release = false;
       buildTests = true;
-      extraRustcOpts = [ "-C debuginfo=line-tables-only" ];
+      extraRustcOpts = singleton "-C debuginfo=line-tables-only";
     };
   in
   pkgs.linkFarm "${manifest.name}-check" {
@@ -73,7 +74,7 @@ if check then
       release = false;
       useClippy = true;
       lints.rust.warnings = "deny";
-      extraRustcOpts = [ "-C debuginfo=0" ];
+      extraRustcOpts = singleton "-C debuginfo=0";
       # buildRustCrate builds binaries through make without exporting the
       # driver, so they would quietly compile with plain rustc.
       preBuild = "export RUSTC_DRIVER";

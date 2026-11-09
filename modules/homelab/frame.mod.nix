@@ -224,10 +224,9 @@
               # The homepage reads Water's load, memory and uptime from /proc.
               ProcSubset = "all";
               ExecStart = getExe frame;
-              LoadCredential = [
-                "immich-key:${cfg.immichKeyFile}"
-              ]
-              ++ optional (cfg.calendarCredentialsFile != null) "caldav:${cfg.calendarCredentialsFile}";
+              LoadCredential =
+                singleton "immich-key:${cfg.immichKeyFile}"
+                ++ optional (cfg.calendarCredentialsFile != null) "caldav:${cfg.calendarCredentialsFile}";
               Restart = "on-failure";
               SocketBindDeny = "any";
               SocketBindAllow = singleton "tcp:${toString port}";

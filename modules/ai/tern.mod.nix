@@ -8,8 +8,15 @@
 {
   flake.nixosModules.lab = self.nixosModules.tern;
   flake.nixosModules.tern =
-    { config, pkgs, lib, ... }:
+    {
+      config,
+      pkgs,
+      lib,
+      ...
+    }:
     let
+      inherit (lib.lists) singleton;
+
       tern = pkgs.stdenv.mkDerivation {
         pname = "tern";
         version = "0.9.12";
@@ -63,14 +70,14 @@
       security.pam.services.tern = { };
       systemd.services.tern-remote = {
         # Tern reads access.toml only at start.
-        restartTriggers = [ config.environment.etc."tern/access.toml".source ];
+        restartTriggers = singleton config.environment.etc."tern/access.toml".source;
         description = "Tern remote sessions";
-        wantedBy = [ "multi-user.target" ];
+        wantedBy = singleton "multi-user.target";
         after = [
           "network-online.target"
           "tailscaled.service"
         ];
-        wants = [ "network-online.target" ];
+        wants = singleton "network-online.target";
         serviceConfig = {
           ExecStart = "${tern}/bin/tern remote serve --listen 0.0.0.0:8377 --state-dir /var/lib/tern --access /etc/tern/access.toml";
           StateDirectory = "tern";

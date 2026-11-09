@@ -13,6 +13,7 @@
   flake.nixosModules.kde-integration =
     { lib, pkgs, ... }:
     let
+      inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
 
       plasmaWorkspace = pkgs.kdePackages.plasma-workspace;
@@ -62,12 +63,12 @@
 
       systemd.user.services.xembed-sni-proxy = {
         description = "Bridge legacy XEmbed tray icons to StatusNotifier";
-        partOf = [ "graphical-session.target" ];
+        partOf = singleton "graphical-session.target";
         after = [
           "graphical-session.target"
           "ship-shell.service"
         ];
-        wantedBy = [ "graphical-session.target" ];
+        wantedBy = singleton "graphical-session.target";
 
         serviceConfig = {
           ExecStart = getExe xembedSniProxy;

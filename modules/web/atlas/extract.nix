@@ -17,6 +17,7 @@ let
     filter
     head
     isList
+    singleton
     unique
     ;
   inherit (lib.strings)
@@ -52,7 +53,7 @@ let
     let
       inherit (sys) config options;
 
-      walk = m: [ m ] ++ concatMap walk m.imports;
+      walk = m: singleton m ++ concatMap walk m.imports;
       nodes = concatMap walk sys.graph;
       # Named flake modules ("lab", "desktop") and the files under each.
       bundle = k: match ".*#nixosModules\\.([A-Za-z0-9_-]+)" (toString k);
@@ -72,7 +73,7 @@ let
         ) nodes
       );
 
-      leaves = o: if isOption o then [ o ] else concatMap leaves (attrValues o);
+      leaves = o: if isOption o then singleton o else concatMap leaves (attrValues o);
       ours = filter (n: options ? ${n} && n != "flake") namespaces;
       opts = map (o: {
         name = showOption o.loc;

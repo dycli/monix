@@ -14,6 +14,8 @@
   flake.nixosModules.play =
     { config, lib, ... }:
     let
+      inherit (lib.lists) singleton;
+
       dir = "/var/lib/play";
       saves = "/var/lib/play-saves";
       domain = config.shipProxy.domain;
@@ -30,7 +32,7 @@
         group = "nginx";
         mode = "0700";
       };
-      systemd.services.nginx.serviceConfig.ReadWritePaths = [ saves ];
+      systemd.services.nginx.serviceConfig.ReadWritePaths = singleton saves;
       services.nginx.virtualHosts."play.${domain}".locations."~ ^/saves/[a-z]+-[a-z]+-[a-z]+/(tennis|earthbound|miniman|tetrisdx)$" =
         {
           root = saves;

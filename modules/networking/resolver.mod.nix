@@ -20,7 +20,7 @@
     }:
     let
       inherit (lib.attrsets) mapAttrsToList;
-      inherit (lib.lists) optional;
+      inherit (lib.lists) optional singleton;
       inherit (lib.modules) mkIf;
       inherit (lib.options) mkEnableOption mkOption;
       inherit (lib) types;
@@ -101,7 +101,7 @@
               # Strip private addresses from upstream answers (rebind
               # protection) — except under su.is, whose tailnet front door
               # publishes CGNAT addresses in public DNS by design.
-              private-address = fences.privateRanges ++ [ fences.tailnet ];
+              private-address = fences.privateRanges ++ singleton fences.tailnet;
               private-domain = ''"su.is"'';
               local-data = cfg.records |> mapAttrsToList (name: addr: ''"${name}. A ${addr}"'');
 

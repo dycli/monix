@@ -177,7 +177,7 @@
       # always the epoch in the store, so app changes would never reach
       # KService consumers; rebuild it on every activation. The profile dirs
       # are spelled out because activation does not run in the session env.
-      config.home.activation.kbuildsycoca = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+      config.home.activation.kbuildsycoca = lib.hm.dag.entryAfter (singleton "linkGeneration") ''
         run env \
           XDG_CONFIG_DIRS=/etc/profiles/per-user/${osConfig.primaryUser}/etc/xdg:/run/current-system/sw/etc/xdg \
           XDG_DATA_DIRS=/etc/profiles/per-user/${osConfig.primaryUser}/share:/run/current-system/sw/share \

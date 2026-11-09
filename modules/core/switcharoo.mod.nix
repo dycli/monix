@@ -263,10 +263,7 @@
 
         users = mkOption {
           type = types.listOf types.str;
-          default = [
-            config.primaryUser
-          ]
-          ++ optional (config.users.users ? ${seat.user}) seat.user;
+          default = singleton config.primaryUser ++ optional (config.users.users ? ${seat.user}) seat.user;
           description = "Users who may start a deploy without a password.";
         };
       };
@@ -274,10 +271,8 @@
       config = {
         system.configurationRevision = self.rev or self.dirtyRev or null;
 
-        switcharoo.mustRun = [
-          "sshd.service"
-        ]
-        ++ optional config.services.tailscale.enable "tailscaled.service";
+        switcharoo.mustRun =
+          singleton "sshd.service" ++ optional config.services.tailscale.enable "tailscaled.service";
 
         environment.etc."switcharoo/must-run".text = lib.strings.concatLines cfg.mustRun;
 

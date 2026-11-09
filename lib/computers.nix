@@ -4,7 +4,7 @@
 lib:
 let
   inherit (lib.attrsets) listToAttrs nameValuePair;
-  inherit (lib.lists) imap1;
+  inherit (lib.lists) imap1 singleton;
 in
 {
   bridge = "br-pcs";
@@ -14,7 +14,7 @@ in
   addr = index: "10.101.0.${toString (10 + index)}";
   # Each owner's index, from 1; a rename costs the computer nothing but its
   # address.
-  indexes = imap1 (i: n: nameValuePair n i) [ "suki" ] |> listToAttrs;
+  indexes = imap1 (i: n: nameValuePair n i) (singleton "suki") |> listToAttrs;
   # Public resolvers: the guest is internet-only and must not depend on
   # the host's.
   nameservers = [

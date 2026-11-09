@@ -163,7 +163,7 @@
       # Libri's own web_search and web_fetch reach Parallel for every
       # harness, with its retries.
       seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
-        mcpServers = removeAttrs config.seat.mcpServers [ "web" ];
+        mcpServers = removeAttrs config.seat.mcpServers (singleton "web");
       };
       # What is true of this ship, for any harness.
       seatGuide = pkgs.writeText "seat-libri-guide.md" lib.ship.guide;

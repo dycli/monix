@@ -8,8 +8,8 @@
     };
 
   flake.homeModules.davinci-resolve =
-    { pkgs, ... }:
+    { lib, pkgs, ... }:
     {
-      home.packages = [ pkgs.davinci-resolve ];
+      home.packages = lib.lists.singleton pkgs.davinci-resolve;
     };
 }
