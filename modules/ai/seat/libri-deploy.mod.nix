@@ -119,11 +119,16 @@ in
       publishAndroid = pkgs.writeShellScriptBin "libri-publish-android" ''
         exec ${getExe pkgs.bash} ${scripts}/publish_android.sh "$@"
       '';
+      # The one release command; it calls the two above from the seat's PATH.
+      release = pkgs.writeShellScriptBin "libri-release" ''
+        exec ${getExe pkgs.bash} ${scripts}/release_libri.sh "$@"
+      '';
     in
     {
       environment.systemPackages = [
         startDeploy
         publishAndroid
+        release
       ];
 
       systemd.services.libri-deploy = {
