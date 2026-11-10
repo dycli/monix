@@ -49,6 +49,10 @@
         );
 
       frigateCamera = detect: name: _: {
+        # An offline camera keeps its config but Frigate stops dialing it,
+        # instead of restarting its ffmpeg every second.
+        enabled = !(lib.lists.elem name cfg.offline);
+        motion.mask = cfg.motionMasks.${name} or [ ];
         ffmpeg.inputs = [
           {
             path = "rtsp://127.0.0.1:8554/${name}";
@@ -79,6 +83,26 @@
           type = lib.types.attrsOf lib.types.str;
           default = { };
           description = "Tapo cameras (C225 pattern): name → IP.";
+        };
+
+        offline = mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [ "cam1" ];
+          description = "Cameras kept in the config but disabled in Frigate until they return.";
+        };
+
+        motionMasks = mkOption {
+          type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+          default = { };
+          example = {
+            tapo1 = [ "0,0,0.4,0,0.4,0.06,0,0.06" ];
+          };
+          description = ''
+            Per camera, polygons Frigate ignores for motion, as relative
+            x,y pairs (0-1). Masking what always moves (an overlay clock, a
+            crib mobile) stops a camera from detecting non-stop.
+          '';
         };
 
         lanSubnets = mkOption {

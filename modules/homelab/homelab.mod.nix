@@ -29,6 +29,17 @@
         tapo1 = "192.168.1.218";
         tapo2 = "192.168.1.220";
       };
+      # The Reolinks are unplugged for now; they come back.
+      shipCameras.offline = [
+        "cam1"
+        "cam2"
+      ];
+      # Things that move all day kept the Nursery camera detecting at full
+      # rate (~1.7 cores): the Tapo clock overlay and the crib mobile.
+      shipCameras.motionMasks.tapo2 = [
+        "0,0,0.4,0,0.4,0.06,0,0.06"
+        "0.37,0,0.55,0,0.55,0.26,0.37,0.26"
+      ];
       shipCameras.lanSubnets = singleton "192.168.1.0/24";
 
       # The Reolinks join once they are back on the wall.
