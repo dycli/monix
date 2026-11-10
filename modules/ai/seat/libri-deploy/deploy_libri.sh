@@ -24,19 +24,10 @@ STAGE=$LINK.next
 INSTANCES=${DEPLOY_LIBRI_INSTANCES:-libri:8951 suki:8952}
 HIPPOS=${DEPLOY_LIBRI_HIPPOS:-hippo}
 
-# The worker that started this deploy, if start_deploy.sh named one: its run
-# doesn't hold the deploy. Read once and removed, and only if fresh, so a
-# name left by a deploy that never ran doesn't excuse a later one's worker.
-STARTER_FILE=${DEPLOY_LIBRI_STARTER:-/var/lib/libri-deploy/starter}
-STARTER=
-[ -n "$(find "$STARTER_FILE" -mmin -10 2>/dev/null)" ] && STARTER=$(head -n1 "$STARTER_FILE")
-rm -f "$STARTER_FILE"
-
 here=$(cd "$(dirname "$0")" && pwd)
 exec > "$LOG" 2>&1
 cd "${1:?usage: deploy_libri.sh CHECKOUT}" || exit 1
 . "$here/await_quiet.sh"
-[ -z "$STARTER" ] || echo "started by worker $STARTER, whose run doesn't hold it"
 echo "deploying $(git rev-parse --short HEAD) $(date +%T)"
 previous=$(readlink "$LINK")
 nix build .#default -o "$STAGE" || { echo "build failed, not deployed"; exit 1; }
@@ -46,7 +37,7 @@ echo "built $built"
 # Each in turn. A turn that starts on one while the other is awaited is cut
 # by the restart, and resumes after it, as any turn at the ceiling does.
 for i in $INSTANCES; do
-  if ! await_quiet "http://127.0.0.1:${i##*:}/api/task" "$STARTER"; then
+  if ! await_quiet "http://127.0.0.1:${i##*:}/api/task"; then
     echo "not deployed; nothing restarted"
     rm -f "$STAGE"
     exit 1

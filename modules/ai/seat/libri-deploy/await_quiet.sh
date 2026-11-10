@@ -1,16 +1,19 @@
-# Sourced by deploy_libri.sh: await_quiet TASK_URL [STARTER]
-# returns once nothing is at work, or once the wait reaches its ceiling.
-# STARTER names the worker that started the deploy (start_deploy.sh): its own
-# run doesn't count as at work, since it chose the restart and resumes after
-# it; counted, a release worker waiting on its deploy held it to the ceiling.
+# Sourced by deploy_libri.sh: await_quiet TASK_URL
+# returns once the person's own chats are quiet, or once the wait reaches its
+# ceiling.
 #
-# Quiet means no turn, worker run or Temp run for ten seconds together, so a
-# message sent just after an answer isn't cut off as its turn starts. A
-# worker can run for hours, so the wait has a ceiling, DEPLOY_QUIET_LIMIT
-# seconds (30 minutes unless set). What happens then is the one switch below.
+# Only the main turn and a Temp run hold a deploy: the person waits on those.
+# Workers don't (Dylan, 11-10): a worker cut off by the restart resumes from
+# its log, and workers are at work nearly always, so waiting on them held
+# every deploy to the ceiling.
+#
+# Quiet means no turn or Temp run for ten seconds together, so a message sent
+# just after an answer isn't cut off as its turn starts. The wait has a
+# ceiling, DEPLOY_QUIET_LIMIT seconds (30 minutes unless set). What happens
+# then is the one switch below.
 
-# At the ceiling: "restart" deploys anyway, since workers and turns cut off
-# resume after the restart (Dylan, 11-02); "stop" ends the deploy without
+# At the ceiling: "restart" deploys anyway, since a turn cut off resumes
+# after the restart (Dylan, 11-02); "stop" ends the deploy without
 # restarting.
 DEPLOY_AT_LIMIT=${DEPLOY_AT_LIMIT:-restart}
 DEPLOY_QUIET_LIMIT=${DEPLOY_QUIET_LIMIT:-1800}
@@ -21,12 +24,10 @@ await_quiet() {
   said=
   while [ "$quiet" -lt 10 ]; do
     now=$(curl -s -m5 "$1")
-    # The busy list less the starter's run; a build from before `busy`
-    # says only whether a turn runs. Drop that fallback once every host
-    # serves `busy`.
-    left=$(printf '%s' "$now" | jq -c --arg s "$(printf '%s' "${2:-}" | tr '[:upper:]' '[:lower:]')" '
-      if has("busy") then [.busy[] | select(
-        $s == "" or (ascii_downcase | . != "worker \($s)" and (startswith("worker \($s)-") | not)))]
+    # The busy list less workers; a build from before `busy` says only
+    # whether a turn runs. Drop that fallback once every host serves `busy`.
+    left=$(printf '%s' "$now" | jq -c '
+      if has("busy") then [.busy[] | select(startswith("worker ") | not)]
       elif .typing == false then [] else null end' 2>/dev/null)
     if [ "$left" = "[]" ]; then
       quiet=$((quiet + 1))

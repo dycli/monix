@@ -51,7 +51,7 @@ if [ "$1" = restart ]; then shift; echo "$*" >> "$STUBS/restarts"
     "curl": """
 case "$*" in
   *api/task*) readlink "$LINK_UNDER_TEST" >> "$STUBS/link_while_waiting"
-              if [ -n "$BUSY" ]; then echo "{\\"typing\\":false,\\"quiet\\":false,\\"busy\\":${BUSY_LIST:-[\\"worker kit-1\\",\\"Temp\\"]}}"
+              if [ -n "$BUSY" ]; then echo "{\\"typing\\":false,\\"quiet\\":false,\\"busy\\":${BUSY_LIST:-[\\"the main turn\\",\\"worker kit-1\\",\\"Temp\\"]}}"
               else echo '{"typing":false,"quiet":true,"busy":[]}'; fi ;;
   *8952/api/host*) printf '%s' "${SUKI_HEALTH:-$HEALTH}" ;;
   *) printf '%s' "$HEALTH" ;;
@@ -90,7 +90,7 @@ def deploy(repo, stubs, build, health, **more):
     link = str(stubs / "link")
     env = dict(os.environ, PATH=f"{stubs}:{os.environ['PATH']}", STUBS=str(stubs), BUILD=build, HEALTH=health,
                DEPLOY_LIBRI_LOG=str(stubs / "log"), DEPLOY_LIBRI_LINK=link, LINK_UNDER_TEST=link,
-               DEPLOY_LIBRI_STARTER=str(stubs / "starter"), **more)
+               **more)
     return subprocess.run(["sh", str(stubs / "deploy_libri.sh"), str(repo)], env=env).returncode
 
 
@@ -128,7 +128,7 @@ for case, at_limit, moves in (("the default", None, True), ("stop", "stop", Fals
     what = f"busy past the ceiling with {case}"
     check(f"{what} {'deploys' if moves else 'stops'}",
           (code == 0) == moves and restarted == moves, f"code {code}, restarted {restarted}\n{log}")
-    check(f"{what} names what is at work", log.count("worker kit-1, Temp") >= 1, log)
+    check(f"{what} names what is at work", log.count("the main turn, Temp") >= 1, log)
     link, staged, old_while_waiting = links(stubs)
     check(f"{what} {'switches' if moves else 'keeps'} the link",
           link == ("/nix/store/new" if moves else "/nix/store/previous"), link)
@@ -136,33 +136,18 @@ for case, at_limit, moves in (("the default", None, True), ("stop", "stop", Fals
     check(f"{what} keeps the old build while it waits", old_while_waiting)
     shutil.rmtree(root)
 
-# The worker that started the deploy doesn't hold it: with only its run at
-# work, the deploy goes at once, even with the ceiling set to stop. Unnamed,
-# or named in a note too old to be this deploy's, the same run holds it.
-for case, starter, age, moves in (("named by its starter", "Kit", 0, True),
-                                  ("with no starter", None, 0, False),
-                                  ("whose starter note is stale", "Kit", 1200, False)):
+# Workers don't hold a deploy: with only workers at work it goes at once,
+# even with the ceiling set to stop; the main turn or Temp still holds it.
+for case, busy, moves in (("only workers", '["worker kit-1","worker kitty-1"]', True),
+                          ("the main turn", '["the main turn","worker kit-1"]', False),
+                          ("Temp", '["Temp"]', False)):
     root, repo, stubs = scratch()
-    if starter:
-        (stubs / "starter").write_text(starter + "\n")
-        old = os.path.getmtime(stubs / "starter") - age
-        os.utime(stubs / "starter", (old, old))
-    code = deploy(repo, stubs, "ok", "200", BUSY="1", BUSY_LIST='["worker kit-2026-11-04-1200"]',
+    code = deploy(repo, stubs, "ok", "200", BUSY="1", BUSY_LIST=busy,
                   DEPLOY_QUIET_LIMIT="1", DEPLOY_AT_LIMIT="stop")
-    check(f"a deploy {case}, only its worker at work, {'goes' if moves else 'waits'}", (code == 0) == moves,
-          (stubs / "log").read_text())
-    check(f"a deploy {case} leaves no starter note", not (stubs / "starter").exists())
+    log = (stubs / "log").read_text()
+    check(f"a deploy with {case} at work {'goes' if moves else 'waits'}", (code == 0) == moves, log)
+    check(f"a deploy with {case} at work names no worker", "worker kit" not in log, log)
     shutil.rmtree(root)
-
-# Another worker's run still holds a deploy its starter's run doesn't.
-root, repo, stubs = scratch()
-(stubs / "starter").write_text("kit\n")
-code = deploy(repo, stubs, "ok", "200", BUSY="1", BUSY_LIST='["worker kit-1","worker kitty-1"]',
-              DEPLOY_QUIET_LIMIT="1", DEPLOY_AT_LIMIT="stop")
-log = (stubs / "log").read_text()
-check("another worker's run still holds the deploy", code != 0 and "worker kitty-1" in log
-      and "worker kit-1," not in log, log)
-shutil.rmtree(root)
 
 # A good deploy restarts both instances, each after the hippos.
 root, repo, stubs = scratch()
