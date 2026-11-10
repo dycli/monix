@@ -14,6 +14,8 @@
       inherit (lib.attrsets) recursiveUpdate;
       inherit (lib.meta) getExe getExe';
 
+      hexDictation = "${getExe' config.programs.hex.package "hex"} dictation toggle";
+
       # One hl.bind call per element; opts merges over the description.
       mkBind = keys: dispatcherLua: description: opts: {
         _args = [
@@ -266,15 +268,14 @@
             repeating = true;
           }
         )
-        # Hex registers dictation under its own shortcut setting (default
-        # Alt+Space) as "dictation-ALT-space", and Hyprland fires only ids
-        # it bound. Hex cannot request End through the portal, so the key
-        # lives here; changing Hex's shortcut in its window renames the id.
-        (mkBind "End" ''hl.dsp.global("anomaly.hex:dictation-ALT-space")'' "Start or stop dictation" { })
+        # The keys run Hex's own CLI rather than a portal global shortcut:
+        # Hex names that shortcut after its key setting and version (once
+        # hex:dictation, then anomaly.hex:dictation-ALT-space), and a renamed
+        # id silently drops every press. The CLI drives the running
+        # Hex over its socket, the same toggle the shortcut performs.
+        (mkBind "End" ''hl.dsp.exec_cmd("${hexDictation}")'' "Start or stop dictation" { })
         # Caps Lock by keycode: caps:none leaves it no keysym to bind.
-        (mkBind "code:66" ''hl.dsp.global("anomaly.hex:dictation-ALT-space")'' "Start or stop dictation"
-          { }
-        )
+        (mkBind "code:66" ''hl.dsp.exec_cmd("${hexDictation}")'' "Start or stop dictation" { })
         (mkBind "XF86MonBrightnessUp"
           ''hl.dsp.exec_cmd("${getExe pkgs.quickshell} -p ${../shell/qml} ipc call osd brightnessUp")''
           "Brightness up"
