@@ -55,19 +55,19 @@
 
         # Builds use every core, at idle priority, and run in a memory fence:
         # past it a build fails, never the services beside it. Jobs are what
-        # cost memory: one release rustc of Libri's daemon peaks at 4.4 GB, so
-        # six jobs could ask 27 GB of an 18 GB fence. Three jobs of sixteen cores
-        # still fill all 48 threads (jobs × cores, the Nix manual's sizing)
-        # and stay under MemoryHigh; the default (48 jobs, each on every
-        # core) linked enough Rust at once to thrash the desktop. MemoryHigh
-        # slows builds well before the rest of the machine swaps.
+        # cost memory: one release rustc of Libri's daemon peaks at 4.4 GB.
+        # Eight jobs of six cores fill all 48 threads (jobs × cores, the Nix
+        # manual's sizing) and ask at most ~35 GB, under MemoryHigh on 96 GB;
+        # the default (48 jobs, each on every core) linked enough Rust at once
+        # to thrash the desktop. MemoryHigh slows builds well before the rest
+        # of the machine swaps.
         nix.daemonCPUSchedPolicy = "idle";
         nix.daemonIOSchedClass = "idle";
-        nix.settings.max-jobs = 3;
-        nix.settings.cores = 16;
+        nix.settings.max-jobs = 8;
+        nix.settings.cores = 6;
         systemd.services.nix-daemon.serviceConfig = {
-          MemoryHigh = "14G";
-          MemoryMax = "18G";
+          MemoryHigh = "44G";
+          MemoryMax = "52G";
         };
         # Builds and the agents that start them share one budget, so
         # together they can't take the memory the desktop and services
@@ -77,26 +77,25 @@
         # rustc or an evaluator), not the host. Swap is capped because zram
         # spends RAM too.
         systemd.slices.work.sliceConfig = {
-          MemoryHigh = "17G";
-          MemoryMax = "20G";
-          MemorySwapMax = "4G";
+          MemoryHigh = "60G";
+          MemoryMax = "68G";
+          MemorySwapMax = "8G";
         };
         systemd.services.nix-daemon.serviceConfig.Slice = "work.slice";
 
         # The chats' own cargo and evaluators run in paseo, outside the
         # daemon's fence; paseo has peaked at 16G with 11G in zram.
-        # MemoryHigh only slows it past 12G; no MemoryMax, so a chat is
+        # MemoryHigh only slows it past 24G; no MemoryMax, so a chat is
         # never killed for a build beside it.
         # A deploy never restarts it: that would end every chat and its long
         # runs. A new paseo takes over at the next manual restart or boot.
         systemd.services.paseo = {
-          serviceConfig.MemoryHigh = "12G";
+          serviceConfig.MemoryHigh = "24G";
           serviceConfig.Slice = "work.slice";
           restartIfChanged = false;
         };
         # Libri's workers run cargo, Gradle and QEMU, so they share that budget:
-        # Libri at 12G outside it and the slice at 18G take all 30G, and the
-        # kernel kills the desktop.
+        # on 96 GB the slice's 68G leaves the desktop and services ~25G.
         # Inside it, the chat comes first. Libri gets its cgroup delegated:
         # the daemon (112 MB) runs in the `server` leaf and every harness,
         # with all it starts, in `harness` beside it (Libri's cgroup.rs). The
@@ -118,7 +117,7 @@
           };
           environment = {
             LIBRI_SERVER_CGROUP = "memory.low=512M";
-            LIBRI_HARNESS_CGROUP = "cpu.weight=20 io.weight=20 memory.high=12G";
+            LIBRI_HARNESS_CGROUP = "cpu.weight=20 io.weight=20 memory.high=32G";
           };
         };
 
