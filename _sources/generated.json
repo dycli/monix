@@ -1,0 +1,17 @@
+{
+    "brave": {
+        "cargoLock": null,
+        "date": null,
+        "extract": null,
+        "name": "brave",
+        "passthru": null,
+        "pinned": false,
+        "src": {
+            "name": null,
+            "sha256": "sha256-W1r00Qh1j+XoK3yxGa8gOXepD8s0ubBzGTF/hj84vHI=",
+            "type": "url",
+            "url": "https://github.com/brave/brave-browser/releases/download/v1.99.56/brave-browser_1.99.56_amd64.deb"
+        },
+        "version": "1.99.56"
+    }
+}

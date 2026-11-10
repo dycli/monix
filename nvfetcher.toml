@@ -1,0 +1,7 @@
+# Software monix packages outside nixpkgs. `nix run nixpkgs#nvfetcher` moves
+# each entry to its latest release and rewrites _sources/.
+
+[brave]
+src.github = "brave/brave-browser"
+src.prefix = "v"
+fetch.url = "https://github.com/brave/brave-browser/releases/download/v$ver/brave-browser_$ver_amd64.deb"

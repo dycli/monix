@@ -14,16 +14,32 @@
   flake.nixosModules.brave =
     { lib, ... }:
     let
+      source = (lib.importJSON ../../../_sources/generated.json).brave;
       inherit (lib.generators) toJSON;
       inherit (lib.lists) singleton;
       inherit (lib.modules) mkForce;
     in
     {
       nixpkgs.overlays = singleton (
-        _: prev: {
-          brave = prev.brave.override {
-            commandLineArgs = "--hide-crash-restore-bubble";
-          };
+        # Brave left nixpkgs on 2026-11-03, so it is built here from Brave's
+        # own .deb at the version nvfetcher pinned in _sources/.
+        final: _: {
+          brave = final.callPackage (import ./make-brave.nix ({
+            pname = "brave";
+            inherit (source) version;
+            archives.x86_64-linux = {
+              inherit (source.src) url;
+              hash = source.src.sha256;
+            };
+
+            optStem = "brave";
+            fileStem = "brave-browser";
+            appIdStem = "com.brave.Browser";
+            darwinStem = "Brave Browser";
+            changelogFile = "CHANGELOG_DESKTOP.md";
+            homepage = "https://brave.com/";
+            innerBinary = "brave";
+          })) { commandLineArgs = "--hide-crash-restore-bubble"; };
         }
       );
 
