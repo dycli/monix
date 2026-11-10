@@ -7,6 +7,11 @@
 # which deploy_libri.sh moves and restarts both on, so a Libri change needs
 # no switch here.
 #
+# Libri keeps every word of its prompts itself: each instance's rules,
+# opening with who it is, in AGENTS.md and the host's facts in HOST.md, in
+# its state, edited in Settings. This module installs and configures it, and
+# writes none.
+#
 # All of Libri's settings sit in its config file: an unknown key stops the
 # build from starting. Each offers the harnesses on its own PATH; Suki's
 # holds only Claude Code.
@@ -88,13 +93,6 @@
         tailnet = login;
         origins = "https://app.libri.is,http://app.libri.is";
       };
-      # Who an instance is. Libri 0.9.55 takes this once into the Identity
-      # section that opens the instance's rules (Settings > Agents), where it
-      # is kept and edited from then on; this and lib/guide.nix go once that
-      # release is live.
-      identity =
-        name: text: pkgs.writeText "${lib.strings.toLower name}-identity.md" "${text}\n";
-
       # The seat's side of the household: `tell NAME TEXT` leaves a note for
       # an assistant, `inbox` prints the assistants' notes to the seat (also
       # loaded into its sessions as a rule), `inbox clear` empties it.
@@ -163,8 +161,6 @@
       seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
         mcpServers = removeAttrs config.seat.mcpServers (singleton "web");
       };
-      # What is true of this host, which Libri 0.9.55 takes once into HOST.md.
-      seatGuide = pkgs.writeText "seat-libri-guide.md" lib.ship.guide;
       # OpenCode and omp on the host's provider keys, as the seat has them:
       # each harness reads the keys from its own config, so Libri holds none.
       keys = {
@@ -267,8 +263,6 @@
           };
           harness = {
             mcp = toString seatMcp;
-            identity = toString (identity "Bridge" "You are Bridge, Dylan's engineering assistant running on Water.");
-            instructions = toString seatGuide;
             # Full ids, so the picker can show each model's version.
             models = "claude-opus-5-5,claude-sonnet-5-5,claude-haiku-5-5,claude-fable-5-1";
             efforts = "low,medium,high,xhigh,max";
@@ -302,7 +296,6 @@
           };
           harness = {
             mcp = "/run/suki/mcp.json";
-            identity = toString (identity "Suki" "You are Suki, Gab's household assistant.");
             # An assistant: Libri's tools only, no shell or files.
             coding = "0";
           };
