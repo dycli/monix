@@ -21,6 +21,8 @@ in
 
   gitMirror.tokenFile = config.secrets.git-mirror-token.path;
 
+  binaryCache.signKeyFile = config.secrets.binary-cache-key.path;
+
   money.keysFile = config.secrets.plaid-env.path;
   money.environment = "production";
 
@@ -33,6 +35,7 @@ in
   };
 
   secrets = {
+    binary-cache-key.file = ./secrets/binary-cache-key.age;
     katara-password.file = ./secrets/katara-password.age;
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
     agent-claude-token.file = ./secrets/agent-claude-token.age;
@@ -50,6 +53,19 @@ in
     frame-immich-key.file = ./secrets/frame-immich-key.age;
     frame-caldav-json.file = ./secrets/frame-caldav.json.age;
     plaid-env.file = ./secrets/plaid.env.age;
+    # Web search API keys, bare; held for Libri, not yet read by anything.
+    parallel-key = {
+      file = ./secrets/parallel-key.age;
+      owner = "bridge";
+    };
+    exa-key = {
+      file = ./secrets/exa-key.age;
+      owner = "bridge";
+    };
+    brave-search-key = {
+      file = ./secrets/brave-search-key.age;
+      owner = "bridge";
+    };
     sabnzbd-secrets = {
       file = ./secrets/sabnzbd-secrets.ini.age;
       owner = "sabnzbd";

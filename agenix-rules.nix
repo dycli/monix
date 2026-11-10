@@ -76,6 +76,12 @@ in
   "hosts/water/secrets/boat-api-key.age".publicKeys = singleton water ++ admin;
   # FRIGATE_RTSP_PASSWORD=...
   "hosts/water/secrets/frigate.env.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/binary-cache-key.age".publicKeys = singleton water ++ admin;
+  # Web search API keys, each the bare key: Parallel (search, extract, task,
+  # findall, monitor), Exa, Brave Search.
+  "hosts/water/secrets/parallel-key.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/exa-key.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/brave-search-key.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/git-mirror-token.age".publicKeys = singleton water ++ admin;
   # Immich API key, raw, album.read + asset.view only, for the frame's photos.
   "hosts/water/secrets/frame-immich-key.age".publicKeys = singleton water ++ admin;
