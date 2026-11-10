@@ -119,7 +119,17 @@ in
       publishAndroid = pkgs.writeShellScriptBin "libri-publish-android" ''
         exec ${getExe pkgs.bash} ${scripts}/publish_android.sh "$@"
       '';
-      # The one release command; it calls the two above from the seat's PATH.
+      # Reports where the phone web and Android drift apart since a tag; the
+      # release runs it for its notes.
+      parity = pkgs.writeShellScriptBin "libri-parity" ''
+        exec ${getExe pkgs.bash} ${scripts}/review_parity.sh "$@"
+      '';
+      # Bridge's review of a worker branch before it merges to main.
+      review = pkgs.writeShellScriptBin "libri-review" ''
+        exec ${getExe pkgs.bash} ${scripts}/review_branch.sh "$@"
+      '';
+      # The one release command; it calls libri-start-deploy,
+      # libri-publish-android and libri-parity from the seat's PATH.
       release = pkgs.writeShellScriptBin "libri-release" ''
         exec ${getExe pkgs.bash} ${scripts}/release_libri.sh "$@"
       '';
@@ -128,6 +138,8 @@ in
       environment.systemPackages = [
         startDeploy
         publishAndroid
+        parity
+        review
         release
       ];
 
