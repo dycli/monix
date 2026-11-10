@@ -73,6 +73,14 @@
       config = {
         services.matrix-tuwunel = {
           enable = true;
+          # nixpkgs' cargo hook now makes Rust builds use system aws-lc and
+          # jemalloc, and the tuwunel package (f4a03c0) supplies neither, so
+          # its build panics. aws-lc is added; jemalloc is turned off, which
+          # leaves the system allocator, ample for a two-user server. Remove
+          # once nixpkgs fixes matrix-tuwunel.
+          package = (pkgs.matrix-tuwunel.override { enableJemalloc = false; }).overrideAttrs (old: {
+            buildInputs = old.buildInputs ++ singleton pkgs.aws-lc;
+          });
           environmentFile = cfg.registrationTokenEnvFile;
           settings.global = {
             server_name = cfg.serverName;
