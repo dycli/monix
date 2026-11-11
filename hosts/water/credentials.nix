@@ -34,6 +34,14 @@ in
     weather = "43.07,-70.76";
   };
 
+  # Parallel's search and fetch, as Libri's web tools call its MCP server. The
+  # same key would open Parallel's paid Task and FindAll APIs; the proxy refuses them.
+  keyProxy.routes.parallel = {
+    host = "search.parallel.ai";
+    secret = "parallel-key";
+    allow = singleton "POST /mcp";
+  };
+
   secrets = {
     binary-cache-key.file = ./secrets/binary-cache-key.age;
     katara-password.file = ./secrets/katara-password.age;
@@ -53,19 +61,11 @@ in
     frame-immich-key.file = ./secrets/frame-immich-key.age;
     frame-caldav-json.file = ./secrets/frame-caldav.json.age;
     plaid-env.file = ./secrets/plaid.env.age;
-    # Web search API keys, bare; held for Libri, not yet read by anything.
-    parallel-key = {
-      file = ./secrets/parallel-key.age;
-      owner = "bridge";
-    };
-    exa-key = {
-      file = ./secrets/exa-key.age;
-      owner = "bridge";
-    };
-    brave-search-key = {
-      file = ./secrets/brave-search-key.age;
-      owner = "bridge";
-    };
+    # Web search API keys, bare and root's. Libri reaches Parallel through the
+    # key proxy; Exa and Brave are held unused until Libri has backends for them.
+    parallel-key.file = ./secrets/parallel-key.age;
+    exa-key.file = ./secrets/exa-key.age;
+    brave-search-key.file = ./secrets/brave-search-key.age;
     sabnzbd-secrets = {
       file = ./secrets/sabnzbd-secrets.ini.age;
       owner = "sabnzbd";
@@ -84,7 +84,10 @@ in
   systemd.services.money.restartTriggers = singleton ./secrets/plaid.env.age;
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
-  systemd.services.libri.restartTriggers = singleton ./secrets/agent-claude-token.age;
+  systemd.services.libri = {
+    restartTriggers = singleton ./secrets/agent-claude-token.age;
+    environment.LIBRI_SEARCH_SOCKET = "/run/key-proxy/parallel.sock";
+  };
   systemd.services.suki.restartTriggers = singleton ./secrets/yeoman-home-token.age;
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;

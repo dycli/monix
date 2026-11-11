@@ -34,8 +34,8 @@ from pathlib import Path
 # build machine replaces boat here and in start().
 BUILDER = "http://boat/api/v1"
 # nginx adds the API key on this socket, and allows only the calls made here;
-# boat.mod.nix holds the list. The seat never holds the key.
-SOCKET = os.environ.get("BOAT_SOCKET", "/run/boat-proxy/boat.sock")
+# boat.mod.nix holds the list, key-proxy.mod.nix the proxy. The seat never holds the key.
+SOCKET = os.environ.get("BOAT_SOCKET", "/run/key-proxy/boat.sock")
 # The saved snapshot every run starts from.
 BASE = "nix-base"
 # Sandboxes at once, counting every active one on the account; runs past this queue.
