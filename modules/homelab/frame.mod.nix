@@ -21,7 +21,6 @@
       inherit (lib.strings) concatStringsSep toJSON;
       inherit (lib.lists) optional singleton;
       inherit (lib.meta) getExe;
-      inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
       inherit (lib) types;
       inherit (lib.ship) fences;
@@ -35,11 +34,9 @@
     {
       options.frame = {
         immichKeyFile = mkOption {
-          type = types.nullOr types.str;
-          default = null;
+          type = types.str;
           description = ''
-            Immich API key with album.read, asset.read and asset.view;
-            null = off.
+            Immich API key with album.read, asset.read and asset.view.
           '';
         };
         album = mkOption {
@@ -148,7 +145,7 @@
         };
       };
 
-      config = mkIf (cfg.immichKeyFile != null) {
+      config = {
         shipProxy.routes.frame.port = port;
         shipProxy.routes.home.port = port;
 

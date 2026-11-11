@@ -51,9 +51,6 @@
       };
       users.groups.libri-publish = { };
 
-      # A token able to deploy libri-is-site and libri-app, raw.
-      secrets.libri-publish-cloudflare-token.file = ../../../hosts/water/secrets/libri-publish-cloudflare-token.age;
-
       # The seat copies each signed release here (libri-publish-android).
       systemd.tmpfiles.settings.libri-android."/var/lib/libri-android".d = {
         user = seat.user;

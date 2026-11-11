@@ -2,12 +2,10 @@
 # (GLBX.MDP3, MBO, the front and next contract of each root) on the NAS as
 # one Zstandard DBN file per UTC day and connection. `tape-pull` buys a
 # slice of history into the same archive after showing its price. Nothing
-# reads the tape yet. Water leaves
-# `tape.keyFile` unset until the Databento subscription starts, so the
-# recorder is neither built nor installed.
-{ self, inputs, ... }:
+# reads the tape yet. No bundle carries it: Water imports it beside `lab`
+# once the Databento subscription starts.
+{ inputs, ... }:
 {
-  flake.nixosModules.lab = self.nixosModules.tape;
   flake.nixosModules.tape =
     {
       config,
@@ -19,7 +17,6 @@
       inherit (lib) types;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
-      inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
       inherit (lib.strings) concatMapStringsSep concatStringsSep;
       inherit (lib.ship) fences hardened;
@@ -63,12 +60,11 @@
     in
     {
       options.tape.keyFile = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Databento API key, raw; null leaves the recorder off.";
+        type = types.str;
+        description = "Databento API key, raw.";
       };
 
-      config = mkIf (cfg.keyFile != null) {
+      config = {
         users.users.tape = {
           isSystemUser = true;
           group = "tape";

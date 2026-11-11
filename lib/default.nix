@@ -10,6 +10,7 @@ inputs.nixpkgs.lib.extend (
       fences = import ./network-fences.nix;
       hardened = import ./hardened.nix final;
       topology = import ./topology.nix;
+      tunnel = import ./tunnel.nix final;
       guide = import ./guide.nix;
       keys = import ../keys.nix;
       opencode = import ./opencode.nix final;

@@ -22,8 +22,7 @@
     let
       inherit (lib.attrsets) genAttrs;
       inherit (lib.lists) singleton;
-      inherit (lib.meta) getExe;
-      inherit (lib.modules) mkDefault mkIf;
+      inherit (lib.modules) mkDefault;
       inherit (lib.options) mkOption;
       inherit (lib) types;
       inherit (lib.ship) fences;
@@ -61,11 +60,10 @@
     in
     {
       options.immich.tunnelTokenFile = mkOption {
-        type = types.nullOr types.str;
-        default = null;
+        type = types.str;
         description = ''
-          Cloudflare Tunnel connector token for the public share door; null
-          = tailnet-only. The hostname -> http://127.0.0.1:${toString publicPort}
+          Cloudflare Tunnel connector token for the public share door. The
+          hostname -> http://127.0.0.1:${toString publicPort}
           mapping is dashboard-side; no Cloudflare Access app on it, the
           share key is the gate.
         '';
@@ -92,29 +90,10 @@
             };
         };
 
-        systemd.services.immich-tunnel = mkIf (cfg.tunnelTokenFile != null) {
+        systemd.services.immich-tunnel = lib.ship.tunnel pkgs {
           description = "Cloudflare Tunnel for shared photo links";
-          wantedBy = singleton "multi-user.target";
-          wants = [
-            "network-online.target"
-            "nginx.service"
-          ];
-          after = [
-            "network-online.target"
-            "nginx.service"
-          ];
-          serviceConfig = {
-            DynamicUser = true;
-            LoadCredential = singleton "token:${cfg.tunnelTokenFile}";
-            ExecStart = "${getExe pkgs.cloudflared} tunnel --no-autoupdate run --token-file %d/token";
-            Restart = "always";
-            RestartSec = 5;
-            # Cloudflare's edge and loopback only; 127.0.0.0/8 is denied
-            # because the allow is a /24.
-            IPAddressAllow = fences.loopback;
-            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
-          };
-          environment.TUNNEL_TRANSPORT_PROTOCOL = "http2";
+          tokenFile = cfg.tunnelTokenFile;
+          backend = "nginx.service";
         };
 
         # Upstream only auto-creates its default /var/lib location, not a

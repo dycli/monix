@@ -1,7 +1,7 @@
 # The Kestrel desktop shell.
 { self, ... }:
 {
-  flake.nixosModules.desktop = self.nixosModules.ship-shell;
+  flake.nixosModules.hyprland = self.nixosModules.ship-shell;
   flake.nixosModules.ship-shell =
     {
       config,

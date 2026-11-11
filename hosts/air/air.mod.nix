@@ -36,7 +36,6 @@
 
         # The tailnet's global nameserver and the home router's forwarder
         # both point at these addresses.
-        resolver.enable = true;
         resolver.addresses = [
           "100.107.48.89"
           "fd7a:115c:a1e0::5436:305b"

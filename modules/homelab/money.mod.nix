@@ -20,7 +20,6 @@
     let
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
-      inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
       inherit (lib) types;
       inherit (lib.ship) fences;
@@ -32,11 +31,10 @@
     {
       options.money = {
         keysFile = mkOption {
-          type = types.nullOr types.str;
-          default = null;
+          type = types.str;
           description = ''
             `KEY=value` lines: PLAID_CLIENT_ID, and PLAID_SANDBOX_SECRET or
-            PLAID_SECRET for the environment in use; null = off.
+            PLAID_SECRET for the environment in use.
           '';
         };
         environment = mkOption {
@@ -49,7 +47,7 @@
         };
       };
 
-      config = mkIf (cfg.keysFile != null) {
+      config = {
         shipProxy.routes.money.port = port;
 
         users.users.money = {
