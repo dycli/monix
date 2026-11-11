@@ -26,10 +26,10 @@ in
   runPort = 8934;
 
   # Each assistant's desk, shared with its runner.
-  desks = "/var/lib/yeoman-desks";
+  desks = "/var/lib/assistant-desks";
   deskMount = "/desk";
   # The desk's folder of runs, one folder each, made by the host.
   runs = "runs";
-  deskGroup = "yeoman-desk";
+  deskGroup = "assistant-desk";
   deskGid = 3001;
 }

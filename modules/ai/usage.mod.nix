@@ -36,7 +36,7 @@
     {
       users.groups.usage = { };
       users.users.${seat.user}.extraGroups = singleton "usage";
-      users.users.yeoman-image.extraGroups = singleton "usage";
+      users.users.household-codex.extraGroups = singleton "usage";
 
       systemd.sockets.usage = {
         description = "Subscription limits";
@@ -88,14 +88,14 @@
         description = "One subscription-limits report";
         path = singleton pkgs.codex;
         environment = {
-          HOME = "/var/lib/yeoman-image";
-          CODEX_HOME = "/var/lib/yeoman-image";
+          HOME = "/var/lib/household-codex";
+          CODEX_HOME = "/var/lib/household-codex";
           USAGE_SHARE = "/run/usage-share.sock";
         };
         serviceConfig = lib.ship.hardened.tenant // {
-          User = "yeoman-image";
-          Group = "yeoman-image";
-          StateDirectory = "yeoman-image";
+          User = "household-codex";
+          Group = "household-codex";
+          StateDirectory = "household-codex";
           StateDirectoryMode = "0700";
           LoadCredential = [
             "claude:${seat.home}/.claude/.credentials.json"

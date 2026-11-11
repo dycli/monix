@@ -60,7 +60,7 @@ in
   "hosts/water/secrets/endgrain-cloudflare-tunnel-token.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/suki-claude-key.age".publicKeys = singleton water ++ admin;
   # A Home Assistant long-lived access token, raw, for the assistants' home tools.
-  "hosts/water/secrets/yeoman-home-token.age".publicKeys = singleton water ++ admin;
+  "hosts/water/secrets/suki-home-token.age".publicKeys = singleton water ++ admin;
   # Databento API key, raw (db-...), for the market-data recorder.
   "hosts/water/secrets/databento-key.age".publicKeys = singleton water ++ admin;
   # INI merged over the declarative config at unit start.

@@ -70,7 +70,7 @@ in
     matrix-registration-env.file = ./secrets/matrix-registration.env.age;
     agent-claude-token.file = ./secrets/agent-claude-token.age;
     suki-claude-key.file = ./secrets/suki-claude-key.age;
-    yeoman-home-token.file = ./secrets/yeoman-home-token.age;
+    suki-home-token.file = ./secrets/suki-home-token.age;
     matrix-cloudflare-tunnel-token.file = ./secrets/matrix-cloudflare-tunnel-token.age;
     immich-cloudflare-tunnel-token.file = ./secrets/immich-cloudflare-tunnel-token.age;
     endgrain-cloudflare-tunnel-token.file = ./secrets/endgrain-cloudflare-tunnel-token.age;
