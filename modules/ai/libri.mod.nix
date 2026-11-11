@@ -272,7 +272,7 @@
             identity = toString (identity "Bridge" "the ship's engineer");
             instructions = toString seatGuide;
             # Full ids, so the picker can show each model's version.
-            models = "claude-opus-5-5,claude-sonnet-5-5,claude-haiku-5-5,claude-fable-5-1";
+            models = "claude-opus-5-5,claude-sonnet-5-5,claude-haiku-5-5,claude-fable-5-2";
             efforts = "low,medium,high,xhigh,max";
             # llm-agents installs OpenCode 2 under this name (agent-clis.mod.nix).
             opencode.command = "opencode2";
