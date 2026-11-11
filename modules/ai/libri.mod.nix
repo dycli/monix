@@ -33,7 +33,7 @@
       ...
     }:
     let
-      inherit (lib.attrsets) recursiveUpdate;
+      inherit (lib.attrsets) optionalAttrs recursiveUpdate;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkForce;
@@ -163,7 +163,15 @@
       # Libri's own web_search and web_fetch reach Parallel for every
       # harness, with its retries.
       seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
-        mcpServers = removeAttrs config.seat.mcpServers (singleton "web");
+        mcpServers =
+          removeAttrs config.seat.mcpServers (singleton "web")
+          # The house (frame.mod.nix): its cameras, and the card Libri draws.
+          // optionalAttrs (config.frame.immichKeyFile != null) {
+            home = {
+              type = "http";
+              url = "http://127.0.0.1:8970/mcp";
+            };
+          };
       };
       # What is true of this ship, for any harness.
       seatGuide = pkgs.writeText "seat-libri-guide.md" lib.ship.guide;

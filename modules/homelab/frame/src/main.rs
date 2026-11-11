@@ -15,15 +15,27 @@
 //!   are kept between requests and restarts.
 //! - `FRAME_AIR` (optional): the AirGradient monitor's address.
 //! - `FRAME_CAMERAS` (optional): a JSON list of `{"id", "name", "turns"}`,
-//!   the go2rtc streams the page may show live, by their name, a label and
+//!   the cameras shown, by their Frigate and go2rtc name, a label and
 //!   whether Frigate can pan and tilt them.
 //! - `FRAME_GO2RTC` (with cameras): go2rtc's API, e.g. `http://127.0.0.1:1984`.
-//! - `FRAME_FRIGATE` (with a camera that turns): Frigate's unauthenticated
-//!   internal websocket, e.g. `ws://127.0.0.1:5000/ws`, to pan and tilt.
+//! - `FRAME_FRIGATE` (with cameras): Frigate's unauthenticated internal
+//!   API, e.g. `http://127.0.0.1:5000`.
+//! - `FRAME_PUBLIC` (optional): the address the tailnet reaches this server
+//!   at, e.g. `https://home.su.is`, where Libri's camera card loads
+//!   pictures and video from.
+//!
+//! The server is the house's backend, one module per domain (cameras.rs;
+//! the photos, calendar, forecast and air move into the same shape next),
+//! each reached by every UI through the versioned HTTP API (api.rs) and by
+//! agents through MCP (mcp.rs). The pages (page.html, home/, ui/) are
+//! clients of those and hold no logic of the house's.
 
 mod air;
+mod api;
 mod calendar;
+mod cameras;
 mod home;
+mod mcp;
 mod photo;
 mod weather;
 
@@ -31,13 +43,13 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::Router;
-use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{Html, IntoResponse, Json, Response};
-use axum::routing::get;
-use serde::{Deserialize, Serialize};
+use axum::routing::{get, post};
+use serde::Deserialize;
 use serde_json::{Value, json};
+use std::net::SocketAddr;
 use tokio::sync::Mutex;
 
 use air::Air;
@@ -63,29 +75,13 @@ struct Immich {
     agent: ureq::Agent,
 }
 
-/// A live camera: its go2rtc stream name, the label the page shows, and
-/// whether it pans and tilts.
-#[derive(Clone, Deserialize, Serialize)]
-struct Camera {
-    id: String,
-    name: String,
-    #[serde(default)]
-    turns: bool,
-}
-
-struct Cameras {
-    base: String,
-    list: Vec<Camera>,
-    frigate: Option<String>,
-    /// Bumped by each move, so only the latest move's timer stops the camera.
-    moves: std::sync::atomic::AtomicU64,
-    /// Connects with a timeout but reads forever: a live stream never ends.
-    agent: ureq::Agent,
-}
-
 struct App {
     immich: Immich,
-    cameras: Option<Cameras>,
+    cameras: Option<cameras::Cameras>,
+    /// The house's time zone, for what is said in words.
+    zone: chrono_tz::Tz,
+    /// Where the tailnet reaches this server (FRAME_PUBLIC).
+    public: Option<String>,
     photos: Mutex<Option<(Instant, Vec<String>)>>,
     cache: Option<photo::Cache>,
     calendar: Option<Calendar>,
@@ -333,131 +329,6 @@ async fn board(State(app): State<Arc<App>>) -> Response {
         .into_response()
 }
 
-async fn cameras(State(app): State<Arc<App>>) -> Response {
-    let list = app.cameras.as_ref().map_or(&[][..], |c| &c.list);
-    ([(header::CACHE_CONTROL, "no-cache")], Json(list)).into_response()
-}
-
-/// One camera's sub-stream as fragmented MP4, relayed from go2rtc for as
-/// long as the page keeps the connection open.
-async fn camera(State(app): State<Arc<App>>, Path(id): Path<String>) -> Response {
-    let Some(cams) = &app.cameras else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    if !cams.list.iter().any(|c| c.id == id) {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    let url = format!("{}/api/stream.mp4", cams.base);
-    let agent = cams.agent.clone();
-    let opened = tokio::task::spawn_blocking(move || {
-        agent
-            .get(url)
-            .query("src", format!("{id}_sub"))
-            .call()
-            .map_err(|e| format!("camera {id}: {e}"))
-    })
-    .await;
-    let r = match opened {
-        Ok(Ok(r)) => r,
-        Ok(Err(e)) => return gone(e),
-        Err(e) => return gone(e.to_string()),
-    };
-
-    // The read blocks, so it runs on its own thread and hands chunks over;
-    // when the page goes away the receiver drops, the send fails and the
-    // thread lets go of go2rtc.
-    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(8);
-    tokio::task::spawn_blocking(move || {
-        use std::io::Read;
-        let mut body = r.into_body().into_reader();
-        let mut buf = vec![0; 64 << 10];
-        loop {
-            let chunk = match body.read(&mut buf) {
-                Ok(0) => return,
-                Ok(n) => Ok(Bytes::copy_from_slice(&buf[..n])),
-                Err(e) => Err(e),
-            };
-            let end = chunk.is_err();
-            if tx.blocking_send(chunk).is_err() || end {
-                return;
-            }
-        }
-    });
-    let stream =
-        futures_util::stream::unfold(rx, |mut rx| async { rx.recv().await.map(|c| (c, rx)) });
-    (
-        [
-            (header::CONTENT_TYPE, "video/mp4"),
-            (header::CACHE_CONTROL, "no-store"),
-        ],
-        Body::from_stream(stream),
-    )
-        .into_response()
-}
-
-/// How long a camera turns after one move. The page repeats the move while
-/// an arrow is held, so the server always sends the stop itself and a
-/// dropped connection cannot leave a camera turning.
-const NUDGE: Duration = Duration::from_millis(500);
-
-/// Sends Frigate one PTZ command for a camera over its websocket, as its own
-/// UI does; Frigate has no HTTP route for continuous moves.
-fn ptz(url: &str, camera: &str, command: &str) -> Result<(), String> {
-    let (mut ws, _) = tungstenite::connect(url).map_err(|e| format!("frigate: {e}"))?;
-    let msg = json!({ "topic": format!("{camera}/ptz"), "payload": command, "retain": false });
-    ws.send(tungstenite::Message::text(msg.to_string()))
-        .and_then(|()| ws.close(None))
-        .map_err(|e| format!("frigate: {e}"))?;
-    // Read until Frigate answers the close, so the command is not cut off.
-    while ws.read().is_ok() {}
-    Ok(())
-}
-
-async fn turn(State(app): State<Arc<App>>, Path((id, way)): Path<(String, String)>) -> Response {
-    use std::sync::atomic::Ordering;
-    let command = match way.as_str() {
-        "left" => "MOVE_LEFT",
-        "right" => "MOVE_RIGHT",
-        "up" => "MOVE_UP",
-        "down" => "MOVE_DOWN",
-        _ => return StatusCode::NOT_FOUND.into_response(),
-    };
-    let Some(cams) = &app.cameras else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    let Some(url) = cams.frigate.clone() else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    if !cams.list.iter().any(|c| c.id == id && c.turns) {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    let this = cams.moves.fetch_add(1, Ordering::SeqCst) + 1;
-    let (u, i) = (url.clone(), id.clone());
-    match tokio::task::spawn_blocking(move || ptz(&u, &i, command)).await {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => return gone(e),
-        Err(e) => return gone(e.to_string()),
-    }
-    let a = app.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(NUDGE).await;
-        let cams = a.cameras.as_ref().expect("checked above");
-        if cams.moves.load(Ordering::SeqCst) == this {
-            match tokio::task::spawn_blocking(move || ptz(&url, &id, "STOP")).await {
-                Ok(Err(e)) => eprintln!("{e}"),
-                Err(e) => eprintln!("{e}"),
-                Ok(Ok(())) => {}
-            }
-        }
-    });
-    StatusCode::NO_CONTENT.into_response()
-}
-
-fn gone(e: String) -> Response {
-    eprintln!("{e}");
-    (StatusCode::BAD_GATEWAY, "camera is unavailable").into_response()
-}
-
 fn env(name: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| panic!("{name} is not set"))
 }
@@ -480,17 +351,14 @@ async fn main() {
                 .build()
                 .into(),
         },
-        cameras: std::env::var("FRAME_CAMERAS").ok().map(|list| Cameras {
-            base: env("FRAME_GO2RTC").trim_end_matches('/').to_owned(),
-            list: serde_json::from_str(&list).unwrap_or_else(|e| panic!("FRAME_CAMERAS: {e}")),
-            frigate: std::env::var("FRAME_FRIGATE").ok(),
-            moves: std::sync::atomic::AtomicU64::new(0),
-            agent: ureq::Agent::config_builder()
-                .timeout_connect(Some(Duration::from_secs(5)))
-                .timeout_recv_response(Some(Duration::from_secs(15)))
-                .build()
-                .into(),
+        cameras: std::env::var("FRAME_CAMERAS").ok().map(|list| {
+            cameras::Cameras::new(&list, &env("FRAME_GO2RTC"), &env("FRAME_FRIGATE"))
+                .unwrap_or_else(|e| panic!("{e}"))
         }),
+        zone: zone.parse().unwrap_or_else(|e| panic!("FRAME_TZ: {e}")),
+        public: std::env::var("FRAME_PUBLIC")
+            .ok()
+            .map(|p| p.trim_end_matches('/').to_owned()),
         photos: Mutex::new(None),
         cache: std::env::var("CACHE_DIRECTORY")
             .ok()
@@ -516,9 +384,15 @@ async fn main() {
         .route("/api/photos", get(photos))
         .route("/api/board", get(board))
         .route("/photo/{id}", get(photo))
-        .route("/api/cameras", get(cameras))
-        .route("/camera/{id}", get(camera))
-        .route("/camera/{id}/{way}", axum::routing::post(turn))
+        .route("/api/v1/cameras", get(api::camera_list))
+        .route("/api/v1/cameras/{id}/snapshot.jpg", get(api::snapshot))
+        .route("/api/v1/cameras/{id}/live.mp4", get(api::live))
+        .route("/api/v1/cameras/{id}/turn/{way}", post(api::turn))
+        .route("/api/v1/events", get(api::events))
+        .route("/api/v1/events/{id}", get(api::event))
+        .route("/api/v1/events/{id}/thumbnail.webp", get(api::thumbnail))
+        .route("/api/v1/events/{id}/clip.mp4", get(api::clip))
+        .route("/mcp", get(mcp::get).post(mcp::post))
         .route("/home/{name}", get(home::asset))
         .route("/api/home", get(home::status))
         .route("/api/usage", get(home::usage))
@@ -527,7 +401,13 @@ async fn main() {
     let socket = tokio::net::TcpListener::bind(&listen)
         .await
         .unwrap_or_else(|e| panic!("{listen}: {e}"));
-    axum::serve(socket, routes).await.expect("serve");
+    // The peer's address decides who reaches MCP (mcp.rs).
+    axum::serve(
+        socket,
+        routes.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .expect("serve");
 }
 
 #[cfg(test)]

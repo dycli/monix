@@ -6,6 +6,12 @@
 # tabs. The frame (a rooted Frameo on the IoT VLAN) cannot join the
 # tailnet, so the server also listens on the LAN port directly; the page
 # carries photos and the board only, never the Immich key or CalDAV login.
+#
+# ./frame is the house's backend, growing to replace Home Assistant's and
+# Frigate's UIs: one module per domain behind a versioned HTTP API
+# (/api/v1) that every page is a client of, and MCP (/mcp, loopback only,
+# so Libri here and the tailnet through https://home.<domain>) for agents,
+# with a camera card Libri draws as an MCP App.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.frame;
@@ -199,7 +205,8 @@
             FRAME_DISKS = cfg.disks |> map (d: "${d.label}=${d.path}") |> concatStringsSep ",";
           }
           // optionalAttrs (cfg.cameras != { }) {
-            # The Tapos pan and tilt through Frigate's ONVIF link.
+            # Cameras, their events and clips through Frigate; the Tapos pan
+            # and tilt through its ONVIF link.
             FRAME_CAMERAS =
               cfg.cameras
               |> mapAttrsToList (
@@ -210,7 +217,10 @@
               )
               |> toJSON;
             FRAME_GO2RTC = "http://127.0.0.1:1984";
-            FRAME_FRIGATE = "ws://127.0.0.1:5000/ws";
+            FRAME_FRIGATE = "http://127.0.0.1:5000";
+            # Where Libri's camera card, on a tailnet device, loads pictures
+            # and video from.
+            FRAME_PUBLIC = "https://${config.shipProxy.routes.home.subdomain}.${config.shipProxy.domain}";
           }
           // optionalAttrs usage {
             FRAME_USAGE = "/run/usage.sock";

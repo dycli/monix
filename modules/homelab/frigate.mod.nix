@@ -17,6 +17,7 @@
       inherit (lib.attrsets) concatMapAttrs mapAttrs;
       inherit (lib.lists) singleton;
       inherit (lib.options) mkOption;
+      inherit (lib.strings) concatStringsSep;
 
       inherit (lib.ship) fences;
       cfg = config.shipCameras;
@@ -164,6 +165,15 @@
             };
 
             ffmpeg.hwaccel_args = "preset-vaapi";
+            # Frigate's preset-record-generic-audio-aac, less SEI units: the
+            # Tapo main streams carry truncated ones (type 764) that ffmpeg
+            # skips but Chromium's decoder stops on, so a recording would
+            # not play in a browser past its first seconds.
+            ffmpeg.output_args.record = concatStringsSep " " [
+              "-f segment -segment_time 10 -segment_format mp4"
+              "-reset_timestamps 1 -strftime 1"
+              "-c:v copy -bsf:v filter_units=remove_types=6 -c:a aac"
+            ];
 
             detectors.cpu1 = {
               type = "cpu";

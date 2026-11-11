@@ -832,7 +832,7 @@ function cams() {
 }
 function start(t) {
   const v = t.querySelector("video");
-  v.src = "/camera/" + encodeURIComponent(t.dataset.id) + "?t=" + Date.now();
+  v.src = "/api/v1/cameras/" + encodeURIComponent(t.dataset.id) + "/live.mp4?t=" + Date.now();
   v.play().catch(() => {});
 }
 function stop(t) {
@@ -860,7 +860,7 @@ function pad(id) {
     b.dataset.way = way;
     b.innerHTML = `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
     let every = 0;
-    const send = () => fetch(`/camera/${encodeURIComponent(id)}/${way}`, { method: "POST" }).catch(() => {});
+    const send = () => fetch(`/api/v1/cameras/${encodeURIComponent(id)}/turn/${way}`, { method: "POST" }).catch(() => {});
     const end = () => { clearInterval(every); every = 0; b.classList.remove("held"); };
     b.addEventListener("pointerdown", e => {
       b.setPointerCapture(e.pointerId);
@@ -876,7 +876,7 @@ function pad(id) {
 }
 async function cameraList() {
   try {
-    const list = await (await fetch("/api/cameras")).json();
+    const list = await (await fetch("/api/v1/cameras")).json();
     for (const c of list) {
       const t = el("div", c.turns ? "tile turns" : "tile"), v = el("video");
       t.dataset.id = c.id;
