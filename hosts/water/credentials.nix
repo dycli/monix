@@ -53,19 +53,12 @@ in
     frame-immich-key.file = ./secrets/frame-immich-key.age;
     frame-caldav-json.file = ./secrets/frame-caldav.json.age;
     plaid-env.file = ./secrets/plaid.env.age;
-    # Web search API keys, bare; held for Libri, not yet read by anything.
-    parallel-key = {
-      file = ./secrets/parallel-key.age;
-      owner = "bridge";
-    };
-    exa-key = {
-      file = ./secrets/exa-key.age;
-      owner = "bridge";
-    };
-    brave-search-key = {
-      file = ./secrets/brave-search-key.age;
-      owner = "bridge";
-    };
+    # Web search API keys, bare and root's: Libri gets Parallel's through
+    # LoadCredential, so the seat's other processes can't open it. Exa and
+    # Brave are held unused until Libri has backends for them.
+    parallel-key.file = ./secrets/parallel-key.age;
+    exa-key.file = ./secrets/exa-key.age;
+    brave-search-key.file = ./secrets/brave-search-key.age;
     sabnzbd-secrets = {
       file = ./secrets/sabnzbd-secrets.ini.age;
       owner = "sabnzbd";
@@ -84,7 +77,14 @@ in
   systemd.services.money.restartTriggers = singleton ./secrets/plaid.env.age;
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
-  systemd.services.libri.restartTriggers = singleton ./secrets/agent-claude-token.age;
+  systemd.services.libri = {
+    restartTriggers = [
+      ./secrets/agent-claude-token.age
+      ./secrets/parallel-key.age
+    ];
+    serviceConfig.LoadCredential = singleton "parallel-key:${config.secrets.parallel-key.path}";
+    environment.LIBRI_SEARCH_KEY = "%d/parallel-key";
+  };
   systemd.services.suki.restartTriggers = singleton ./secrets/yeoman-home-token.age;
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
