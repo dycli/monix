@@ -3,8 +3,7 @@
 # thread holding still while scrolled up mid-reply, on the emulator against
 # proof_host.py. Kept in monix, with the ship's proofs; copy this directory to
 # android/terminal-proof in a Libri checkout and run it inside
-# `nix develop .#android-emulator` from the repository root, on boat:
-# remote_run --include android/terminal-proof.
+# `nix develop .#android-emulator` from the repository root.
 # PHASES picks from "pickers terminal follow" (default all); ONLY_AFTER=1 skips
 # the comparison against baseline/Follow.kt, the build before the follow fix.
 # Shots in android/terminal-proof/shots.
@@ -18,9 +17,9 @@ echo both >/tmp/usage-fixture
 python3 terminal-proof/proof_host.py 8973 >terminal-proof/host.log 2>&1 &
 image=$(ls -d "$ANDROID_HOME"/system-images/*/*/x86_64 | head -1)
 package=$(echo "$image" | sed "s#$ANDROID_HOME/##; s#/#;#g")
-echo no | avdmanager create avd --force -n boat -k "$package" -d pixel_6 >/dev/null 2>&1
-sed -i "s/^hw.keyboard=.*//" "$ANDROID_AVD_HOME/boat.avd/config.ini"; echo hw.keyboard=no >>"$ANDROID_AVD_HOME/boat.avd/config.ini"
-emulator -avd boat -partition-size 4096 -no-window -no-audio -no-boot-anim -no-snapshot -accel on -gpu swiftshader_indirect >terminal-proof/emulator.log 2>&1 &
+echo no | avdmanager create avd --force -n proof -k "$package" -d pixel_6 >/dev/null 2>&1
+sed -i "s/^hw.keyboard=.*//" "$ANDROID_AVD_HOME/proof.avd/config.ini"; echo hw.keyboard=no >>"$ANDROID_AVD_HOME/proof.avd/config.ini"
+emulator -avd proof -partition-size 4096 -no-window -no-audio -no-boot-anim -no-snapshot -accel on -gpu swiftshader_indirect >terminal-proof/emulator.log 2>&1 &
 adb wait-for-device
 for _ in $(seq 1 120); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] && break; sleep 3; done
 adb install -r app/build/outputs/apk/debug/app-debug.apk 2>&1 | tail -1

@@ -72,8 +72,6 @@ in
   # Cloudflare token, raw, that deploys the libri-is-site and libri-app Workers;
   # root's, handed to libri-publish.service alone.
   "hosts/water/secrets/libri-publish-cloudflare-token.age".publicKeys = singleton water ++ admin;
-  # boat.dev API key, preset ci, for remote builds. The file holds the bare key.
-  "hosts/water/secrets/boat-api-key.age".publicKeys = singleton water ++ admin;
   # FRIGATE_RTSP_PASSWORD=...
   "hosts/water/secrets/frigate.env.age".publicKeys = singleton water ++ admin;
   "hosts/water/secrets/binary-cache-key.age".publicKeys = singleton water ++ admin;

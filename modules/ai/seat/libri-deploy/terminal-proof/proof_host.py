@@ -60,7 +60,6 @@ def usage_now():
         {"account": "claude", "name": "Claude", "windows": claude, "notes": ["libri 81% · suki 19% · $24 at API prices"]},
         {"account": "codex", "name": "ChatGPT", "windows": [w("5h", "5 hours", 5, 75, "Tue Nov 3 14:59"), w("week", "Week", 168, 9, "Wed Nov 4 06:36")], "notes": ["no use logged here", "3 free full resets unused"]},
         {"account": "go", "name": "OpenCode Go", "windows": [w("5h", "5 hours", 5, 0, "Tue Nov 3 14:59"), w("week", "Week", 168, 7, "Sun Nov 8 19:00"), w("month", "Month", 720, 11, "Tue Nov 24 08:28")], "notes": []},
-        {"account": "boat", "name": "boat.dev", "windows": [w("month", "Month", 720, 28, "Mon Nov 30 18:41")], "notes": ["$5.61 of $20 included, wallet $0.00, 3 running"]},
     ]
     if scene == "none":
         accounts = [a for a in accounts if a["account"] != "claude"]

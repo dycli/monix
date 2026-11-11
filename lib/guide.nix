@@ -21,8 +21,8 @@
 
   ## Usage
 
-  `usage` shows each subscription's limits (Claude, ChatGPT/Codex, OpenCode Go,
-  boat.dev), when they reset, and who on Water used them. Check it before a
+  `usage` shows each subscription's limits (Claude, ChatGPT/Codex, OpenCode Go),
+  when they reset, and who on Water used them. Check it before a
   long or model-heavy run.
 
   ## Deploys

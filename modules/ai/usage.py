@@ -1,6 +1,6 @@
 """One connection, one report: how much of each subscription's limits is
 used, read live from each provider, and under each Claude and Codex window
-who used it, from usage-share. Claude, OpenCode Go and boat.dev logins arrive
+who used it, from usage-share. Claude and OpenCode Go logins arrive
 as systemd credentials; Codex runs its own app-server on the household login,
 which keeps that login fresh itself. Nothing is stored."""
 
@@ -99,20 +99,6 @@ def go():
     return [line("go", names[k], out[k]["percent"], out[k]["resetsAt"]) for k in names if out.get(k)]
 
 
-def boat():
-    with open(f"{CREDS}/boat") as f:
-        key = f.read().strip()
-    api = "https://boat.dev/api/v1"
-    out = get(f"{api}/limits", key)
-    # The plan's allowance is counted in default-size hours, which is what its dollars buy.
-    hours, left, rate = out["planIncluded"]["vmHours"], out["planIncluded"]["vmHoursRemaining"], out["overagePrices"]["vmHourDollars"]
-    running = [s for s in get(f"{api}/sandboxes?limit=200", key)["sandboxes"] if s["state"] in out["activeStates"]]
-    return [
-        line("boat", "month", 100 * (hours - left) / hours, out["planIncluded"]["periodEnd"]),
-        f"boat    ${(hours - left) * rate:.2f} of ${hours * rate:.0f} included, wallet ${out['wallet']['balanceDollars']:.2f}, {len(running)} running",
-    ]
-
-
 def shares(rows):
     """Asks usage-share who used each window since its start."""
     windows = {}
@@ -146,7 +132,7 @@ def split(spent):
 
 
 rows = []
-for name, read in (("claude", claude), ("codex", codex), ("go", go), ("boat", boat)):
+for name, read in (("claude", claude), ("codex", codex), ("go", go)):
     try:
         rows += [(r, name) for r in read()]
     except Exception as e:

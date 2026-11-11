@@ -65,12 +65,12 @@ Current bundles:
   - `seat`   — a `nixosModules` group that joins `lab`: the fenced,
     unprivileged AI seat account and what serves it (its address fence,
     graphical session, hippo, transcript archive, the ship-check lock,
-    Libri's deploy and publish units, the boat key and the Cloudflare and
+    Libri's deploy and publish units, the key proxy and the Cloudflare and
     Fastmail MCP servers). Files under `modules/ai/seat/` contribute to it.
   - `cockpit` — a `homeModules` group for the seat's own home, not the
     primary user's: `seat` imports it beside `default` and `dev` for the
-    seat user (agent CLI settings, its session, `ship-check`, `usage`,
-    `remote_run`). No host imports it directly.
+    seat user (agent CLI settings, its session, `ship-check`, `usage`).
+    No host imports it directly.
 
 Rules of taste: never create a bundle without a real member and a real
 importer (no speculative structure — promote shared host config into a
