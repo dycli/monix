@@ -255,6 +255,13 @@
         settings = recursiveUpdate (shared "libri") {
           name = "Bridge";
           person = "Dylan";
+          # A task Dylan allows his logins for runs in his own Brave while
+          # its extension is connected (seat/browse.mod.nix), else in the
+          # agents' browser.
+          browser = {
+            relay = "http://127.0.0.1:19988";
+            relay_token = "${seat.home}/.local/share/browse/relay-token";
+          };
           # One address for the household: Dylan's Libri answers on the
           # tailnet port and passes Gab's devices on to hers, by tailscaled's
           # word on who is calling.
