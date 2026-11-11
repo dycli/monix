@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Releases Libri from a checkout of main, the one way a release happens:
-# bumps the version, runs the full flake check, builds the signed APK,
-# commits, tags and pushes, publishes the APK, then starts the Water deploy.
+# bumps the version, runs the full flake check and the UI latency check,
+# builds the signed APK, commits, tags and pushes, publishes the APK, then
+# starts the Water deploy.
 # Any failure stops it there, with nothing pushed if the failure comes before
 # the push; a failing check is fixed, not rerun.
 #
@@ -47,6 +48,18 @@ if ! nice -n 10 nix flake check -L > /tmp/libri-release-checks.log 2>&1; then
   false
 fi
 echo "checks pass"
+
+# Every interaction with the page within 400 ms (Libri's nix/check_ui_latency.py),
+# timed in a browser once the checks' builds are done and not niced: a timing
+# check run beside them would time the machine. It times a miss again on its
+# own before failing, so a busy moment is not read as the page's.
+step "latency"
+if ! nix run .#ui-latency -- --table /tmp/libri-release-latency.md > /tmp/libri-release-latency.log 2>&1; then
+  grep -E "^FAIL" /tmp/libri-release-latency.log | head -20
+  echo "an interaction is over 400 ms (log /tmp/libri-release-latency.log, table /tmp/libri-release-latency.md): fix, don't rerun"
+  false
+fi
+echo "latency pass"
 
 step "android"
 nice -n 10 ./build_android_release.sh
