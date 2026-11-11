@@ -92,8 +92,7 @@
       # section that opens the instance's rules (Settings > Agents), where it
       # is kept and edited from then on; this and lib/guide.nix go once that
       # release is live.
-      identity =
-        name: text: pkgs.writeText "${lib.strings.toLower name}-identity.md" "${text}\n";
+      identity = name: text: pkgs.writeText "${lib.strings.toLower name}-identity.md" "${text}\n";
 
       # The seat's side of the household: `tell NAME TEXT` leaves a note for
       # an assistant, `inbox` prints the assistants' notes to the seat (also
@@ -274,7 +273,9 @@
           };
           harness = {
             mcp = toString seatMcp;
-            identity = toString (identity "Bridge" "You are Bridge, Dylan's engineering assistant running on Water.");
+            identity = toString (
+              identity "Bridge" "You are Bridge, Dylan's engineering assistant running on Water."
+            );
             instructions = toString seatGuide;
             efforts = "low,medium,high,xhigh,max";
             # llm-agents installs OpenCode 2 under this name (agent-clis.mod.nix).
