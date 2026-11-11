@@ -464,6 +464,16 @@
             # afresh from the memory.
             Restart = "always";
             RestartSec = 10;
+            # Terminal panes outlive Libri: it says when it is up and keeps
+            # each pane's terminal in systemd's store, which a stop keeps,
+            # and takes them back at its next start, the shells running on
+            # in the seat's own user manager (linger, desktop.mod.nix).
+            # Needs a Libri that sends READY=1 (the release with the
+            # terminal host): one before it never comes up under
+            # Type=notify, so this deploys after that release is live.
+            Type = "notify";
+            FileDescriptorStoreMax = 256;
+            FileDescriptorStorePreserve = "yes";
             # Each turn's claude and what it runs.
             MemoryHigh = "12G";
           };
