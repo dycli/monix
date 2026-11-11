@@ -42,6 +42,28 @@ in
     allow = singleton "POST /mcp";
   };
 
+  # Exa's search and page contents only; the same key opens its paid Answer
+  # and Research APIs, which the proxy refuses.
+  keyProxy.routes.exa = {
+    host = "api.exa.ai";
+    secret = "exa-key";
+    header = "x-api-key";
+    prefix = "";
+    allow = [
+      "POST /search"
+      "POST /contents"
+    ];
+  };
+
+  # Brave's web search only; a query string follows the path.
+  keyProxy.routes.brave = {
+    host = "api.search.brave.com";
+    secret = "brave-search-key";
+    header = "X-Subscription-Token";
+    prefix = "";
+    allow = singleton "~^GET /res/v1/web/search([?]|$)";
+  };
+
   secrets = {
     binary-cache-key.file = ./secrets/binary-cache-key.age;
     katara-password.file = ./secrets/katara-password.age;
@@ -61,8 +83,7 @@ in
     frame-immich-key.file = ./secrets/frame-immich-key.age;
     frame-caldav-json.file = ./secrets/frame-caldav.json.age;
     plaid-env.file = ./secrets/plaid.env.age;
-    # Web search API keys, bare and root's. Libri reaches Parallel through the
-    # key proxy; Exa and Brave are held unused until Libri has backends for them.
+    # Web search API keys, bare and root's. Libri reaches each through the key proxy.
     parallel-key.file = ./secrets/parallel-key.age;
     exa-key.file = ./secrets/exa-key.age;
     brave-search-key.file = ./secrets/brave-search-key.age;
@@ -86,7 +107,11 @@ in
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
   systemd.services.libri = {
     restartTriggers = singleton ./secrets/agent-claude-token.age;
-    environment.LIBRI_SEARCH_SOCKET = "/run/key-proxy/parallel.sock";
+    environment = {
+      LIBRI_SEARCH_SOCKET = "/run/key-proxy/parallel.sock";
+      LIBRI_EXA_SOCKET = "/run/key-proxy/exa.sock";
+      LIBRI_BRAVE_SOCKET = "/run/key-proxy/brave.sock";
+    };
   };
   systemd.services.suki.restartTriggers = singleton ./secrets/yeoman-home-token.age;
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
