@@ -7,6 +7,8 @@ exec 9>/run/lock/nas-backup.lock
 flock 9
 mountpoint -q /srv/backup
 [[ $(findmnt -nro SOURCE -M /srv/backup) == "$(readlink -f /dev/disk/by-id/ata-ST8000DM004-2U9188_ZR12D48Y-part1)" ]]
+# Never create a repository here: a missing one means a blank or wrong disk.
+[[ -f /srv/backup/restic/config ]] || { echo 'no Restic repository at /srv/backup/restic' >&2; exit 1; }
 
 if [[ ${1:-} == maintenance ]]; then
   restic forget --group-by host,paths --keep-daily 7 --keep-weekly 4 --keep-monthly 3 --prune
@@ -33,6 +35,8 @@ if ((${#active[@]})); then systemctl stop "${active[@]}"; fi
 # SQLite databases and their WAL files are captured together by the atomic
 # Btrfs snapshot. Immich alone pauses to match its separate PostgreSQL dump.
 install -d -m 0700 /srv/storage/.backup-state
+# A fresh probe each night, so the restore check below proves tonight's copy.
+head -c 4096 /dev/urandom > /srv/storage/.backup-state/restore-probe
 runuser -u postgres -- pg_dump --format=custom "$immich_database" > /srv/storage/.backup-state/immich.dump.tmp
 mv /srv/storage/.backup-state/immich.dump.tmp /srv/storage/.backup-state/immich.dump
 runuser -u postgres -- pg_dumpall --globals-only > /srv/storage/.backup-state/postgres-globals.sql.tmp
@@ -65,7 +69,6 @@ for path in "${os_paths[@]}"; do
   [[ -d $copy ]] || { echo "missing $path on the OS disk" >&2; exit 1; }
   targets+=("$copy")
 done
-if [[ ! -f /srv/backup/restic/config ]]; then restic init; fi
 restic backup --host water "${targets[@]}"
 btrfs subvolume delete "$os" "$srv"
 # Recover actual bytes from the repository before recording success.

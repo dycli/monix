@@ -304,11 +304,12 @@ changed no service configuration.
 Each night at 03:30 the backup pauses only the Immich server, dumps its
 PostgreSQL database, takes a read-only Btrfs snapshot of the SSD and one of
 the OS subvolume, and resumes Immich. Restic copies the SSD snapshot and the
-OS-disk state no rebuild recreates (Home Assistant, Minecraft,
-Prowlarr, the assistants) to the HDD, then proves the copy: it restores a
-probe file and the full database dump from the repository, compares bytes,
-and parses the dump. Only then does it record a success. On Sundays it prunes old
-snapshots and reads back 5% of the stored data. `nas-backup` runs one by
-hand; `restic snapshots` and `restic restore` work from a root shell with the
-repository at `/srv/backup/restic` and its password in
-`/var/lib/nas/restic-password`.
+OS-disk state no rebuild recreates (Home Assistant, Minecraft, Prowlarr,
+Libri, money) to the HDD, then proves the copy: it restores that night's
+fresh probe file and the full database dump from the repository, compares
+bytes, and parses the dump. Only then does it record a success. It never
+creates a repository, so a blank disk fails instead of passing for a good
+one. On Sundays it prunes old snapshots and reads back 5% of the stored
+data. `nas-backup` runs one by hand; `restic snapshots` and `restic restore`
+work from a root shell with the repository at `/srv/backup/restic` and its
+password in `/var/lib/nas/restic-password`.
