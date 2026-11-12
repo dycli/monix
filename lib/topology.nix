@@ -10,6 +10,8 @@
     transcripts = "/srv/storage/transcripts";
     # hippo, the seat's episodic memory.
     hippo = "/srv/storage/hippo";
+    # hippo2, the memory daemon: one SQLite file per memory.
+    hippo2 = "/srv/storage/hippo2";
     # The build the seat's Libri and hippo run. Each deploy moves it; a new name
     # for a change that needs monix and the build together lets a monix rollback
     # return to the build it ran with.

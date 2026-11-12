@@ -81,6 +81,12 @@
     inputs.crate2nix.follows = "crate2nix";
   };
 
+  # The seat's memory daemon. Private, so fetched as libri is.
+  inputs.hippo2 = {
+    url = "git+https://github.com/dycli/hippo2?ref=main";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
   # The market-data platform; the tape recorder is built from it.
   inputs.lantern = {
     url = "github:dycli/lantern";

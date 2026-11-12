@@ -209,6 +209,27 @@
         "type": "github"
       }
     },
+    "hippo2": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1794518593,
+        "narHash": "sha256-a8zl+iXYL7Pcji9J672U9+27EC9N4iee3qfP0m6BUKI=",
+        "ref": "main",
+        "rev": "c86be686609af3686ac2cc4ece686d4520933990",
+        "revCount": 11,
+        "type": "git",
+        "url": "https://github.com/dycli/hippo2"
+      },
+      "original": {
+        "ref": "main",
+        "type": "git",
+        "url": "https://github.com/dycli/hippo2"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -566,6 +587,7 @@
         "disko": "disko",
         "flake-parts": "flake-parts",
         "hex": "hex",
+        "hippo2": "hippo2",
         "home-manager": "home-manager",
         "hyprqt6engine": "hyprqt6engine",
         "lantern": "lantern",

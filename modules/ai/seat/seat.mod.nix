@@ -16,6 +16,10 @@ let
       command = "/run/current-system/sw/bin/kestrel-cloudflare-mcp";
       args = [ ];
     };
+    hippo2 = {
+      command = "/run/current-system/sw/bin/hippo2";
+      args = lib.lists.singleton "mcp";
+    };
   };
 in
 {
