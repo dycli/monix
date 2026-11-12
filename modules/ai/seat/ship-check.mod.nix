@@ -1,8 +1,10 @@
-# ship-check: monix's checks, one at a time on the host, each in its own
-# nix process. One process evaluating all four hosts peaks at 4.9 GB; one
-# per check peaks at the largest host, 3.0 GB, for twice the evaluation time
-# (52 s). Two checks at once run Water out of memory, so the lock makes a
-# second check wait for the first.
+# ship-check: monix's checks on the host, each in its own nix process, all
+# at once. Nix evaluates single-threaded, so one process building every
+# check takes the sum of the hosts' evaluations (40 s); a process per check
+# run together takes the slowest one (25 s against 80 s run in turn,
+# measured 11-12). Each host's evaluation peaks near 3 GB, which Water's
+# 96 GB carries; the lock still makes a second check wait for the first, so
+# two agents checking at once don't double that.
 #
 # `ship-check` alone builds every check. Named checks build only those, plus
 # the cheap style gates: `ship-check money water` for a change inside a
@@ -30,20 +32,39 @@
               flock 9
             fi
             if [ $# -eq 0 ]; then
-              for name in ${lib.strings.concatStringsSep " " (lib.attrsets.attrNames self.checks.x86_64-linux)}; do
-                echo "ship-check: $name" >&2
-                nix build --no-link ".#checks.x86_64-linux.$name"
+              names=(${lib.strings.concatStringsSep " " (lib.attrsets.attrNames self.checks.x86_64-linux)})
+            else
+              names=()
+              for name in "$@" rustfmt nixfmt nix-style secrets-rules; do
+                case $name in
+                  air | earth | fire | water) name=host-$name ;;
+                esac
+                names+=("$name")
               done
-              exit
             fi
-            targets=()
-            for name in "$@" rustfmt nixfmt nix-style secrets-rules; do
-              case $name in
-                air | earth | fire | water) name=host-$name ;;
-              esac
-              targets+=(".#checks.x86_64-linux.$name")
+            # Each check's log goes to its own file, shown only if it fails,
+            # so parallel output doesn't interleave.
+            logs=$(mktemp -d)
+            trap 'rm -rf "$logs"' EXIT
+            declare -A pids
+            for name in "''${names[@]}"; do
+              [[ -v pids[$name] ]] && continue
+              nix build --no-link ".#checks.x86_64-linux.$name" >"$logs/$name" 2>&1 &
+              pids[$name]=$!
             done
-            exec nix build --no-link "''${targets[@]}"
+            failed=()
+            for name in "''${!pids[@]}"; do
+              if wait "''${pids[$name]}"; then
+                echo "ship-check: $name ok" >&2
+              else
+                failed+=("$name")
+              fi
+            done
+            for name in "''${failed[@]}"; do
+              echo "ship-check: $name FAILED" >&2
+              tail -n 40 "$logs/$name" >&2
+            done
+            ((''${#failed[@]} == 0))
           '';
         }
       );
