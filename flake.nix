@@ -83,7 +83,7 @@
 
   # The seat's memory daemon. Private, so fetched as libri is.
   inputs.hippo2 = {
-    url = "git+https://github.com/dycli/hippo2?ref=libri-record";
+    url = "git+https://github.com/dycli/hippo2?ref=main";
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
