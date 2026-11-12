@@ -182,8 +182,12 @@ itself stays pipe-free so a stock parser can always read it.
 
 - Quick, per host (`earth`, `water`, `air`, `fire`):
   `NIX_CONFIG="extra-experimental-features = pipe-operators" nix eval --raw .#nixosConfigurations.<host>.config.system.build.toplevel.drvPath`.
-- Full gate: `ship-check` on Water, or one check at a time with
-  `nix build --no-link .#checks.x86_64-linux.<name>`. The checks
+- Full gate: `ship-check` on Water, every check at once in its own
+  process (about 25 s), or `ship-check <host|check>...` for some of them
+  plus the style gates, or one at a time with
+  `nix build --no-link .#checks.x86_64-linux.<name>`. A full run also
+  leaves every host's system in Water's binary cache, so the other hosts
+  download what it built. The checks
   (`options/checks.mod.nix` and the modules that add to it): `endgrain`,
   `frame`, `money` (crate tests and clippy), `host-earth`, `host-water`,
   `host-air`, `host-fire`, `rustfmt`, `nixfmt`, `nix-style`,
@@ -191,4 +195,6 @@ itself stays pipe-free so a stock parser can always read it.
 - `nix flake check --no-build` fails: crate2nix builds during evaluation.
 - Format with `nix fmt -- <files>`; bare `nix fmt` reads stdin.
 - Deploy: push `main`, then `switcharoo`. A change touching a fenced file
-  needs the captain's `switcharoo --approve`.
+  needs the captain's `switcharoo --approve`. A switch never restarts
+  Libri or Suki (`restartIfChanged = false`): a change to their units
+  takes effect at the next `libri-release`, which restarts them once quiet.
