@@ -6,6 +6,11 @@
 # on GitHub stay here. The token is read-only (fine-grained: Contents and
 # Metadata), so this copy cannot write back. The seat reads it through the
 # group. Hosts without `gitMirror.tokenFile` leave the mirror off.
+#
+# `git-mirror@<owner>-<name>.service` fetches that one repository at normal
+# priority, for a deploy that reads it next: a whole run, 26 repositories at
+# idle priority, held each deploy 8 seconds. A lock per repository keeps the
+# two from fetching it at once.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.git-mirror;
@@ -36,6 +41,7 @@
           pkgs.curl
           pkgs.git
           pkgs.jq
+          pkgs.util-linux
         ];
         text = ''
           root=${escapeShellArg dir}
@@ -47,9 +53,10 @@
           helper='!f() { echo username=x-access-token; echo "password=$GITHUB_TOKEN"; }; f'
           export GIT_TERMINAL_PROMPT=0
 
-          repos=()
+          # Named repositories (owner/name), or every one the account owns.
+          repos=("$@")
           page=1
-          while :; do
+          while ((!$#)); do
             batch=$(curl -fsS --max-time 60 \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               -H "Accept: application/vnd.github+json" \
@@ -74,7 +81,7 @@
                 rm -rf "$target.new"
                 failed=1
               fi
-            elif ! git -C "$target" -c credential.helper="$helper" remote update --prune >/dev/null; then
+            elif ! flock "$target" git -C "$target" -c credential.helper="$helper" remote update --prune >/dev/null; then
               echo "fetch failed: $repo" >&2
               failed=1
             fi
@@ -82,6 +89,26 @@
           ((failed)) && exit 1
           echo "mirrored ''${#repos[@]} repositories"
         '';
+      };
+
+      unit = {
+        wants = singleton "network-online.target";
+        after = [
+          "network-online.target"
+          "srv-storage.mount"
+        ];
+        unitConfig.RequiresMountsFor = dir;
+        serviceConfig = hardened.tenant // {
+          Type = "oneshot";
+          User = "git-mirror";
+          Group = "git-mirror";
+          LoadCredential = "token:${cfg.tokenFile}";
+          ReadWritePaths = singleton dir;
+          # The seat reads the mirror through the group.
+          UMask = "0027";
+          # GitHub only; the house stays out of reach.
+          IPAddressDeny = fences.internetOnlyDeny;
+        };
       };
     in
     {
@@ -101,28 +128,22 @@
 
         systemd.tmpfiles.rules = singleton "d ${dir} 0750 git-mirror git-mirror -";
 
-        systemd.services.git-mirror = {
+        systemd.services.git-mirror = unit // {
           description = "Mirror the GitHub account's repositories onto the NAS";
-          wants = singleton "network-online.target";
-          after = [
-            "network-online.target"
-            "srv-storage.mount"
-          ];
-          unitConfig.RequiresMountsFor = dir;
-          serviceConfig = hardened.tenant // {
-            Type = "oneshot";
-            User = "git-mirror";
-            Group = "git-mirror";
+          serviceConfig = unit.serviceConfig // {
             ExecStart = getExe mirror;
-            LoadCredential = "token:${cfg.tokenFile}";
-            ReadWritePaths = singleton dir;
-            # The seat reads the mirror through the group.
-            UMask = "0027";
             TimeoutStartSec = "30min";
             Nice = 15;
             IOSchedulingClass = "idle";
-            # GitHub only; the house stays out of reach.
-            IPAddressDeny = fences.internetOnlyDeny;
+          };
+        };
+
+        # A deploy waits on this one, so it runs at normal priority.
+        systemd.services."git-mirror@" = unit // {
+          description = "Mirror %I from GitHub onto the NAS";
+          serviceConfig = unit.serviceConfig // {
+            ExecStart = "${getExe mirror} %I";
+            TimeoutStartSec = "5min";
           };
         };
 

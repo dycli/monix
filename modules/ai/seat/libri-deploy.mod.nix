@@ -135,8 +135,8 @@ in
         description = "Deploy Libri main to the seat's Libri";
         # A start refreshes the mirror first; its failure leaves the last
         # commit it saw.
-        wants = singleton "git-mirror.service";
-        after = singleton "git-mirror.service";
+        wants = singleton "git-mirror@dycli-libri.service";
+        after = singleton "git-mirror@dycli-libri.service";
         # A switch must not stop a deploy under way.
         restartIfChanged = false;
         environment.HOME = seat.home;

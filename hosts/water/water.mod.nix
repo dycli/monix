@@ -127,7 +127,7 @@
         # only means deploying the last commit it saw.
         switcharoo = {
           source = "/srv/storage/git/dycli/monix.git";
-          refresh = "git-mirror.service";
+          refresh = "git-mirror@dycli-monix.service";
           mustRun = [
             "hippo.service"
             "libri.service"
