@@ -216,16 +216,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1794518593,
-        "narHash": "sha256-a8zl+iXYL7Pcji9J672U9+27EC9N4iee3qfP0m6BUKI=",
-        "ref": "main",
-        "rev": "c86be686609af3686ac2cc4ece686d4520933990",
-        "revCount": 11,
+        "lastModified": 1794522233,
+        "narHash": "sha256-M+dRoFmol3zU1qs4ZwOSvzTmkWlQByeIDAuj75aYpsg=",
+        "ref": "libri-record",
+        "rev": "03f14c711e531f54c01fd21440946393cbb0f133",
+        "revCount": 13,
         "type": "git",
         "url": "https://github.com/dycli/hippo2"
       },
       "original": {
-        "ref": "main",
+        "ref": "libri-record",
         "type": "git",
         "url": "https://github.com/dycli/hippo2"
       }

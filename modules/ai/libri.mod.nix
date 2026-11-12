@@ -158,9 +158,13 @@
 
       # What Libri adds to its own tools on the seat's turns. Not web:
       # Libri's own web_search and web_fetch reach Parallel for every
-      # harness, with its retries.
+      # harness, with its retries. Not hippo2: Libri hands every turn its
+      # memory itself (memory.command), naming the memory a turn is in.
       seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
-        mcpServers = removeAttrs config.seat.mcpServers (singleton "web");
+        mcpServers = removeAttrs config.seat.mcpServers [
+          "web"
+          "hippo2"
+        ];
       };
       # What is true of this host, which Libri 0.9.55 takes once into HOST.md.
       seatGuide = pkgs.writeText "seat-libri-guide.md" lib.ship.guide;
@@ -271,6 +275,9 @@
             # history already goes under.
             shared = "Bridge";
           };
+          # The memory every turn recalls from: the seat's hippo2
+          # (seat/hippo2.mod.nix), the program that finds its memories.
+          memory.command = "${lib.meta.getExe config.services.hippo2.finalPackage} mcp";
           harness = {
             mcp = toString seatMcp;
             identity = toString (
@@ -296,11 +303,9 @@
           daemon = site "suki" "suki" "gabcaminiti10@gmail.com" // {
             listen = "127.0.0.1:${toString ports.suki}";
           };
-          hippo = {
-            backend = "claude";
-            model = "haiku";
-            effort = "high";
-          };
+          # Gab's assistant reaches no memory of Dylan's: hippo2 on the
+          # seat holds Dylan's.
+          memory.command = "";
           # Notes to and from the other assistants and the seat.
           household = {
             dir = house;
@@ -475,9 +480,9 @@
           };
         };
 
-        # An up unit isn't a working Libri. This proves its site, its
-        # memory and one model call through it; a failure here makes
-        # switcharoo roll the deploy back.
+        # An up unit isn't a working Libri. This proves its site, its tool
+        # server and its hippo; a failure here makes switcharoo roll the
+        # deploy back.
         libri-ready = {
           description = "Proves Bridge's Libri answers";
           wantedBy = singleton "multi-user.target";
@@ -495,7 +500,6 @@
             pkgs.coreutils
             pkgs.curl
             pkgs.jq
-            pkgs.socat
           ];
           serviceConfig = {
             Type = "oneshot";
@@ -523,14 +527,6 @@
               sleep 1
             done
             timeout 30 ${seat.libriBuild}/bin/hippo status >/dev/null
-            for _ in $(seq 20); do
-              [ -S ${seat.hippo}/compactor.sock ] && break
-              sleep 1
-            done
-            # The call names hippo's own model: Libri refuses one without.
-            printf '%s\n' '{"system":"Answer in one word.","memory":null,"prompt":"Say ready.","model":"${config.systemd.services.hippo.environment.HIPPO_MODEL}"}' |
-              socat -t60 -T60 - UNIX-CONNECT:${seat.hippo}/compactor.sock |
-              jq -e '.text | length > 0'
           '';
         };
 

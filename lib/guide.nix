@@ -7,11 +7,15 @@
   This is Water, one of four NixOS hosts (air, earth, fire, water) that the
   monix flake (~/ark/monix) configures.
 
-  ## Memory: hippo
+  ## Memory: hippo2
 
-  hippo is the memory here, shared with the sessions it records. From a shell,
-  `hippo zoom <id> <n>`, `hippo zoom <agent>` and `hippo search <regex>` do what
-  memory_zoom, agent_chat and memory_search do.
+  hippo2 is the memory here: every past conversation on Water, from every
+  harness and from Libri, kept word for word. Its MCP tools: `recall` first,
+  then `open` the messages the answer rests on; `around`, `timeline`, `day`
+  and `grep` for the rest. A session reads and files to memory `main` until
+  `memory_use(name)` switches it (tutor, jobs, trial); `memory_move` refiles
+  turns that went to the wrong one. From a shell, `hippo2 recall WORDS`,
+  `hippo2 open ID` and the rest do the same, `--memory NAME` for another.
 
   ## Usage
 
