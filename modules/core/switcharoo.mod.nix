@@ -116,7 +116,12 @@
             echo "switcharoo: the new commits don't change this host"
           fi
 
-          failed() { systemctl list-units --failed --plain --no-legend | cut -d' ' -f1 | sort; }
+          # Failed units, and units crash-looping: one that dies and waits
+          # its RestartSec sits in auto-restart, never failed.
+          failed() {
+            systemctl list-units --plain --no-legend --state=failed,auto-restart |
+              cut -d' ' -f1 | sort -u
+          }
           before=$(failed)
 
           healthy=1
@@ -128,12 +133,17 @@
 
           # Let the jobs settle, then give restarting units time to fail. This
           # unit's own start job stays queued until the script exits, so it
-          # doesn't count.
-          for _ in $(seq 60); do
+          # doesn't count. A unit still starting holds a job, so the settle
+          # already covers slow starts and oneshot proofs (libri-ready); the
+          # grace is only for a unit that comes up and then dies, and a
+          # crash loop shows in auto-restart within it. It was 30 seconds,
+          # half of every deploy; a later death still alerts through the
+          # unit-failure drop-in.
+          for _ in $(seq 120); do
             systemctl list-jobs --no-legend | grep -qv ' switcharoo' || break
-            sleep 2
+            sleep 1
           done
-          sleep 30
+          sleep 10
           broke=$(comm -13 <(echo "$before") <(failed))
           # A timer's job runs on its own schedule, and the switch re-arms
           # timers, so one can fire and fail inside this window for reasons
