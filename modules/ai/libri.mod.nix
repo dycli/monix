@@ -433,6 +433,12 @@
         # and privileges, so none of the service's defaults apply.
         libri = {
           description = "Bridge in Dylan's web chat";
+          # A restart ends every turn and worker under way, so a switch
+          # leaves Libri running: libri-release restarts it once it is quiet
+          # (seat/libri-deploy.mod.nix), and that restart reads what the
+          # switch changed. Its settings name store paths such as Chromium's,
+          # so without this every nixpkgs update restarted it mid-work.
+          restartIfChanged = false;
           after = singleton "hippo.service";
           wants = singleton "hippo.service";
           environment = {
@@ -530,6 +536,8 @@
 
         suki = {
           description = "Suki, Gab's household assistant";
+          # As Libri's above: libri-release restarts both when quiet.
+          restartIfChanged = false;
           serviceConfig = sukiSandbox // {
             SupplementaryGroups = sukiSandbox.SupplementaryGroups ++ singleton computers.deskGroup;
             LoadCredential = [

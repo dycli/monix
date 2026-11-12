@@ -106,14 +106,12 @@ in
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
   systemd.services.libri = {
-    restartTriggers = singleton ./secrets/agent-claude-token.age;
     environment = {
       LIBRI_SEARCH_SOCKET = "/run/key-proxy/parallel.sock";
       LIBRI_EXA_SOCKET = "/run/key-proxy/exa.sock";
       LIBRI_BRAVE_SOCKET = "/run/key-proxy/brave.sock";
     };
   };
-  systemd.services.suki.restartTriggers = singleton ./secrets/yeoman-home-token.age;
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
 }
