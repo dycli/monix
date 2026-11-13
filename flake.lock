@@ -339,14 +339,14 @@
       "locked": {
         "lastModified": 1794575278,
         "narHash": "sha256-TZ56TrBp6idDh/lcfEHcBDiRXojMlo64iKsl9Muk+KQ=",
-        "ref": "more-sources",
+        "ref": "main",
         "rev": "dd3792b5b57ad5e02bf7ae112859e37cd4d7f134",
         "revCount": 19,
         "type": "git",
         "url": "https://github.com/dycli/jobmaxxer"
       },
       "original": {
-        "ref": "more-sources",
+        "ref": "main",
         "type": "git",
         "url": "https://github.com/dycli/jobmaxxer"
       }

@@ -90,7 +90,7 @@
   # Dylan's job catalog: its nightly pull. Private, so fetched as libri is.
   # On its more-sources branch until that lands on main.
   inputs.jobmaxxer = {
-    url = "git+https://github.com/dycli/jobmaxxer?ref=more-sources";
+    url = "git+https://github.com/dycli/jobmaxxer?ref=main";
     inputs.nixpkgs.follows = "nixpkgs";
     inputs.crate2nix.follows = "crate2nix";
   };
