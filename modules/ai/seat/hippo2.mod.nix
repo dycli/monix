@@ -22,10 +22,31 @@
 
       server = osConfig.seat.mcpServers.hippo2;
       jq = lib.meta.getExe pkgs.jq;
+
+      # `/memory NAME` at a terminal: switches the session's memory by
+      # hippo2's memory_use, as Libri's /memory switches a chat's. Each
+      # harness reads Markdown commands with `description` front matter and
+      # `$ARGUMENTS` from its own folder; Codex lists it as /prompts:memory.
+      # omp has a /memory of its own, so it gets none; Pi has no hippo2.
+      memoryCommand = ''
+        ---
+        description: Switch this session's memory (main, tutor, jobs, ...)
+        argument-hint: "[memory]"
+        ---
+        Memory command. If a memory is named here: "$ARGUMENTS", call the
+        hippo2 tool `memory_use` with that name now, then say in one line which
+        memory this session now reads and files to. If none is named, say in one
+        line which memory this session is on, and name the others hippo2 has
+        (`hippo2 memories` lists them). Do nothing else.
+      '';
     in
     {
       home.file.".omp/agent/mcp.json".force = true;
       home.file.".omp/agent/mcp.json".text = toJSON { mcpServers.hippo2 = server; };
+
+      home.file.".claude/commands/memory.md".text = memoryCommand;
+      home.file.".config/opencode/commands/memory.md".text = memoryCommand;
+      home.file.".codex/prompts/memory.md".text = memoryCommand;
 
       home.activation.hippo2Servers = lib.hm.dag.entryAfter (singleton "writeBoundary") ''
         hippo2Server() {
