@@ -87,6 +87,12 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
+  # hob, the house's backend. Private, so fetched as libri is.
+  inputs.hob = {
+    url = "git+https://github.com/dycli/hob?ref=main";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
   # Dylan's job catalog: its nightly pull. Private, so fetched as libri is.
   # On its more-sources branch until that lands on main.
   inputs.jobmaxxer = {

@@ -35,11 +35,11 @@
 !*.html
 !*.jinja
 
-# The homepage's assets (modules/homelab/frame): its scripts, font and
-# Glance's licence.
-!modules/homelab/frame/src/home/*.js
-!modules/homelab/frame/src/home/*.woff2
-!modules/homelab/frame/src/home/LICENSE
+# The dashboard's assets (modules/homelab/dashboard): its scripts, font
+# and Glance's licence.
+!modules/homelab/dashboard/src/ui/*.js
+!modules/homelab/dashboard/src/ui/*.woff2
+!modules/homelab/dashboard/src/ui/LICENSE
 
 # Assets: docs diagrams and the desktop wallpaper.
 !*.svg
