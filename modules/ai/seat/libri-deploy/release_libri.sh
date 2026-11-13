@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Releases Libri from a checkout of main, the one way a release happens:
-# bumps the version, runs the full flake check and the page's browser checks,
-# builds the signed APK, commits, tags and pushes, publishes the APK, then
-# starts the Water deploy. Any failure stops it there, with nothing pushed if
-# the failure comes before the push; a failing check is fixed, not rerun.
+# bumps the version, runs the full flake check, the page's browser checks and
+# its 400 ms gate, builds the signed APK, commits, tags and pushes, publishes
+# the APK, then starts the Water deploy. Any failure stops it there, with
+# nothing pushed if the failure comes before the push; a failing check is
+# fixed, not rerun.
 #
 # Parity between the phone web and the Android app is reported, not enforced:
 # a release goes out with a known gap and the next one closes it, as
@@ -78,6 +79,18 @@ if ! nice -n 10 nix run .#browser-checks -- "$shots" > /tmp/libri-release-browse
   false
 fi
 echo "browser checks pass"
+
+step "ui latency"
+# Every interaction the page offers within 400 ms (Libri's
+# nix/check_ui_latency.py). It fails on a miss, on a stand-in host the page
+# never loads from, on a crawl that finds far too few interactions (under
+# 540) and on a share that stalls, so a broken run never reads as a pass.
+if ! nice -n 10 nix run .#ui-latency > /tmp/libri-release-latency.log 2>&1; then
+  grep -E "^(FAIL|not driven)" /tmp/libri-release-latency.log | head -20
+  echo "ui latency failed (log /tmp/libri-release-latency.log): fix, don't rerun"
+  false
+fi
+grep -E "^ok" /tmp/libri-release-latency.log
 
 step "android checks"
 # The Android app's emulator drives (drive_android_*.py in the Libri
