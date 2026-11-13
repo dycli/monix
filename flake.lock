@@ -237,11 +237,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1794579744,
-        "narHash": "sha256-htU4QqfataThZEItOxYvL3qVO8y6yFtFSWzvaEGVrIU=",
+        "lastModified": 1794582127,
+        "narHash": "sha256-aOv4KXrjOuBbyyUs4SUbGADnH9IYI2eWv6CFsLw+Rck=",
         "ref": "main",
-        "rev": "bc5e58ed712f5b05256c4366ffd719dea3576606",
-        "revCount": 2,
+        "rev": "8bb31c3aa03574240c0a52e3b1d3661ced5bb7dc",
+        "revCount": 1,
         "type": "git",
         "url": "https://github.com/dycli/hob"
       },
