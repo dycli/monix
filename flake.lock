@@ -196,11 +196,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1794469403,
-        "narHash": "sha256-T1nLmVIRXUDhTPdf36TJpZ3399LaaJ8ufwCBP1xJ/1E=",
+        "lastModified": 1794552469,
+        "narHash": "sha256-Cz8DS0gQ5uVnuefWzlzCGapYfmOU+QkkOt9u7l68bkA=",
         "owner": "anomalyco",
         "repo": "hex",
-        "rev": "e117dbe0cd5ede6228cc2d2734a7cb2fe8fbab3a",
+        "rev": "877ffc71bc9b7218c238c48989ea07cd5e24befb",
         "type": "github"
       },
       "original": {
@@ -364,11 +364,11 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1794422626,
-        "narHash": "sha256-v9q0cTucpwMdMHFDhM9/eoKu9s8YOhl30x0hUQgumXk=",
+        "lastModified": 1794536336,
+        "narHash": "sha256-0EM5+/Cq8USbl3mwy8hid0S3KwjOr2dSEtWxbWD7Emw=",
         "ref": "main",
-        "rev": "517bca8a67ce5e0234047f00ff9490f91da99c95",
-        "revCount": 1202,
+        "rev": "1747e0e0fa7eba274db4319a27ccd7edb914a1e9",
+        "revCount": 1232,
         "type": "git",
         "url": "https://github.com/dycli/libri"
       },
@@ -387,11 +387,11 @@
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1794446492,
-        "narHash": "sha256-AIiEQTIvcYJZbIpJUEiZ/y6P2cIL7OVaZjncpv4FlLM=",
+        "lastModified": 1794551759,
+        "narHash": "sha256-kL6q4ItZT++IjrrDlcUOL9L0XNzTLb2+4xQgpHBzx/I=",
         "owner": "numtide",
         "repo": "llm-agents.nix",
-        "rev": "a4ef5bdd670dc14d115a2f4cd38a2955303254f3",
+        "rev": "860075d959fc68c31fd405989daf85c1b1f0db38",
         "type": "github"
       },
       "original": {
@@ -408,11 +408,11 @@
         "spectrum": "spectrum"
       },
       "locked": {
-        "lastModified": 1793281488,
-        "narHash": "sha256-ErGIqtoWEX9KKC8NFtJDx2pGGG02Cr6LGxrvzLd2sqA=",
+        "lastModified": 1794529892,
+        "narHash": "sha256-m5iXk3ILiCuRpCgqYWNiGVFmu8YLh2FNxxaZj/Auc10=",
         "owner": "microvm-nix",
         "repo": "microvm.nix",
-        "rev": "b7bd556974fa8a171b5b639200e81d52244dfde4",
+        "rev": "194a254693f49af939a2b53d04982bd4b276fdb3",
         "type": "github"
       },
       "original": {
@@ -430,11 +430,11 @@
         "systems": "systems_3"
       },
       "locked": {
-        "lastModified": 1794466372,
-        "narHash": "sha256-XvIxp0uhMX4TXI32cyWdAlwWsLuO0ZLV5f3wWlo9B1s=",
+        "lastModified": 1794550343,
+        "narHash": "sha256-Vq067V0lpq4VfERmJkcS/N75wo0i6+TDyUtYkZC0Uyw=",
         "owner": "Infinidoge",
         "repo": "nix-minecraft",
-        "rev": "249812c9c1173cca95d7a4b0a66c5c44f94dae91",
+        "rev": "b1f2c99fe8e1c6792d6d49add9315c68cd7b11fa",
         "type": "github"
       },
       "original": {
@@ -451,11 +451,11 @@
         "nvchad-starter": "nvchad-starter"
       },
       "locked": {
-        "lastModified": 1793543635,
-        "narHash": "sha256-yjDz5vWoymPD/ZZhLlrInN8jm/X7ebgbFhYkmjSTR84=",
+        "lastModified": 1794495478,
+        "narHash": "sha256-CuOGMwdN3aSDdyA8aVEikJbzaSmHFUZA0FtSYFZJQ4I=",
         "owner": "nix-community",
         "repo": "nix4nvchad",
-        "rev": "94b2d0d1cd82111f48b017a6f8b7bc8160cb9910",
+        "rev": "6377df6be44d701ce3826d10ea792dd82d440f89",
         "type": "github"
       },
       "original": {
@@ -503,11 +503,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1794192123,
-        "narHash": "sha256-SvB8u5qaJAOwZZyZciqTVOg/rBoUs2w0sFTU6ED51AQ=",
+        "lastModified": 1794386569,
+        "narHash": "sha256-x9sADJvoVG0L6RejZB+/BB4YiGZFBZrfTlhF4uBq1tQ=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "177d0540942fb205af6993b1d5fa0b57799e09f8",
+        "rev": "d4f25a3e562008648d45bcf2d70bcc7422cad84e",
         "type": "github"
       },
       "original": {
@@ -541,11 +541,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1794422959,
-        "narHash": "sha256-jFwHxy+qRUNzkosXCmzBA1d5CSrJRWWyc5Cuzxaeet4=",
+        "lastModified": 1794558173,
+        "narHash": "sha256-T5S1A+dCepCwirZkbUAlpMSH8tHTbt28bhAFKCd16LA=",
         "owner": "getpaseo",
         "repo": "paseo",
-        "rev": "68818067f2a55c5655dc43f380a143fe4cb7ebb6",
+        "rev": "af6ca46ae3e7d209b2aca0c23bf9ba1fc1a8eb28",
         "type": "github"
       },
       "original": {
