@@ -230,6 +230,27 @@
         "url": "https://github.com/dycli/hippo2"
       }
     },
+    "hob": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1794579744,
+        "narHash": "sha256-htU4QqfataThZEItOxYvL3qVO8y6yFtFSWzvaEGVrIU=",
+        "ref": "main",
+        "rev": "bc5e58ed712f5b05256c4366ffd719dea3576606",
+        "revCount": 2,
+        "type": "git",
+        "url": "https://github.com/dycli/hob"
+      },
+      "original": {
+        "ref": "main",
+        "type": "git",
+        "url": "https://github.com/dycli/hob"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -612,6 +633,7 @@
         "flake-parts": "flake-parts",
         "hex": "hex",
         "hippo2": "hippo2",
+        "hob": "hob",
         "home-manager": "home-manager",
         "hyprqt6engine": "hyprqt6engine",
         "jobmaxxer": "jobmaxxer",

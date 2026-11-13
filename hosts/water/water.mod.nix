@@ -165,8 +165,8 @@
         };
 
         # The wall frame cannot join the tailnet either. It sits on the
-        # IoT VLAN, which OPNsense lets through to this port only.
-        frame.lan = {
+        # IoT VLAN, which OPNsense lets through to hob's port only.
+        hob.lan = {
           interface = "enp209s0f0np0";
           subnet = "192.168.30.0/24";
         };

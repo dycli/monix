@@ -44,15 +44,15 @@
 
       # The Reolinks join once they are back on the wall.
       # The AirGradient ONE, on the IoT VLAN with the frame.
-      frame.air = "192.168.30.191";
+      services.hob.air.address = "192.168.30.191";
 
-      frame.cameras = {
+      hob.cameras = {
         tapo1 = "Living room";
         tapo2 = "Nursery";
       };
 
-      # The homepage at home.su.is: services in the order it lists them.
-      frame.services = [
+      # The dashboard at home.su.is: services in the order it lists them.
+      dashboard.services = [
         {
           name = "Jellyfin";
           about = "Movies & TV";
@@ -168,7 +168,7 @@
           route = "sab";
         }
       ];
-      frame.disks = [
+      dashboard.disks = [
         {
           label = "System";
           path = "/";

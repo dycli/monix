@@ -60,7 +60,7 @@ certificate. The names resolve publicly but only route inside the tailnet."""
 [[tour.step]]
 title = "Routes"
 view = "wiring"
-focus = ["monix:modules/homelab/frame.mod.nix", "monix:modules/homelab/immich.mod.nix", "monix:modules/homelab/media.mod.nix", "monix:modules/homelab/money.mod.nix"]
+focus = ["monix:modules/homelab/hob.mod.nix", "monix:modules/homelab/immich.mod.nix", "monix:modules/homelab/media.mod.nix", "monix:modules/homelab/money.mod.nix"]
 text = """
 Each module that wants a web address declares a route: a name and a local
 port. The dashed "served by" lines on the Wiring view are those routes."""
@@ -68,10 +68,11 @@ port. The dashed "served by" lines on the Wiring view are those routes."""
 [[tour.step]]
 title = "A program behind it"
 view = "map"
-focus = ["monix:modules/homelab/frame"]
+focus = ["monix:modules/homelab/dashboard"]
 text = """
-Behind frame.su.is is a Rust program serving the photo frame and the home
-page. On the Map you can open it and see each file, sized by its lines."""
+Behind home.su.is is a Rust program serving the house's dashboard. On the
+Map you can open it and see each file, sized by its lines. Behind
+frame.su.is is hob, the house's backend, built from its own repository."""
 
 [[tour]]
 id = "hippo"

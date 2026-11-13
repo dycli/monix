@@ -26,12 +26,18 @@ in
   money.keysFile = config.secrets.plaid-env.path;
   money.environment = "production";
 
-  frame = {
-    immichKeyFile = config.secrets.frame-immich-key.path;
-    album = "frame";
-    calendarCredentialsFile = config.secrets.frame-caldav-json.path;
+  services.hob = {
+    photos = {
+      immichUrl = "http://127.0.0.1:2283";
+      apiKeyFile = config.secrets.frame-immich-key.path;
+      album = "frame";
+    };
+    calendar.accountsFile = config.secrets.frame-caldav-json.path;
     # Portsmouth, NH.
-    weather = "43.07,-70.76";
+    weather = {
+      latitude = 43.07;
+      longitude = -70.76;
+    };
   };
 
   # Parallel's search and fetch, as Libri's web tools call its MCP server. The
@@ -102,7 +108,7 @@ in
   systemd.services.matrix-tunnel.restartTriggers = singleton ./secrets/matrix-cloudflare-tunnel-token.age;
   systemd.services.immich-tunnel.restartTriggers = singleton ./secrets/immich-cloudflare-tunnel-token.age;
   systemd.services.endgrain-tunnel.restartTriggers = singleton ./secrets/endgrain-cloudflare-tunnel-token.age;
-  systemd.services.frame.restartTriggers = [
+  systemd.services.hob.restartTriggers = [
     ./secrets/frame-immich-key.age
     ./secrets/frame-caldav.json.age
   ];

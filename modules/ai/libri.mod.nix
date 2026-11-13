@@ -33,7 +33,7 @@
       ...
     }:
     let
-      inherit (lib.attrsets) recursiveUpdate;
+      inherit (lib.attrsets) optionalAttrs recursiveUpdate;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkForce;
@@ -161,10 +161,19 @@
       # harness, with its retries. Not hippo2: Libri hands every turn its
       # memory itself (memory.command), naming the memory a turn is in.
       seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
-        mcpServers = removeAttrs config.seat.mcpServers [
-          "web"
-          "hippo2"
-        ];
+        mcpServers =
+          removeAttrs config.seat.mcpServers [
+            "web"
+            "hippo2"
+          ]
+          # The house (hob.mod.nix): its cameras, weather, air and calendar,
+          # and the cards Libri draws for them.
+          // optionalAttrs (config.services ? hob && config.services.hob.enable) {
+            hob = {
+              type = "http";
+              url = "http://127.0.0.1:${toString config.services.hob.port}/mcp";
+            };
+          };
       };
       # What is true of this host, which Libri 0.9.55 takes once into HOST.md.
       seatGuide = pkgs.writeText "seat-libri-guide.md" lib.ship.guide;
