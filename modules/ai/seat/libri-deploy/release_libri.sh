@@ -74,7 +74,12 @@ step "ui latency"
 # nix/check_ui_latency.py). It fails on a miss, on a stand-in host the page
 # never loads from, on a crawl that finds far too few interactions (under
 # 540) and on a share that stalls, so a broken run never reads as a pass.
-if ! nice -n 10 nix run .#ui-latency > /tmp/libri-release-latency.log 2>&1; then
+# LIBRI_RELEASE_SKIP_UI_LATENCY=REASON skips it for one release, said in its
+# output and its notes, for when the gate itself is broken rather than the page.
+if [[ -n ${LIBRI_RELEASE_SKIP_UI_LATENCY:-} ]]; then
+  echo "ui latency SKIPPED ($LIBRI_RELEASE_SKIP_UI_LATENCY)"
+  skipped_latency=$LIBRI_RELEASE_SKIP_UI_LATENCY
+elif ! nice -n 10 nix run .#ui-latency > /tmp/libri-release-latency.log 2>&1; then
   grep -E "^(FAIL|not driven)" /tmp/libri-release-latency.log | head -20
   echo "ui latency failed (log /tmp/libri-release-latency.log): fix, don't rerun"
   false
@@ -117,6 +122,10 @@ mkdir -p "$(dirname "$notes")"
   echo
   awk -v head="## $version " 'index($0, head) == 1 { on = 1; next } on && /^## / { exit } on' libri/CHANGELOG.md
   echo "$parity"
+  if [[ -n ${skipped_latency:-} ]]; then
+    echo
+    echo "The 400 ms gate was skipped for this release: $skipped_latency"
+  fi
 } > "$notes"
 cat "$notes"
 
