@@ -327,6 +327,30 @@
         "type": "github"
       }
     },
+    "jobmaxxer": {
+      "inputs": {
+        "crate2nix": [
+          "crate2nix"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1794574732,
+        "narHash": "sha256-akBNI7vLncFR8S6Da3c85dbTB5kPkovEYHBu+F0K+RM=",
+        "ref": "more-sources",
+        "rev": "66030ad9f8d6d863024aaa23f91b8b99f059682a",
+        "revCount": 15,
+        "type": "git",
+        "url": "https://github.com/dycli/jobmaxxer"
+      },
+      "original": {
+        "ref": "more-sources",
+        "type": "git",
+        "url": "https://github.com/dycli/jobmaxxer"
+      }
+    },
     "lantern": {
       "inputs": {
         "crate2nix": [
@@ -590,6 +614,7 @@
         "hippo2": "hippo2",
         "home-manager": "home-manager",
         "hyprqt6engine": "hyprqt6engine",
+        "jobmaxxer": "jobmaxxer",
         "lantern": "lantern",
         "libri": "libri",
         "llm-agents": "llm-agents",

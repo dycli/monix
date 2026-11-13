@@ -87,6 +87,14 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
+  # Dylan's job catalog: its nightly pull. Private, so fetched as libri is.
+  # On its more-sources branch until that lands on main.
+  inputs.jobmaxxer = {
+    url = "git+https://github.com/dycli/jobmaxxer?ref=more-sources";
+    inputs.nixpkgs.follows = "nixpkgs";
+    inputs.crate2nix.follows = "crate2nix";
+  };
+
   # The market-data platform; the tape recorder is built from it.
   inputs.lantern = {
     url = "github:dycli/lantern";
