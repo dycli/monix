@@ -281,8 +281,7 @@ are matters less than how they are put together.
 **One front door.** nginx terminates TLS for every `<service>.su.is` with a
 single wildcard certificate, issued by DNS-01 because the host is not
 publicly reachable. Each service module declares its own route (subdomain
-and port) beside its config, and the dashboard is generated from the same
-routes, so adding a service touches one file. The names resolve publicly
+and port) beside its config, so adding a service touches one file. The names resolve publicly
 but route only inside the tailnet, and an explicit default vhost catches any
 name with no route.
 
