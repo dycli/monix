@@ -21,12 +21,11 @@
 # holder of a Codex login, and Home Assistant's own MCP server. Fastmail is a
 # sign-in in Libri's Settings > Connections, as on the seat.
 #
-# The instances share a household directory their common group can write:
-# shared lists, and a mailbox each. A message goes only to those it names; a
-# person's name reaches the assistant that is their door. Memories stay apart.
-# The seat is in the household as Bridge: `tell` from the seat leaves a note
-# an instance drains on its tick, and an instance's `tell` to Bridge appends
-# to `seat/inbox`, which the seat's sessions load as a rule and `inbox` prints.
+# The two assistants reach each other over A2A (Libri's a2a.rs): each names
+# the other as a peer and both present one bearer token, which a oneshot
+# makes on first start and each unit receives as a credential. A message
+# lands in the other's chat as a note; a routine's share_with sends over it.
+# Memories stay apart: nothing else passes between them.
 { inputs, self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.libri;
@@ -46,7 +45,6 @@
       inherit (lib.ship) fences computers topology;
 
       seat = topology.seat;
-      house = topology.household;
       # The assistants' sites: a directory each, read by nginx as its group.
       pages = "/var/lib/yeoman-pages";
       host = sub: "https://${sub}.${config.shipProxy.domain}";
@@ -55,18 +53,20 @@
         libri = 8951;
         suki = 8952;
       };
-      # Who is in the household, as house.rs reads it: unit=Name=Person, and
-      # =door on the one a message to the person goes to.
-      members = "libri=Bridge=Dylan=door,suki=Suki=Gab=door";
-      # Where each member takes A2A messages (a2a.rs): `seat` is the seat's
-      # daily chat.
-      peers = "suki=http://127.0.0.1:${toString ports.suki},seat=http://127.0.0.1:${toString ports.libri}";
+      # A2A (a2a.rs): the token file each unit is handed as a credential,
+      # and the other assistant, by the name a share_with or a message
+      # gives, at its loopback address.
+      a2aToken = unit: "/run/credentials/${unit}.service/a2a-token";
+      a2aPeers = {
+        libri = "Suki=http://127.0.0.1:${toString ports.suki}";
+        suki = "Bridge=http://127.0.0.1:${toString ports.libri}";
+      };
+      a2aDir = "/var/lib/libri-a2a";
       # What both configs say alike.
       shared = unit: {
-        household = {
-          inherit peers unit;
-          # The ship's seat is in the household by this name (house.rs).
-          seat = "Bridge";
+        a2a = {
+          token_file = a2aToken unit;
+          peers = a2aPeers.${unit};
         };
         harness = {
           default = "claude";
@@ -92,27 +92,6 @@
         # machine itself) stays in.
         tailnet = login;
         origins = "https://app.libri.is,http://app.libri.is";
-      };
-      # The seat's side of the household: `tell NAME TEXT` leaves a note for
-      # an assistant, `inbox` prints the assistants' notes to the seat (also
-      # loaded into its sessions as a rule), `inbox clear` empties it.
-      tell = pkgs.writeShellApplication {
-        name = "tell";
-        text = ''
-          export LIBRI_HOUSE=${house} LIBRI_MEMBERS=${lib.strings.escapeShellArg members} LIBRI_A2A=${lib.strings.escapeShellArg peers}
-          exec ${getExe inputs.libri.packages.${pkgs.stdenv.hostPlatform.system}.daemon} tell "$@"
-        '';
-      };
-      inbox = pkgs.writeShellApplication {
-        name = "inbox";
-        runtimeInputs = singleton pkgs.coreutils;
-        text = ''
-          if [ "''${1-}" = clear ]; then
-            : > ${house}/seat/inbox
-          else
-            cat ${house}/seat/inbox
-          fi
-        '';
       };
 
       image = pkgs.writers.writePython3Bin "yeoman-image-mcp" {
@@ -239,7 +218,6 @@
         Group = "suki";
         SupplementaryGroups = [
           "yeoman-image"
-          "yeoman-household"
           "usage"
           computers.deskGroup
         ];
@@ -308,11 +286,6 @@
           # Gab's assistant reaches no memory of Dylan's: hippo2 on the
           # seat holds Dylan's.
           memory.command = "";
-          # Notes to and from the other assistants and the seat.
-          household = {
-            dir = house;
-            inherit members;
-          };
           harness = {
             mcp = "/run/suki/mcp.json";
             # An assistant: Libri's tools only, no shell or files.
@@ -335,14 +308,7 @@
         group = "yeoman-image";
         home = "/var/lib/yeoman-image";
       };
-      # The seat reads and writes the household's seat/ files as the group.
-      users.users.${seat.user}.extraGroups = singleton "yeoman-household";
       users.groups.yeoman-image = { };
-      users.groups.yeoman-household = { };
-      environment.systemPackages = [
-        tell
-        inbox
-      ];
 
       # Each serves its host itself: the chat at the root, the pages beside
       # it. Server-sent events stream as they come; uploads may be as big as
@@ -396,32 +362,6 @@
         });
       '';
 
-      # Setgid, so what one assistant writes stays the group's.
-      systemd.tmpfiles.settings.yeoman-household =
-        let
-          entry = mode: {
-            user = "root";
-            group = "yeoman-household";
-            inherit mode;
-          };
-        in
-        lib.attrsets.genAttrs
-          [
-            house
-            "${house}/mail"
-            "${house}/seat"
-            "${house}/mail/libri"
-            "${house}/mail/suki"
-            "${house}/seat/libri"
-            "${house}/seat/suki"
-          ]
-          (_: {
-            d = entry "2770";
-          })
-        // {
-          "${house}/seat/inbox".f = entry "0660";
-        };
-
       systemd.sockets.yeoman-image = {
         description = "Pictures for the household assistants";
         wantedBy = singleton "sockets.target";
@@ -445,8 +385,12 @@
           # switch changed. Its settings name store paths such as Chromium's,
           # so without this every nixpkgs update restarted it mid-work.
           restartIfChanged = false;
-          after = singleton "hippo.service";
+          after = [
+            "hippo.service"
+            "libri-a2a-token.service"
+          ];
           wants = singleton "hippo.service";
+          requires = singleton "libri-a2a-token.service";
           environment = {
             # The seat's home-manager packages, its claude among them.
             PATH = mkForce (
@@ -463,7 +407,10 @@
               "usage"
               "opencode-auth"
             ];
-            LoadCredential = "claude-token:${config.secrets.agent-claude-token.path}";
+            LoadCredential = [
+              "claude-token:${config.secrets.agent-claude-token.path}"
+              "a2a-token:${a2aDir}/token"
+            ];
             RuntimeDirectory = "libri";
             RuntimeDirectoryMode = "0700";
             ExecStartPre = claudeToken;
@@ -479,6 +426,28 @@
             # Each turn's claude and what it runs.
             MemoryHigh = "12G";
           };
+        };
+
+        # The one token both assistants present to each other over A2A,
+        # made once at random and kept, so a restart of either changes
+        # nothing. Removing the file makes a new one at the next start of
+        # both.
+        libri-a2a-token = {
+          description = "Makes the A2A token Bridge and Suki share";
+          path = singleton pkgs.coreutils;
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            # /var/lib/libri-a2a, root's alone (0700).
+            StateDirectory = "libri-a2a";
+          };
+          script = ''
+            umask 077
+            if [ ! -s ${a2aDir}/token ]; then
+              head -c 32 /dev/urandom | base64 | tr -d '=\n' > ${a2aDir}/token.new
+              mv ${a2aDir}/token.new ${a2aDir}/token
+            fi
+          '';
         };
 
         # An up unit isn't a working Libri. This proves its site, its tool
@@ -535,11 +504,14 @@
           description = "Suki, Gab's household assistant";
           # As Libri's above: libri-release restarts both when quiet.
           restartIfChanged = false;
+          after = singleton "libri-a2a-token.service";
+          requires = singleton "libri-a2a-token.service";
           serviceConfig = sukiSandbox // {
             SupplementaryGroups = sukiSandbox.SupplementaryGroups ++ singleton computers.deskGroup;
             LoadCredential = [
               "claude-key:${config.secrets.suki-claude-key.path}"
               "home:${config.secrets.yeoman-home-token.path}"
+              "a2a-token:${a2aDir}/token"
             ];
             RuntimeDirectory = "suki";
             RuntimeDirectoryMode = "0700";
@@ -551,7 +523,6 @@
             RestartSec = 10;
             ReadWritePaths = [
               "${pages}/suki"
-              house
               sukiDesk
             ];
             SocketBindAllow = "tcp:${toString ports.suki}";

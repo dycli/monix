@@ -17,8 +17,6 @@
     # return to the build it ran with.
     libriBuild = "/var/lib/libri-build/libri";
   };
-  # The assistants' household (libri.mod.nix); the seat is in it too.
-  household = "/var/lib/yeoman-household";
 
   hostTailnetAddr = "100.102.113.74";
   tailnetDomain = "olm-hen.ts.net";

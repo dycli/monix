@@ -18,8 +18,8 @@
 #
 # The deploy waits for Libri to be quiet, so started from a Libri turn it goes
 # live once that turn ends; its result is in /var/lib/libri-deploy/status.
-# It doesn't move monix's Libri pin, which carries only the NixOS module and
-# the `tell` command; the routine flake update moves it.
+# It doesn't move monix's Libri pin, which carries only the NixOS module; the
+# routine flake update moves it.
 #
 # On the seat's PATH as libri-release.
 # Usage: libri-release [VERSION] [LIBRI_CHECKOUT]   (default: next patch, ~/ark/libri)

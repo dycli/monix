@@ -269,9 +269,11 @@ runs code with no network, in a folder the host fills, on a host-only bridge
 with NAT to public addresses only (`assistant-network.mod.nix`). Nothing of the
 household goes in: no tailnet, no store share, no secret.
 
-The instances share a household directory their common group can write:
-shared lists and a mailbox each. The seat is in it as Bridge, with `tell` and
-`inbox`.
+The two assistants reach each other over A2A, the open agent-to-agent
+protocol: each names the other as a peer, and both present one token that a
+oneshot makes on first start and each unit receives as a credential. A
+message lands in the other's chat as a note, and a routine's `share_with`
+sends over it. Their memories stay apart.
 
 ## Homelab
 
