@@ -44,6 +44,20 @@ git rev-parse -q --verify "refs/tags/v$version" >/dev/null && { echo "v$version 
 undo() { git checkout --quiet -- libri/Cargo.toml libri/Cargo.lock; }
 trap undo ERR
 
+step "check lock"
+# One heavy check at a time on the host: the release holds Libri's check lock
+# (its nix/with_check_lock.sh, the same file) from here to the end, so its
+# checks never run beside a worker's, which load the host until page loads
+# time out, and a worker's started meanwhile waits for it. What it runs sees
+# LIBRI_CHECK_LOCK_HELD and doesn't take the lock again.
+exec 9>"${LIBRI_CHECK_LOCK:-/tmp/libri-check.lock}"
+if ! flock -n 9; then
+  echo "waiting for the checks running now to finish"
+  flock 9
+fi
+export LIBRI_CHECK_LOCK_HELD=1
+echo "held"
+
 step "version"
 ./set_version.sh "$version"
 
