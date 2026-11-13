@@ -5,8 +5,9 @@ All harnesses use this file for repository instructions. Do not add a
 including sessions with telemetry disabled.
 
 Global instructions reach each harness on the AI seat through Libri's prompt.
-`lib/guide.nix` holds what is true of this host, as `harness.instructions`; the
-engineer's rules are in Libri's state, edited in its Settings.
+Libri keeps all of it in its own state, edited in its Settings: the person's
+rules, opening with who the assistant is (AGENTS.md), and what is true of this
+host (HOST.md). monix writes none of it.
 
 This repository follows the **Dendritic Pattern**: every `*.mod.nix` file in the
 tree is a flake-parts module and is discovered automatically by `flake.nix`.

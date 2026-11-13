@@ -11,7 +11,6 @@ inputs.nixpkgs.lib.extend (
       hardened = import ./hardened.nix final;
       topology = import ./topology.nix;
       tunnel = import ./tunnel.nix final;
-      guide = import ./guide.nix;
       keys = import ../keys.nix;
       opencode = import ./opencode.nix final;
       rustTool = import ./rust-tool.nix final inputs.crate2nix;
