@@ -270,10 +270,10 @@ with NAT to public addresses only (`assistant-network.mod.nix`). Nothing of the
 household goes in: no tailnet, no store share, no secret.
 
 The two assistants reach each other over A2A, the open agent-to-agent
-protocol: each names the other as a peer, and both present one token that a
-oneshot makes on first start and each unit receives as a credential. A
-message lands in the other's chat as a note, and a routine's `share_with`
-sends over it. Their memories stay apart.
+protocol, as peers: paired once in Libri's Settings (one asks by address,
+the other approves), each pair with its own credential kept in each
+assistant's state. A message lands in the other's chat as a note. Their
+memories stay apart.
 
 ## Homelab
 

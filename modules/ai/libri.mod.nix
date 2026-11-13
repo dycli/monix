@@ -21,11 +21,10 @@
 # holder of a Codex login, and Home Assistant's own MCP server. Fastmail is a
 # sign-in in Libri's Settings > Connections, as on the seat.
 #
-# The two assistants reach each other over A2A (Libri's a2a.rs): each names
-# the other as a peer and both present one bearer token, which a oneshot
-# makes on first start and each unit receives as a credential. A message
-# lands in the other's chat as a note; a routine's share_with sends over it.
-# Memories stay apart: nothing else passes between them.
+# The two assistants reach each other over A2A as peers, paired in Libri's
+# Settings > Hosts > Peers with a credential of their own (Libri's peers.rs),
+# which each keeps in its state. A message lands in the other's chat as a
+# note. Memories stay apart: nothing else passes between them.
 { inputs, self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.libri;
@@ -53,21 +52,8 @@
         libri = 8951;
         suki = 8952;
       };
-      # A2A (a2a.rs): the token file each unit is handed as a credential,
-      # and the other assistant, by the name a share_with or a message
-      # gives, at its loopback address.
-      a2aToken = unit: "/run/credentials/${unit}.service/a2a-token";
-      a2aPeers = {
-        libri = "Suki=http://127.0.0.1:${toString ports.suki}";
-        suki = "Bridge=http://127.0.0.1:${toString ports.libri}";
-      };
-      a2aDir = "/var/lib/libri-a2a";
       # What both configs say alike.
-      shared = unit: {
-        a2a = {
-          token_file = a2aToken unit;
-          peers = a2aPeers.${unit};
-        };
+      shared = {
         harness = {
           default = "claude";
           model = "opus";
@@ -274,7 +260,7 @@
           inherit (seat) user;
           # One browser for agents: logged out until Dylan allows a site's logins.
           agentBrowser.enable = true;
-          settings = recursiveUpdate (shared "libri") {
+          settings = recursiveUpdate shared {
             name = "Bridge";
             person = "Dylan";
             # A task Dylan allows his logins for runs in his own Brave while
@@ -311,7 +297,7 @@
         services.libri.instances.suki = {
           package = seat.libriBuild;
           harnesses = singleton pkgs.claude-code;
-          settings = recursiveUpdate (shared "suki") {
+          settings = recursiveUpdate shared {
             name = "Suki";
             person = "Gab";
             style = "Gab likes a slightly warmer tone.";
@@ -422,12 +408,8 @@
             # switch changed. Its settings name store paths such as Chromium's,
             # so without this every nixpkgs update restarted it mid-work.
             restartIfChanged = false;
-            after = [
-              "hippo.service"
-              "libri-a2a-token.service"
-            ];
+            after = singleton "hippo.service";
             wants = singleton "hippo.service";
-            requires = singleton "libri-a2a-token.service";
             environment =
               optionalAttrs (limits.server != null) { LIBRI_SERVER_CGROUP = limits.server; }
               // optionalAttrs (limits.harness != null) { LIBRI_HARNESS_CGROUP = limits.harness; }
@@ -453,10 +435,7 @@
                 "usage"
                 "opencode-auth"
               ];
-              LoadCredential = [
-                "claude-token:${config.secrets.agent-claude-token.path}"
-                "a2a-token:${a2aDir}/token"
-              ];
+              LoadCredential = "claude-token:${config.secrets.agent-claude-token.path}";
               RuntimeDirectory = "libri";
               RuntimeDirectoryMode = "0700";
               ExecStartPre = claudeToken;
@@ -472,28 +451,6 @@
               # Each turn's claude and what it runs.
               MemoryHigh = "12G";
             };
-          };
-
-          # The one token both assistants present to each other over A2A,
-          # made once at random and kept, so a restart of either changes
-          # nothing. Removing the file makes a new one at the next start of
-          # both.
-          libri-a2a-token = {
-            description = "Makes the A2A token Bridge and Suki share";
-            path = singleton pkgs.coreutils;
-            serviceConfig = {
-              Type = "oneshot";
-              RemainAfterExit = true;
-              # /var/lib/libri-a2a, root's alone (0700).
-              StateDirectory = "libri-a2a";
-            };
-            script = ''
-              umask 077
-              if [ ! -s ${a2aDir}/token ]; then
-                head -c 32 /dev/urandom | base64 | tr -d '=\n' > ${a2aDir}/token.new
-                mv ${a2aDir}/token.new ${a2aDir}/token
-              fi
-            '';
           };
 
           # An up unit isn't a working Libri. This proves its site, its tool
@@ -550,14 +507,11 @@
             description = "Suki, Gab's household assistant";
             # As Libri's above: libri-release restarts both when quiet.
             restartIfChanged = false;
-            after = singleton "libri-a2a-token.service";
-            requires = singleton "libri-a2a-token.service";
             serviceConfig = sukiSandbox // {
               SupplementaryGroups = sukiSandbox.SupplementaryGroups ++ singleton computers.deskGroup;
               LoadCredential = [
                 "claude-key:${config.secrets.suki-claude-key.path}"
                 "home:${config.secrets.yeoman-home-token.path}"
-                "a2a-token:${a2aDir}/token"
               ];
               RuntimeDirectory = "suki";
               RuntimeDirectoryMode = "0700";
