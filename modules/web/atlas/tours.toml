@@ -68,11 +68,10 @@ port. The dashed "served by" lines on the Wiring view are those routes."""
 [[tour.step]]
 title = "A program behind it"
 view = "map"
-focus = ["monix:modules/homelab/dashboard"]
+focus = ["monix:modules/homelab/money"]
 text = """
-Behind home.su.is is a Rust program serving the house's dashboard. On the
-Map you can open it and see each file, sized by its lines. Behind
-frame.su.is is hob, the house's backend, built from its own repository."""
+Behind money.su.is is a Rust program, built from this repository. On the
+Map you can open it and see each file, sized by its lines."""
 
 [[tour]]
 id = "hippo"

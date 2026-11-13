@@ -35,12 +35,6 @@
 !*.html
 !*.jinja
 
-# The dashboard's assets (modules/homelab/dashboard): its scripts, font
-# and Glance's licence.
-!modules/homelab/dashboard/src/ui/*.js
-!modules/homelab/dashboard/src/ui/*.woff2
-!modules/homelab/dashboard/src/ui/LICENSE
-
 # Assets: docs diagrams and the desktop wallpaper.
 !*.svg
 !*.jpg

@@ -108,8 +108,7 @@
           recommendedTlsSettings = true;
 
           # Per-service routes (subdomain + port) come from each service's
-          # own module via shipProxy.routes; the dashboard and catch-alls
-          # stay here.
+          # own module via shipProxy.routes; the catch-all stays here.
           virtualHosts =
             (
               cfg.routes
@@ -133,15 +132,6 @@
                 )
               )
             )
-            # Plain hostname, tailnet IP and MagicDNS name on :80 go to the
-            # homepage.
-            // optionalAttrs (cfg.routes ? home) {
-              home-catchall = {
-                serverName = config.networking.hostName;
-                default = true;
-                locations."/".return = "302 https://${cfg.routes.home.subdomain}.${cfg.domain}$request_uri";
-              };
-            }
             # The wildcard DNS record resolves every name. Without an
             # explicit :443 default, nginx falls back to an application
             # vhost.

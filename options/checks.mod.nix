@@ -18,7 +18,6 @@
       # Check name → crate directory and the tools its tests shell out to.
       crates = {
         endgrain.path = "modules/homelab/endgrain";
-        dashboard.path = "modules/homelab/dashboard";
         money.path = "modules/homelab/money";
       };
       cratePaths = attrValues crates |> map (crate: crate.path);

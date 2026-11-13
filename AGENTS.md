@@ -189,7 +189,7 @@ itself stays pipe-free so a stock parser can always read it.
   leaves every host's system in Water's binary cache, so the other hosts
   download what it built. The checks
   (`options/checks.mod.nix` and the modules that add to it): `endgrain`,
-  `dashboard`, `money` (crate tests and clippy), `host-earth`, `host-water`,
+  `money` (crate tests and clippy), `host-earth`, `host-water`,
   `host-air`, `host-fire`, `rustfmt`, `nixfmt`, `nix-style`,
   `secrets-rules`, `atlas-tours`, `libri-deploy`.
 - `nix flake check --no-build` fails: crate2nix builds during evaluation.
