@@ -23,7 +23,6 @@
         pkgs.eza
         pkgs.fd
         pkgs.fzf
-        pkgs.htop
         pkgs.jujutsu
         pkgs.microfetch
         pkgs.nushell

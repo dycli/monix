@@ -20,9 +20,6 @@
     let
       inherit (lib.attrsets) genAttrs listToAttrs nameValuePair;
       inherit (lib.lists) singleton;
-      inherit (lib.meta) getExe;
-      inherit (lib.modules) mkIf;
-      inherit (lib.ship) fences;
       tokenFile = config.web.tunnelTokenFile;
 
       webRoot = "/srv/www";
@@ -61,7 +58,6 @@
     {
       options.web.tunnelTokenFile = lib.options.mkOption {
         type = lib.types.nullOr lib.types.path;
-        default = null;
         description = "Token of the Cloudflare tunnel that carries the public sites to nginx.";
       };
 
@@ -69,26 +65,10 @@
         # Cloudflare's edge reaches nginx through this outbound tunnel; its
         # routes (hostname to loopback port) live in the tunnel's remote
         # configuration at Cloudflare.
-        systemd.services.web-tunnel = mkIf (tokenFile != null) {
+        systemd.services.web-tunnel = lib.ship.tunnel pkgs {
           description = "Cloudflare Tunnel for the public sites";
-          wantedBy = singleton "multi-user.target";
-          wants = singleton "network-online.target";
-          after = [
-            "network-online.target"
-            "nginx.service"
-          ];
-          serviceConfig = {
-            DynamicUser = true;
-            LoadCredential = singleton "token:${tokenFile}";
-            ExecStart = "${getExe pkgs.cloudflared} tunnel --no-autoupdate run --token-file %d/token";
-            Restart = "always";
-            RestartSec = 5;
-            # Cloudflare's edge and loopback only; 127.0.0.0/8 is denied
-            # because the allow is a /24.
-            IPAddressAllow = fences.loopback;
-            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
-          };
-          environment.TUNNEL_TRANSPORT_PROTOCOL = "http2";
+          tokenFile = tokenFile;
+          backend = "nginx.service";
         };
 
         services.nginx = {

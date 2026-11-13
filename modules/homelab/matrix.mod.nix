@@ -18,8 +18,6 @@
     }:
     let
       inherit (lib.lists) singleton;
-      inherit (lib.meta) getExe;
-      inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
       inherit (lib) types;
 
@@ -59,11 +57,10 @@
         };
 
         tunnelTokenFile = mkOption {
-          type = types.nullOr types.str;
-          default = null;
+          type = types.str;
           description = ''
-            Cloudflare Tunnel connector token for the chat hostname; null =
-            tailnet-only. Hostname -> http://127.0.0.1:<port> mapping is
+            Cloudflare Tunnel connector token for the chat hostname.
+            Hostname -> http://127.0.0.1:<port> mapping is
             dashboard-side; do NOT put a Cloudflare Access app on this
             hostname (see header).
           '';
@@ -108,35 +105,15 @@
           IPAddressDeny = fences.privateRanges;
         };
 
-        systemd.services.matrix-tunnel = mkIf (cfg.tunnelTokenFile != null) {
-          description = "Cloudflare Tunnel for the Matrix homeserver";
-          wantedBy = singleton "multi-user.target";
-          partOf = singleton "tuwunel.service";
-          wants = [
-            "network-online.target"
-            "tuwunel.service"
-          ];
-          after = [
-            "network-online.target"
-            "tuwunel.service"
-          ];
-          serviceConfig = {
-            DynamicUser = true;
-            LoadCredential = singleton "token:${cfg.tunnelTokenFile}";
-            ExecStart = "${getExe pkgs.cloudflared} tunnel --no-autoupdate run --token-file %d/token";
-            Restart = "always";
-            RestartSec = 5;
-
-            # DynamicUser bounds filesystem reach, not network reach. Only
-            # Cloudflare's edge and loopback are needed; 127.0.0.0/8 is
-            # denied because the allow is a /24.
-            IPAddressAllow = fences.loopback;
-            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
+        systemd.services.matrix-tunnel =
+          lib.ship.tunnel pkgs {
+            description = "Cloudflare Tunnel for the Matrix homeserver";
+            tokenFile = cfg.tunnelTokenFile;
+            backend = "tuwunel.service";
+          }
+          // {
+            partOf = singleton "tuwunel.service";
           };
-          environment = {
-            TUNNEL_TRANSPORT_PROTOCOL = "http2";
-          };
-        };
       };
     };
 }

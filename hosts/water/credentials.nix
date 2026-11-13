@@ -83,6 +83,10 @@ in
     frame-immich-key.file = ./secrets/frame-immich-key.age;
     frame-caldav-json.file = ./secrets/frame-caldav.json.age;
     plaid-env.file = ./secrets/plaid.env.age;
+    # Raw Cloudflare tokens: one the seat reads, one able to deploy
+    # libri-is-site and libri-app.
+    cloudflare-read-token.file = ./secrets/cloudflare-read-token.age;
+    libri-publish-cloudflare-token.file = ./secrets/libri-publish-cloudflare-token.age;
     # Web search API keys, bare and root's. Libri reaches each through the key proxy.
     parallel-key.file = ./secrets/parallel-key.age;
     exa-key.file = ./secrets/exa-key.age;

@@ -10,7 +10,7 @@
 # completes the resolver answers unfiltered.
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.resolver;
+  flake.nixosModules.web = self.nixosModules.resolver;
   flake.nixosModules.resolver =
     {
       config,
@@ -21,8 +21,7 @@
     let
       inherit (lib.attrsets) mapAttrsToList;
       inherit (lib.lists) optional singleton;
-      inherit (lib.modules) mkIf;
-      inherit (lib.options) mkEnableOption mkOption;
+      inherit (lib.options) mkOption;
       inherit (lib) types;
       inherit (lib.ship) fences;
 
@@ -48,7 +47,6 @@
     in
     {
       options.resolver = {
-        enable = mkEnableOption "the tailnet filtering resolver";
 
         addresses = mkOption {
           type = types.listOf types.str;
@@ -75,7 +73,7 @@
         };
       };
 
-      config = mkIf cfg.enable {
+      config = {
         services.unbound = {
           enable = true;
 

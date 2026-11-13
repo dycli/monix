@@ -16,7 +16,6 @@
     let
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
-      inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
       inherit (lib) types;
       inherit (lib.ship) fences;
@@ -27,11 +26,10 @@
     in
     {
       options.endgrain.tunnelTokenFile = mkOption {
-        type = types.nullOr types.str;
-        default = null;
+        type = types.str;
         description = ''
-          Cloudflare Tunnel connector token for the staff door; null =
-          tailnet-only. The hostname -> http://127.0.0.1:${toString port}
+          Cloudflare Tunnel connector token for the staff door. The
+          hostname -> http://127.0.0.1:${toString port}
           mapping is dashboard-side.
         '';
       };
@@ -66,26 +64,10 @@
           };
         };
 
-        systemd.services.endgrain-tunnel = mkIf (tokenFile != null) {
+        systemd.services.endgrain-tunnel = lib.ship.tunnel pkgs {
           description = "Cloudflare Tunnel for Endgrain's staff";
-          wantedBy = singleton "multi-user.target";
-          wants = singleton "network-online.target";
-          after = [
-            "network-online.target"
-            "endgrain.service"
-          ];
-          serviceConfig = {
-            DynamicUser = true;
-            LoadCredential = singleton "token:${tokenFile}";
-            ExecStart = "${getExe pkgs.cloudflared} tunnel --no-autoupdate run --token-file %d/token";
-            Restart = "always";
-            RestartSec = 5;
-            # Cloudflare's edge and loopback only; 127.0.0.0/8 is denied
-            # because the allow is a /24.
-            IPAddressAllow = fences.loopback;
-            IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
-          };
-          environment.TUNNEL_TRANSPORT_PROTOCOL = "http2";
+          tokenFile = tokenFile;
+          backend = "endgrain.service";
         };
       };
     };

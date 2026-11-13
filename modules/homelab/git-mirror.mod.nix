@@ -25,7 +25,6 @@
       inherit (lib) types;
       inherit (lib.lists) singleton;
       inherit (lib.meta) getExe;
-      inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
       inherit (lib.strings) escapeShellArg;
       inherit (lib.ship) fences hardened;
@@ -113,12 +112,11 @@
     in
     {
       options.gitMirror.tokenFile = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Read-only fine-grained GitHub token, raw; null leaves the mirror off.";
+        type = types.str;
+        description = "Read-only fine-grained GitHub token, raw.";
       };
 
-      config = mkIf (cfg.tokenFile != null) {
+      config = {
         users.users.git-mirror = {
           isSystemUser = true;
           group = "git-mirror";

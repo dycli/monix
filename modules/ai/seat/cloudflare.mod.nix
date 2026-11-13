@@ -34,7 +34,6 @@
       users.users.${seat.user}.extraGroups = singleton "cloudflare-read";
 
       secrets.cloudflare-read-token = {
-        file = ../../../hosts/water/secrets/cloudflare-read-token.age;
         group = "cloudflare-read";
         mode = "0440";
       };
