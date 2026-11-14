@@ -83,8 +83,9 @@ elif ! nice -n 10 nix run .#ui-latency > /tmp/libri-release-latency.log 2>&1; th
   grep -E "^(FAIL|not driven)" /tmp/libri-release-latency.log | head -20
   echo "ui latency failed (log /tmp/libri-release-latency.log): fix, don't rerun"
   false
+else
+  grep -E "^ok" /tmp/libri-release-latency.log
 fi
-grep -E "^ok" /tmp/libri-release-latency.log
 
 step "android checks"
 # The Android app's emulator drives (drive_android_*.py in the Libri
