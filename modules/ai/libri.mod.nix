@@ -228,328 +228,365 @@
         ];
         EnvironmentFile = "-%t/%N/claude.env";
       };
+      inherit (lib.options) mkOption;
+      inherit (lib) types;
+      limits = config.libri.limits;
     in
     {
       imports = singleton inputs.libri.nixosModules.default;
 
-      services.libri.instances.libri = {
-        package = seat.libriBuild;
-        inherit (seat) user;
-        # One browser for agents: logged out until Dylan allows a site's logins.
-        agentBrowser.enable = true;
-        settings = recursiveUpdate (shared "libri") {
-          name = "Bridge";
-          person = "Dylan";
-          # A task Dylan allows his logins for runs in his own Brave while
-          # its extension is connected (seat/browse.mod.nix), else in the
-          # agents' browser.
-          browser = {
-            relay = "http://127.0.0.1:19988";
-            relay_token = "${seat.home}/.local/share/browse/relay-token";
-          };
-          # One address for the household: Dylan's Libri answers on the
-          # tailnet port and passes Gab's devices on to hers, by tailscaled's
-          # word on who is calling.
-          daemon = site "libri" "si" "ddcleary1@gmail.com" // {
-            forward = "gabcaminiti10@gmail.com=http://127.0.0.1:${toString ports.suki}";
-          };
-          hippo = {
-            dir = seat.hippo;
-            # The seat's hippo (seat/hippo.mod.nix serves it); the title its
-            # history already goes under.
-            shared = "Bridge";
-          };
-          # The memory every turn recalls from: the seat's hippo2
-          # (seat/hippo2.mod.nix), the program that finds its memories.
-          memory.command = "${lib.meta.getExe config.services.hippo2.finalPackage} mcp";
-          harness = {
-            mcp = toString seatMcp;
-            efforts = "low,medium,high,xhigh,max";
-            # llm-agents installs OpenCode 2 under this name (agent-clis.mod.nix).
-            opencode.command = "opencode2";
-          };
+      # The cgroup limits Libri sets below itself (Libri's cgroup.rs), as
+      # `file=value` pairs, on a host that delegates the unit its cgroup.
+      # Null leaves Libri's own: no move for server and harness, and the
+      # browser's built-in cap.
+      options.libri.limits = {
+        server = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Limits for the daemon's own `server` leaf (LIBRI_SERVER_CGROUP).";
+        };
+        harness = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Limits for the `harness` cgroup every harness and what it runs share (LIBRI_HARNESS_CGROUP).";
+        };
+        browser = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Limits for the agents' `browser` cgroup (LIBRI_BROWSER_CGROUP).";
         };
       };
 
-      services.libri.instances.suki = {
-        package = seat.libriBuild;
-        harnesses = singleton pkgs.claude-code;
-        settings = recursiveUpdate (shared "suki") {
-          name = "Suki";
-          person = "Gab";
-          style = "Gab likes a slightly warmer tone.";
-          # Reached through Dylan's Libri on the tailnet port, so loopback
-          # only; the tailnet gate stays as a second check.
-          daemon = site "suki" "suki" "gabcaminiti10@gmail.com" // {
-            listen = "127.0.0.1:${toString ports.suki}";
-          };
-          # Gab's assistant reaches no memory of Dylan's: hippo2 on the
-          # seat holds Dylan's.
-          memory.command = "";
-          harness = {
-            mcp = "/run/suki/mcp.json";
-            # An assistant: Libri's tools only, no shell or files.
-            coding = "0";
-          };
-          computer = {
-            run = "http://${computers.addr computers.indexes.suki}:${toString computers.runPort}";
-            runs = sukiDesk;
-          };
-        };
-      };
+      config = {
 
-      # yeoman-image holds the household's one Codex login, on the ChatGPT
-      # subscription; the assistants reach only its socket. Log in once,
-      # with the codex from the unit's script (not on PATH), after
-      # `sudo install -d -o yeoman-image -g yeoman-image -m 700 /var/lib/yeoman-image`:
-      # sudo -u yeoman-image env HOME=/var/lib/yeoman-image CODEX_HOME=/var/lib/yeoman-image <codex> login --device-auth
-      users.users.yeoman-image = {
-        isSystemUser = true;
-        group = "yeoman-image";
-        home = "/var/lib/yeoman-image";
-      };
-      users.groups.yeoman-image = { };
-
-      # Each serves its host itself: the chat at the root, the pages beside
-      # it. Server-sent events stream as they come; uploads may be as big as
-      # the chat takes (UPLOAD_MAX in site.rs).
-      shipProxy.routes =
-        {
-          libri = "si";
-          suki = "suki";
-        }
-        |> lib.attrsets.mapAttrs (
-          n: subdomain: {
-            inherit subdomain;
-            port = ports.${n};
-            proxyExtra = "proxy_buffering off; client_max_body_size 100m;";
-          }
-        );
-
-      systemd.tmpfiles.settings.yeoman-pages = {
-        ${pages}.d = {
-          user = "root";
-          group = "root";
-          mode = "0751";
-        };
-        "${pages}/libri".d = {
-          user = seat.user;
-          group = "nginx";
-          mode = "2750";
-        };
-        "${pages}/suki".d = {
-          user = "suki";
-          group = "nginx";
-          mode = "2750";
-        };
-      };
-
-      # An instance's Libri build link lives in a directory the seat owns,
-      # and the seat restarts its units after rebuilding the link.
-      systemd.tmpfiles.settings.yeoman-builds."/var/lib/libri-build".d = {
-        user = seat.user;
-        group = seat.user;
-        mode = "0755";
-      };
-      security.polkit.extraConfig = ''
-        polkit.addRule(function (action, subject) {
-          if (action.id == "org.freedesktop.systemd1.manage-units" &&
-              ["hippo.service", "libri.service", "suki.service"].indexOf(action.lookup("unit")) >= 0 &&
-              ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
-              subject.user == "${seat.user}") {
-            return polkit.Result.YES;
-          }
-        });
-      '';
-
-      systemd.sockets.yeoman-image = {
-        description = "Pictures for the household assistants";
-        wantedBy = singleton "sockets.target";
-        socketConfig = {
-          ListenStream = "/run/yeoman-image.sock";
-          Accept = true;
-          MaxConnections = 2;
-          SocketMode = "0660";
-          SocketGroup = "yeoman-image";
-        };
-      };
-
-      systemd.services = {
-        # The seat itself behind Libri's site: Bridge, on the seat's logins
-        # and privileges, so none of the service's defaults apply.
-        libri = {
-          description = "Bridge in Dylan's web chat";
-          # A restart ends every turn and worker under way, so a switch
-          # leaves Libri running: libri-release restarts it once it is quiet
-          # (seat/libri-deploy.mod.nix), and that restart reads what the
-          # switch changed. Its settings name store paths such as Chromium's,
-          # so without this every nixpkgs update restarted it mid-work.
-          restartIfChanged = false;
-          after = [
-            "hippo.service"
-            "libri-a2a-token.service"
-          ];
-          wants = singleton "hippo.service";
-          requires = singleton "libri-a2a-token.service";
-          environment = {
-            # The seat's home-manager packages, its claude among them.
-            PATH = mkForce (
-              concatStringsSep ":" [
-                "/etc/profiles/per-user/${seat.user}/bin"
-                "/run/wrappers/bin"
-                "/run/current-system/sw/bin"
-              ]
-            );
-            OPENCODE_CONFIG = toString openCodeConfig;
-          };
-          serviceConfig = {
-            SupplementaryGroups = [
-              "usage"
-              "opencode-auth"
-            ];
-            LoadCredential = [
-              "claude-token:${config.secrets.agent-claude-token.path}"
-              "a2a-token:${a2aDir}/token"
-            ];
-            RuntimeDirectory = "libri";
-            RuntimeDirectoryMode = "0700";
-            ExecStartPre = claudeToken;
-            EnvironmentFile = "-%t/%N/claude.env";
-            WorkingDirectory = seat.home;
-            NoNewPrivileges = false;
-            ProtectSystem = false;
-            PrivateTmp = false;
-            # A restart ends the turn under way; the next message starts
-            # afresh from the memory.
-            Restart = "always";
-            RestartSec = 10;
-            # Each turn's claude and what it runs.
-            MemoryHigh = "12G";
-          };
-        };
-
-        # The one token both assistants present to each other over A2A,
-        # made once at random and kept, so a restart of either changes
-        # nothing. Removing the file makes a new one at the next start of
-        # both.
-        libri-a2a-token = {
-          description = "Makes the A2A token Bridge and Suki share";
-          path = singleton pkgs.coreutils;
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            # /var/lib/libri-a2a, root's alone (0700).
-            StateDirectory = "libri-a2a";
-          };
-          script = ''
-            umask 077
-            if [ ! -s ${a2aDir}/token ]; then
-              head -c 32 /dev/urandom | base64 | tr -d '=\n' > ${a2aDir}/token.new
-              mv ${a2aDir}/token.new ${a2aDir}/token
-            fi
-          '';
-        };
-
-        # An up unit isn't a working Libri. This proves its site, its tool
-        # server and its hippo; a failure here makes switcharoo roll the
-        # deploy back.
-        libri-ready = {
-          description = "Proves Bridge's Libri answers";
-          wantedBy = singleton "multi-user.target";
-          after = [
-            "libri.service"
-            "hippo.service"
-          ];
-          restartTriggers = [
-            config.systemd.units."libri.service".unit
-            config.systemd.units."hippo.service".unit
-          ];
-          unitConfig.RequiresMountsFor = seat.hippo;
-          environment.HIPPO_DIR = seat.hippo;
-          path = [
-            pkgs.coreutils
-            pkgs.curl
-            pkgs.jq
-          ];
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            User = seat.user;
-            TimeoutStartSec = 180;
-          };
-          script = ''
-            site=http://127.0.0.1:${toString ports.libri}/api/host
-            # Wait until Libri answers and its tool server is up. The tool
-            # server: the daemon checks it itself, as its credentials are in
-            # its own unit; tools is null while that runs, and a build older
-            # than the check has no such field and passes. A refused
-            # connection counts as not yet: a switch can restart Libri after
-            # the first answer, and a probe that stopped there rolled back
-            # healthy deploys.
-            for _ in $(seq 85); do
-              curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null && break
-              sleep 1
-            done
-            curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null
-            # hippo is Type=simple: "started" comes seconds before its socket.
-            for _ in $(seq 40); do
-              timeout 5 ${seat.libriBuild}/bin/hippo status >/dev/null && break
-              sleep 1
-            done
-            timeout 30 ${seat.libriBuild}/bin/hippo status >/dev/null
-          '';
-        };
-
-        suki = {
-          description = "Suki, Gab's household assistant";
-          # As Libri's above: libri-release restarts both when quiet.
-          restartIfChanged = false;
-          after = singleton "libri-a2a-token.service";
-          requires = singleton "libri-a2a-token.service";
-          serviceConfig = sukiSandbox // {
-            SupplementaryGroups = sukiSandbox.SupplementaryGroups ++ singleton computers.deskGroup;
-            LoadCredential = [
-              "claude-key:${config.secrets.suki-claude-key.path}"
-              "home:${config.secrets.yeoman-home-token.path}"
-              "a2a-token:${a2aDir}/token"
-            ];
-            RuntimeDirectory = "suki";
-            RuntimeDirectoryMode = "0700";
-            ExecStartPre = [
-              claudeKey
-              sukiMcpTokens
-            ];
-            Restart = "always";
-            RestartSec = 10;
-            ReadWritePaths = [
-              "${pages}/suki"
-              sukiDesk
-            ];
-            SocketBindAllow = "tcp:${toString ports.suki}";
-          };
-        };
-
-        "yeoman-image@" = {
-          description = "One picture for a household assistant";
-          environment = {
-            HOME = "/var/lib/yeoman-image";
-            CODEX_HOME = "/var/lib/yeoman-image";
-          };
-          serviceConfig =
-            lib.ship.hardened.tenant
-            // fence
-            // {
-              User = "yeoman-image";
-              Group = "yeoman-image";
-              StateDirectory = "yeoman-image";
-              StateDirectoryMode = "0700";
-              ExecStart = getExe draw;
-              StandardInput = "socket";
-              StandardOutput = "socket";
-              StandardError = "journal";
-              # Hides the seat's Codex config and its MCP servers.
-              BindReadOnlyPaths = singleton "${pkgs.emptyDirectory}:/etc/codex";
+        services.libri.instances.libri = {
+          package = seat.libriBuild;
+          inherit (seat) user;
+          # One browser for agents: logged out until Dylan allows a site's logins.
+          agentBrowser.enable = true;
+          settings = recursiveUpdate (shared "libri") {
+            name = "Bridge";
+            person = "Dylan";
+            # A task Dylan allows his logins for runs in his own Brave while
+            # its extension is connected (seat/browse.mod.nix), else in the
+            # agents' browser.
+            browser = {
+              relay = "http://127.0.0.1:19988";
+              relay_token = "${seat.home}/.local/share/browse/relay-token";
             };
+            # One address for the household: Dylan's Libri answers on the
+            # tailnet port and passes Gab's devices on to hers, by tailscaled's
+            # word on who is calling.
+            daemon = site "libri" "si" "ddcleary1@gmail.com" // {
+              forward = "gabcaminiti10@gmail.com=http://127.0.0.1:${toString ports.suki}";
+            };
+            hippo = {
+              dir = seat.hippo;
+              # The seat's hippo (seat/hippo.mod.nix serves it); the title its
+              # history already goes under.
+              shared = "Bridge";
+            };
+            # The memory every turn recalls from: the seat's hippo2
+            # (seat/hippo2.mod.nix), the program that finds its memories.
+            memory.command = "${lib.meta.getExe config.services.hippo2.finalPackage} mcp";
+            harness = {
+              mcp = toString seatMcp;
+              efforts = "low,medium,high,xhigh,max";
+              # llm-agents installs OpenCode 2 under this name (agent-clis.mod.nix).
+              opencode.command = "opencode2";
+            };
+          };
+        };
+
+        services.libri.instances.suki = {
+          package = seat.libriBuild;
+          harnesses = singleton pkgs.claude-code;
+          settings = recursiveUpdate (shared "suki") {
+            name = "Suki";
+            person = "Gab";
+            style = "Gab likes a slightly warmer tone.";
+            # Reached through Dylan's Libri on the tailnet port, so loopback
+            # only; the tailnet gate stays as a second check.
+            daemon = site "suki" "suki" "gabcaminiti10@gmail.com" // {
+              listen = "127.0.0.1:${toString ports.suki}";
+            };
+            # Gab's assistant reaches no memory of Dylan's: hippo2 on the
+            # seat holds Dylan's.
+            memory.command = "";
+            harness = {
+              mcp = "/run/suki/mcp.json";
+              # An assistant: Libri's tools only, no shell or files.
+              coding = "0";
+            };
+            computer = {
+              run = "http://${computers.addr computers.indexes.suki}:${toString computers.runPort}";
+              runs = sukiDesk;
+            };
+          };
+        };
+
+        # yeoman-image holds the household's one Codex login, on the ChatGPT
+        # subscription; the assistants reach only its socket. Log in once,
+        # with the codex from the unit's script (not on PATH), after
+        # `sudo install -d -o yeoman-image -g yeoman-image -m 700 /var/lib/yeoman-image`:
+        # sudo -u yeoman-image env HOME=/var/lib/yeoman-image CODEX_HOME=/var/lib/yeoman-image <codex> login --device-auth
+        users.users.yeoman-image = {
+          isSystemUser = true;
+          group = "yeoman-image";
+          home = "/var/lib/yeoman-image";
+        };
+        users.groups.yeoman-image = { };
+
+        # Each serves its host itself: the chat at the root, the pages beside
+        # it. Server-sent events stream as they come; uploads may be as big as
+        # the chat takes (UPLOAD_MAX in site.rs).
+        shipProxy.routes =
+          {
+            libri = "si";
+            suki = "suki";
+          }
+          |> lib.attrsets.mapAttrs (
+            n: subdomain: {
+              inherit subdomain;
+              port = ports.${n};
+              proxyExtra = "proxy_buffering off; client_max_body_size 100m;";
+            }
+          );
+
+        systemd.tmpfiles.settings.yeoman-pages = {
+          ${pages}.d = {
+            user = "root";
+            group = "root";
+            mode = "0751";
+          };
+          "${pages}/libri".d = {
+            user = seat.user;
+            group = "nginx";
+            mode = "2750";
+          };
+          "${pages}/suki".d = {
+            user = "suki";
+            group = "nginx";
+            mode = "2750";
+          };
+        };
+
+        # An instance's Libri build link lives in a directory the seat owns,
+        # and the seat restarts its units after rebuilding the link.
+        systemd.tmpfiles.settings.yeoman-builds."/var/lib/libri-build".d = {
+          user = seat.user;
+          group = seat.user;
+          mode = "0755";
+        };
+        security.polkit.extraConfig = ''
+          polkit.addRule(function (action, subject) {
+            if (action.id == "org.freedesktop.systemd1.manage-units" &&
+                ["hippo.service", "libri.service", "suki.service"].indexOf(action.lookup("unit")) >= 0 &&
+                ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
+                subject.user == "${seat.user}") {
+              return polkit.Result.YES;
+            }
+          });
+        '';
+
+        systemd.sockets.yeoman-image = {
+          description = "Pictures for the household assistants";
+          wantedBy = singleton "sockets.target";
+          socketConfig = {
+            ListenStream = "/run/yeoman-image.sock";
+            Accept = true;
+            MaxConnections = 2;
+            SocketMode = "0660";
+            SocketGroup = "yeoman-image";
+          };
+        };
+
+        systemd.services = {
+          # The seat itself behind Libri's site: Bridge, on the seat's logins
+          # and privileges, so none of the service's defaults apply.
+          libri = {
+            description = "Bridge in Dylan's web chat";
+            # A restart ends every turn and worker under way, so a switch
+            # leaves Libri running: libri-release restarts it once it is quiet
+            # (seat/libri-deploy.mod.nix), and that restart reads what the
+            # switch changed. Its settings name store paths such as Chromium's,
+            # so without this every nixpkgs update restarted it mid-work.
+            restartIfChanged = false;
+            after = [
+              "hippo.service"
+              "libri-a2a-token.service"
+            ];
+            wants = singleton "hippo.service";
+            requires = singleton "libri-a2a-token.service";
+            environment =
+              optionalAttrs (limits.server != null) { LIBRI_SERVER_CGROUP = limits.server; }
+              // optionalAttrs (limits.harness != null) { LIBRI_HARNESS_CGROUP = limits.harness; }
+              // optionalAttrs (limits.browser != null) { LIBRI_BROWSER_CGROUP = limits.browser; }
+              // {
+                # The seat's home-manager packages, its claude among them.
+                PATH = mkForce (
+                  concatStringsSep ":" [
+                    "/etc/profiles/per-user/${seat.user}/bin"
+                    "/run/wrappers/bin"
+                    "/run/current-system/sw/bin"
+                  ]
+                );
+                OPENCODE_CONFIG = toString openCodeConfig;
+              };
+            serviceConfig = {
+              # No core dumps from what the workers run: a test browser that
+              # crash-loops at start (13 Chromium dumps in six minutes, Nov 13)
+              # sends each through systemd-coredump, whose slice peaked at 37 GB
+              # beside the builds. Children inherit the limit.
+              LimitCORE = 0;
+              SupplementaryGroups = [
+                "usage"
+                "opencode-auth"
+              ];
+              LoadCredential = [
+                "claude-token:${config.secrets.agent-claude-token.path}"
+                "a2a-token:${a2aDir}/token"
+              ];
+              RuntimeDirectory = "libri";
+              RuntimeDirectoryMode = "0700";
+              ExecStartPre = claudeToken;
+              EnvironmentFile = "-%t/%N/claude.env";
+              WorkingDirectory = seat.home;
+              NoNewPrivileges = false;
+              ProtectSystem = false;
+              PrivateTmp = false;
+              # A restart ends the turn under way; the next message starts
+              # afresh from the memory.
+              Restart = "always";
+              RestartSec = 10;
+              # Each turn's claude and what it runs.
+              MemoryHigh = "12G";
+            };
+          };
+
+          # The one token both assistants present to each other over A2A,
+          # made once at random and kept, so a restart of either changes
+          # nothing. Removing the file makes a new one at the next start of
+          # both.
+          libri-a2a-token = {
+            description = "Makes the A2A token Bridge and Suki share";
+            path = singleton pkgs.coreutils;
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              # /var/lib/libri-a2a, root's alone (0700).
+              StateDirectory = "libri-a2a";
+            };
+            script = ''
+              umask 077
+              if [ ! -s ${a2aDir}/token ]; then
+                head -c 32 /dev/urandom | base64 | tr -d '=\n' > ${a2aDir}/token.new
+                mv ${a2aDir}/token.new ${a2aDir}/token
+              fi
+            '';
+          };
+
+          # An up unit isn't a working Libri. This proves its site, its tool
+          # server and its hippo; a failure here makes switcharoo roll the
+          # deploy back.
+          libri-ready = {
+            description = "Proves Bridge's Libri answers";
+            wantedBy = singleton "multi-user.target";
+            after = [
+              "libri.service"
+              "hippo.service"
+            ];
+            restartTriggers = [
+              config.systemd.units."libri.service".unit
+              config.systemd.units."hippo.service".unit
+            ];
+            unitConfig.RequiresMountsFor = seat.hippo;
+            environment.HIPPO_DIR = seat.hippo;
+            path = [
+              pkgs.coreutils
+              pkgs.curl
+              pkgs.jq
+            ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              User = seat.user;
+              TimeoutStartSec = 180;
+            };
+            script = ''
+              site=http://127.0.0.1:${toString ports.libri}/api/host
+              # Wait until Libri answers and its tool server is up. The tool
+              # server: the daemon checks it itself, as its credentials are in
+              # its own unit; tools is null while that runs, and a build older
+              # than the check has no such field and passes. A refused
+              # connection counts as not yet: a switch can restart Libri after
+              # the first answer, and a probe that stopped there rolled back
+              # healthy deploys.
+              for _ in $(seq 85); do
+                curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null && break
+                sleep 1
+              done
+              curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null
+              # hippo is Type=simple: "started" comes seconds before its socket.
+              for _ in $(seq 40); do
+                timeout 5 ${seat.libriBuild}/bin/hippo status >/dev/null && break
+                sleep 1
+              done
+              timeout 30 ${seat.libriBuild}/bin/hippo status >/dev/null
+            '';
+          };
+
+          suki = {
+            description = "Suki, Gab's household assistant";
+            # As Libri's above: libri-release restarts both when quiet.
+            restartIfChanged = false;
+            after = singleton "libri-a2a-token.service";
+            requires = singleton "libri-a2a-token.service";
+            serviceConfig = sukiSandbox // {
+              SupplementaryGroups = sukiSandbox.SupplementaryGroups ++ singleton computers.deskGroup;
+              LoadCredential = [
+                "claude-key:${config.secrets.suki-claude-key.path}"
+                "home:${config.secrets.yeoman-home-token.path}"
+                "a2a-token:${a2aDir}/token"
+              ];
+              RuntimeDirectory = "suki";
+              RuntimeDirectoryMode = "0700";
+              ExecStartPre = [
+                claudeKey
+                sukiMcpTokens
+              ];
+              Restart = "always";
+              RestartSec = 10;
+              ReadWritePaths = [
+                "${pages}/suki"
+                sukiDesk
+              ];
+              SocketBindAllow = "tcp:${toString ports.suki}";
+            };
+          };
+
+          "yeoman-image@" = {
+            description = "One picture for a household assistant";
+            environment = {
+              HOME = "/var/lib/yeoman-image";
+              CODEX_HOME = "/var/lib/yeoman-image";
+            };
+            serviceConfig =
+              lib.ship.hardened.tenant
+              // fence
+              // {
+                User = "yeoman-image";
+                Group = "yeoman-image";
+                StateDirectory = "yeoman-image";
+                StateDirectoryMode = "0700";
+                ExecStart = getExe draw;
+                StandardInput = "socket";
+                StandardOutput = "socket";
+                StandardError = "journal";
+                # Hides the seat's Codex config and its MCP servers.
+                BindReadOnlyPaths = singleton "${pkgs.emptyDirectory}:/etc/codex";
+              };
+          };
         };
       };
     };

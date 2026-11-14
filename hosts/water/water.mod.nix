@@ -63,11 +63,16 @@
         # of the machine swaps.
         nix.daemonCPUSchedPolicy = "idle";
         nix.daemonIOSchedClass = "idle";
-        nix.settings.max-jobs = 8;
-        nix.settings.cores = 6;
+        # Four jobs of twelve cores keep all 48 threads busy and ask ~18 GB
+        # at four rustc; the fence keeps builds and Libri's workers (harness
+        # capped at 32G below) together under the slice's MemoryHigh, past
+        # which the kernel throttles everything in work.slice, Libri's
+        # daemon with it (Nov 13: the slice reached 61G and the page froze).
+        nix.settings.max-jobs = 4;
+        nix.settings.cores = 12;
         systemd.services.nix-daemon.serviceConfig = {
-          MemoryHigh = "44G";
-          MemoryMax = "52G";
+          MemoryHigh = "20G";
+          MemoryMax = "26G";
         };
         # Builds and the agents that start them share one budget, so
         # together they can't take the memory the desktop and services
@@ -77,6 +82,7 @@
         # rustc or an evaluator), not the host. Swap is capped because zram
         # spends RAM too.
         systemd.slices.work.sliceConfig = {
+          MemoryMin = "1G";
           MemoryHigh = "60G";
           MemoryMax = "68G";
           MemorySwapMax = "8G";
@@ -107,6 +113,9 @@
             Slice = "work.slice";
             Delegate = true;
             DelegateSubgroup = "server";
+            # The daemon's guarantee reaches it only through every ancestor:
+            # the slice's and the unit's minimum carry the server leaf's.
+            MemoryMin = "1G";
             MemoryLow = "1G";
             # The libri module bounds the whole unit at 12G, which once the
             # harnesses filled it throttled the daemon with them; the bound
@@ -115,10 +124,21 @@
             CPUWeight = 1000;
             IOWeight = 1000;
           };
-          environment = {
-            LIBRI_SERVER_CGROUP = "memory.low=512M";
-            LIBRI_HARNESS_CGROUP = "cpu.weight=20 io.weight=20 memory.high=32G";
-          };
+        };
+        # Inside Libri's cgroup: the daemon's memory is guaranteed; the
+        # workers' processes slow past 28G and are killed past 32G, with
+        # little swap, so a runaway build fails instead of pushing the slice
+        # over its MemoryHigh; the agents' browser stays under 4G.
+        libri.limits = {
+          server = "memory.min=1G memory.low=1G";
+          harness = "cpu.weight=20 io.weight=20 memory.high=28G memory.max=32G memory.swap.max=2G";
+          browser = "memory.high=3G memory.max=4G memory.swap.max=512M";
+        };
+        # Large cores are logged, not kept, and old ones go past 2G in all.
+        systemd.coredump.settings.Coredump = {
+          ProcessSizeMax = "1G";
+          ExternalSizeMax = "1G";
+          MaxUse = "2G";
         };
 
         boot.loader.timeout = 5;
