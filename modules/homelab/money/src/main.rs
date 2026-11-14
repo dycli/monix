@@ -11,12 +11,15 @@
 //! - `MONEY_KEYS_FILE`: `KEY=value` lines with `PLAID_CLIENT_ID` and
 //!   `PLAID_SECRET` (production) or `PLAID_SANDBOX_SECRET`.
 //! - `MONEY_STATE`: directory for `finance.db` and `vault/vault.db`.
+//! - `MONEY_MCP_LISTEN`: optional loopback address for the assistants'
+//!   MCP door (mcp.rs), apart from the page's address that nginx proxies.
 //!
 //! systemd may also hand over a listening Unix socket (`money.socket`):
 //! the same API for the household assistants, so they can file, budget and
 //! keep accounts by hand. The socket's group is who may.
 
 mod api;
+mod mcp;
 mod money;
 mod store;
 
@@ -678,7 +681,16 @@ async fn main() {
         .route("/api/sync", post(sync_now))
         .route("/api/remove", post(remove))
         .route("/api/sandbox/item", post(sandbox_item))
-        .with_state(app);
+        .with_state(app.clone());
+    if let Ok(door) = std::env::var("MONEY_MCP_LISTEN") {
+        let mcp = Router::new()
+            .route("/mcp", post(mcp::post))
+            .with_state(app.clone());
+        let socket = tokio::net::TcpListener::bind(&door)
+            .await
+            .unwrap_or_else(|e| panic!("{door}: {e}"));
+        tokio::spawn(axum::serve(socket, mcp).into_future());
+    }
     if let Some(unix) = handed_socket() {
         tokio::spawn(axum::serve(unix, routes.clone()).into_future());
     }

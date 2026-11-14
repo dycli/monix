@@ -6,7 +6,10 @@
 # else, the assistants included, can read the keys or the tokens. The `finance` group
 # reads finance.db and nothing more; the `money` group may also change what
 # the page shows (categories, budget lines, hand-kept accounts) through
-# /run/money.sock, the same API without the page.
+# /run/money.sock, the same API without the page. The household's
+# assistants reach it over MCP on a loopback port of its own (`mcpPort`),
+# which nginx does not proxy: reads and those same changes, never a bank
+# link or a key.
 { self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.money;
@@ -36,6 +39,12 @@
             `KEY=value` lines: PLAID_CLIENT_ID, and PLAID_SANDBOX_SECRET or
             PLAID_SECRET for the environment in use.
           '';
+        };
+        mcpPort = mkOption {
+          type = types.port;
+          default = 8976;
+          readOnly = true;
+          description = "Loopback port of the assistants' MCP door, at /mcp.";
         };
         environment = mkOption {
           type = types.enum [
@@ -78,6 +87,7 @@
           wants = singleton "network-online.target";
           environment = {
             MONEY_LISTEN = "127.0.0.1:${toString port}";
+            MONEY_MCP_LISTEN = "127.0.0.1:${toString cfg.mcpPort}";
             MONEY_ENV = cfg.environment;
             MONEY_KEYS_FILE = "%d/keys";
             # Each environment keeps its own databases, so test banks never
@@ -95,7 +105,10 @@
             LoadCredential = singleton "keys:${cfg.keysFile}";
             Restart = "on-failure";
             SocketBindDeny = "any";
-            SocketBindAllow = singleton "tcp:${toString port}";
+            SocketBindAllow = [
+              "tcp:${toString port}"
+              "tcp:${toString cfg.mcpPort}"
+            ];
             # Plaid on the internet and nginx on loopback; the LAN and tailnet stay shut.
             IPAddressAllow = fences.loopback;
             IPAddressDeny = fences.internetOnlyDeny;

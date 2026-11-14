@@ -151,7 +151,16 @@
               type = "http";
               url = "http://127.0.0.1:${toString config.services.hob.port}/mcp";
             };
-          };
+          }
+          // moneyMcp;
+      };
+      # The household's money (money.mod.nix): its reads and the page's four
+      # changes, for both assistants.
+      moneyMcp = optionalAttrs (config.systemd.services ? money) {
+        money = {
+          type = "http";
+          url = "http://127.0.0.1:${toString config.money.mcpPort}/mcp";
+        };
       };
       # OpenCode and omp on the host's provider keys, as the seat has them:
       # each harness reads the keys from its own config, so Libri holds none.
@@ -182,7 +191,8 @@
             url = "http://127.0.0.1:${toString config.shipProxy.routes.ha.port}/api/mcp";
             headers.Authorization = "Bearer @HOME_TOKEN@";
           };
-        };
+        }
+        // moneyMcp;
       };
       # Claude Code bills to the key in its environment. systemd reads the
       # unit's EnvironmentFile between ExecStartPre and ExecStart, so the key
