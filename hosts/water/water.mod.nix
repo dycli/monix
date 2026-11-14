@@ -57,22 +57,23 @@
         # past it a build fails, never the services beside it. Jobs are what
         # cost memory: one release rustc of Libri's daemon peaks at 4.4 GB.
         # Eight jobs of six cores fill all 48 threads (jobs × cores, the Nix
-        # manual's sizing) and ask at most ~35 GB, under MemoryHigh on 96 GB;
-        # the default (48 jobs, each on every core) linked enough Rust at once
-        # to thrash the desktop. MemoryHigh slows builds well before the rest
-        # of the machine swaps.
+        # manual's sizing) and could ask ~35 GB if eight rustc linked at
+        # once; the default (48 jobs, each on every core) linked enough Rust
+        # at once to thrash the desktop. MemoryHigh slows builds well before
+        # the rest of the machine swaps.
         nix.daemonCPUSchedPolicy = "idle";
         nix.daemonIOSchedClass = "idle";
-        # Four jobs of twelve cores keep all 48 threads busy and ask ~18 GB
-        # at four rustc; the fence keeps builds and Libri's workers (harness
-        # capped at 32G below) together under the slice's MemoryHigh, past
-        # which the kernel throttles everything in work.slice, Libri's
-        # daemon with it (Nov 13: the slice reached 61G and the page froze).
-        nix.settings.max-jobs = 4;
-        nix.settings.cores = 12;
+        # Builds keep their eight jobs; the fence is memory. Nix's builds
+        # (23.5 GB at their Nov 13 peak) and Libri's workers (capped at 32G
+        # below) stay together under the slice's MemoryHigh, past which the
+        # kernel throttles everything in work.slice, Libri's daemon with it
+        # (the slice reached 61G that night and the page froze). Past
+        # MemoryHigh builds slow; past MemoryMax the kernel kills a rustc.
+        nix.settings.max-jobs = 8;
+        nix.settings.cores = 6;
         systemd.services.nix-daemon.serviceConfig = {
-          MemoryHigh = "20G";
-          MemoryMax = "26G";
+          MemoryHigh = "22G";
+          MemoryMax = "28G";
         };
         # Builds and the agents that start them share one budget, so
         # together they can't take the memory the desktop and services
