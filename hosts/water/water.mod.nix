@@ -132,7 +132,7 @@
         libri.limits = {
           server = "memory.min=1G memory.low=1G";
           harness = "cpu.weight=20 io.weight=20 memory.high=28G memory.max=32G memory.swap.max=2G";
-          browser = "memory.high=3G memory.max=4G memory.swap.max=512M";
+          browser = "cpu.weight=20 memory.high=3G memory.max=4G memory.swap.max=512M memory.oom.group=1 pids.max=2048";
         };
         # Large cores are logged, not kept, and old ones go past 2G in all.
         systemd.coredump.settings.Coredump = {
