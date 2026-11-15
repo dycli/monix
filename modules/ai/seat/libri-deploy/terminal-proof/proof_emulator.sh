@@ -9,7 +9,15 @@
 # Shots in android/terminal-proof/shots.
 set -u
 cd "$(dirname "$0")/.."
-gradle --no-daemon -q assembleDebug || exit 1
+# A checkout whose app has flavors builds its `play` one, the build people
+# install; plain assembleDebug there builds every flavor, and each flavor's
+# APK lies under its own name.
+if grep -q 'create("play")' app/build.gradle.kts; then
+  assemble=assemblePlayDebug apk=app/build/outputs/apk/play/debug/app-play-debug.apk
+else
+  assemble=assembleDebug apk=app/build/outputs/apk/debug/app-debug.apk
+fi
+gradle --no-daemon -q $assemble || exit 1
 export ANDROID_USER_HOME=~/.android ANDROID_AVD_HOME=~/.android/avd
 out=terminal-proof/shots; mkdir -p "$ANDROID_AVD_HOME" $out
 export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$(dirname "$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/avdmanager | head -1)"):$PATH"
@@ -22,7 +30,7 @@ sed -i "s/^hw.keyboard=.*//" "$ANDROID_AVD_HOME/proof.avd/config.ini"; echo hw.k
 emulator -avd proof -partition-size 4096 -no-window -no-audio -no-boot-anim -no-snapshot -accel on -gpu swiftshader_indirect >terminal-proof/emulator.log 2>&1 &
 adb wait-for-device
 for _ in $(seq 1 120); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] && break; sleep 3; done
-adb install -r app/build/outputs/apk/debug/app-debug.apk 2>&1 | tail -1
+adb install -r $apk 2>&1 | tail -1
 # The soft keyboard comes up even where the emulator reports a hardware one.
 adb shell settings put secure show_ime_with_hard_keyboard 1
 app=is.libri
@@ -112,7 +120,7 @@ follow after
 [ -n "${ONLY_AFTER:-}" ] || {
 # The same on the build before this branch, for comparison: expected to move.
 cp terminal-proof/baseline/Follow.kt app/src/main/java/su/libri/Follow.kt
-gradle --no-daemon -q assembleDebug && adb install -r app/build/outputs/apk/debug/app-debug.apk 2>&1 | tail -1
+gradle --no-daemon -q $assemble && adb install -r $apk 2>&1 | tail -1
 follow before
 echo "(follow before is expected to FAIL: it is the unfixed build)"
 }
