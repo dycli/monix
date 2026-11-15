@@ -408,6 +408,10 @@ one route:
   themselves and to `nix flake update homebrew-cask`.
 - `nix-homebrew.mutableTaps = false`, as `ncc:modules/homebrew.mod.nix:22`
   does.
+- nix-homebrew's shell integrations are off: they would add `brew shellenv`
+  to `/etc/zshrc` and the other shells' files, which every account reads.
+  Its `brew` launcher still goes into `/run/current-system/sw/bin`, so `brew`
+  is on her PATH too, naming the shared prefix (§9).
 
 **Discord: nixpkgs, not the cask.** Discord is on every desktop; the Linux
 side is monix main 0367c32 (`pkgs.discord` in `homeModules.packages-desktop`,
@@ -484,12 +488,13 @@ window handling, and Hammerspoon adds only global keys that open apps.
 - **Install:** the cask, `homebrew.casks = [ "hammerspoon" ]`
   (`ncc:modules/hammerspoon.mod.nix:10`), at the fixed path
   `~/Applications/Hammerspoon.app`.
-- **Run at login:** a Home Manager launchd agent
-  (`home-manager.users.${primaryUser}.launchd.agents.hammerspoon`), with
-  `RunAtLoad`, that runs `/usr/bin/open -a ~/Applications/Hammerspoon.app`.
-  It lives in Dylan's `~/Library/LaunchAgents`, so it starts only in his
-  session. ncc's `launchd.user.agents` (`:19-26`) would install into
-  `/Library/LaunchAgents` and start Hammerspoon for every account.
+- **Run at login:** `hs.autoLaunch(true)` in `init.lua`, which makes
+  Hammerspoon a login item of Dylan's account alone. A Home Manager launchd
+  agent is not used: its activation loads the agent into Dylan's GUI domain,
+  which a switch run from switcharoo's system daemon may find absent when he
+  is not logged in at the Mac. ncc's `launchd.user.agents` (`:19-26`) would
+  install into `/Library/LaunchAgents` and start Hammerspoon for every
+  account.
 - **Config:** the module writes `~/.hammerspoon/init.lua`, Hammerspoon's
   default path, through
   `home-manager.users.${config.primaryUser}.home.file.".hammerspoon/init.lua"`.
@@ -553,8 +558,9 @@ window handling, and Hammerspoon adds only global keys that open apps.
     app honours `-e` passed this way is checked in layer 4.
   - `kill()` asks the app to terminate normally, so its own save and confirm
     prompts still run. `kill9()`, the forced kind, is not used.
-  - Ghostty is a cask (`ghostty`), the GUI route; nixpkgs builds Ghostty for
-    Linux only.
+  - Ghostty is nixpkgs' `ghostty-bin`, the vendor's signed app, through the
+    shared Home Manager `programs.ghostty`; Home Manager places it under
+    `~/Applications/Home Manager Apps`.
   - Left out on purpose: close window (Cmd+W already does it), and the email,
     messenger and password-manager binds (`:69,89,93`). Their apps come from
     `desktopApps` on Linux and have no macOS counterpart in this plan yet;
@@ -587,9 +593,10 @@ window handling, and Hammerspoon adds only global keys that open apps.
 #### Ghostty
 
 The Hyprland-specific Ghostty settings (`window-decoration = "none"`, opacity
-relying on compositor blur, Insert-key binds) stay in the Linux part. The
-Darwin part keeps the font and padding and uses
-`macos-titlebar-style = "hidden"`.
+relying on compositor blur, Insert-key binds) stay in the Linux part, with the Comic Code font, which only the Linux
+hosts install. The padding is shared. The Darwin part sets
+`macos-titlebar-style = "hidden"`, `macos-option-as-alt = true` and
+`auto-update = "off"`.
 
 ### Dictation: Hex (`modules/desktop/hex.mod.nix`, Darwin part)
 
@@ -618,10 +625,15 @@ that joins `darwinModules.desktop`.
   mirrors onto Darwin (§3, Collections). The Linux part instead imports it
   from `nixosModules.desktop`, through
   `home-manager.users.${config.primaryUser}.imports`.
-- **Start at login:** a Home Manager launchd agent,
-  `open -a ~/Applications/Hex.app`, the same shape as Hammerspoon's, in
-  Dylan's session only. Hex's own `hex launch-at-login on`
-  (`hex:docs/cli.md:85`) would work too, but it is state set outside Nix.
+- **Start at login:** Hex's own `hex launch-at-login on`
+  (`hex:docs/cli.md:85`), run by the same activation step as the settings,
+  for the reason Hammerspoon uses its own login item. It needs Hex running,
+  so it holds from the first switch after Hex has been opened once.
+- **Settings:** the activation step runs `hex settings apply` with
+  `shortcut_mode = "toggle"`, `labs.caps_lock_dictation = true` and
+  `dictation_hotkey = "f18"`, as Hex's Linux module applies its settings
+  (`hex:nix/hm-module.nix:117-124`). F18 moves the normal shortcut off the
+  Option key the hotkeys use.
 - **Caps Lock: two ways, Dylan's choice (§9).** The remap below is the
   established route, but `hidutil` mappings are global: they change Caps Lock
   for every account, hers included, until the next restart, and nix-darwin's
@@ -956,7 +968,7 @@ account and a recommendation. Each needs Dylan's word.
 | `pmset -c sleep 0` | 4 | On the charger the Mac never sleeps, for her too; the display still sleeps at 10 minutes; battery is unchanged | (a) as planned; (b) leave sleep alone and keep builds short | (a): she sees no difference beyond a warm Mac on the charger |
 | App Store auto-update off | 4 | Her App Store apps stop updating themselves too (`/Library/Preferences/com.apple.commerce`) | (a) off, as Dylan chose; (b) leave it on and accept that a new Xcode can break a build until its licence is accepted | (b): Xcode majors are rare, and (a) quietly leaves her apps unpatched |
 | Casks | 4 | None for `~/Applications` casks. Xcode and `.pkg` casks land in `/Applications`, which she sees | as planned | as planned |
-| Homebrew prefix `/opt/homebrew` | 4 | One prefix per Mac. With `cleanup = "none"` nothing of hers is removed. If she already uses Homebrew, nix-homebrew must take the prefix over (`autoMigrate`) and then pins its taps | check `ls -ld /opt/homebrew` before layer 4 | as planned, checked first |
+| Homebrew prefix `/opt/homebrew` | 4 | One prefix per Mac. With `cleanup = "none"` nothing of hers is removed. If she already uses Homebrew, nix-homebrew must take the prefix over (`autoMigrate`) and then pins its taps | checked: `/opt/homebrew` does not exist on metal, so nix-homebrew creates it, owned by Dylan with group `admin`, and no `autoMigrate` is needed. `brew` is on every account's PATH through `/run/current-system/sw/bin`; the shell integrations are off | as planned |
 | `tailscaled` replacing the GUI app | 2 | A system daemon on Dylan's tailnet whenever the Mac is on, whoever is logged in. Only `*.ts.net` names go to Tailscale's DNS (`overrideLocalDns` stays off), so her browsing is unchanged. Removing the app removes it for her too; she cannot run the GUI app beside the daemon | ask whether she uses Tailscale herself | as planned, if she does not |
 | Remote Login | 2 | Already on. `sshd` listens on every interface, but keys alone admit and `AllowUsers dylan`, so her account cannot be logged into over SSH | as built | as built |
 | sudoers line | 3 | Grants Dylan alone one exact `launchctl kickstart` command. nix-darwin also keeps `TERMINFO` for `sudo` (`/etc/sudoers.d/10-nix-darwin-extra-config`) and writes an empty `/etc/pam.d/sudo_local`. No effect on her | as planned | as planned |
