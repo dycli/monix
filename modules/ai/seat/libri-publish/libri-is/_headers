@@ -6,3 +6,6 @@
   Cache-Control: no-cache
 /android/libri-*.apk
   Cache-Control: public, max-age=31536000, immutable
+# The privacy policy changes with a release, rarely; the stores link to it.
+/privacy
+  Cache-Control: public, max-age=300

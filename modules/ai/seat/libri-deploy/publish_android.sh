@@ -9,6 +9,9 @@
 # stays as a link to the newest for old links. The index doesn't link it:
 # "libri.apk" sorts after every "libri-<v>.apk", so Obtainium would take it.
 # Refuses an APK signed by another key, which phones would refuse to update to.
+# Also renders the checkout's docs/privacy.md to privacy.html beside the
+# APKs, which libri.is serves at /privacy, the address the store listings
+# give: the policy published is the one the release was built with.
 # Runs from a Libri checkout, for its Android dev shell; on the seat's PATH as
 # libri-publish-android.
 # Usage: libri-publish-android path/to/release.apk [LIBRI_CHECKOUT]
@@ -55,6 +58,22 @@ ln -sfn "$newest" "$D/.libri.apk" && mv -T "$D/.libri.apk" "$D/libri.apk"
   printf '</ul>\n'
 } > "$D/.index.html"
 chmod 644 "$D/.index.html" && mv "$D/.index.html" "$D/index.html"
+
+if [ -f docs/privacy.md ]; then
+  {
+    printf '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+    printf '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+    printf '<meta http-equiv="Content-Security-Policy" content="default-src '"'none'; style-src 'unsafe-inline'"'">\n'
+    printf '<title>Libri for Android: privacy policy</title>\n<style>\n'
+    printf '  :root { color-scheme: light dark; }\n'
+    printf '  body { font: 17px/1.55 system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1.25rem; }\n'
+    printf '</style>\n</head>\n<body>\n'
+    cmark docs/privacy.md
+    printf '</body>\n</html>\n'
+  } > "$D/.privacy.html"
+  chmod 644 "$D/.privacy.html" && mv "$D/.privacy.html" "$D/privacy.html"
+  echo "privacy.html rendered from docs/privacy.md"
+fi
 echo "published $name; libri.apk is $newest"
 systemctl start --no-block libri-publish.service
 echo "libri.is/android/ updates when libri-publish.service finishes (journalctl -u libri-publish)"

@@ -1,6 +1,7 @@
 // libri.is: the project's pages (worker.js) and, as static assets, the
 // Android releases at /android/, which publish_libri_sites.sh copies in from
-// the seat's release folder before each upload.
+// the seat's release folder before each upload, and the privacy policy at
+// /privacy (assets/privacy.html), which the newest release rendered there.
 {
   "name": "libri-is-site",
   "main": "worker.js",

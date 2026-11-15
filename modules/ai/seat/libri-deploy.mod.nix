@@ -116,8 +116,9 @@ in
       startDeploy = pkgs.writeShellScriptBin "libri-start-deploy" ''
         exec ${getExe' pkgs.bash "sh"} ${scripts}/start_deploy.sh "$@"
       '';
+      # cmark renders the privacy policy (publish_android.sh).
       publishAndroid = pkgs.writeShellScriptBin "libri-publish-android" ''
-        exec ${getExe pkgs.bash} ${scripts}/publish_android.sh "$@"
+        PATH=${pkgs.cmark}/bin:$PATH exec ${getExe pkgs.bash} ${scripts}/publish_android.sh "$@"
       '';
       # Reports where the phone web and Android drift apart since a tag; the
       # release runs it for its notes.

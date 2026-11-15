@@ -3,7 +3,8 @@
 # Publishes Libri's two Cloudflare Workers from what Water has live, so
 # neither goes stale:
 # - libri.is (libri-is-site): its pages, plus every Android release in
-#   ANDROID_DIR at /android/, with the listing and libri.apk, the newest.
+#   ANDROID_DIR at /android/, with the listing and libri.apk, the newest,
+#   and the privacy policy the newest release rendered there, at /privacy.
 # - app.libri.is (libri-app): the seat's live site build at SITE.
 # Runs as libri-publish.service, after each Libri deploy and each Android
 # publish; the Cloudflare token arrives as a systemd credential and never
@@ -33,6 +34,8 @@ mv "$WORK/libri-is/_headers" "$WORK/libri-is/assets/_headers"
 # upload stores once, as files are kept by their hash.
 cp -L "$ANDROID_DIR"/index.html "$ANDROID_DIR"/libri-*.apk "$ANDROID_DIR"/libri.apk \
   "$WORK/libri-is/assets/android/"
+# A folder from before the first release that rendered it has none.
+[ ! -e "$ANDROID_DIR/privacy.html" ] || cp "$ANDROID_DIR/privacy.html" "$WORK/libri-is/assets/privacy.html"
 (cd "$WORK/libri-is" && wrangler deploy)
 
 stage libri-app
