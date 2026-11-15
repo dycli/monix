@@ -30,6 +30,27 @@
     url = "github:nix-darwin/nix-darwin";
     inputs.nixpkgs.follows = "nixpkgs";
   };
+
+  # Homebrew for macOS GUI apps. Its taps are inputs, so a switch installs
+  # what the lock names.
+  inputs.nix-homebrew.url = "github:zhaofengli/nix-homebrew";
+
+  inputs.homebrew-core = {
+    url = "github:homebrew/homebrew-core";
+    flake = false;
+  };
+
+  inputs.homebrew-cask = {
+    url = "github:homebrew/homebrew-cask";
+    flake = false;
+  };
+
+  # Hex's own tap; its release pushes the cask here.
+  inputs.homebrew-anomalyco = {
+    url = "github:anomalyco/homebrew-tap";
+    flake = false;
+  };
+
   inputs.agenix = {
     url = "github:ryantm/agenix";
     inputs.nixpkgs.follows = "nixpkgs";

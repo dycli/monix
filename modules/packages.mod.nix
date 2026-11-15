@@ -69,20 +69,31 @@ in
     };
 
   # Each unfree name travels with the bundle that installs the package.
-  flake.nixosModules.desktop =
-    { lib, ... }:
+  flake.commonModules.desktop = {
+    unfreePackages = [
+      "discord"
+      "discord-unwrapped"
+    ];
+  };
+
+  # APPLICATIONS ON EVERY DESKTOP
+  flake.homeModules.desktop = self.homeModules.packages-desktop;
+  flake.homeModules.packages-desktop =
+    { pkgs, ... }:
     {
-      unfreePackages = [
-        "discord"
-        "discord-unwrapped"
-        "obsidian"
-        "spotify"
-      ];
+      home.packages = lib.lists.singleton pkgs.discord;
     };
 
   # GRAPHICAL SESSION UTILITIES AND APPLICATIONS
-  flake.homeModules.desktop = self.homeModules.packages-desktop;
-  flake.homeModules.packages-desktop =
+  # Linux only: the elected apps and the Wayland session's tools.
+  flake.nixosModules.desktop = {
+    imports = lib.lists.singleton self.nixosModules.packages-desktop-linux;
+    unfreePackages = [
+      "obsidian"
+      "spotify"
+    ];
+  };
+  flake.homeModules.packages-desktop-linux =
     { config, pkgs, ... }:
     {
       home.packages = [
@@ -114,7 +125,6 @@ in
         pkgs.kdePackages.breeze-icons
         pkgs.libreoffice
         pkgs.obsidian
-        pkgs.discord
         pkgs.element-desktop
         (pkgs.spotify.override { deviceScaleFactor = 2; })
       ];

@@ -7,9 +7,12 @@
     lib.ship.darwinHost "metal" (
       { config, ... }:
       {
-        # The editors alone from `dev`: its toolchain comes with Libri's
-        # devShell, and its gcc would shadow Apple's clang.
-        imports = lib.lists.singleton self.darwinModules.editors;
+        imports = [
+          self.darwinModules.desktop
+          # The editors alone from `dev`: its toolchain comes with Libri's
+          # devShell, and its gcc would shadow Apple's clang.
+          self.darwinModules.editors
+        ];
 
         # The macOS short name, as `whoami` prints it on the Mac.
         primaryUser = "dylan";

@@ -2,7 +2,7 @@
 # uses (kde-integration.mod.nix). GTK_THEME is set in hyprland's env.mod.nix.
 { self, ... }:
 {
-  flake.homeModules.desktop = self.homeModules.gtk;
+  flake.nixosModules.desktop = self.nixosModules.gtk;
   flake.homeModules.gtk =
     { pkgs, lib, ... }:
     {

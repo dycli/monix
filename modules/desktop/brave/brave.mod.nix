@@ -89,4 +89,13 @@
         "dns"
       ];
     };
+
+  # macOS takes Brave's own signed app, which updates itself; the policies
+  # above concern Linux's resolver alone.
+  flake.darwinModules.desktop = self.darwinModules.brave-darwin;
+  flake.darwinModules.brave-darwin =
+    { lib, ... }:
+    {
+      homebrew.casks = lib.lists.singleton "brave-browser";
+    };
 }

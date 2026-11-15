@@ -6,11 +6,16 @@
 # install in packages.mod.nix.
 { self, ... }:
 {
+  # Linux only: the table routes through XDG and KService.
+  flake.nixosModules.desktop.imports = [
+    self.nixosModules.xdg-app-menu
+    self.nixosModules.default-apps
+  ];
+
   # KService (Dolphin, the Open With dialog) builds its application database
   # through the XDG menu spec and finds no applications without an
   # applications.menu; Plasma ships one, a bare compositor session must
   # provide its own. Include everything.
-  flake.nixosModules.desktop = self.nixosModules.xdg-app-menu;
   flake.nixosModules.xdg-app-menu =
     { lib, pkgs, ... }:
     {
@@ -30,7 +35,6 @@
       );
     };
 
-  flake.homeModules.desktop = self.homeModules.default-apps;
   flake.homeModules.default-apps =
     {
       config,

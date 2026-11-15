@@ -3,7 +3,8 @@
 # alone (hyprland's env.mod.nix) don't reach them.
 { self, ... }:
 {
-  flake.homeModules.desktop = self.homeModules.cursor;
+  # Linux only: X11 and GTK cursor themes.
+  flake.nixosModules.desktop = self.nixosModules.cursor;
   flake.homeModules.cursor =
     { pkgs, ... }:
     {
