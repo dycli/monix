@@ -13,10 +13,14 @@
     earth = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN0HL6IH1F5hiNKQ58mIPozF4ov20BfZB4lT/cA6B8Ik earth";
     fire = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPmWR7aIiXX7euvuo4K21GL2X5WHhWVEDas5ZqbFHa1f fire";
     air = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIYqKhV4EHuOMV4WLDjcgEAzgzKQLJ+P6Dzozxa4QTYY air";
+    metal = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIe43fhWMIJ80OtDtqhlJOjWi0cC0oi4nscN/X1nZ2t4 metal";
   };
 
   admin = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF7/0+EtR35ZsgmHq0IXNY5gQ1SlTUGSRz+P38qGfn0F dylan@dylandavid.com"
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJDBVNCZldfLfl4pXuFxLF/nqmaO2sRSGcBVE4UChO8Q max@fw0"
   ];
+
+  # Water's AI seat, which deploys the Darwin hosts (users.mod.nix).
+  seat = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM+mZdxYtLQdwHAeyan7JI7RXltRwd4ttaFgOkVkIw4m bridge@fw0";
 }

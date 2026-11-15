@@ -1,13 +1,8 @@
 { self, inputs, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.nix;
-  flake.nixosModules.nix =
-    {
-      config,
-      lib,
-      pkgs,
-      ...
-    }:
+  flake.commonModules.default = self.commonModules.nix;
+  flake.commonModules.nix =
+    { config, lib, ... }:
     let
       inherit (lib.lists) singleton;
       inherit (lib.strings) getName;
@@ -52,7 +47,6 @@
 
       nix.gc = {
         automatic = true;
-        dates = "weekly";
         options = "--delete-older-than 90d";
       };
 
@@ -60,8 +54,35 @@
       # names live in `unfreePackages`, contributed by the module that
       # installs each package (see options/host.mod.nix).
       nixpkgs.config.allowUnfreePredicate = pkg: lib.lists.elem (getName pkg) config.unfreePackages;
+    };
+
+  flake.nixosModules.default = self.nixosModules.nix-linux;
+  flake.nixosModules.nix-linux =
+    { pkgs, ... }:
+    {
+      nix.gc.dates = "weekly";
 
       environment.systemPackages = [
+        pkgs.nh
+        pkgs.nix-output-monitor
+      ];
+    };
+
+  # metal is shared, so its tools go to the primary user's profile, not to
+  # every account's PATH.
+  flake.darwinModules.default = self.darwinModules.nix-darwin;
+  flake.darwinModules.nix-darwin =
+    { config, pkgs, ... }:
+    {
+      # launchd takes a calendar interval, not a systemd calendar string:
+      # Monday 00:00, which NixOS's "weekly" means.
+      nix.gc.interval = {
+        Weekday = 1;
+        Hour = 0;
+        Minute = 0;
+      };
+
+      home-manager.users.${config.primaryUser}.home.packages = [
         pkgs.nh
         pkgs.nix-output-monitor
       ];

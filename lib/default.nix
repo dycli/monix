@@ -44,6 +44,23 @@ inputs.nixpkgs.lib.extend (
             ];
           };
         };
+
+      # `ship.darwinHost "name" module` is the macOS counterpart, defining
+      # darwinConfigurations.name from the Darwin `default` bundle. darwinSystem
+      # takes `lib` as given, so Darwin modules reach `lib.ship.*` too.
+      darwinHost =
+        hostName: module:
+        { inputs, ... }:
+        {
+          flake.darwinConfigurations.${hostName} = inputs.nix-darwin.lib.darwinSystem {
+            lib = final;
+            modules = [
+              inputs.self.darwinModules.default
+              module
+              { networking.hostName = hostName; }
+            ];
+          };
+        };
     };
   }
 )

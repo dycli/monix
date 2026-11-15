@@ -5,8 +5,10 @@
 # aspect reached through two bundles would be applied twice and list options
 # would double-concatenate; keying each attribute by name makes overlapping
 # bundle membership dedup instead. Every `flake.homeModules` attribute is
-# mirrored into the NixOS attribute of the same name, applied to the host's
-# primary user; any other managed user imports its home bundles by name.
+# mirrored into the NixOS and Darwin attributes of the same name, applied to
+# the host's primary user; any other managed user imports its home bundles by
+# name. Every `flake.commonModules` attribute, for options both platforms
+# share, is merged into the NixOS and Darwin attributes of the same name.
 {
   config,
   inputs,
@@ -18,6 +20,7 @@ let
   inherit (lib.attrsets) mapAttrs;
   inherit (lib.fixedPoints) fix;
   inherit (lib.lists) singleton;
+  inherit (lib.modules) mkMerge;
   inherit (lib.options) mkOption;
   inherit (lib.types) deferredModule lazyAttrsOf;
 
@@ -28,6 +31,16 @@ let
       key = module._file;
       imports = singleton value;
     });
+
+  primaryUserHomes =
+    config.flake.homeModules
+    |> mapAttrs (
+      _: module:
+      { config, ... }:
+      {
+        home-manager.users.${config.primaryUser}.imports = singleton module;
+      }
+    );
 in
 {
   # flake-parts' own declaration wraps without a key; replace it.
@@ -40,6 +53,20 @@ in
     description = "NixOS aspects and bundles.";
   };
 
+  options.flake.darwinModules = mkOption {
+    type = lazyAttrsOf deferredModule;
+    default = { };
+    apply = mapAttrs (wrap "darwinModules");
+    description = "nix-darwin aspects and bundles.";
+  };
+
+  options.flake.commonModules = mkOption {
+    type = lazyAttrsOf deferredModule;
+    default = { };
+    apply = mapAttrs (wrap "commonModules");
+    description = "Aspects and bundles that both NixOS and nix-darwin evaluate.";
+  };
+
   options.flake.homeModules = mkOption {
     type = lazyAttrsOf deferredModule;
     default = { };
@@ -47,13 +74,13 @@ in
     description = "Home Manager aspects and bundles.";
   };
 
-  config.flake.nixosModules =
-    config.flake.homeModules
-    |> mapAttrs (
-      _: module:
-      { config, ... }:
-      {
-        home-manager.users.${config.primaryUser}.imports = singleton module;
-      }
-    );
+  config.flake.nixosModules = mkMerge [
+    config.flake.commonModules
+    primaryUserHomes
+  ];
+
+  config.flake.darwinModules = mkMerge [
+    config.flake.commonModules
+    primaryUserHomes
+  ];
 }

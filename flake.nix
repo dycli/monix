@@ -25,6 +25,11 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
+  # macOS hosts: lib.ship.darwinHost builds them with darwinSystem.
+  inputs.nix-darwin = {
+    url = "github:nix-darwin/nix-darwin";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
   inputs.agenix = {
     url = "github:ryantm/agenix";
     inputs.nixpkgs.follows = "nixpkgs";

@@ -4,6 +4,15 @@
 # interactive init, so `ssh host` lands in nu while `ssh host 'cmd'` does not,
 # and ghostty (which launches the login shell) enters nu the same way.
 { self, ... }:
+let
+  # nu inherits SHIP_NU, so a bash or zsh launched from within nu stays put.
+  enterNushell = ''
+    if [[ $- == *i* ]] && [[ -z "''${SHIP_NU:-}" ]] && command -v nu >/dev/null 2>&1; then
+      export SHIP_NU=1
+      exec nu
+    fi
+  '';
+in
 {
   flake.homeModules.default = self.homeModules.nushell;
   flake.homeModules.nushell =
@@ -16,13 +25,7 @@
     {
       programs.bash = {
         enable = true;
-        # nu inherits SHIP_NU, so a bash launched from within nu stays bash.
-        initExtra = ''
-          if [[ $- == *i* ]] && [[ -z "''${SHIP_NU:-}" ]] && command -v nu >/dev/null 2>&1; then
-            export SHIP_NU=1
-            exec nu
-          fi
-        '';
+        initExtra = enterNushell;
       };
 
       # Completion backends for the carapace bridges named in
@@ -144,6 +147,30 @@
             }
           ]
         '';
+      };
+    };
+
+  # macOS logs in to zsh, and nix-darwin would claim /etc/zshrc, /etc/zprofile,
+  # /etc/zshenv and /etc/bashrc for its environment and prompt. A Mac may be
+  # shared, so those files stay macOS's own (plus the Nix installer's profile
+  # lines), and the primary user's own zsh files load nix-darwin's
+  # environment instead: the system and per-user profiles on PATH, and its
+  # variables. The guard is the one nix-darwin's /etc/zshenv uses.
+  flake.darwinModules.default = self.darwinModules.nushell-darwin;
+  flake.darwinModules.nushell-darwin =
+    { config, ... }:
+    {
+      programs.zsh.enable = false;
+      programs.bash.enable = false;
+
+      home-manager.users.${config.primaryUser}.programs.zsh = {
+        enable = true;
+        envExtra = ''
+          if [ -z "''${__NIX_DARWIN_SET_ENVIRONMENT_DONE-}" ]; then
+            . ${config.system.build.setEnvironment}
+          fi
+        '';
+        initContent = enterNushell;
       };
     };
 }

@@ -1,7 +1,7 @@
 { self, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.host;
-  flake.nixosModules.host =
+  flake.commonModules.default = self.commonModules.host;
+  flake.commonModules.host =
     { lib, ... }:
     let
       inherit (lib.options) mkOption;

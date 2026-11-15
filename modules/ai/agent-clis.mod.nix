@@ -3,8 +3,8 @@
 # (agent-desktops.mod.nix) move together on one `nix flake update llm-agents`.
 { self, inputs, ... }:
 {
-  flake.nixosModules.default = self.nixosModules.agent-clis;
-  flake.nixosModules.agent-clis =
+  flake.commonModules.default = self.commonModules.agent-clis;
+  flake.commonModules.agent-clis =
     { lib, ... }:
     {
       nixpkgs.overlays = lib.lists.singleton (

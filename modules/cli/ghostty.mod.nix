@@ -1,5 +1,5 @@
 # Terminal emulator. The font it names is installed by fonts.mod.nix.
-{ self, ... }:
+{ self, lib, ... }:
 {
   # Every host carries ghostty's terminfo so TERM=xterm-ghostty works over SSH;
   # without it tmux and less fail with "missing or unsuitable terminal".
@@ -8,6 +8,17 @@
     { pkgs, lib, ... }:
     {
       environment.systemPackages = lib.lists.singleton pkgs.ghostty.terminfo;
+    };
+
+  # A Darwin host may be shared, so only the primary user's profile carries it.
+  # nixpkgs builds Ghostty from source for Linux only; ghostty-bin is the
+  # upstream macOS release.
+  flake.darwinModules.default = self.darwinModules.ghostty-terminfo-darwin;
+  flake.darwinModules.ghostty-terminfo-darwin =
+    { config, pkgs, ... }:
+    {
+      home-manager.users.${config.primaryUser}.home.packages =
+        lib.lists.singleton pkgs.ghostty-bin.terminfo;
     };
 
   flake.homeModules.desktop = self.homeModules.ghostty;

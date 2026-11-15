@@ -19,8 +19,17 @@ Each `*.mod.nix` is a flake-parts module. It typically registers one or more
 *aspects* into a collection:
 
 - `flake.nixosModules.<name>`  — NixOS aspects.
+- `flake.darwinModules.<name>` — nix-darwin aspects, for macOS hosts.
+- `flake.commonModules.<name>` — aspects whose options both NixOS and
+  nix-darwin declare, merged into the same-named NixOS and Darwin attributes.
 - `flake.homeModules.<name>`   — Home Manager aspects, applied to the
   primary user on hosts that import them.
+
+A concern that differs by platform keeps its shared part under the concern's
+name in `commonModules` and its platform parts under a suffixed name
+(`nixosModules.nix-linux`, `darwinModules.nix-darwin`), each joining its
+collection's bundle. A name is never registered in both `commonModules` and a
+platform collection.
 
 A single concern file may register several aspects at once — e.g. `hyprland.mod.nix`
 defines both `nixosModules.hyprland` (compositor) and `homeModules.hyprland`
@@ -43,7 +52,8 @@ flake.nixosModules.desktop = self.nixosModules.audio;
 The collections are typed in `options/flake-outputs.mod.nix` so definitions
 of one attribute merge, overlapping membership dedups (an aspect may join
 several bundles), and each `homeModules` attribute is mirrored into the
-same-named `nixosModules` attribute as an import of the primary user's home.
+same-named `nixosModules` and `darwinModules` attributes as an import of the
+primary user's home.
 
 Any other managed user composes its home explicitly, the way a host file
 lists its layers: the module that declares the user writes
@@ -90,6 +100,13 @@ imports = lib.lists.singleton (lib.ship.host "earth" ({ ... }: {
   # hardware, disk layout, identity, credentials …
 }));
 ```
+
+A macOS host uses `lib.ship.darwinHost "metal" (…)` the same way, with
+`self.darwinModules.*` bundles; it builds `darwinConfigurations.metal`.
+metal is shared with a second macOS account that nothing may change: a
+Darwin aspect sets per-user state for the primary user only (Home Manager,
+`system.primaryUser`), and anything machine-wide is a decision recorded in
+`docs/darwin-plan.md`.
 
 `lib.ship.host` imports `default` and sets the hostname. The host file keeps
 only what is true of the physical machine (hardware quirks, disk layout,
@@ -191,8 +208,9 @@ itself stays pipe-free so a stock parser can always read it.
   download what it built. The checks
   (`options/checks.mod.nix` and the modules that add to it): `endgrain`,
   `money` (crate tests and clippy), `host-earth`, `host-water`,
-  `host-air`, `host-fire`, `rustfmt`, `nixfmt`, `nix-style`,
-  `secrets-rules`, `atlas-tours`, `libri-deploy`.
+  `host-air`, `host-fire`, `eval-metal` (Water evaluates the Darwin host
+  but cannot build it), `rustfmt`, `nixfmt`, `nix-style`, `secrets-rules`,
+  `atlas-tours`, `libri-deploy`.
 - `nix flake check --no-build` fails: crate2nix builds during evaluation.
 - Format with `nix fmt -- <files>`; bare `nix fmt` reads stdin.
 - Deploy: push `main`, then `switcharoo`. A change touching a fenced file

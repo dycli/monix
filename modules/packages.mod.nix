@@ -1,7 +1,50 @@
 # Packages that carry no configuration; anything with config has its own file.
-# The system list reaches every user on every host; the home lists are bundle
+# On NixOS the system list reaches every user; a Darwin host may be shared, so
+# there it goes to the primary user's profile only. The home lists are bundle
 # members.
-{ self, ... }:
+{ self, lib, ... }:
+let
+  tools =
+    pkgs:
+    let
+      inherit (lib.lists) optional;
+      linux = pkgs.stdenv.hostPlatform.isLinux;
+    in
+    [
+      # neovim is absent: NvChad's wrapper provides it per-user and a plain
+      # install collides.
+      pkgs.vim
+
+      pkgs.eza
+      pkgs.fd
+      pkgs.fzf
+      pkgs.jujutsu
+      pkgs.microfetch
+      pkgs.nushell
+      pkgs.ripgrep
+      pkgs.tmux
+      pkgs.tree
+
+      # NETWORK
+      pkgs.dig
+    ]
+    ++ optional linux pkgs.traceroute
+    ++ [
+      pkgs.wget
+      pkgs.rsync
+    ]
+    ++ optional linux pkgs.strace
+    ++ [
+      # ARCHIVES
+      pkgs.p7zip
+      pkgs.unzip
+      pkgs.zip
+
+      # Also in the home concern; rebuilds need git in root's PATH.
+      # Minimal build: the perl/python porcelain is dead weight fleet-wide.
+      pkgs.gitMinimal
+    ];
+in
 {
   flake.nixosModules.default = self.nixosModules.packages;
   flake.nixosModules.packages =
@@ -15,38 +58,14 @@
       environment.defaultPackages = [ ];
       programs.nano.enable = false;
 
-      environment.systemPackages = [
-        # neovim is absent: NvChad's wrapper provides it per-user and a plain
-        # install collides.
-        pkgs.vim
+      environment.systemPackages = tools pkgs;
+    };
 
-        pkgs.eza
-        pkgs.fd
-        pkgs.fzf
-        pkgs.jujutsu
-        pkgs.microfetch
-        pkgs.nushell
-        pkgs.ripgrep
-        pkgs.tmux
-        pkgs.tree
-
-        # NETWORK
-        pkgs.dig
-        pkgs.traceroute
-        pkgs.wget
-        pkgs.rsync
-
-        pkgs.strace
-
-        # ARCHIVES
-        pkgs.p7zip
-        pkgs.unzip
-        pkgs.zip
-
-        # Also in the home concern; rebuilds need git in root's PATH.
-        # Minimal build: the perl/python porcelain is dead weight fleet-wide.
-        pkgs.gitMinimal
-      ];
+  flake.darwinModules.default = self.darwinModules.packages-darwin;
+  flake.darwinModules.packages-darwin =
+    { config, pkgs, ... }:
+    {
+      home-manager.users.${config.primaryUser}.home.packages = tools pkgs;
     };
 
   # Each unfree name travels with the bundle that installs the package.

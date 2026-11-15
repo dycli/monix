@@ -1,5 +1,6 @@
 # The flake's checks: each crate built with its tests and clippy, every
-# host's system build (host-<name>), rustfmt, nixfmt, the nix-style grep and
+# host's system build (host-<name>), every Darwin host's evaluation
+# (eval-<name>), rustfmt, nixfmt, the nix-style grep and
 # the agenix rulebook; atlas.mod.nix and seat/libri-deploy.mod.nix add their
 # own. The crate builds omit the deployment environment the service modules
 # bake in, so they are test gates, not the production binaries.
@@ -54,6 +55,21 @@
           self.nixosConfigurations
           |> lib.attrsets.mapAttrs' (
             name: host: lib.attrsets.nameValuePair "host-${name}" host.config.system.build.toplevel
+          )
+        )
+        // (
+          # Water cannot build a Darwin system, but evaluating it catches every
+          # option and type error; the path names what a Mac would build. The
+          # path's context would make the check depend on that build, so it
+          # is dropped.
+          self.darwinConfigurations
+          |> lib.attrsets.mapAttrs' (
+            name: host:
+            lib.attrsets.nameValuePair "eval-${name}" (
+              pkgs.writeText "eval-${name}" (
+                lib.strings.unsafeDiscardStringContext host.config.system.build.toplevel.drvPath
+              )
+            )
           )
         )
         // {

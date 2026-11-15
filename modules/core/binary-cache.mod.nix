@@ -7,19 +7,21 @@
 #
 # The listener binds the wildcard but only tailscale0 is a trusted firewall
 # interface and the port is not opened, so it is reachable from the tailnet
-# alone. Hosts without `binaryCache.signKeyFile` leave the server off.
+# alone. Hosts without `binaryCache.signKeyFile` leave the server off; the
+# server is NixOS-only, and a Darwin host is always a client.
 { self, ... }:
+let
+  port = 5080;
+in
 {
-  flake.nixosModules.default = self.nixosModules.binary-cache;
-  flake.nixosModules.binary-cache =
+  flake.commonModules.default = self.commonModules.binary-cache;
+  flake.commonModules.binary-cache =
     { config, lib, ... }:
     let
       inherit (lib) types;
       inherit (lib.lists) singleton optional;
-      inherit (lib.modules) mkIf;
       inherit (lib.options) mkOption;
 
-      port = 5080;
       serving = config.binaryCache.signKeyFile != null;
     in
     {
@@ -30,12 +32,6 @@
       };
 
       config = {
-        services.harmonia.cache = mkIf serving {
-          enable = true;
-          signKeyPaths = singleton config.binaryCache.signKeyFile;
-          settings.bind = "[::]:${toString port}";
-        };
-
         # Down or unreachable, Water is skipped after the timeout and the
         # public caches or a local build take over.
         nix.settings = {
@@ -43,6 +39,21 @@
           trusted-public-keys = singleton "water-1:YRSPaunDMNnPz9LvRzhcEdSlCIlbH9BZW9tKLcH/P+M=";
           connect-timeout = 5;
         };
+      };
+    };
+
+  flake.nixosModules.default = self.nixosModules.binary-cache-linux;
+  flake.nixosModules.binary-cache-linux =
+    { config, lib, ... }:
+    let
+      inherit (lib.lists) singleton;
+      inherit (lib.modules) mkIf;
+    in
+    {
+      services.harmonia.cache = mkIf (config.binaryCache.signKeyFile != null) {
+        enable = true;
+        signKeyPaths = singleton config.binaryCache.signKeyFile;
+        settings.bind = "[::]:${toString port}";
       };
     };
 }
