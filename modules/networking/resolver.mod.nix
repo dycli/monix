@@ -108,6 +108,10 @@
               # unreachable rather than failing the query.
               serve-expired = true;
               serve-expired-ttl = 86400;
+              # Remember a missing name for at most a minute, so a record
+              # just added upstream (a new site, say) appears at once instead
+              # of after the zone's 30-minute negative TTL.
+              cache-max-negative-ttl = 60;
 
               rrset-cache-size = "32m";
               msg-cache-size = "16m";
