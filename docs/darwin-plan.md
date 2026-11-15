@@ -683,6 +683,24 @@ that joins `darwinModules.desktop`.
 
 ## 5. switcharoo on macOS
 
+Built on branch `metal-switcharoo`. As built, it differs from the table
+below in three ways:
+
+- **The job runs the deploy by a stable path.** nix-darwin's activation
+  unloads and reloads every daemon whose plist changed
+  (`nix-darwin:modules/system/launchd.nix:18-31`), which would kill the
+  deploy running it. So the plist runs
+  `/run/current-system/sw/bin/switcharoo-deploy`, never a store path, and
+  stays the same across generations, as `restartIfChanged = false` does on
+  NixOS.
+- **sshd is judged by probes, not its job.** macOS's `com.openssh.sshd` is
+  started per connection, so between connections it is never "running".
+  The health check runs `sshd -t` and `nc -z 127.0.0.1 22` instead, plus
+  `tailscale status`. `must-run` defaults to `com.tailscale.tailscaled`.
+- **Newly failed jobs** are those daemons in the new system's
+  `Library/LaunchDaemons` whose `last exit code` turns non-zero, skipping
+  calendar jobs as NixOS skips timers.
+
 `modules/core/switcharoo.mod.nix` stays one file and one deploy script. The
 platform enters only where the two systems differ.
 
@@ -883,7 +901,7 @@ Each layer works end to end before the next starts.
    - The host carries SSH, Tailscale, Nix, shell and git.
    - Done when Water reaches `metal` over the tailnet with its key, and
      `darwin-version --configuration-revision` matches `main`.
-3. **switcharoo on metal.**
+3. **switcharoo on metal.** Built on branch `metal-switcharoo`.
    - Port per §5.
    - Done when a harmless commit deploys from Water's SSH session without a
      password, a deliberately broken commit (tailscaled disabled) rolls back by
@@ -916,6 +934,13 @@ Each layer works end to end before the next starts.
      `aarch64-apple-ios-sim` on metal over SSH.
 
 ## 9. Machine-wide settings, for Dylan to decide
+
+**Decided (Dylan, 2026-11-14):** Hex's own per-user Caps Lock dictation, with
+no `hidutil` remap; App Store auto-update stays on; `pmset -c sleep 0`
+stays; `nix.daemonProcessType = "Background"` (built with layer 3); Homebrew
+`cleanup = "none"`, with `/opt/homebrew` left usable by the other account.
+Tailscale stays as built: her account joins Dylan's tailnet from her own
+devices only, and the system `tailscaled` serves her session on the Mac too.
 
 Answered (2026-11-14): Homebrew for GUI apps and Xcode, yes; the
 password-free sudoers line, yes; the open-source `tailscaled` renamed
