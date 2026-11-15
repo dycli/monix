@@ -1,4 +1,4 @@
-# water — Threadripper PRO 9965WX, 32GB RAM, Radeon 7900 XTX.
+# water — Threadripper PRO 9965WX, 96GB RAM, Radeon 7900 XTX.
 # Always-on homelab with a manually started desktop session.
 {
   self,
@@ -64,7 +64,7 @@
         nix.daemonCPUSchedPolicy = "idle";
         nix.daemonIOSchedClass = "idle";
         # Builds keep their eight jobs; the fence is memory. Nix's builds
-        # (23.5 GB at their Nov 13 peak) and Libri's workers (capped at 32G
+        # (23.5 GB at their Nov 13 peak) and Libri's workers (capped at 48G
         # below) stay together under the slice's MemoryHigh, past which the
         # kernel throttles everything in work.slice, Libri's daemon with it
         # (the slice reached 61G that night and the page froze). Past
@@ -84,8 +84,8 @@
         # spends RAM too.
         systemd.slices.work.sliceConfig = {
           MemoryMin = "1G";
-          MemoryHigh = "60G";
-          MemoryMax = "68G";
+          MemoryHigh = "74G";
+          MemoryMax = "80G";
           MemorySwapMax = "8G";
         };
         systemd.services.nix-daemon.serviceConfig.Slice = "work.slice";
@@ -102,7 +102,12 @@
           restartIfChanged = false;
         };
         # Libri's workers run cargo, Gradle and QEMU, so they share that budget:
-        # on 96 GB the slice's 68G leaves the desktop and services ~25G.
+        # of its 93.7G the slice's 80G leaves the desktop and services 13.7G at
+        # the least (4G is what they hold today) and starts slowing the slice
+        # at 74G, with zram behind both. The workers', their browser's and
+        # the builds' caps add up to the slice's (48G + 4G + 28G), so each
+        # can reach its own without the slice killing in another (paseo,
+        # idle beside them, is the exception).
         # Inside it, the chat comes first. Libri gets its cgroup delegated:
         # the daemon (112 MB) runs in the `server` leaf and every harness,
         # with all it starts, in `harness` beside it (Libri's cgroup.rs). The
@@ -127,12 +132,14 @@
           };
         };
         # Inside Libri's cgroup: the daemon's memory is guaranteed; the
-        # workers' processes slow past 28G and are killed past 32G, with
+        # workers' processes slow past 44G and are killed past 48G, with
         # little swap, so a runaway build fails instead of pushing the slice
-        # over its MemoryHigh; the agents' browser stays under 4G.
+        # over its MemoryHigh; the agents' browser stays under 4G. At 32G,
+        # some twenty agents (0.4-1.8G each) with two Gradle builds filled it
+        # and the kernel killed both builds and two agents (Nov 15).
         libri.limits = {
           server = "memory.min=1G memory.low=1G";
-          harness = "cpu.weight=20 io.weight=20 memory.high=28G memory.max=32G memory.swap.max=2G";
+          harness = "cpu.weight=20 io.weight=20 memory.high=44G memory.max=48G memory.swap.max=2G";
           browser = "cpu.weight=20 memory.high=3G memory.max=4G memory.swap.max=512M memory.oom.group=1 pids.max=2048";
         };
         # Large cores are logged, not kept, and old ones go past 2G in all.
