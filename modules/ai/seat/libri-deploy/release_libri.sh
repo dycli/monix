@@ -6,7 +6,8 @@
 # nothing pushed if the failure comes before the push; a failing check is
 # fixed, not rerun.
 #
-# Parity between the phone web and the Android app is reported, not enforced:
+# Parity between the phone web and the Android app, and between the wide web
+# and the desktop app, is reported, not enforced:
 # a release goes out with a known gap and the next one closes it, as
 # Superlogical keeps parity by quick follow-up rather than by holding work.
 # The report and the changelog entry make the release notes, written to
@@ -97,7 +98,7 @@ echo "not run: the emulator waits for Water's memory"
 step "parity"
 last=$(git describe --tags --abbrev=0 --match 'v*' HEAD)
 # It never stops the release; a failed review says so in the notes.
-parity=$(libri-parity "$last" .) || parity="### Web and Android parity since $last
+parity=$(libri-parity "$last" .) || parity="### Client parity since $last
 
 The parity review failed to run."
 echo "$parity"
