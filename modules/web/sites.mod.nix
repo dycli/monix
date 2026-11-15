@@ -28,6 +28,7 @@
         "dylanc.com"
         "su.is"
         "cleary.org"
+        "gabriellecleary.com"
       ];
 
       # Other names of ours send visitors to dylanc.com, path kept.
