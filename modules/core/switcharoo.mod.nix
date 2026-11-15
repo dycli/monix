@@ -6,12 +6,13 @@
 # - The source is a git remote, never a working tree, so nobody's checkout is
 #   touched and only pushed commits deploy. Water reads its own NAS mirror,
 #   so a GitHub outage cannot block a deploy there.
-# - The new system is first activated without becoming the boot default
-#   (`switch-to-configuration test` on NixOS, `activate` on Darwin). If
-#   activation fails, a job newly fails, or a required job isn't running
-#   about 30 seconds later, the previous system is reactivated. Only a
-#   healthy system becomes the boot default, so a reboot always lands on the
-#   last good one.
+# - The new system is first activated and tested. If activation fails, a
+#   job newly fails, or a required job isn't running about 30 seconds later,
+#   the previous system is reactivated. On NixOS it activates with
+#   `switch-to-configuration test` and becomes the boot default only once
+#   healthy. On Darwin activation itself reads the boot default, so the
+#   profile names the new system during the test and rollback restores it;
+#   a reboot inside that window lands on the untested system.
 # - Kernel changes only take effect on reboot, which stays with a human.
 # - The primary user (and on NixOS the AI seat) may start the deploy job and
 #   nothing else with no password: polkit on NixOS, one exact sudoers line on
@@ -80,7 +81,13 @@ in
                   [[ -z $code || $code == 0 || $code == "(never exited)" ]] || echo "$label"
                 done | sort
               }'';
+            # Activation reloads the activate-system daemon, which runs at
+            # load and sets up /etc and /run/current-system from whatever the
+            # profile names. The profile therefore names the system under
+            # test before it activates, as darwin-rebuild orders it; rollback
+            # puts it back.
             activate = ''
+              nix-env --profile /nix/var/nix/profiles/system --set "$system"
               "$system/activate" || healthy=0
 
               # launchd has no job queue to wait on; give restarting daemons
@@ -97,13 +104,11 @@ in
               ${lib.strings.optionalString config.services.tailscale.enable ''
                 "$sw/tailscale" status >/dev/null || missing+="tailnet "
               ''}'';
-            rollback = ''"$previous/activate"'';
-            # At boot activate-system reactivates whatever the profile names,
-            # so setting it makes the system the boot default.
-            commit = ''
-              nix-env --profile /nix/var/nix/profiles/system --set "$system"
-
-              note=""'';
+            rollback = ''
+              nix-env --profile /nix/var/nix/profiles/system --set "$previous"
+              "$previous/activate"'';
+            # activate already made the system the boot default.
+            commit = ''note=""'';
           }
         else
           {

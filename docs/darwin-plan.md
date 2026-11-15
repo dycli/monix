@@ -717,18 +717,24 @@ platform enters only where the two systems differ.
 | Running revision | `nixos-version --configuration-revision` (`:79`) | `darwin-version --configuration-revision` (`nix-darwin:pkgs/nix-tools/darwin-version.sh:30-31`) |
 | Build | `nixosConfigurations.${host}` (`:112-113`) | `darwinConfigurations.${host}` |
 | Snapshot of failures | `systemctl list-units --failed` (`:119`) | `launchctl list`, rows labelled `org.nixos.*` with a non-zero last status |
-| Activate | `switch-to-configuration test` (`:126`) | `$system/activate`. It points `/run/current-system` at the new system (`nix-darwin:modules/system/activation-scripts.nix:146`) without touching the profile |
+| Activate | `switch-to-configuration test` (`:126`) | `nix-env --profile /nix/var/nix/profiles/system --set "$system"`, then `$system/activate` |
 | Settle | job queue, then 30 s (`:132-136`) | 30 s; launchd has no job queue |
 | Newly broken | `comm -13` on the snapshots (`:137-145`) | the same comparison of the launchd snapshots |
 | Must be running | `systemctl is-active` per `/etc/switcharoo/must-run` (`:148-153`) | `launchctl print system/<label>` per entry; defaults `com.openssh.sshd` and `org.nixos.tailscaled`, plus `tailscale status` succeeding, because the tailnet is the only way in |
-| Roll back | `$previous/bin/switch-to-configuration test` (`:159`) | `$previous/activate` |
-| Commit | `nix-env --profile … --set` then `switch-to-configuration boot` (`:164-165`) | `nix-env --profile /nix/var/nix/profiles/system --set "$system"` only. This is the boot default: at boot `activate-system` reactivates whatever the profile names (`nix-darwin:modules/services/activate-system/default.nix:55`) |
+| Roll back | `$previous/bin/switch-to-configuration test` (`:159`) | `nix-env --profile … --set "$previous"`, then `$previous/activate` |
+| Commit | `nix-env --profile … --set` then `switch-to-configuration boot` (`:164-165`) | nothing; activate already set the profile |
 | Kernel note | `:168-170` | omitted |
 
-The difference in order is deliberate. `darwin-rebuild switch` sets the profile
-before it activates (`nix-darwin:pkgs/nix-tools/darwin-rebuild.sh:240-248`).
-switcharoo activates, judges, and only then sets the profile. That keeps
-monix's rule that only a healthy system becomes the boot default.
+On Darwin the profile must name the new system before it activates, as
+`darwin-rebuild switch` orders it (`nix-darwin:pkgs/nix-tools/darwin-rebuild.sh:240-248`).
+Activation reloads the `activate-system` daemon, which runs at load and sets
+up `/etc/static` and `/run/current-system` from whatever the profile names
+(`nix-darwin:modules/services/activate-system/default.nix`). With the profile
+still on the previous system, that daemon would put the previous system's
+`/etc` back underneath the new one. Rollback restores the profile before it
+reactivates the previous system, so a failed deploy leaves the boot default
+where it was; only a reboot during the test window lands on the untested
+system.
 
 ### Units and trigger
 

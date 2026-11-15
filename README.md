@@ -120,7 +120,7 @@ from a git remote, never a working tree: GitHub, or on Water the NAS
 mirror, so a GitHub outage can't block a deploy there. It activates the new
 system with `test`, waits for the jobs to settle, and rolls back if
 activation failed, a unit newly failed, or a required unit isn't running.
-Only a healthy system becomes the boot default. Running as a unit, a switch
+On NixOS only a healthy system becomes the boot default. Running as a unit, a switch
 finishes even when the SSH session that started it dies; a switch over SSH
 that died halfway once left Air without DNS and with a stale sudo.
 
