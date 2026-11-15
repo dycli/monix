@@ -59,6 +59,23 @@
           model = "opus";
         };
         tools.usage = "/run/usage.sock";
+        # What the System tile and the `system` tool watch on Water: the
+        # units the house leans on, and the disks that fill.
+        system = {
+          services = [
+            "frigate"
+            "hob"
+            "immich-server"
+            "nix-daemon"
+            "libri"
+            "hippo2"
+          ];
+          mounts = [
+            "/"
+            "/nix"
+            "/srv/storage"
+          ];
+        };
       };
       site = unit: subdomain: login: {
         # Each person's instance is its own host on its own port, reachable
