@@ -68,27 +68,23 @@ in
       home-manager.users.${config.primaryUser}.home.packages = tools pkgs;
     };
 
-  # Each unfree name travels with the bundle that installs the package.
-  flake.commonModules.desktop = {
-    unfreePackages = [
-      "discord"
-      "discord-unwrapped"
-    ];
-  };
-
-  # APPLICATIONS ON EVERY DESKTOP
-  flake.homeModules.desktop = self.homeModules.packages-desktop;
-  flake.homeModules.packages-desktop =
-    { pkgs, ... }:
+  # DISCORD
+  # macOS takes Discord's own signed app as a cask, as home.mod.nix explains.
+  flake.darwinModules.desktop = self.darwinModules.packages-desktop-darwin;
+  flake.darwinModules.packages-desktop-darwin =
+    { lib, ... }:
     {
-      home.packages = lib.lists.singleton pkgs.discord;
+      homebrew.casks = lib.lists.singleton "discord";
     };
 
   # GRAPHICAL SESSION UTILITIES AND APPLICATIONS
   # Linux only: the elected apps and the Wayland session's tools.
   flake.nixosModules.desktop = {
     imports = lib.lists.singleton self.nixosModules.packages-desktop-linux;
+    # Each unfree name travels with the bundle that installs the package.
     unfreePackages = [
+      "discord"
+      "discord-unwrapped"
       "obsidian"
       "spotify"
     ];
@@ -97,6 +93,8 @@ in
     { config, pkgs, ... }:
     {
       home.packages = [
+        pkgs.discord
+
         # Elected applications (default-apps.mod.nix); referencing the options
         # installs whatever a host overrides them to.
         config.desktopApps.email.package

@@ -81,20 +81,21 @@
     };
 
   flake.darwinModules.desktop = self.darwinModules.ghostty-darwin;
+  # macOS takes Ghostty's own signed app as a cask, as home.mod.nix explains;
+  # Home Manager writes the config alone.
   flake.darwinModules.ghostty-darwin =
-    { config, pkgs, ... }:
+    { config, lib, ... }:
     {
+      homebrew.casks = lib.lists.singleton "ghostty";
+
       home-manager.users.${config.primaryUser}.programs.ghostty = {
-        package = pkgs.ghostty-bin;
+        package = null;
 
         settings = {
           macos-titlebar-style = "hidden";
           # Option is Alt in the terminal, as on Linux; the Option chords
           # hammerspoon.mod.nix binds never reach it.
           macos-option-as-alt = true;
-          # The app moves with the nixpkgs lock; an update in place would be
-          # replaced at the next switch.
-          auto-update = "off";
         };
       };
     };

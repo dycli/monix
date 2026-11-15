@@ -25,8 +25,16 @@
   # host sets its primary user's home.stateVersion itself.
   flake.darwinModules.default = self.darwinModules.home-manager-darwin;
   flake.darwinModules.home-manager-darwin =
-    { lib, ... }:
+    { config, lib, ... }:
     {
       imports = lib.lists.singleton inputs.home-manager.darwinModules.home-manager;
+
+      # Home Manager's app copy rewrites bundles in ~/Applications, and macOS
+      # refuses that for a vendor-signed app unless the process holds the App
+      # Management permission. switcharoo activates from a launchd daemon,
+      # which can neither hold that permission nor prompt for it, so GUI apps
+      # come from Homebrew casks (homebrew.mod.nix), which install a bundle
+      # once and leave it to update itself.
+      home-manager.users.${config.primaryUser}.targets.darwin.copyApps.enable = false;
     };
 }

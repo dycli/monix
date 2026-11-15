@@ -413,29 +413,24 @@ one route:
   Its `brew` launcher still goes into `/run/current-system/sw/bin`, so `brew`
   is on her PATH too, naming the shared prefix (§9).
 
-**Discord: nixpkgs, not the cask.** Discord is on every desktop; the Linux
-side is monix main 0367c32 (`pkgs.discord` in `homeModules.packages-desktop`,
-`modules/packages.mod.nix:97`, and `"discord"` in the desktop
-`unfreePackages`, `:57`).
+**Every GUI app on metal is a cask; Home Manager copies no apps.** Discord
+stays `pkgs.discord` on Linux and is the `discord` cask on metal; Ghostty is
+the `ghostty` cask, with `programs.ghostty.package = null` so Home Manager
+writes its config alone.
 
-- nixpkgs `discord` 0.0.421 lists `aarch64-darwin` in its platforms. On
-  Darwin it unpacks Discord's own universal macOS build into
-  `$out/Applications` (`nixpkgs:pkgs/by-name/di/discord/darwin.nix:86-102`),
-  so it is the vendor's app, locked like any other package.
-- It turns Discord's self-updater off by default (`darwin.nix:22,117`), so
-  Discord moves with the nixpkgs lock, as on Linux. A cask would update
-  itself instead.
-- One line then serves every desktop. The `packages` split (§8, layer 1)
-  moves `pkgs.discord` from the Linux-only home list into the shared desktop
-  list, and `"discord"` from `nixosModules.desktop` into the shared
-  `unfreePackages` contribution, so metal gets it with no Darwin-specific
-  line.
-- Two caveats, both checked in layer 4. home-manager places the app under
-  `~/Applications/Home Manager Apps`, and Spotlight must find it there. The
-  updater is switched off by the `bin/discord` wrapper (`darwin.nix:116-117`);
-  launching the `.app` from Spotlight bypasses the wrapper, so the check
-  confirms Discord still doesn't try to update itself. If either fails, the
-  cask `discord` is the fallback.
+- Home Manager's `targets.darwin.copyApps` rsyncs apps from the store into
+  `~/Applications/Home Manager Apps`, and first checks that it may write
+  inside each bundle there (`home-manager:modules/targets/darwin/copyapps.nix:42-96`).
+  macOS lets a process change a vendor-signed bundle only if it holds the
+  App Management permission. switcharoo activates from a launchd daemon,
+  which can neither hold that permission nor be prompted for it, so the check
+  aborts the switch, and with it off the copy itself would fail at the next
+  update of either app.
+- `copyApps` is off for Dylan (`home.mod.nix`, Darwin part). A cask installs
+  a bundle once; with `upgrade = false`, `brew bundle` only confirms it is
+  there, which works headless. Both apps then update themselves, like Brave.
+- To undo by hand once: delete `~/Applications/Home Manager Apps`, which
+  still holds the old copies.
 
 ### macOS defaults (`modules/desktop/darwin-desktop.mod.nix`)
 
@@ -558,9 +553,8 @@ window handling, and Hammerspoon adds only global keys that open apps.
     app honours `-e` passed this way is checked in layer 4.
   - `kill()` asks the app to terminate normally, so its own save and confirm
     prompts still run. `kill9()`, the forced kind, is not used.
-  - Ghostty is nixpkgs' `ghostty-bin`, the vendor's signed app, through the
-    shared Home Manager `programs.ghostty`; Home Manager places it under
-    `~/Applications/Home Manager Apps`.
+  - Ghostty is the `ghostty` cask in `~/Applications`; the shared Home
+    Manager `programs.ghostty` writes its config.
   - Left out on purpose: close window (Cmd+W already does it), and the email,
     messenger and password-manager binds (`:69,89,93`). Their apps come from
     `desktopApps` on Linux and have no macOS counterpart in this plan yet;
@@ -595,8 +589,8 @@ window handling, and Hammerspoon adds only global keys that open apps.
 The Hyprland-specific Ghostty settings (`window-decoration = "none"`, opacity
 relying on compositor blur, Insert-key binds) stay in the Linux part, with the Comic Code font, which only the Linux
 hosts install. The padding is shared. The Darwin part sets
-`macos-titlebar-style = "hidden"`, `macos-option-as-alt = true` and
-`auto-update = "off"`.
+`macos-titlebar-style = "hidden"` and `macos-option-as-alt = true`; Ghostty
+updates itself.
 
 ### Dictation: Hex (`modules/desktop/hex.mod.nix`, Darwin part)
 
