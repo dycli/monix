@@ -450,20 +450,59 @@ in
           esac
           # Ask before following the log, so the prompt isn't buried in it.
           [[ $label == ${darwinLabel} ]] || sudo -v
-          field() { /bin/launchctl print "system/$label" | sed -n "s/^\t$1 = //p"; }
-          runs=$(field runs)
+          # One snapshot per poll, so runs and state come from the same moment.
+          # A failed print leaves the fields empty, which reads as not yet.
+          poll() { info=$(/bin/launchctl print "system/$label" 2>/dev/null) || info=""; }
+          field() { sed -n "s/^\t$1 = //p" <<<"$info"; }
+
           offset=$(stat -c %s ${darwinLog} 2>/dev/null || echo 0)
-          "''${kick[@]}" "system/$label"
           tail -c "+$((offset + 1))" -F ${darwinLog} 2>/dev/null &
           follow=$!
           trap 'kill $follow 2>/dev/null' EXIT
-          # Done once launchd has started this run and it is no longer
-          # running; the run count tells this run from the one before.
-          until (($(field runs) > runs)) && [[ $(field state) != running ]]; do
+
+          # launchd counts the job's runs; the run to follow is the next one.
+          # kickstart of a running job starts nothing and still exits 0, so a
+          # deploy already running is followed as the one the CLI would start,
+          # as systemctl start joins a running oneshot.
+          poll
+          runs=$(field runs)
+          target=$((''${runs:-0} + 1))
+          if [[ $(field state) == running ]]; then
+            target=''${runs:-0}
+            echo "switcharoo: a deploy is already running; following it" >&2
+          else
+            # kickstart waits out launchd's ten-second minimum between runs.
+            timeout --foreground 60 "''${kick[@]}" "system/$label" ||
+              { echo "switcharoo: launchctl kickstart system/$label failed or did not return within 60 s" >&2; exit 1; }
+          fi
+
+          # A run counts as begun once launchd reports it running or counts it;
+          # the two-hour limit matches the deploy unit's on NixOS.
+          begin_by=$((SECONDS + 60))
+          end_by=$((SECONDS + 7200))
+          while
+            poll
+            n=$(field runs)
+            [[ $(field state) == running ]] || ((''${n:-0} < target))
+          do
+            if [[ $(field state) != running ]] && ((SECONDS > begin_by)); then
+              echo "switcharoo: launchd has not started $label after 60 s; see launchctl print system/$label" >&2
+              exit 124
+            fi
+            if ((SECONDS > end_by)); then
+              echo "switcharoo: the deploy is still running after two hours; it goes on, and its log is ${darwinLog}" >&2
+              exit 124
+            fi
             sleep 1
           done
           sleep 1
-          [[ $(field "last exit code") == 0 ]]
+
+          code=$(field "last exit code")
+          if [[ $code =~ ^[0-9]+$ ]]; then
+            exit "$code"
+          fi
+          echo "switcharoo: launchd reports the deploy's last exit code as: $code" >&2
+          exit 1
         '';
       };
     in
