@@ -347,7 +347,7 @@ in, by module:
 |---|---|---|
 | SSH with Water's key | `users.mod.nix` (Darwin part), `ssh.mod.nix` (Darwin part) | `services.openssh.enable = true` keeps Remote Login on (it is already on, so nix-darwin leaves it alone; `nix-darwin:modules/services/openssh.nix:112-121`); `extraConfig` turns password and keyboard-interactive login off, refuses root and sets `AllowUsers dylan`; the primary user's keys are `keys.admin` plus `keys.seat` (`bridge@fw0`, added to `keys.nix`). nix-darwin serves them from `/etc/ssh/nix_authorized_keys.d/dylan` through `AuthorizedKeysCommand`, so no account file changes |
 | Tailscale | `tailscale.mod.nix` (Darwin part) | `services.tailscale.enable = true`: the open-source `tailscaled` as a launchd daemon (`nix-darwin:modules/services/tailscale.nix:54-57`), which runs before anyone logs in. It replaces the GUI app now installed (§6) |
-| Stay awake on power | `apple-build.mod.nix` | `pmset -c sleep 0` and `pmset -c displaysleep 10` in an activation script. `power.sleep.computer` uses `systemsetup`, which applies on battery too (`nix-darwin:modules/power/sleep.nix:60-63`), and this is also a laptop. Power settings are machine-wide (§9). The lid stays open (Dylan) |
+| Stay awake on power | `apple-build.mod.nix` | `pmset -c sleep 0` in the `postActivation` script (built); display sleep keeps macOS's own setting. `power.sleep.computer` uses `systemsetup`, which applies on battery too (`nix-darwin:modules/power/sleep.nix:60-63`), and this is also a laptop. Power settings are machine-wide (§9). The lid stays open (Dylan) |
 | Xcode | `apple-build.mod.nix` | `homebrew.masApps.Xcode = 497799835`; an activation step runs `xcode-select -s /Applications/Xcode.app` and checks the licence with `xcodebuild -checkFirstLaunchStatus` (it reports; it does not accept) |
 | xcodegen | Libri's iOS devShell | nixpkgs `xcodegen` builds for aarch64-darwin |
 | Rust with iOS targets | Libri's iOS devShell | rust-overlay with `aarch64-apple-ios` and `aarch64-apple-ios-sim`, beside the Android shell (`libri:flake.nix:13-14,330-333`). The toolchain is versioned with the code it builds, and the host stays unchanged when Libri changes Rust |
@@ -922,7 +922,7 @@ Each layer works end to end before the next starts.
    - Add `nix-homebrew` and the taps, and `darwin-desktop.mod.nix`.
    - Add the Brave, Hammerspoon and Hex casks (the last from the pinned
      `anomalyco/homebrew-tap`), the Caps Lock remap, and the `apple-build` bundle: Xcode through `masApps`,
-     `xcode-select` and `pmset`.
+     `xcode-select` and `pmset` (`pmset` built).
    - Add `hammerspoon.mod.nix` and the Dock defaults.
    - Done when:
      - Brave and Xcode are installed by the switch, Brave into

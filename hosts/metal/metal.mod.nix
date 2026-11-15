@@ -9,6 +9,7 @@
       {
         imports = [
           self.darwinModules.desktop
+          self.darwinModules.apple-build
           # The editors alone from `dev`: its toolchain comes with Libri's
           # devShell, and its gcc would shadow Apple's clang.
           self.darwinModules.editors
