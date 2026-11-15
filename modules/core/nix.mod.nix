@@ -45,9 +45,11 @@
       # slows every build and is discouraged upstream.
       nix.optimise.automatic = true;
 
+      # Water switches many times a day and each system generation pins a
+      # full Libri build, so a long window fills the root disk.
       nix.gc = {
         automatic = true;
-        options = "--delete-older-than 90d";
+        options = "--delete-older-than 14d";
       };
 
       # Per-package unfree allowlist instead of a blanket allowUnfree. The
