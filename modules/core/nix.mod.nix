@@ -82,6 +82,10 @@
         Minute = 0;
       };
 
+      # metal is shared: macOS's background class gives builds, and the
+      # Nix daemon's other work, only what the logged-in session leaves.
+      nix.daemonProcessType = "Background";
+
       home-manager.users.${config.primaryUser}.home.packages = [
         pkgs.nh
         pkgs.nix-output-monitor

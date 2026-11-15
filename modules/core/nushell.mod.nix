@@ -170,6 +170,13 @@ in
             . ${config.system.build.setEnvironment}
           fi
         '';
+        # macOS's /etc/zprofile runs path_helper, which moves its own
+        # directories ahead of Nix's (Apple's git before the profile's), so
+        # a login shell puts the system path back in front.
+        profileExtra = ''
+          export PATH=${config.environment.systemPath}:$PATH
+          typeset -U path
+        '';
         initContent = enterNushell;
       };
     };
