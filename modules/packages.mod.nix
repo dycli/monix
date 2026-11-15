@@ -54,6 +54,7 @@
     { lib, ... }:
     {
       unfreePackages = [
+        "discord"
         "obsidian"
         "spotify"
       ];
@@ -93,6 +94,7 @@
         pkgs.kdePackages.breeze-icons
         pkgs.libreoffice
         pkgs.obsidian
+        pkgs.discord
         pkgs.element-desktop
         (pkgs.spotify.override { deviceScaleFactor = 2; })
       ];
