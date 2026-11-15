@@ -301,11 +301,10 @@
             name = "Suki";
             person = "Gab";
             style = "Gab likes a slightly warmer tone.";
-            # Reached through Dylan's Libri on the tailnet port, so loopback
-            # only; the tailnet gate stays as a second check.
-            daemon = site "suki" "suki" "gabcaminiti10@gmail.com" // {
-              listen = "127.0.0.1:${toString ports.suki}";
-            };
+            # Gab's devices reach Suki through Dylan's Libri; the shared Mac,
+            # on the tailnet as Dylan's device metal, reaches it on its own
+            # port, where only Gab and that one device get in.
+            daemon = site "suki" "suki" "gabcaminiti10@gmail.com,ddcleary1@gmail.com/metal";
             # Gab's assistant reaches no memory of Dylan's: hippo2 on the
             # seat holds Dylan's.
             memory.command = "";
