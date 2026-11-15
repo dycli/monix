@@ -43,43 +43,16 @@
         }
       );
 
-      environment.etc."brave/policies/managed/monix.json".text = toJSON { } {
-        # ECH: the built-in client fetches HTTPS/type-65 records; the pin
-        # guards against upstream default changes.
-        BuiltInDnsClientEnabled = true;
-        EncryptedClientHelloEnabled = true;
-
-        # Brave surface reduction.
-        BraveRewardsDisabled = true;
-        BraveWalletDisabled = true;
-        BraveVPNDisabled = true;
-        TorDisabled = true;
-        BraveAIChatEnabled = false;
-        BraveLocalAIEnabled = false;
-        BraveNewsDisabled = true;
-        BraveTalkDisabled = true;
-        BravePlaylistEnabled = false;
-        BraveWaybackMachineEnabled = false;
-        EmailAliasesEnabled = false;
-
-        # Telemetry.
-        BraveP3AEnabled = false;
-        BraveStatsPingEnabled = false;
-        BraveWebDiscoveryEnabled = false;
-        MetricsReportingEnabled = false;
-
-        # keepassxc owns credentials and identity data.
-        PasswordManagerEnabled = false;
-        AutofillCreditCardEnabled = false;
-        AutofillAddressEnabled = false;
-
-        # WebRTC must not enumerate tailnet or LAN addresses.
-        WebRtcIPHandling = "default_public_interface_only";
-
-        # 5 = open the new tab page on startup.
-        RestoreOnStartup = 5;
-        DefaultBrowserSettingEnabled = false;
-      };
+      environment.etc."brave/policies/managed/monix.json".text = toJSON { } (
+        import ./policies.nix
+        // {
+          # ECH: the built-in client fetches HTTPS/type-65 records; the pin
+          # guards against upstream default changes. macOS Chromium uses its
+          # built-in client already.
+          BuiltInDnsClientEnabled = true;
+          EncryptedClientHelloEnabled = true;
+        }
+      );
 
       system.nssDatabases.hosts = mkForce [
         "mdns4_minimal [NOTFOUND=return]"
@@ -90,12 +63,42 @@
       ];
     };
 
-  # macOS takes Brave's own signed app, which updates itself; the policies
-  # above concern Linux's resolver alone.
+  # macOS takes Brave's own signed app, which updates itself. Brave reads
+  # forced policies only from managed preferences, which macOS rebuilds from
+  # installed configuration profiles and clears of anything else, and it
+  # installs a profile only with an administrator's approval in System
+  # Settings. So the switch places the profile, and approving it is a manual
+  # step after each policy change. The profile is device-scope: it applies
+  # to every account's Brave. The fixed identifier and UUIDs make an approved
+  # profile replace its predecessor rather than sit beside it.
   flake.darwinModules.desktop = self.darwinModules.brave-darwin;
   flake.darwinModules.brave-darwin =
     { lib, ... }:
+    let
+      inherit (lib.generators) toPlist;
+      inherit (lib.lists) singleton;
+    in
     {
-      homebrew.casks = lib.lists.singleton "brave-browser";
+      homebrew.casks = singleton "brave-browser";
+
+      environment.etc."brave/brave-policies.mobileconfig".text = toPlist { escape = true; } {
+        PayloadType = "Configuration";
+        PayloadVersion = 1;
+        PayloadScope = "System";
+        PayloadIdentifier = "monix.brave-policies";
+        PayloadUUID = "8291A04B-D810-4778-8150-DBE1B7753742";
+        PayloadDisplayName = "Brave policies";
+        PayloadDescription = "The Brave policies monix sets on every desktop.";
+        PayloadContent = singleton (
+          import ./policies.nix
+          // {
+            PayloadType = "com.brave.Browser";
+            PayloadVersion = 1;
+            PayloadIdentifier = "monix.brave-policies.com.brave.Browser";
+            PayloadUUID = "F693A69B-BDDD-4B95-BBE7-2571B2CF59BF";
+            PayloadDisplayName = "Brave";
+          }
+        );
+      };
     };
 }
