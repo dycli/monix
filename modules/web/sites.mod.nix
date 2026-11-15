@@ -54,6 +54,12 @@
           locations."/_/".extraConfig = "expires max;";
           extraConfig = "error_page 404 /404.html;";
         };
+        # Hugo writes each page as <path>/index.html and content-hashes
+        # everything under /_/.
+        "gabriellecleary.com" = {
+          locations."/_/".extraConfig = "expires max;";
+          extraConfig = "error_page 404 /404.html;";
+        };
       };
     in
     {
