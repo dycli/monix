@@ -54,7 +54,10 @@
           # Makes DIR, the website's built pages, what libri.is serves.
           src=''${1:?usage: libri-publish-website DIR}
           [ -f "$src/index.html" ] || { echo "$src has no index.html" >&2; exit 64; }
-          rsync -rtL --delete --chmod=D2750,F640 "$src"/ ${website}/
+          # The folder itself (2750, group libri-publish) keeps others out;
+          # what is inside is plain, since the seat is not in that group and
+          # the unit may not copy setgid directories.
+          rsync -rtL --delete --chmod=D755,F644 "$src"/ ${website}/
           systemctl start libri-publish.service
           echo "published $src to libri.is"
         '';
