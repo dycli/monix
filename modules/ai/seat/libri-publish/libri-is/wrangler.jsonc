@@ -1,7 +1,9 @@
-// libri.is: the project's pages (worker.js) and, as static assets, the
-// Android releases at /android/, which publish_libri_sites.sh copies in from
-// the seat's release folder before each upload, and the privacy policy at
-// /privacy (assets/privacy.html), which the newest release rendered there.
+// libri.is: the sign-in return page (worker.js) and, as static assets, the
+// website, the Android releases at /android/ and the privacy policy at
+// /privacy (assets/privacy.html). publish_libri_sites.sh copies them in
+// before each upload: the website from the seat's website folder, the
+// releases and the policy, which the newest release rendered, from its
+// release folder.
 {
   "name": "libri-is-site",
   "main": "worker.js",

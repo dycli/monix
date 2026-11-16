@@ -81,12 +81,14 @@
         # and freeze the host. Past MemoryHigh the slice
         # slows; past MemoryMax the kernel kills its largest process (a
         # rustc or an evaluator), not the host. Swap is capped because zram
-        # spends RAM too.
+        # spends RAM too: at the 3.6x zstd ratio Water's zram shows, 16G of
+        # swap holds about 4.5G of RAM, so the slice at its MemoryHigh and
+        # a full swap still leave the desktop and services 15G.
         systemd.slices.work.sliceConfig = {
           MemoryMin = "1G";
           MemoryHigh = "74G";
           MemoryMax = "80G";
-          MemorySwapMax = "8G";
+          MemorySwapMax = "16G";
         };
         systemd.services.nix-daemon.serviceConfig.Slice = "work.slice";
 
@@ -132,14 +134,19 @@
           };
         };
         # Inside Libri's cgroup: the daemon's memory is guaranteed; the
-        # workers' processes slow past 44G and are killed past 48G, with
-        # little swap, so a runaway build fails instead of pushing the slice
-        # over its MemoryHigh; the agents' browser stays under 4G. At 32G,
-        # some twenty agents (0.4-1.8G each) with two Gradle builds filled it
-        # and the kernel killed both builds and two agents (Nov 15).
+        # workers' processes slow past 44G and are killed past 48G; the
+        # agents' browser stays under 4G. At 32G, some twenty agents
+        # (0.4-1.8G each) with two Gradle builds filled it and the kernel
+        # killed both builds and two agents (Nov 15). The workers' swap
+        # takes the Claude Code heap their processes leave cold: at 48G
+        # with 2G of swap, 19 of them at 2.0-2.3G each (most of it inactive)
+        # filled the cgroup, the kernel was refused swap 591202 times, and
+        # it killed five agents, a Kotlin daemon and the browser (Nov 15,
+        # 16:15). 12G of swap costs at most 3.4G of RAM in zram and stays
+        # inside the slice's 16G.
         libri.limits = {
           server = "memory.min=1G memory.low=1G";
-          harness = "cpu.weight=20 io.weight=20 memory.high=44G memory.max=48G memory.swap.max=2G";
+          harness = "cpu.weight=20 io.weight=20 memory.high=44G memory.max=48G memory.swap.max=12G";
           browser = "cpu.weight=20 memory.high=3G memory.max=4G memory.swap.max=512M memory.oom.group=1 pids.max=2048";
         };
         # Large cores are logged, not kept, and old ones go past 2G in all.
