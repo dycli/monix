@@ -1,9 +1,9 @@
 # libri-publish: puts what Water has live on Libri's Cloudflare Workers, so
 # neither goes stale:
-# libri.is with every Android release at /android/, and app.libri.is with
-# the seat's live site build. publish_libri_sites.sh beside this file holds
-# the logic; the Workers' configs and libri.is's script sit in
-# libri-publish/.
+# libri.is with its website and every Android release at /android/, and
+# app.libri.is with the seat's live site build. publish_libri_sites.sh
+# beside this file holds the logic; the Workers' configs and libri.is's
+# script sit in libri-publish/.
 #
 # - It runs after each Libri deploy (libri-deploy's OnSuccess, which an
 #   already-live commit also triggers, harmlessly) and after each Android
@@ -14,6 +14,8 @@
 #   workers, which share the seat's uid, never hold it.
 # - The release folder belongs to the seat and this unit's group; its APKs
 #   are world-readable, and Worker static assets take files up to 25 MiB.
+# - The website folder is the same: the seat fills it from the website's
+#   source with libri-publish-website, which then starts this unit.
 { self, ... }:
 {
   flake.nixosModules.seat = self.nixosModules.libri-publish;
@@ -31,6 +33,7 @@
       inherit (lib.ship.topology) seat;
 
       state = "/var/lib/libri-publish";
+      website = "/var/lib/libri-website";
       publish = pkgs.writeShellApplication {
         name = "libri-publish";
         runtimeInputs = [
@@ -43,8 +46,26 @@
           exec ${getExe pkgs.dash} ${./libri-publish}/publish_libri_sites.sh
         '';
       };
+      publishWebsite = pkgs.writeShellApplication {
+        name = "libri-publish-website";
+        runtimeInputs = [ pkgs.rsync ];
+        text = ''
+          # Usage: libri-publish-website DIR
+          # Makes DIR, the website's built pages, what libri.is serves.
+          src=''${1:?usage: libri-publish-website DIR}
+          [ -f "$src/index.html" ] || { echo "$src has no index.html" >&2; exit 64; }
+          # The folder itself (2750, group libri-publish) keeps others out;
+          # what is inside is plain, since the seat is not in that group and
+          # the unit may not copy setgid directories.
+          rsync -rtL --delete --chmod=D755,F644 "$src"/ ${website}/
+          systemctl start libri-publish.service
+          echo "published $src to libri.is"
+        '';
+      };
     in
     {
+      environment.systemPackages = singleton publishWebsite;
+
       users.users.libri-publish = {
         isSystemUser = true;
         group = "libri-publish";
@@ -53,6 +74,13 @@
 
       # The seat copies each signed release here (libri-publish-android).
       systemd.tmpfiles.settings.libri-android."/var/lib/libri-android".d = {
+        user = seat.user;
+        group = "libri-publish";
+        mode = "2750";
+      };
+
+      # The seat copies the website's pages here (libri-publish-website).
+      systemd.tmpfiles.settings.libri-website.${website}.d = {
         user = seat.user;
         group = "libri-publish";
         mode = "2750";
@@ -68,6 +96,7 @@
           XDG_CONFIG_HOME = "${state}/config";
           LIBRI_PUBLISH_DIR = "${state}/stage";
           LIBRI_ANDROID_DIR = "/var/lib/libri-android";
+          LIBRI_WEBSITE_DIR = website;
           LIBRI_PUBLISH_SITE = "${seat.libriBuild}/site";
           # Not a secret: the account the Workers belong to.
           CLOUDFLARE_ACCOUNT_ID = "fd36658954c6a4df540bc3975d993ba2";

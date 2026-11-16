@@ -21,6 +21,21 @@ let
       args = lib.lists.singleton "mcp";
     };
   };
+
+  # The shared servers, and those other modules add (`seat.extraMcpServers`)
+  # for the harness surfaces each names: `libri` (every turn of the seat's
+  # Libri, in any harness), `codex` and `opencode` (each at a terminal).
+  surfaces = [
+    "libri"
+    "codex"
+    "opencode"
+  ];
+  serversFor =
+    surface: seat:
+    sharedServers
+    // lib.attrsets.mapAttrs (_: added: added.server) (
+      lib.attrsets.filterAttrs (_: added: lib.lists.elem surface added.agents) seat.extraMcpServers
+    );
 in
 {
   flake.homeModules.cockpit =
@@ -60,7 +75,7 @@ in
             deepseekKeyFile = osConfig.secrets.deepseek-key.path;
             abliterationKeyFile = osConfig.secrets.abliteration-key.path;
             extraMcp =
-              sharedServers
+              serversFor "opencode" osConfig.seat
               |> mapAttrs (
                 _: server:
                 if server ? url then
@@ -111,7 +126,26 @@ in
         mcpServers = lib.options.mkOption {
           inherit (json) type;
           readOnly = true;
-          description = "The seat's MCP servers, in Claude Code's shape.";
+          description = "The MCP servers of the seat's Libri turns, in Claude Code's shape.";
+        };
+        extraMcpServers = lib.options.mkOption {
+          default = { };
+          description = "MCP servers other modules add beside the shared ones, each to the harness surfaces it names.";
+          type = lib.types.attrsOf (
+            lib.types.submodule {
+              options = {
+                server = lib.options.mkOption {
+                  inherit (json) type;
+                  description = "The server: `command` and `args`, or `url`.";
+                };
+                agents = lib.options.mkOption {
+                  type = lib.types.listOf (lib.types.enum surfaces);
+                  default = surfaces;
+                  description = "The harness surfaces that get the server: `libri`, `codex`, `opencode`; every one by default.";
+                };
+              };
+            }
+          );
         };
         codexConfig = lib.options.mkOption {
           inherit (toml) type;
@@ -198,7 +232,7 @@ in
           json.generate "claude-managed-settings.json" cfg.claudeSettings;
 
         seat.codexConfig.mcp_servers =
-          sharedServers
+          serversFor "codex" cfg
           |> mapAttrs (
             _: server:
             server
@@ -216,7 +250,7 @@ in
         # asks for a wheel password.
         seat.claudeSettings.permissions.allow = singleton "Bash(switcharoo)";
         seat.mcpServers =
-          sharedServers
+          serversFor "libri" cfg
           |> mapAttrs (_: server: server // { type = if server ? url then "http" else "stdio"; });
       };
     };

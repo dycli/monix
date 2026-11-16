@@ -2,9 +2,10 @@
 # Usage: publish_libri_sites.sh
 # Publishes Libri's two Cloudflare Workers from what Water has live, so
 # neither goes stale:
-# - libri.is (libri-is-site): its pages, plus every Android release in
-#   ANDROID_DIR at /android/, with the listing and libri.apk, the newest,
-#   and the privacy policy the newest release rendered there, at /privacy.
+# - libri.is (libri-is-site): the website in WEBSITE_DIR, plus every
+#   Android release in ANDROID_DIR at /android/, with the listing and
+#   libri.apk, the newest, and the privacy policy the newest release
+#   rendered there, at /privacy.
 # - app.libri.is (libri-app): the seat's live site build at SITE.
 # Runs as libri-publish.service, after each Libri deploy and each Android
 # publish; the Cloudflare token arrives as a systemd credential and never
@@ -12,6 +13,7 @@
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 ANDROID_DIR=${LIBRI_ANDROID_DIR:-/var/lib/libri-android}
+WEBSITE_DIR=${LIBRI_WEBSITE_DIR:-/var/lib/libri-website}
 SITE=${LIBRI_PUBLISH_SITE:-/var/lib/libri-build/libri/site}
 WORK=${LIBRI_PUBLISH_DIR:?LIBRI_PUBLISH_DIR names the staging folder}
 TOKEN_FILE=${LIBRI_PUBLISH_TOKEN:-${CREDENTIALS_DIRECTORY:-/nonexistent}/cloudflare}
@@ -28,8 +30,13 @@ stage() {
 }
 
 stage libri-is
+mkdir -p "$WORK/libri-is/assets"
+cp -R "$WEBSITE_DIR"/. "$WORK/libri-is/assets/"
+chmod -R u+w "$WORK/libri-is/assets"
 mkdir -p "$WORK/libri-is/assets/android"
-mv "$WORK/libri-is/_headers" "$WORK/libri-is/assets/_headers"
+# The website may carry headers of its own; these rules go after them.
+cat "$WORK/libri-is/_headers" >> "$WORK/libri-is/assets/_headers"
+rm "$WORK/libri-is/_headers"
 # Assets hold no links: libri.apk becomes a copy of the newest, which the
 # upload stores once, as files are kept by their hash.
 cp -L "$ANDROID_DIR"/index.html "$ANDROID_DIR"/libri-*.apk "$ANDROID_DIR"/libri.apk \

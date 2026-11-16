@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Publishes a signed Libri APK at libri.is/android/ for phones and Obtainium:
-# it adds the APK to the release folder, then starts libri-publish.service,
-# which uploads the folder to the libri.is Worker.
+# it adds the APK to the release folder, then runs libri-publish.service,
+# which uploads the folder to the libri.is Worker, and fails if that fails.
+# An APK over 25 MiB, the Worker's cap per file, is refused before it
+# enters the folder.
 # Each release stays as libri-<versionName>.apk, listed newest first on
 # index.html. Obtainium's HTML source reads the version from the newest file's
 # name, so a check offers an update only when there is one; one bare libri.apk
@@ -36,6 +38,12 @@ facts=$(nix develop .#android --command bash -c '
 [[ $version =~ ^[0-9]+(\.[0-9]+)*$ ]] || { echo "unreadable versionName '$version'"; exit 1; }
 [ -n "$new" ] && { [ "$old" = none ] || [ "$new" = "$old" ]; } ||
   { echo "certificate $new is not the published $old; not published"; exit 1; }
+
+# libri.is serves each APK as a Cloudflare Worker asset, which takes no file
+# over 25 MiB; one larger file fails every later upload of the folder.
+size=$(stat -c %s "$apk")
+((size <= 25 * 1024 * 1024)) ||
+  { echo "$apk is $size bytes, over libri.is's 25 MiB per file; not published"; exit 1; }
 
 name=libri-$version.apk
 if [ -e "$D/$name" ]; then
@@ -74,6 +82,10 @@ if [ -f docs/privacy.md ]; then
   chmod 644 "$D/.privacy.html" && mv "$D/.privacy.html" "$D/privacy.html"
   echo "privacy.html rendered from docs/privacy.md"
 fi
-echo "published $name; libri.apk is $newest"
-systemctl start --no-block libri-publish.service
-echo "libri.is/android/ updates when libri-publish.service finishes (journalctl -u libri-publish)"
+# Waits for the upload, so a refused upload fails the release rather than
+# leaving libri.is on an older build while the release reads published.
+systemctl start libri-publish.service ||
+  { echo "libri-publish.service failed: libri.is/android/ does not offer $name"
+    journalctl -u libri-publish.service -n 15 --no-pager -o cat || true
+    exit 1; }
+echo "published $name at libri.is/android/; libri.apk is $newest"

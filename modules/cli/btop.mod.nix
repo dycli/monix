@@ -12,6 +12,9 @@
         vim_keys = true;
         rounded_corners = true;
         graph_symbol = "braille";
+        # Btrfs subvolume mounts repeat their filesystem's totals; list each
+        # filesystem once, under its main mount.
+        disks_filter = "exclude=/var/lib/models /var/lib/agents /srv/storage-snapshots";
       };
     };
   };
