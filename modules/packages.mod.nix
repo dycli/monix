@@ -68,13 +68,17 @@ in
       home-manager.users.${config.primaryUser}.home.packages = tools pkgs;
     };
 
-  # DISCORD
-  # macOS takes Discord's own signed app as a cask, as home.mod.nix explains.
+  # DISCORD AND FIREFOX
+  # macOS takes each one's own signed app as a cask, as home.mod.nix explains.
+  # Firefox sits beside the elected browser (Brave) without taking its URLs.
   flake.darwinModules.desktop = self.darwinModules.packages-desktop-darwin;
   flake.darwinModules.packages-desktop-darwin =
     { lib, ... }:
     {
-      homebrew.casks = lib.lists.singleton "discord";
+      homebrew.casks = [
+        "discord"
+        "firefox"
+      ];
     };
 
   # GRAPHICAL SESSION UTILITIES AND APPLICATIONS
@@ -94,6 +98,8 @@ in
     {
       home.packages = [
         pkgs.discord
+        # A second browser beside the elected one; it handles no URLs.
+        pkgs.firefox
 
         # Elected applications (default-apps.mod.nix); referencing the options
         # installs whatever a host overrides them to.
