@@ -45,6 +45,13 @@
         end
       '';
 
+      cycleWindow = next: ''
+        function()
+          hl.dispatch(hl.dsp.window.cycle_next({ next = ${lib.trivial.boolToString next} }))
+          hl.dispatch(hl.dsp.window.bring_to_top())
+        end
+      '';
+
       terminal = getExe config.desktopApps.terminal.package;
       browser = getExe config.desktopApps.browser.package;
       messenger = getExe config.desktopApps.messenger.package;
@@ -178,6 +185,11 @@
         (mkBind "SUPER + L" (focusDirection "r") "Focus window right" { })
         (mkBind "SUPER + K" (focusDirection "u") "Focus window up" { })
         (mkBind "SUPER + J" (focusDirection "d") "Focus window down" { })
+
+        # Cycle like the Mac's Cmd+Tab, through the windows of this
+        # workspace; a floating window comes up over the others.
+        (mkBind "SUPER + TAB" (cycleWindow true) "Next window" { })
+        (mkBind "SUPER + SHIFT + TAB" (cycleWindow false) "Previous window" { })
 
         (mkBind "SUPER + COMMA" ''hl.dsp.focus({ workspace = "-1" })'' "Previous workspace" { })
         (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
