@@ -3,9 +3,9 @@
 # seat itself behind that chat, Bridge for Dylan on the seat's logins, tools
 # and hippo. `suki` is Gab's: Libri as anyone installs it, sandboxed under her
 # own user, its hippo its own child, with a computer for code
-# (assistant-computer.mod.nix). Both run the one build at seat.libriBuild,
-# which deploy_libri.sh moves and restarts both on, so a Libri change needs
-# no switch here.
+# (assistant-computer.mod.nix). Both assistants and the seat's core daemon
+# run the build at seat.libriBuild, which deploy_libri.sh moves and restarts
+# them on, so a Libri change needs no switch here.
 #
 # Libri keeps every word of its prompts itself: each instance's rules,
 # opening with who it is, in AGENTS.md and the host's facts in HOST.md, in
@@ -44,6 +44,13 @@
       inherit (lib.ship) fences computers topology;
 
       seat = topology.seat;
+      core = "${seat.libriBuild}/bin/libri-core";
+      coreSocket = "/run/libri-core/owner.sock";
+      seatPath = concatStringsSep ":" [
+        "/etc/profiles/per-user/${seat.user}/bin"
+        "/run/wrappers/bin"
+        "/run/current-system/sw/bin"
+      ];
       # The assistants' sites: a directory each, read by nginx as its group.
       pages = "/var/lib/yeoman-pages";
       host = sub: "https://${sub}.${config.shipProxy.domain}";
@@ -211,6 +218,11 @@
       claudeToken = pkgs.writeShellScript "claude-token" ''
         umask 077
         printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$(< "$CREDENTIALS_DIRECTORY/claude-token")" > "$RUNTIME_DIRECTORY/claude.env"
+      '';
+      startCore = pkgs.writeShellScript "start-libri-core" ''
+        CLAUDE_CODE_OAUTH_TOKEN=$(< "$CREDENTIALS_DIRECTORY/claude-token") || exit 1
+        export CLAUDE_CODE_OAUTH_TOKEN
+        exec ${core} --runtime-dir "$RUNTIME_DIRECTORY" --data-dir "$STATE_DIRECTORY" daemon --no-holder-scope
       '';
       # The tokens rise from their credentials into a private copy of the file.
       sukiMcpTokens = pkgs.writeShellScript "suki-mcp-tokens" ''
@@ -386,7 +398,7 @@
         security.polkit.extraConfig = ''
           polkit.addRule(function (action, subject) {
             if (action.id == "org.freedesktop.systemd1.manage-units" &&
-                ["hippo.service", "libri.service", "suki.service"].indexOf(action.lookup("unit")) >= 0 &&
+                ["hippo.service", "libri.service", "libri-core.service", "suki.service"].indexOf(action.lookup("unit")) >= 0 &&
                 ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
                 subject.user == "${seat.user}") {
               return polkit.Result.YES;
@@ -417,21 +429,22 @@
             # switch changed. Its settings name store paths such as Chromium's,
             # so without this every nixpkgs update restarted it mid-work.
             restartIfChanged = false;
-            after = singleton "hippo.service";
-            wants = singleton "hippo.service";
+            after = [
+              "hippo.service"
+              "libri-core.service"
+            ];
+            wants = [
+              "hippo.service"
+              "libri-core.service"
+            ];
             environment =
               optionalAttrs (limits.server != null) { LIBRI_SERVER_CGROUP = limits.server; }
               // optionalAttrs (limits.harness != null) { LIBRI_HARNESS_CGROUP = limits.harness; }
               // optionalAttrs (limits.browser != null) { LIBRI_BROWSER_CGROUP = limits.browser; }
               // {
                 # The seat's home-manager packages, its claude among them.
-                PATH = mkForce (
-                  concatStringsSep ":" [
-                    "/etc/profiles/per-user/${seat.user}/bin"
-                    "/run/wrappers/bin"
-                    "/run/current-system/sw/bin"
-                  ]
-                );
+                PATH = mkForce seatPath;
+                LIBRI_CORE_SOCKET = coreSocket;
                 OPENCODE_CONFIG = toString openCodeConfig;
               };
             serviceConfig = {
@@ -459,6 +472,37 @@
               RestartSec = 10;
               # Each turn's claude and what it runs.
               MemoryHigh = "12G";
+            };
+          };
+
+          libri-core = {
+            description = "Libri core for the seat";
+            wantedBy = singleton "multi-user.target";
+            restartIfChanged = false;
+            unitConfig.ConditionFileIsExecutable = core;
+            environment.PATH = mkForce seatPath;
+            serviceConfig = {
+              User = seat.user;
+              Group = seat.user;
+              WorkingDirectory = seat.home;
+              SupplementaryGroups = singleton "usage";
+              LoadCredential = "claude-token:${config.secrets.agent-claude-token.path}";
+              StateDirectory = "libri-core";
+              StateDirectoryMode = "0700";
+              RuntimeDirectory = "libri-core";
+              RuntimeDirectoryMode = "0700";
+              # Detached holders keep their sockets across a daemon stop and start.
+              RuntimeDirectoryPreserve = true;
+              # The seat's user scopes deny loopback MCP and sit outside work.slice.
+              # Keep the holders in this cgroup and stop only the daemon.
+              KillMode = "process";
+              ExecStart = startCore;
+              ExecStartPost = "${getExe pkgs.curl} --fail --silent --output /dev/null --retry 12 --retry-all-errors --retry-delay 1 --max-time 1 --unix-socket ${coreSocket} http://localhost/v1/host";
+              Type = "exec";
+              TimeoutStartSec = 20;
+              Restart = "always";
+              RestartSec = 10;
+              LimitCORE = 0;
             };
           };
 

@@ -8,7 +8,15 @@
 {
   imports = lib.lists.singleton (
     lib.ship.host "water" (
-      { pkgs, ... }: {
+      { pkgs, ... }:
+      let
+        harnessMemory = {
+          high = "44G";
+          maximum = "48G";
+          swap = "12G";
+        };
+      in
+      {
         imports = [
           self.nixosModules.lab
           self.nixosModules.desktop
@@ -106,10 +114,8 @@
         # Libri's workers run cargo, Gradle and QEMU, so they share that budget:
         # of its 93.7G the slice's 80G leaves the desktop and services 13.7G at
         # the least (4G is what they hold today) and starts slowing the slice
-        # at 74G, with zram behind both. The workers', their browser's and
-        # the builds' caps add up to the slice's (48G + 4G + 28G), so each
-        # can reach its own without the slice killing in another (paseo,
-        # idle beside them, is the exception).
+        # at 74G, with zram behind both. The legacy and core harnesses each
+        # have their own cap, with the work.slice limit bounding the total.
         # Inside it, the chat comes first. Libri gets its cgroup delegated:
         # the daemon (112 MB) runs in the `server` leaf and every harness,
         # with all it starts, in `harness` beside it (Libri's cgroup.rs). The
@@ -133,6 +139,12 @@
             IOWeight = 1000;
           };
         };
+        systemd.services.libri-core.serviceConfig = {
+          Slice = "work.slice";
+          MemoryHigh = harnessMemory.high;
+          MemoryMax = harnessMemory.maximum;
+          MemorySwapMax = harnessMemory.swap;
+        };
         # Inside Libri's cgroup: the daemon's memory is guaranteed; the
         # workers' processes slow past 44G and are killed past 48G; the
         # agents' browser stays under 4G. At 32G, some twenty agents
@@ -146,7 +158,7 @@
         # inside the slice's 16G.
         libri.limits = {
           server = "memory.min=1G memory.low=1G";
-          harness = "cpu.weight=20 io.weight=20 memory.high=44G memory.max=48G memory.swap.max=12G";
+          harness = "cpu.weight=20 io.weight=20 memory.high=${harnessMemory.high} memory.max=${harnessMemory.maximum} memory.swap.max=${harnessMemory.swap}";
           browser = "cpu.weight=20 memory.high=3G memory.max=4G memory.swap.max=512M memory.oom.group=1 pids.max=2048";
         };
         # Large cores are logged, not kept, and old ones go past 2G in all.

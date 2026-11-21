@@ -1,5 +1,5 @@
-"""deploy_libri.sh moves the one build link the seat's Libri and Suki run
-only once both are quiet, and puts both back if either doesn't answer.
+"""deploy_libri.sh moves the shared build link once both assistants are
+quiet and restores it if a daemon doesn't answer.
 
 The script runs in a scratch repository with nix, systemctl, curl and sleep
 stood in for, so each way a deploy can end is played out: a failed build, a
@@ -41,7 +41,12 @@ exit 0
     # Each restart moves the unit's start time on, and is noted.
     "systemctl": """
 if [ "$1" = show ]; then cat "$STUBS/started"; exit 0; fi
+if [ "$1" = stop ]; then echo "$2" >> "$STUBS/stops"; exit 0; fi
 if [ "$1" = restart ]; then shift; echo "$*" >> "$STUBS/restarts"
+  if [ "$1" = libri-core.service ]; then
+    readlink "$LINK_UNDER_TEST" >> "$STUBS/core_builds"
+    [ "$(readlink "$LINK_UNDER_TEST")" != "$FAIL_CORE_BUILD" ] || exit 1
+  fi
   case " $* " in *" $FAIL_UNIT "*) exit 1 ;; esac
   echo $(( $(cat "$STUBS/started") + 1 )) > "$STUBS/started"; fi
 """,
@@ -169,13 +174,17 @@ for case, health, to in (("a good build", "200", "/nix/store/new"), ("a build th
     shutil.rmtree(root)
 
 
-def build(stubs, name, hippo):
+def build(stubs, name, hippo, *, core=False):
     """A build whose bin/hippo resolves to a hippo binary shared by name, as
     nix shares an unchanged package between builds."""
     (stubs / "hippos").mkdir(exist_ok=True)
     (stubs / "hippos" / hippo).write_text("")
     (stubs / name / "bin").mkdir(parents=True)
     os.symlink(stubs / "hippos" / hippo, stubs / name / "bin" / "hippo")
+    if core:
+        binary = stubs / name / "bin" / "libri-core"
+        binary.touch()
+        binary.chmod(0o755)
     return str(stubs / name)
 
 
@@ -222,6 +231,35 @@ for fail, recorded in (("", "h1"), ("hippo.service", "h0")):
           restarts[-3:] == ["hippo.service", "libri.service", "suki.service"]
           and ran == recorded,
           f"restarts {restarts}, recorded {ran}")
+    shutil.rmtree(root)
+
+# The trial starts with the first release that carries the core. A failed
+# start rolls the shared link back before either assistant is restarted.
+for old_core, new_core, fails, core_builds, stops in (
+    (False, True, False, ["new"], []),
+    (False, True, True, ["new"], ["libri-core.service"]),
+    (True, True, True, ["new", "old"], []),
+    (True, False, False, [], []),
+):
+    root, repo, stubs = scratch()
+    old = build(stubs, "old", "h1", core=old_core)
+    new = build(stubs, "new", "h1", core=new_core)
+    (stubs / "link").unlink()
+    os.symlink(old, stubs / "link")
+    (stubs / "link.hippo").write_text(str(stubs / "hippos" / "h1") + "\n")
+    result = deploy(repo, stubs, "ok", "200", NEW=new, FAIL_CORE_BUILD=new if fails else "")
+    ran = (stubs / "core_builds").read_text().splitlines() if (stubs / "core_builds").exists() else []
+    stopped = (stubs / "stops").read_text().splitlines() if (stubs / "stops").exists() else []
+    restarted = (stubs / "restarts").read_text().splitlines() if (stubs / "restarts").exists() else []
+    expected_restarts = ["libri-core.service"] * len(core_builds)
+    if new_core:
+        expected_restarts += ["libri.service", "suki.service"]
+    succeeds = new_core and not fails
+    check(f"shared build with core before={old_core} after={new_core} start fails={fails}",
+          (result == 0) == succeeds and os.readlink(stubs / "link") == (new if succeeds else old)
+          and [Path(path).name for path in ran] == core_builds
+          and stopped == stops and restarted == expected_restarts,
+          f"result {result}, core builds {ran}, stops {stopped}, restarts {restarted}")
     shutil.rmtree(root)
 
 if failures:
