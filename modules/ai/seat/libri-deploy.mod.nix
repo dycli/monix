@@ -7,8 +7,8 @@
 # restart leaves alone, the way switcharoo runs outside what it switches.
 #
 # - deploy_libri.sh builds the checked-out commit, restarts the services,
-#   checks their health, and rolls back on failure. The release runs the full
-#   flake check before it pushes to main.
+#   checks their health, and rolls back on failure. The release gates
+#   the push to main on the checks for its change scope.
 # - The source is the NAS mirror of GitHub, refreshed first, so only pushed
 #   main deploys and nobody's checkout is touched.
 # - It runs as the seat, whose polkit rule already lets it restart hippo and

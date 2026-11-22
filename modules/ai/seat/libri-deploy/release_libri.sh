@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Releases Libri from a checkout of main, the one way a release happens:
-# bumps the version, runs the full flake check, the page's browser checks and
-# its 400 ms gate, builds the signed APK, commits, tags and pushes, publishes
-# the APK, then starts the Water deploy. Any failure stops it there, with
+# runs the checks for the release's scope, bumps the version, builds the
+# signed APK, commits, tags and pushes, publishes the APK, then starts the
+# Water deploy. Any failure stops it there, with
 # nothing pushed if the failure comes before the push; a failing check is
 # fixed, not rerun.
 #
@@ -41,6 +41,21 @@ version=${1:-${current%.*}.$((${current##*.} + 1))}
 echo "$current -> $version"
 git rev-parse -q --verify "refs/tags/v$version" >/dev/null && { echo "v$version is already tagged"; exit 1; }
 
+last=$(git describe --tags --abbrev=0 --match 'v*' HEAD)
+core_only=
+# A checkout that predates the scope query stays on the full release gate.
+if scope=$(./check_changes.sh --core-only "$last" 2>/dev/null) && [[ $scope == core-only ]]; then
+  core_only=1
+  # Check the committed delta before the release adds the daemon version bump.
+  step "core checks"
+  if ! nice -n 10 ./check_changes.sh "$last" -- -L > /tmp/libri-release-checks.log 2>&1; then
+    grep -E "FAIL|error:" /tmp/libri-release-checks.log | head -20 || true
+    echo "core checks failed (log /tmp/libri-release-checks.log): fix, don't rerun"
+    exit 1
+  fi
+  echo "core checks pass"
+fi
+
 # Puts the version files back if anything below fails before the commit.
 undo() { git checkout --quiet -- libri/Cargo.toml libri/Cargo.lock; }
 trap undo ERR
@@ -51,40 +66,44 @@ trap undo ERR
 step "version"
 ./set_version.sh "$version"
 
-step "checks"
-if ! nice -n 10 nix flake check -L > /tmp/libri-release-checks.log 2>&1; then
-  grep -E "FAIL|error:" /tmp/libri-release-checks.log | head -20
-  echo "checks failed (log /tmp/libri-release-checks.log): fix, don't rerun"
-  false
-fi
-echo "checks pass"
-
-step "browser checks"
-# The Playwright runs of the built page, which the build sandbox can't hold.
-shots=/tmp/libri-release-shots-$version
-if ! nice -n 10 nix run .#browser-checks -- "$shots" > /tmp/libri-release-browser.log 2>&1; then
-  grep -E "^(FAIL|== .* FAILED)" /tmp/libri-release-browser.log | head -20
-  echo "browser checks failed (log /tmp/libri-release-browser.log, pictures $shots): fix, don't rerun"
-  false
-fi
-echo "browser checks pass"
-
-step "ui latency"
-# Every interaction the page offers within 400 ms (Libri's
-# nix/check_ui_latency.py). It fails on a miss, on a stand-in host the page
-# never loads from, on a crawl that finds far too few interactions (under
-# 540) and on a share that stalls, so a broken run never reads as a pass.
-# LIBRI_RELEASE_SKIP_UI_LATENCY=REASON skips it for one release, said in its
-# output and its notes, for when the gate itself is broken rather than the page.
-if [[ -n ${LIBRI_RELEASE_SKIP_UI_LATENCY:-} ]]; then
-  echo "ui latency SKIPPED ($LIBRI_RELEASE_SKIP_UI_LATENCY)"
-  skipped_latency=$LIBRI_RELEASE_SKIP_UI_LATENCY
-elif ! nice -n 10 nix run .#ui-latency > /tmp/libri-release-latency.log 2>&1; then
-  grep -E "^(FAIL|not driven)" /tmp/libri-release-latency.log | head -20
-  echo "ui latency failed (log /tmp/libri-release-latency.log): fix, don't rerun"
-  false
+if [[ -n $core_only ]]; then
+  echo "Skipping browser and UI latency checks: only core and documentation changed since $last."
 else
-  grep -E "^ok" /tmp/libri-release-latency.log
+  step "checks"
+  if ! nice -n 10 nix/with_check_lock.sh --build nix flake check -L > /tmp/libri-release-checks.log 2>&1; then
+    grep -E "FAIL|error:" /tmp/libri-release-checks.log | head -20
+    echo "checks failed (log /tmp/libri-release-checks.log): fix, don't rerun"
+    false
+  fi
+  echo "checks pass"
+
+  step "browser checks"
+  # The Playwright runs of the built page, which the build sandbox can't hold.
+  shots=/tmp/libri-release-shots-$version
+  if ! nice -n 10 nix run .#browser-checks -- "$shots" > /tmp/libri-release-browser.log 2>&1; then
+    grep -E "^(FAIL|== .* FAILED)" /tmp/libri-release-browser.log | head -20
+    echo "browser checks failed (log /tmp/libri-release-browser.log, pictures $shots): fix, don't rerun"
+    false
+  fi
+  echo "browser checks pass"
+
+  step "ui latency"
+  # Every interaction the page offers within 400 ms (Libri's
+  # nix/check_ui_latency.py). It fails on a miss, on a stand-in host the page
+  # never loads from, on a crawl that finds far too few interactions (under
+  # 540) and on a share that stalls, so a broken run never reads as a pass.
+  # LIBRI_RELEASE_SKIP_UI_LATENCY=REASON skips it for one release, said in its
+  # output and its notes, for when the gate itself is broken rather than the page.
+  if [[ -n ${LIBRI_RELEASE_SKIP_UI_LATENCY:-} ]]; then
+    echo "ui latency SKIPPED ($LIBRI_RELEASE_SKIP_UI_LATENCY)"
+    skipped_latency=$LIBRI_RELEASE_SKIP_UI_LATENCY
+  elif ! nice -n 10 nix run .#ui-latency > /tmp/libri-release-latency.log 2>&1; then
+    grep -E "^(FAIL|not driven)" /tmp/libri-release-latency.log | head -20
+    echo "ui latency failed (log /tmp/libri-release-latency.log): fix, don't rerun"
+    false
+  else
+    grep -E "^ok" /tmp/libri-release-latency.log
+  fi
 fi
 
 step "android checks"
@@ -95,7 +114,6 @@ step "android checks"
 echo "not run: the emulator waits for Water's memory"
 
 step "parity"
-last=$(git describe --tags --abbrev=0 --match 'v*' HEAD)
 # It never stops the release; a failed review says so in the notes.
 parity=$(libri-parity "$last" .) || parity="### Client parity since $last
 

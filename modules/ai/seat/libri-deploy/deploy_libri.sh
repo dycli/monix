@@ -2,9 +2,8 @@
 # Usage: deploy_libri.sh CHECKOUT
 # Deploys the Libri commit checked out at CHECKOUT on Water to Libri, Suki,
 # and the core daemon. Interrupted turns resume after the restart.
-# It runs no checks: main takes only commits the full `nix flake check`
-# passed, and that check built these same crates, so the build below finds
-# them in the store and adds only the wrappers.
+# The release checks build the crates before deployment, so the build
+# below reuses their store outputs when the inputs match.
 # It runs as libri-deploy.service (libri-deploy.mod.nix beside it), on a
 # checkout of the pushed commit it deploys: started from inside libri.service,
 # the restart below would kill it before its health check. It logs to the file
