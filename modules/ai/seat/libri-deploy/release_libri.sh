@@ -2,7 +2,7 @@
 # Releases Libri from a checkout of main, the one way a release happens:
 # runs the checks for the release's scope, bumps the version, builds the
 # signed APK, commits, tags and pushes, publishes the APK, then starts the
-# Water deploy. Any failure stops it there, with
+# Water deploy and UI latency after it. Any failure stops it there, with
 # nothing pushed if the failure comes before the push; a failing check is
 # fixed, not rerun.
 #
@@ -21,6 +21,12 @@
 # The deploy runs in its own unit. Its result is in /var/lib/libri-deploy/status.
 # It doesn't move monix's Libri pin, which carries only the NixOS module; the
 # routine flake update moves it.
+#
+# UI latency (Libri's 400 ms check) runs after the deploy, in a unit of its
+# own, and reports a miss rather than holding the release, as Chromium
+# measures performance after landing instead of gating on it: on the
+# release's path it took 1974 s for 0.9.116, and 1104 s run in parallel.
+# Its result is in /var/lib/libri-deploy/ui-latency.status.
 #
 # On the seat's PATH as libri-release.
 # Usage: libri-release [VERSION] [LIBRI_CHECKOUT]   (default: next patch, ~/ark/libri)
@@ -57,7 +63,7 @@ if scope=$(./check_changes.sh --core-only "$last" 2>/dev/null) && [[ $scope == c
 fi
 
 # The slow checks (browser checks, UI latency) whose inputs changed since
-# the last release, which passed them: one whose inputs did not would run
+# the last release, which ran them: one whose inputs did not would run
 # the same test on the same build again. Libri's check_changes.sh reads the
 # inputs from its flake; a checkout that predates the query, or a query
 # that fails, runs both.
@@ -77,7 +83,7 @@ step "version"
 ./set_version.sh "$version"
 
 if [[ -n $core_only ]]; then
-  echo "Skipping browser and UI latency checks: only core and documentation changed since $last."
+  echo "Skipping the flake, browser and UI latency checks: only core and documentation changed since $last."
 else
   step "checks"
   if ! nice -n 10 nix/with_check_lock.sh --build nix flake check -L > /tmp/libri-release-checks.log 2>&1; then
@@ -98,26 +104,6 @@ else
     false
   else
     echo "browser checks pass"
-  fi
-
-  step "ui latency"
-  # Every interaction the page offers within 400 ms (Libri's
-  # nix/check_ui_latency.py). It fails on a miss, on a stand-in host the page
-  # never loads from, on a crawl that finds far too few interactions (under
-  # 540) and on a share that stalls, so a broken run never reads as a pass.
-  # LIBRI_RELEASE_SKIP_UI_LATENCY=REASON skips it for one release, said in its
-  # output and its notes, for when the gate itself is broken rather than the page.
-  if [[ -n ${LIBRI_RELEASE_SKIP_UI_LATENCY:-} ]]; then
-    echo "ui latency SKIPPED ($LIBRI_RELEASE_SKIP_UI_LATENCY)"
-    skipped_latency=$LIBRI_RELEASE_SKIP_UI_LATENCY
-  elif ! needs ui-latency; then
-    echo "ui latency SKIPPED: neither the page, its tiles nor the check changed since $last"
-  elif ! nice -n 10 nix run .#ui-latency > /tmp/libri-release-latency.log 2>&1; then
-    grep -E "^(FAIL|not driven)" /tmp/libri-release-latency.log | head -20
-    echo "ui latency failed (log /tmp/libri-release-latency.log): fix, don't rerun"
-    false
-  else
-    grep -E "^ok" /tmp/libri-release-latency.log
   fi
 fi
 
@@ -156,13 +142,23 @@ mkdir -p "$(dirname "$notes")"
   echo
   awk -v head="## $version " 'index($0, head) == 1 { on = 1; next } on && /^## / { exit } on' libri/CHANGELOG.md
   echo "$parity"
-  if [[ -n ${skipped_latency:-} ]]; then
-    echo
-    echo "The 400 ms gate was skipped for this release: $skipped_latency"
-  fi
 } > "$notes"
 cat "$notes"
 
 step "deploy"
 libri-start-deploy
-echo "Libri $version released: APK published; Water deploy requested, result in /var/lib/libri-deploy/status; notes in $notes"
+
+step "ui latency"
+# Queued behind the deploy (its unit is ordered after libri-deploy.service),
+# so its timing doesn't share the host with the deploy's build and restart.
+if [[ -n $core_only ]]; then
+  latency="UI latency not run: only core and documentation changed since $last"
+elif ! needs ui-latency; then
+  latency="UI latency not run: neither the page, its tiles nor the check changed since $last"
+elif libri-start-ui-latency "$version"; then
+  latency="UI latency runs after the deploy, result in /var/lib/libri-deploy/ui-latency.status"
+else
+  latency="UI latency did not start: run libri-start-ui-latency $version"
+fi
+echo "$latency"
+echo "Libri $version released: APK published; Water deploy requested, result in /var/lib/libri-deploy/status; $latency; notes in $notes"
