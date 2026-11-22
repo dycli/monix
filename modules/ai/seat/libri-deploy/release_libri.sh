@@ -56,6 +56,16 @@ if scope=$(./check_changes.sh --core-only "$last" 2>/dev/null) && [[ $scope == c
   echo "core checks pass"
 fi
 
+# The slow checks (browser checks, UI latency) whose inputs changed since
+# the last release, which passed them: one whose inputs did not would run
+# the same test on the same build again. Libri's check_changes.sh reads the
+# inputs from its flake; a checkout that predates the query, or a query
+# that fails, runs both.
+if ! grep -q -- '--release-checks' check_changes.sh || ! slow=$(./check_changes.sh --release-checks "$last"); then
+  slow=$'browser-checks\nui-latency'
+fi
+needs() { grep -qx "$1" <<< "$slow"; }
+
 # Puts the version files back if anything below fails before the commit.
 undo() { git checkout --quiet -- libri/Cargo.toml libri/Cargo.lock; }
 trap undo ERR
@@ -80,12 +90,15 @@ else
   step "browser checks"
   # The Playwright runs of the built page, which the build sandbox can't hold.
   shots=/tmp/libri-release-shots-$version
-  if ! nice -n 10 nix run .#browser-checks -- "$shots" > /tmp/libri-release-browser.log 2>&1; then
+  if ! needs browser-checks; then
+    echo "browser checks SKIPPED: nothing they run changed since $last"
+  elif ! nice -n 10 nix run .#browser-checks -- "$shots" > /tmp/libri-release-browser.log 2>&1; then
     grep -E "^(FAIL|== .* FAILED)" /tmp/libri-release-browser.log | head -20
     echo "browser checks failed (log /tmp/libri-release-browser.log, pictures $shots): fix, don't rerun"
     false
+  else
+    echo "browser checks pass"
   fi
-  echo "browser checks pass"
 
   step "ui latency"
   # Every interaction the page offers within 400 ms (Libri's
@@ -97,6 +110,8 @@ else
   if [[ -n ${LIBRI_RELEASE_SKIP_UI_LATENCY:-} ]]; then
     echo "ui latency SKIPPED ($LIBRI_RELEASE_SKIP_UI_LATENCY)"
     skipped_latency=$LIBRI_RELEASE_SKIP_UI_LATENCY
+  elif ! needs ui-latency; then
+    echo "ui latency SKIPPED: neither the page, its tiles nor the check changed since $last"
   elif ! nice -n 10 nix run .#ui-latency > /tmp/libri-release-latency.log 2>&1; then
     grep -E "^(FAIL|not driven)" /tmp/libri-release-latency.log | head -20
     echo "ui latency failed (log /tmp/libri-release-latency.log): fix, don't rerun"
