@@ -37,7 +37,9 @@
 
       moveDirection = direction: ''
         function()
-          if hl.plugin.hy3 and hl.get_config("general.layout") == "hy3" then
+          if floating_panes.active() then
+            floating_panes.move("${direction}")
+          elseif hl.plugin.hy3 and hl.get_config("general.layout") == "hy3" then
             hl.plugin.hy3.move_window("${direction}")()
           else
             hl.dispatch(hl.dsp.window.move({ direction = "${direction}" }))
@@ -45,10 +47,14 @@
         end
       '';
 
-      cycleWindow = next: ''
+      cycleWindow = next: stackOnly: ''
         function()
-          hl.dispatch(hl.dsp.window.cycle_next({ next = ${lib.trivial.boolToString next} }))
-          hl.dispatch(hl.dsp.window.bring_to_top())
+          if floating_panes.active() then
+            floating_panes.cycle(${lib.trivial.boolToString next}, ${lib.trivial.boolToString stackOnly})
+          else
+            hl.dispatch(hl.dsp.window.cycle_next({ next = ${lib.trivial.boolToString next} }))
+            hl.dispatch(hl.dsp.window.bring_to_top())
+          end
         end
       '';
 
@@ -141,19 +147,32 @@
         # schedules the layout refresh.
         (mkBind "SUPER + A" ''
           function()
-            hl.config({ general = { layout = "hy3" } })
+            floating_panes.tile("hy3")
           end
         '' "Switch to hy3 layout" { })
         (mkBind "SUPER + SHIFT + A" ''
           function()
-            hl.config({ general = { layout = "scrolling" } })
+            floating_panes.tile("scrolling")
           end
         '' "Switch to scrolling layout" { })
         (mkBind "SUPER + CTRL + A" ''
           function()
-            hl.config({ general = { layout = "dwindle" } })
+            floating_panes.tile("dwindle")
           end
         '' "Switch to dwindle layout" { })
+        (mkBind "SUPER + ALT + A" "function() floating_panes.enable() end" "Switch to floating panes" { })
+        (mkBind "SUPER + GRAVE" (cycleWindow true true) "Next window in pane" { })
+        (mkBind "SUPER + SHIFT + GRAVE" (cycleWindow false true) "Previous window in pane" { })
+        (mkBind "SUPER + ALT + UP"
+          ''function() if floating_panes.active() then floating_panes.snap("top") end end''
+          "Snap window to top half"
+          { }
+        )
+        (mkBind "SUPER + ALT + DOWN"
+          ''function() if floating_panes.active() then floating_panes.snap("bottom") end end''
+          "Snap window to bottom half"
+          { }
+        )
         # colresize is a scrolling-layout message; no-op under dwindle.
         (mkBind "SUPER + CTRL + H" ''hl.dsp.layout("colresize all 0.333")'' "Set all columns to 1/3 width"
           { }
@@ -176,10 +195,10 @@
         (mkBind "SUPER + SHIFT + F" "hl.dsp.window.float()" "Toggle floating" { })
         (mkBind "SUPER + F" ''hl.dsp.window.fullscreen({ mode = "fullscreen" })'' "Toggle fullscreen" { })
 
-        (mkBind "SUPER + LEFT" (focusDirection "l") "Focus window left" { })
-        (mkBind "SUPER + RIGHT" (focusDirection "r") "Focus window right" { })
-        (mkBind "SUPER + UP" (focusDirection "u") "Focus window up" { })
-        (mkBind "SUPER + DOWN" (focusDirection "d") "Focus window down" { })
+        (mkBind "SUPER + LEFT" (moveDirection "l") "Move window left" { })
+        (mkBind "SUPER + RIGHT" (moveDirection "r") "Move window right" { })
+        (mkBind "SUPER + UP" (moveDirection "u") "Move window up" { })
+        (mkBind "SUPER + DOWN" (moveDirection "d") "Move window down" { })
 
         (mkBind "SUPER + H" (focusDirection "l") "Focus window left" { })
         (mkBind "SUPER + L" (focusDirection "r") "Focus window right" { })
@@ -188,16 +207,11 @@
 
         # Cycle like the Mac's Cmd+Tab, through the windows of this
         # workspace; a floating window comes up over the others.
-        (mkBind "SUPER + TAB" (cycleWindow true) "Next window" { })
-        (mkBind "SUPER + SHIFT + TAB" (cycleWindow false) "Previous window" { })
+        (mkBind "SUPER + TAB" (cycleWindow true false) "Next window" { })
+        (mkBind "SUPER + SHIFT + TAB" (cycleWindow false false) "Previous window" { })
 
         (mkBind "SUPER + COMMA" ''hl.dsp.focus({ workspace = "-1" })'' "Previous workspace" { })
         (mkBind "SUPER + PERIOD" ''hl.dsp.focus({ workspace = "+1" })'' "Next workspace" { })
-
-        (mkBind "SUPER + SHIFT + LEFT" (moveDirection "l") "Move window left" { })
-        (mkBind "SUPER + SHIFT + RIGHT" (moveDirection "r") "Move window right" { })
-        (mkBind "SUPER + SHIFT + UP" (moveDirection "u") "Move window up" { })
-        (mkBind "SUPER + SHIFT + DOWN" (moveDirection "d") "Move window down" { })
 
         (mkBind "SUPER + SHIFT + H" (moveDirection "l") "Move window left" { })
         (mkBind "SUPER + SHIFT + L" (moveDirection "r") "Move window right" { })
