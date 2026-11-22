@@ -216,4 +216,4 @@ itself stays pipe-free so a stock parser can always read it.
 - Deploy: push `main`, then `switcharoo`. A change touching a fenced file
   needs the captain's `switcharoo --approve`. A switch never restarts
   Libri or Suki (`restartIfChanged = false`): a change to their units
-  takes effect at the next `libri-release`, which restarts them once quiet.
+  takes effect when the next `libri-release` restarts them.

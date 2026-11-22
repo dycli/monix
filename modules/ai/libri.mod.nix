@@ -424,10 +424,9 @@
           libri = {
             description = "Bridge in Dylan's web chat";
             # A restart ends every turn and worker under way, so a switch
-            # leaves Libri running: libri-release restarts it once it is quiet
-            # (seat/libri-deploy.mod.nix), and that restart reads what the
-            # switch changed. Its settings name store paths such as Chromium's,
-            # so without this every nixpkgs update restarted it mid-work.
+            # leaves Libri running until libri-release restarts it with the
+            # new unit configuration (seat/libri-deploy.mod.nix). Store
+            # paths such as Chromium's change on nixpkgs updates.
             restartIfChanged = false;
             after = [
               "hippo.service"
@@ -558,7 +557,7 @@
 
           suki = {
             description = "Suki, Gab's household assistant";
-            # As Libri's above: libri-release restarts both when quiet.
+            # Like Libri, Suki reads unit changes at the next release.
             restartIfChanged = false;
             serviceConfig = sukiSandbox // {
               SupplementaryGroups = sukiSandbox.SupplementaryGroups ++ singleton computers.deskGroup;

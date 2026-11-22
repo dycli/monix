@@ -1,10 +1,7 @@
 #!/bin/sh
 # Usage: deploy_libri.sh CHECKOUT
-# Deploys the Libri commit checked out at CHECKOUT on Water to every instance there, the seat's
-# (libri) and Gab's (suki), and the seat's core daemon. Builds, waits until
-# both assistants are quiet, restarts the daemons and puts them back on the
-# previous build if one doesn't answer. Restarting a legacy turn cuts off
-# the answer the person is waiting for, so it waits for a quiet moment.
+# Deploys the Libri commit checked out at CHECKOUT on Water to Libri, Suki,
+# and the core daemon. Interrupted turns resume after the restart.
 # It runs no checks: main takes only commits the full `nix flake check`
 # passed, and that check built these same crates, so the build below finds
 # them in the store and adds only the wrappers.
@@ -13,9 +10,7 @@
 # the restart below would kill it before its health check. It logs to the file
 # below. It lives in monix, not in Libri: Libri holds the product only.
 LOG=${DEPLOY_LIBRI_LOG:-/tmp/deploy_libri.log}
-# The unit runs from LINK, restarting on its own if it dies, so LINK moves
-# only once quiet: until then the new build waits at STAGE, and a crash or a
-# killed deploy leaves the old build running.
+# Keep the current build linked until the new build passes the core check.
 LINK=${DEPLOY_LIBRI_LINK:-/var/lib/libri-build/libri}
 STAGE=$LINK.next
 # Each instance's unit and port. Suki's hippo is her daemon's child, as on
@@ -24,10 +19,8 @@ STAGE=$LINK.next
 INSTANCES=${DEPLOY_LIBRI_INSTANCES:-libri:8951 suki:8952}
 HIPPOS=${DEPLOY_LIBRI_HIPPOS:-hippo}
 
-here=$(cd "$(dirname "$0")" && pwd)
 exec > "$LOG" 2>&1
 cd "${1:?usage: deploy_libri.sh CHECKOUT}" || exit 1
-. "$here/await_quiet.sh"
 echo "deploying $(git rev-parse --short HEAD) $(date +%T)"
 previous=$(readlink "$LINK")
 nix build .#default -o "$STAGE" || { echo "build failed, not deployed"; exit 1; }
@@ -39,15 +32,6 @@ if [ -x "$LINK/bin/libri-core" ] && [ ! -x "$STAGE/bin/libri-core" ]; then
   exit 1
 fi
 
-# Each in turn. A turn that starts on one while the other is awaited is cut
-# by the restart, and resumes after it, as any turn at the ceiling does.
-for i in $INSTANCES; do
-  if ! await_quiet "http://127.0.0.1:${i##*:}/api/task"; then
-    echo "not deployed; nothing restarted"
-    rm -f "$STAGE"
-    exit 1
-  fi
-done
 # nix build, not ln, so the link is a GC root on a host this script never
 # deployed to before.
 nix build "$built" -o "$LINK" || { echo "link not moved, not deployed"; rm -f "$STAGE"; exit 1; }

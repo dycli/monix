@@ -18,8 +18,7 @@
 # left uncommitted in libri/CHANGELOG.md; without one, set_version.sh drafts
 # it from the commit subjects since the last tag.
 #
-# The deploy waits for Libri to be quiet, so started from a Libri turn it goes
-# live once that turn ends; its result is in /var/lib/libri-deploy/status.
+# The deploy runs in its own unit. Its result is in /var/lib/libri-deploy/status.
 # It doesn't move monix's Libri pin, which carries only the NixOS module; the
 # routine flake update moves it.
 #
@@ -133,4 +132,4 @@ cat "$notes"
 
 step "deploy"
 libri-start-deploy
-echo "Libri $version released: APK published; Water deploy queued for the next quiet moment, result in /var/lib/libri-deploy/status; notes in $notes"
+echo "Libri $version released: APK published; Water deploy requested, result in /var/lib/libri-deploy/status; notes in $notes"

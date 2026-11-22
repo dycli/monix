@@ -6,18 +6,16 @@
 # rollback (11-03 16:16). Here the deploy runs in its own cgroup, which the
 # restart leaves alone, the way switcharoo runs outside what it switches.
 #
-# - The logic is deploy_libri.sh in libri-deploy/ beside this file, run on a
-#   checkout of the commit it deploys: build, wait for quiet, restart, health
-#   check, rollback. It runs no checks: main takes only commits the full flake
-#   check passed. It lives here, not in Libri, which holds the product only;
-#   so do the ship's Android publish and proofs.
+# - deploy_libri.sh builds the checked-out commit, restarts the services,
+#   checks their health, and rolls back on failure. The release runs the full
+#   flake check before it pushes to main.
 # - The source is the NAS mirror of GitHub, refreshed first, so only pushed
 #   main deploys and nobody's checkout is touched.
 # - It runs as the seat, whose polkit rule already lets it restart hippo and
 #   Libri; polkit lets the seat start this unit and do nothing else to it.
 #   systemd runs one start at a time; a start while one runs joins it.
-# - `libri-start-deploy` starts it and returns. The deploy waits only for
-#   the main turn and Temp to be quiet; workers cut off resume after it.
+# - `libri-start-deploy` starts it and returns. Interrupted turns resume
+#   after the services restart.
 # - The result is in /var/lib/libri-deploy: `status` (commit, start, end,
 #   result: live, rolled back, not deployed, already live) and `deploy.log`.
 { self, ... }:
@@ -36,12 +34,11 @@ in
             nativeBuildInputs = [
               pkgs.python3
               pkgs.git
-              pkgs.jq
             ];
           }
           ''
             export HOME=$TMPDIR
-            python3 -I ${scripts}/check_deploy.py ${scripts}/await_quiet.sh ${scripts}/deploy_libri.sh
+            python3 -I ${scripts}/check_deploy.py ${scripts}/deploy_libri.sh
             touch $out
           '';
     };
@@ -73,7 +70,6 @@ in
           pkgs.curl
           pkgs.git
           pkgs.gnugrep
-          pkgs.jq
         ];
         text = ''
           checkout=${state}/libri
@@ -160,8 +156,8 @@ in
           StateDirectory = "libri-deploy";
           StateDirectoryMode = "0755";
           ExecStart = getExe deploy;
-          # The build, then up to deploy_libri.sh's 30-minute quiet wait.
-          TimeoutStartSec = "3h";
+          # Allow for a cold build and the service restart and health checks.
+          TimeoutStartSec = "150min";
         };
       };
 
