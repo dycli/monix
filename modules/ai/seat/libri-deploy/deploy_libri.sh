@@ -46,7 +46,13 @@ HIPPO_RAN=$LINK.hippo
 restart_core() {
   if [ -x "$LINK/bin/libri-core" ]; then
     # The unit's post-start check waits for the new daemon's owner socket.
-    systemctl restart libri-core.service
+    systemctl restart libri-core.service || return 1
+    # The gateway runs the same build. One not running stays off: it waits
+    # for its credential, and a host without it has no such unit. It runs
+    # beside today's Libri, so a failure here rolls nothing back.
+    if systemctl is-active -q libri-gateway.service; then
+      systemctl restart libri-gateway.service || echo "libri-gateway did not restart"
+    fi
   elif [ -x "$built/bin/libri-core" ]; then
     # A rollback to a release before the core was packaged.
     systemctl stop libri-core.service

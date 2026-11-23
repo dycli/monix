@@ -119,6 +119,10 @@
         LIBRI_GATEWAY_TOKEN_FILE = gatewayToken;
         LIBRI_GATEWAY_URL = host gateway.subdomain;
       };
+      # The web view comes from the pinned input, the gateway and core it
+      # speaks `/v1` to from the deployed build, which carries no web view:
+      # bump the libri input with each Libri release so the two stay one
+      # release.
       web = libriPackages.web or null;
       gatewayServe = escapeShellArgs (
         [

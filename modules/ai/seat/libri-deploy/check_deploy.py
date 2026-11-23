@@ -32,6 +32,7 @@ exit 0
 """,
     # Record service operations and simulate restart failures.
     "systemctl": """
+if [ "$1" = is-active ]; then case " $ACTIVE " in *" $3 "*) exit 0 ;; esac; exit 3; fi
 if [ "$1" = stop ]; then echo "$2" >> "$STUBS/stops"; exit 0; fi
 if [ "$1" = restart ]; then shift; echo "$*" >> "$STUBS/restarts"
   if [ "$1" = libri-core.service ]; then
@@ -213,6 +214,26 @@ for old_core, new_core, fails, core_builds, stops in (
           and stopped == stops and restarted == expected_restarts,
           f"result {result}, core builds {ran}, stops {stopped}, restarts {restarted}")
     shutil.rmtree(root)
+
+# A running gateway restarts on the core's build right after the core, on
+# a good deploy and again on the rollback; one not running stays off.
+for case, health, cores in (("a good deploy", "200", 1), ("a rolled-back deploy", "500", 2)):
+    for active in (True, False):
+        root, repo, stubs = scratch()
+        old, new = build(stubs, "old", "h1", core=True), build(stubs, "new", "h1", core=True)
+        (stubs / "link").unlink()
+        os.symlink(old, stubs / "link")
+        deploy(repo, stubs, "ok", health, NEW=new, **({"ACTIVE": "libri-gateway.service"} if active else {}))
+        restarts = (stubs / "restarts").read_text().split()
+        after = [restarts[i + 1] if i + 1 < len(restarts) else None
+                 for i, unit in enumerate(restarts) if unit == "libri-core.service"]
+        if active:
+            check(f"{case} restarts a running gateway after the core",
+                  after == ["libri-gateway.service"] * cores and restarts.count("libri-gateway.service") == cores,
+                  restarts)
+        else:
+            check(f"{case} leaves a gateway that isn't running", "libri-gateway.service" not in restarts, restarts)
+        shutil.rmtree(root)
 
 if failures:
     sys.exit(f"{len(failures)} failed")

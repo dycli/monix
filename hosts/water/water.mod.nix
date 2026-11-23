@@ -140,31 +140,33 @@
           };
         };
         # Stage 2 beside today's Libri: the gateway at core.su.is, and the
-        # add-ons that need no key Water lacks. Each keeps its own store under
-        # the core's state; the legacy instances keep theirs.
+        # add-ons that need no key Water lacks, each with its own store under
+        # the core's state. The add-ons stay off while today's Libri forwards
+        # chats to the core: the core's layer reaches those chats too, which
+        # would then hold two of each tool on two stores.
         libri.gateway.enable = true;
         libri.core.addons = {
           files = {
-            enable = true;
+            enable = false;
             environment.LIBRI_FILES_DIR = "/var/lib/libri-core/files";
           };
           lists = {
-            enable = true;
+            enable = false;
             environment.LIBRI_LISTS_DIR = "/var/lib/libri-core/lists";
           };
           boards = {
-            enable = true;
+            enable = false;
             environment.LIBRI_BOARDS_DIR = "/var/lib/libri-core/boards";
           };
           pages = {
-            enable = true;
+            enable = false;
             environment = {
               LIBRI_PAGES_DIR = "/var/lib/libri-core/pages";
               LIBRI_PAGES_DATA_DIR = "/var/lib/libri-core/page-data";
             };
           };
           # The key proxy's sockets: credentials.nix.
-          search.enable = true;
+          search.enable = false;
         };
         systemd.services.libri-core.serviceConfig = {
           Slice = "work.slice";
