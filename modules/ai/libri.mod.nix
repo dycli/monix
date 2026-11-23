@@ -79,8 +79,8 @@
       };
 
       # STAGE 2: THE CORE'S OWN CLIENTS
-      # The add-ons and the web view come from the pinned libri input, built
-      # here; the core and the gateway run the deployed build. A package the
+      # The add-ons come from the pinned libri input, built here; the core,
+      # the gateway and its web view run the deployed build. An add-on the
       # input does not carry yet is left out.
       libriPackages = inputs.libri.packages.${pkgs.stdenv.hostPlatform.system} or { };
       addonNames = [
@@ -119,21 +119,17 @@
         LIBRI_GATEWAY_TOKEN_FILE = gatewayToken;
         LIBRI_GATEWAY_URL = host gateway.subdomain;
       };
-      # The web view comes from the pinned input, the gateway and core it
-      # speaks `/v1` to from the deployed build, which carries no web view:
-      # bump the libri input with each Libri release so the two stay one
-      # release.
-      web = libriPackages.web or null;
+      # The web view ships in the deployed build beside the gateway (Libri
+      # 0.9.119 and later), so the two always move in one release.
+      gatewayWeb = "${seat.libriBuild}/web";
       gatewayServe = escapeShellArgs (
         [
           "${seat.libriBuild}/bin/libri-gateway"
           "serve"
           "--listen"
           gateway.listen
-        ]
-        ++ optionals (web != null) [
           "--web-dir"
-          "${web}"
+          gatewayWeb
         ]
         ++ optionals (gateway.tailnetOwner != null) [
           "--tailnet-whois"
@@ -698,7 +694,11 @@
             wants = singleton "libri-core.service";
             unitConfig = {
               ConditionFileIsExecutable = "${seat.libriBuild}/bin/libri-gateway";
-              ConditionPathExists = gatewayToken;
+              # A build before Libri 0.9.119 carries no web view.
+              ConditionPathExists = [
+                gatewayToken
+                "${gatewayWeb}/index.html"
+              ];
             };
             environment = gatewayEnvironment;
             serviceConfig = lib.ship.hardened.tenant // {

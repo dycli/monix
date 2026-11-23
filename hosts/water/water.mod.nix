@@ -167,6 +167,40 @@
           };
           # The key proxy's sockets: credentials.nix.
           search.enable = false;
+          # Each provider key is a file the seat writes before enabling:
+          # these clients take an HTTPS endpoint, not the key proxy's sockets.
+          image = {
+            enable = false;
+            environment = {
+              LIBRI_IMAGE_DIR = "/var/lib/libri-core/images";
+              LIBRI_IMAGE_TOKEN_FILE = "/var/lib/libri-core/image.token";
+            };
+          };
+          speech = {
+            enable = false;
+            environment = {
+              LIBRI_SPEECH_DIR = "/var/lib/libri-core/speech";
+              LIBRI_SPEECH_INPUT_DIR = "/var/lib/libri-core/files";
+              LIBRI_SPEECH_TOKEN_FILE = "/var/lib/libri-core/speech.token";
+            };
+          };
+          # Sends wait on the person's approval through the core, on the
+          # session's own LIBRI_SOCKET, LIBRI_TOKEN and LIBRI_SESSION.
+          mail = {
+            enable = false;
+            environment = {
+              LIBRI_MAIL_JMAP_URL = "https://api.fastmail.com/jmap/session";
+              LIBRI_MAIL_TOKEN_FILE = "/var/lib/libri-core/mail.token";
+            };
+          };
+          # Outbound only; each peer's URL and token are in the peers file.
+          a2a = {
+            enable = false;
+            environment = {
+              LIBRI_A2A_NAME = "Bridge";
+              LIBRI_A2A_PEERS_FILE = "/var/lib/libri-core/a2a-peers.json";
+            };
+          };
         };
         systemd.services.libri-core.serviceConfig = {
           Slice = "work.slice";
