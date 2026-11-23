@@ -4,6 +4,13 @@
 { config, lib, ... }:
 let
   inherit (lib.lists) singleton;
+
+  # Libri's web tools and the core's search add-on, through the key proxy.
+  searchSockets = {
+    LIBRI_SEARCH_SOCKET = "/run/key-proxy/parallel.sock";
+    LIBRI_EXA_SOCKET = "/run/key-proxy/exa.sock";
+    LIBRI_BRAVE_SOCKET = "/run/key-proxy/brave.sock";
+  };
 in
 {
   users.users.${config.primaryUser}.hashedPasswordFile = config.secrets.katara-password.path;
@@ -115,13 +122,8 @@ in
   systemd.services.money.restartTriggers = singleton ./secrets/plaid.env.age;
   systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
   systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
-  systemd.services.libri = {
-    environment = {
-      LIBRI_SEARCH_SOCKET = "/run/key-proxy/parallel.sock";
-      LIBRI_EXA_SOCKET = "/run/key-proxy/exa.sock";
-      LIBRI_BRAVE_SOCKET = "/run/key-proxy/brave.sock";
-    };
-  };
+  systemd.services.libri.environment = searchSockets;
+  libri.core.addons.search.environment = searchSockets;
   systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
   systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
 }

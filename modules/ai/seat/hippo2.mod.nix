@@ -109,5 +109,13 @@
       # SQLite needs a live database's WAL index writable even to read it.
       systemd.services.hippo2.serviceConfig.ReadWritePaths =
         singleton "-${seat.home}/.local/share/opencode";
+
+      # The seat's Libri core (libri.mod.nix), followed through its event log
+      # on a read-only credential; hippo2 leaves the core unread until the
+      # token file exists (`libri credential add hippo2 --scope read`).
+      systemd.services.hippo2.environment = {
+        HIPPO2_LIBRI_CORE_SOCKET = "/run/libri-core/client.sock";
+        HIPPO2_LIBRI_CORE_TOKEN_FILE = "${seat.hippo2}/libri-core.token";
+      };
     };
 }

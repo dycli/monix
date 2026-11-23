@@ -36,21 +36,39 @@
       ...
     }:
     let
-      inherit (lib.attrsets) optionalAttrs recursiveUpdate;
-      inherit (lib.lists) singleton;
+      inherit (lib.attrsets)
+        filterAttrs
+        genAttrs
+        mapAttrs
+        mapAttrsToList
+        optionalAttrs
+        recursiveUpdate
+        ;
+      inherit (lib.lists) optionals singleton;
       inherit (lib.meta) getExe getExe';
-      inherit (lib.modules) mkForce;
-      inherit (lib.strings) readFile concatStringsSep;
+      inherit (lib.modules) mkForce mkIf;
+      inherit (lib.strings)
+        readFile
+        concatStringsSep
+        escapeShellArg
+        escapeShellArgs
+        ;
       inherit (lib.ship) fences computers topology;
 
       seat = topology.seat;
       core = "${seat.libriBuild}/bin/libri-core";
-      coreSocket = "/run/libri-core/owner.sock";
+      coreRuntime = "/run/libri-core";
+      coreState = "/var/lib/libri-core";
+      coreSocket = "${coreRuntime}/owner.sock";
+      coreClients = "${coreRuntime}/client.sock";
       seatPath = concatStringsSep ":" [
         "/etc/profiles/per-user/${seat.user}/bin"
         "/run/wrappers/bin"
         "/run/current-system/sw/bin"
       ];
+      # Server-sent events stream as they come; uploads may be as big as the
+      # chat takes (UPLOAD_MAX in site.rs).
+      proxyExtra = "proxy_buffering off; client_max_body_size 100m;";
       # The assistants' sites: a directory each, read by nginx as its group.
       pages = "/var/lib/yeoman-pages";
       host = sub: "https://${sub}.${config.shipProxy.domain}";
@@ -59,6 +77,97 @@
         libri = 8951;
         suki = 8952;
       };
+
+      # STAGE 2: THE CORE'S OWN CLIENTS
+      # The add-ons and the web view come from the pinned libri input, built
+      # here; the core and the gateway run the deployed build. A package the
+      # input does not carry yet is left out.
+      libriPackages = inputs.libri.packages.${pkgs.stdenv.hostPlatform.system} or { };
+      addonNames = [
+        "files"
+        "lists"
+        "boards"
+        "pages"
+        "search"
+        "image"
+        "mail"
+        "a2a"
+        "speech"
+      ];
+      addons =
+        config.libri.core.addons |> filterAttrs (name: addon: addon.enable && libriPackages ? ${name});
+      coreSetup = (pkgs.formats.toml { }).generate "libri-core.toml" {
+        mcp =
+          addons
+          |> mapAttrs (
+            name: addon:
+            {
+              command = singleton (getExe' libriPackages.${name} "libri-${name}");
+            }
+            // optionalAttrs (addon.environment != { }) { env = addon.environment; }
+          );
+      };
+
+      gateway = config.libri.gateway;
+      gatewayState = "/var/lib/libri-gateway";
+      gatewayToken = "${gatewayState}/admin.token";
+      # Shared by the service and the seat's `libri-gateway pair`, `connector`
+      # and `revoke`, which must reach the same store and credential.
+      gatewayEnvironment = {
+        LIBRI_SOCKET = coreClients;
+        LIBRI_GATEWAY_STATE = "${gatewayState}/gateway.sqlite";
+        LIBRI_GATEWAY_TOKEN_FILE = gatewayToken;
+        LIBRI_GATEWAY_URL = host gateway.subdomain;
+      };
+      web = libriPackages.web or null;
+      gatewayServe = escapeShellArgs (
+        [
+          "${seat.libriBuild}/bin/libri-gateway"
+          "serve"
+          "--listen"
+          gateway.listen
+        ]
+        ++ optionals (web != null) [
+          "--web-dir"
+          "${web}"
+        ]
+        ++ optionals (gateway.tailnetOwner != null) [
+          "--tailnet-whois"
+          "--tailnet-owner"
+          gateway.tailnetOwner
+        ]
+      );
+
+      # A program on the seat's PATH with its service's settings as defaults,
+      # in any shell, login or not, so a command reaches the store and the
+      # daemon the service does.
+      seatCommand =
+        name: environment: program:
+        pkgs.writeShellScriptBin name (
+          (
+            environment
+            |> mapAttrsToList (variable: value: "export ${variable}=\${${variable}:-${escapeShellArg value}}")
+          )
+          ++ singleton "exec ${program} \"$@\""
+          |> concatStringsSep "\n"
+        );
+      # `libri` is the core's CLI, attached to libri-core.service: without
+      # these, it looks under $XDG_RUNTIME_DIR and starts a second daemon.
+      coreEnvironment = {
+        LIBRI_RUNTIME_DIR = coreRuntime;
+        LIBRI_DATA_DIR = coreState;
+      };
+      coreCommands = [
+        (seatCommand "libri" coreEnvironment core)
+        (seatCommand "libri-gateway" gatewayEnvironment "${seat.libriBuild}/bin/libri-gateway")
+      ]
+      ++ (
+        addons
+        |> mapAttrsToList (
+          name: addon:
+          seatCommand "libri-${name}" addon.environment (getExe' libriPackages.${name} "libri-${name}")
+        )
+      );
       # What both configs say alike.
       shared = {
         harness = {
@@ -282,6 +391,58 @@
         };
       };
 
+      # The Stage 2 add-ons (Libri's addons/NAME), each its flake package
+      # serving MCP on stdio, given to every session of the seat's core from
+      # its deployment layer, /etc/libri-core/libri.toml.
+      options.libri.core.addons = genAttrs addonNames (name: {
+        enable = mkOption {
+          type = types.bool;
+          default = false;
+          description = "Give the core's sessions the ${name} add-on, once the libri input carries it.";
+        };
+        environment = mkOption {
+          type = types.attrsOf types.str;
+          default = { };
+          description = "Variables for libri-${name}, also the defaults of the seat's `libri-${name}` command.";
+        };
+      });
+
+      # The core's network clients: paired devices, the Android app and the
+      # web view, on `/v1` beside today's site.
+      options.libri.gateway = {
+        enable = mkOption {
+          type = types.bool;
+          default = false;
+          description = "Run libri-gateway against the seat's core.";
+        };
+        port = mkOption {
+          type = types.port;
+          default = 8953;
+          description = "Port the gateway serves plain HTTP on, behind the proxy's TLS.";
+        };
+        listen = mkOption {
+          type = types.str;
+          default = "127.0.0.1:${toString gateway.port}";
+          description = "Address the gateway binds; the proxy reaches it at 127.0.0.1 on `port`.";
+        };
+        subdomain = mkOption {
+          type = types.str;
+          default = "core";
+          description = "Name under the proxy's domain the gateway is served at.";
+        };
+        tailnetOwner = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = ''
+            Tailscale login whose devices the gateway admits by tailscaled's
+            whois, without pairing. Only a direct tailnet connection names its
+            caller: through the proxy every caller is loopback, which whois
+            never admits, so this needs `listen` open to the tailnet as well,
+            such as 0.0.0.0 behind a firewall that trusts only tailscale0.
+          '';
+        };
+      };
+
       config = {
 
         services.libri.instances.libri = {
@@ -355,20 +516,41 @@
         users.groups.yeoman-image = { };
 
         # Each serves its host itself: the chat at the root, the pages beside
-        # it. Server-sent events stream as they come; uploads may be as big as
-        # the chat takes (UPLOAD_MAX in site.rs).
+        # it; the gateway serves `/v1` and the web view.
         shipProxy.routes =
-          {
-            libri = "si";
-            suki = "suki";
-          }
-          |> lib.attrsets.mapAttrs (
-            n: subdomain: {
-              inherit subdomain;
-              port = ports.${n};
-              proxyExtra = "proxy_buffering off; client_max_body_size 100m;";
+          (
+            {
+              libri = "si";
+              suki = "suki";
             }
-          );
+            |> mapAttrs (
+              n: subdomain: {
+                inherit subdomain;
+                port = ports.${n};
+                inherit proxyExtra;
+              }
+            )
+          )
+          // optionalAttrs gateway.enable {
+            libri-gateway = {
+              inherit (gateway) subdomain port;
+              inherit proxyExtra;
+            };
+          };
+
+        environment.etc."libri-core/libri.toml" = mkIf (addons != { }) { source = coreSetup; };
+        users.users.${seat.user}.packages = coreCommands;
+        # For login shells' own tools; the seat's commands carry the same
+        # defaults for shells that read no session.
+        environment.sessionVariables = coreEnvironment;
+
+        # The gateway's store, there before its first start so the seat can
+        # write the credential the unit waits for.
+        systemd.tmpfiles.settings.libri-gateway.${gatewayState}.d = mkIf gateway.enable {
+          user = seat.user;
+          group = seat.user;
+          mode = "0700";
+        };
 
         systemd.tmpfiles.settings.yeoman-pages = {
           ${pages}.d = {
@@ -398,7 +580,7 @@
         security.polkit.extraConfig = ''
           polkit.addRule(function (action, subject) {
             if (action.id == "org.freedesktop.systemd1.manage-units" &&
-                ["hippo.service", "libri.service", "libri-core.service", "suki.service"].indexOf(action.lookup("unit")) >= 0 &&
+                ["hippo.service", "libri.service", "libri-core.service", "libri-gateway.service", "suki.service"].indexOf(action.lookup("unit")) >= 0 &&
                 ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
                 subject.user == "${seat.user}") {
               return polkit.Result.YES;
@@ -502,6 +684,38 @@
               Restart = "always";
               RestartSec = 10;
               LimitCORE = 0;
+            };
+          };
+
+          libri-gateway = mkIf gateway.enable {
+            description = "Libri gateway: the core's /v1 for paired devices and the web view";
+            wantedBy = singleton "multi-user.target";
+            after = singleton "libri-core.service";
+            wants = singleton "libri-core.service";
+            unitConfig = {
+              ConditionFileIsExecutable = "${seat.libriBuild}/bin/libri-gateway";
+              ConditionPathExists = gatewayToken;
+            };
+            environment = gatewayEnvironment;
+            serviceConfig = lib.ship.hardened.tenant // {
+              User = seat.user;
+              Group = seat.user;
+              StateDirectory = "libri-gateway";
+              StateDirectoryMode = "0700";
+              ExecStart = gatewayServe;
+              # The core's socket and tailscaled's LocalAPI.
+              RestrictAddressFamilies = [
+                "AF_UNIX"
+                "AF_INET"
+                "AF_INET6"
+              ];
+              SocketBindAllow = "tcp:${toString gateway.port}";
+              # The proxy and the tailnet in, and the internet out for pushes;
+              # not the LAN or the seat's loopback addresses.
+              IPAddressAllow = fences.loopback ++ singleton fences.tailnet;
+              IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
+              Restart = "always";
+              RestartSec = 10;
             };
           };
 
