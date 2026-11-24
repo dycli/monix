@@ -180,11 +180,12 @@
             enable = true;
             environment.LIBRI_XAI_CONNECTION = "/var/lib/libri/connections/xai.json";
           };
-          # Grok Imagine on the same xAI login as x_search.
+          # Grok Imagine on the same xAI login as x_search, into the files
+          # add-on's folder, so each picture shows in Files and at its raw URL.
           image = {
             enable = true;
             environment = {
-              LIBRI_IMAGE_DIR = "/var/lib/libri-core/images";
+              LIBRI_IMAGE_DIR = "/var/lib/libri/files";
               LIBRI_XAI_CONNECTION = "/var/lib/libri/connections/xai.json";
             };
           };

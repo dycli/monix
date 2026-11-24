@@ -186,9 +186,9 @@
             "${libriState}/wiki"
           ];
           # Today's Libri's relay to Fastmail (connections.rs) on the login it
-          # renews in ${libriState}/connections, until the core's requests
-          # carry approvals: a tool set to ask first is refused with a
-          # message rather than asking in a chat the core cannot reach.
+          # renews in ${libriState}/connections. A tool set to ask first asks
+          # the person through the core, as a request on the session that
+          # called it; the core fills in that session's socket, token and id.
           fastmail = {
             command = [
               "${seat.libriBuild}/bin/libri"
@@ -198,7 +198,10 @@
             ];
             env = {
               STATE_DIRECTORY = libriState;
-              LIBRI_ASK = "none";
+              LIBRI_ASK = "core";
+              LIBRI_SOCKET.session = "socket";
+              LIBRI_TOKEN.session = "token";
+              LIBRI_SESSION.session = "id";
             };
           };
         };
