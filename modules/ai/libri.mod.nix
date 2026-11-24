@@ -97,6 +97,13 @@
       addons =
         config.libri.core.addons |> filterAttrs (name: addon: addon.enable && libriPackages ? ${name});
       coreSetup = (pkgs.formats.toml { }).generate "libri-core.toml" {
+        # client.sock admits the libri-clients group, so a client running
+        # as its own user (the gateway) reaches the core; owner.sock stays
+        # the seat's alone.
+        clients = {
+          mode = "0660";
+          group = coreClientsGroup;
+        };
         mcp =
           addons
           |> mapAttrs (
@@ -111,8 +118,12 @@
       gateway = config.libri.gateway;
       gatewayState = "/var/lib/libri-gateway";
       gatewayToken = "${gatewayState}/admin.token";
-      # Shared by the service and the seat's `libri-gateway pair`, `connector`
-      # and `revoke`, which must reach the same store and credential.
+      # nginx alone reaches this socket, and the gateway trusts X-Real-IP
+      # only from a peer the kernel names as nginx's user; TCP never does.
+      gatewayProxySocket = "/run/libri-gateway/proxy.sock";
+      coreClientsGroup = "libri-clients";
+      # Shared by the service and `libri-gateway pair`, `connector` and
+      # `revoke`, which must reach the same store and credential.
       gatewayEnvironment = {
         LIBRI_SOCKET = coreClients;
         LIBRI_GATEWAY_STATE = "${gatewayState}/gateway.sqlite";
@@ -130,6 +141,10 @@
           gateway.listen
           "--web-dir"
           gatewayWeb
+          "--proxy-socket"
+          gatewayProxySocket
+          "--proxy-uid"
+          (toString config.ids.uids.nginx)
         ]
         ++ optionals (gateway.tailnetOwner != null) [
           "--tailnet-whois"
@@ -157,9 +172,26 @@
         LIBRI_RUNTIME_DIR = coreRuntime;
         LIBRI_DATA_DIR = coreState;
       };
+      # The gateway's store and admin credential are its user's alone, out
+      # of the seat's (and so the agents') reach: the command takes that
+      # user through sudo, so it runs for a person with sudo, not the seat.
+      gatewayCommand = pkgs.writeShellScriptBin "libri-gateway" (
+        (
+          [
+            ''if [ "$(${pkgs.coreutils}/bin/id -un)" != libri-gateway ]; then''
+            ''exec /run/wrappers/bin/sudo -u libri-gateway -- "$0" "$@"''
+            "fi"
+          ]
+          ++ (
+            gatewayEnvironment
+            |> mapAttrsToList (variable: value: "export ${variable}=\${${variable}:-${escapeShellArg value}}")
+          )
+          ++ singleton "exec ${seat.libriBuild}/bin/libri-gateway \"$@\""
+        )
+        |> concatStringsSep "\n"
+      );
       coreCommands = [
         (seatCommand "libri" coreEnvironment core)
-        (seatCommand "libri-gateway" gatewayEnvironment "${seat.libriBuild}/bin/libri-gateway")
       ]
       ++ (
         addons
@@ -423,7 +455,7 @@
         listen = mkOption {
           type = types.str;
           default = "127.0.0.1:${toString gateway.port}";
-          description = "Address the gateway binds; the proxy reaches it at 127.0.0.1 on `port`.";
+          description = "Address the gateway binds for direct clients; the proxy uses its Unix socket.";
         };
         subdomain = mkOption {
           type = types.str;
@@ -436,10 +468,10 @@
           description = ''
             Tailscale login whose devices the gateway admits by tailscaled's
             whois, without pairing. A direct tailnet connection names its
-            caller; behind the proxy, libri-gateway 0.9.121 and later reads
-            the caller from the proxy's X-Real-IP, trusted only from loopback,
-            so the default loopback `listen` admits tailnet devices over the
-            proxy's HTTPS as well.
+            caller. The proxy reaches the gateway on its own Unix socket, where
+            libri-gateway 0.9.121 and later reads the caller from X-Real-IP
+            only when the kernel names the peer as nginx's user; on TCP,
+            loopback included, it never trusts the header.
           '';
         };
       };
@@ -516,6 +548,16 @@
         };
         users.groups.yeoman-image = { };
 
+        # The gateway runs as its own user so the seat's agents can neither
+        # read its store and admin credential nor take over its proxy socket.
+        users.users.libri-gateway = mkIf gateway.enable {
+          isSystemUser = true;
+          group = "libri-gateway";
+          home = gatewayState;
+        };
+        users.groups.libri-gateway = mkIf gateway.enable { };
+        users.groups.${coreClientsGroup} = { };
+
         # Each serves its host itself: the chat at the root, the pages beside
         # it; the gateway serves `/v1` and the web view.
         shipProxy.routes =
@@ -535,21 +577,25 @@
           // optionalAttrs gateway.enable {
             libri-gateway = {
               inherit (gateway) subdomain port;
+              upstream = "http://unix:${gatewayProxySocket}";
               inherit proxyExtra;
             };
           };
 
-        environment.etc."libri-core/libri.toml" = mkIf (addons != { }) { source = coreSetup; };
+        environment.etc."libri-core/libri.toml".source = coreSetup;
         users.users.${seat.user}.packages = coreCommands;
+        environment.systemPackages = optionals gateway.enable (singleton gatewayCommand);
         # For login shells' own tools; the seat's commands carry the same
         # defaults for shells that read no session.
         environment.sessionVariables = coreEnvironment;
 
-        # The gateway's store, there before its first start so the seat can
-        # write the credential the unit waits for.
+        # The gateway's store, there before its first start so an operator
+        # can write the credential the unit waits for. StateDirectory= hands
+        # a store the seat wrote before to the gateway's user at each start.
         systemd.tmpfiles.settings.libri-gateway.${gatewayState}.d = mkIf gateway.enable {
-          user = seat.user;
-          group = seat.user;
+          # The unit's own owner, which StateDirectory= would set anyway.
+          user = "libri-gateway";
+          group = "nginx";
           mode = "0700";
         };
 
@@ -667,12 +713,18 @@
               User = seat.user;
               Group = seat.user;
               WorkingDirectory = seat.home;
-              SupplementaryGroups = singleton "usage";
+              # libri-clients so the core can give client.sock to the group.
+              SupplementaryGroups = [
+                "usage"
+                coreClientsGroup
+              ];
               LoadCredential = "claude-token:${config.secrets.agent-claude-token.path}";
               StateDirectory = "libri-core";
               StateDirectoryMode = "0700";
               RuntimeDirectory = "libri-core";
-              RuntimeDirectoryMode = "0700";
+              # Search for libri-clients, whose group the core gives the
+              # directory; it reaches client.sock alone, not owner.sock.
+              RuntimeDirectoryMode = "0710";
               # Detached holders keep their sockets across a daemon stop and start.
               RuntimeDirectoryPreserve = true;
               # The seat's user scopes deny loopback MCP and sit outside work.slice.
@@ -703,12 +755,21 @@
             };
             environment = gatewayEnvironment;
             serviceConfig = lib.ship.hardened.tenant // {
-              User = seat.user;
-              Group = seat.user;
+              User = "libri-gateway";
+              # nginx's group, so the proxy socket (0660) is nginx's to
+              # connect to and no one else's.
+              Group = "nginx";
+              SupplementaryGroups = singleton coreClientsGroup;
+              # The proxy's SO_PEERCRED must carry nginx's real UID for
+              # --proxy-uid to match.
+              PrivateUsers = false;
               StateDirectory = "libri-gateway";
               StateDirectoryMode = "0700";
+              RuntimeDirectory = "libri-gateway";
+              RuntimeDirectoryMode = "0750";
               ExecStart = gatewayServe;
-              # The core's socket and tailscaled's LocalAPI.
+              # The core's socket, tailscaled's LocalAPI and the proxy socket;
+              # SocketBindAllow/Deny govern only AF_INET and AF_INET6 binds.
               RestrictAddressFamilies = [
                 "AF_UNIX"
                 "AF_INET"
