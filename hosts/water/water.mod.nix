@@ -145,6 +145,7 @@
         # chats to the core: the core's layer reaches those chats too, which
         # would then hold two of each tool on two stores.
         libri.gateway.enable = true;
+        libri.gateway.tailnetOwner = "ddcleary1@gmail.com";
         libri.core.addons = {
           files = {
             enable = false;

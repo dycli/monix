@@ -435,10 +435,11 @@
           default = null;
           description = ''
             Tailscale login whose devices the gateway admits by tailscaled's
-            whois, without pairing. Only a direct tailnet connection names its
-            caller: through the proxy every caller is loopback, which whois
-            never admits, so this needs `listen` open to the tailnet as well,
-            such as 0.0.0.0 behind a firewall that trusts only tailscale0.
+            whois, without pairing. A direct tailnet connection names its
+            caller; behind the proxy, libri-gateway 0.9.121 and later reads
+            the caller from the proxy's X-Real-IP, trusted only from loopback,
+            so the default loopback `listen` admits tailnet devices over the
+            proxy's HTTPS as well.
           '';
         };
       };
