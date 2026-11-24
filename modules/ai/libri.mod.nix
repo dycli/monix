@@ -556,6 +556,8 @@
           home = gatewayState;
         };
         users.groups.libri-gateway = mkIf gateway.enable { };
+        # nginx reaches the gateway's proxy socket through its group.
+        users.users.nginx.extraGroups = mkIf gateway.enable (singleton "libri-gateway");
         users.groups.${coreClientsGroup} = { };
 
         # Each serves its host itself: the chat at the root, the pages beside
@@ -595,7 +597,7 @@
         systemd.tmpfiles.settings.libri-gateway.${gatewayState}.d = mkIf gateway.enable {
           # The unit's own owner, which StateDirectory= would set anyway.
           user = "libri-gateway";
-          group = "nginx";
+          group = "libri-gateway";
           mode = "0700";
         };
 
@@ -756,9 +758,9 @@
             environment = gatewayEnvironment;
             serviceConfig = lib.ship.hardened.tenant // {
               User = "libri-gateway";
-              # nginx's group, so the proxy socket (0660) is nginx's to
-              # connect to and no one else's.
-              Group = "nginx";
+              # Its own group, not nginx's, which can read the proxy's TLS
+              # keys; nginx joins this one to reach the 0660 proxy socket.
+              Group = "libri-gateway";
               SupplementaryGroups = singleton coreClientsGroup;
               # The proxy's SO_PEERCRED must carry nginx's real UID for
               # --proxy-uid to match.
