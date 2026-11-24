@@ -180,13 +180,12 @@
             enable = true;
             environment.LIBRI_XAI_CONNECTION = "/var/lib/libri/connections/xai.json";
           };
-          # Each provider key is a file the seat writes before enabling:
-          # these clients take an HTTPS endpoint, not the key proxy's sockets.
+          # Grok Imagine on the same xAI login as x_search.
           image = {
-            enable = false;
+            enable = true;
             environment = {
               LIBRI_IMAGE_DIR = "/var/lib/libri-core/images";
-              LIBRI_IMAGE_TOKEN_FILE = "/var/lib/libri-core/image.token";
+              LIBRI_XAI_CONNECTION = "/var/lib/libri/connections/xai.json";
             };
           };
           # On Water's own models, as today's Libri speaks and listens: no
@@ -200,7 +199,8 @@
             };
           };
           # Sends wait on the person's approval through the core, on the
-          # session's own LIBRI_SOCKET, LIBRI_TOKEN and LIBRI_SESSION.
+          # session's own LIBRI_SOCKET, LIBRI_TOKEN and LIBRI_SESSION. Its key
+          # is a file the seat writes before enabling.
           mail = {
             enable = false;
             environment = {
@@ -213,9 +213,10 @@
             environment.LIBRI_LAYOUT_STATE = "/var/lib/libri-core/layout";
           };
           ui.enable = true;
-          # Outbound only; each peer's URL and token are in the peers file.
+          # Outbound only; each peer's URL and token are in the peers file,
+          # written from today's Libri's pairings (peers.json), never in git.
           a2a = {
-            enable = false;
+            enable = true;
             environment = {
               LIBRI_A2A_NAME = "Bridge";
               LIBRI_A2A_PEERS_FILE = "/var/lib/libri-core/a2a-peers.json";
