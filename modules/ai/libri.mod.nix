@@ -685,11 +685,7 @@
           };
 
         environment.etc."libri-core/libri.toml".source = coreSetup;
-        users.users.${seat.user} = {
-          packages = coreCommands;
-          # The add-ons run as the seat with the gateway's group.
-          extraGroups = optionals gateway.enable (singleton "libri-gateway");
-        };
+        users.users.${seat.user}.packages = coreCommands;
         environment.systemPackages = optionals gateway.enable (singleton gatewayCommand);
         # For login shells' own tools; the seat's commands carry the same
         # defaults for shells that read no session.
@@ -899,15 +895,18 @@
               ExecStart = gatewayServe;
               # The core's socket, tailscaled's LocalAPI, the proxy and add-on
               # sockets, and netlink, by which Iroh follows the host's
-              # interfaces; SocketBindAllow/Deny govern only AF_INET and
-              # AF_INET6 binds to a port, so Iroh's ephemeral UDP passes.
+              # interfaces.
               RestrictAddressFamilies = [
                 "AF_UNIX"
                 "AF_NETLINK"
                 "AF_INET"
                 "AF_INET6"
               ];
-              SocketBindAllow = "tcp:${toString gateway.port}";
+              # Iroh's QUIC binds UDP; any UDP port, since Iroh picks its own.
+              SocketBindAllow = [
+                "tcp:${toString gateway.port}"
+                "udp"
+              ];
               # The proxy and the tailnet in, and the internet out for pushes;
               # not the LAN or the seat's loopback addresses.
               IPAddressAllow = fences.loopback ++ singleton fences.tailnet;
