@@ -149,7 +149,8 @@
         libri.core.addons = {
           files = {
             enable = false;
-            environment.LIBRI_FILES_DIR = "/var/lib/libri-core/files";
+            # Today's Libri's own store, shared until the cutover.
+            environment.LIBRI_FILES_DIR = "/var/lib/libri/files";
           };
           lists = {
             enable = false;
@@ -181,7 +182,7 @@
             enable = false;
             environment = {
               LIBRI_SPEECH_DIR = "/var/lib/libri-core/speech";
-              LIBRI_SPEECH_INPUT_DIR = "/var/lib/libri-core/files";
+              LIBRI_SPEECH_INPUT_DIR = "/var/lib/libri/files";
               LIBRI_SPEECH_TOKEN_FILE = "/var/lib/libri-core/speech.token";
             };
           };
@@ -194,6 +195,11 @@
               LIBRI_MAIL_TOKEN_FILE = "/var/lib/libri-core/mail.token";
             };
           };
+          layout = {
+            enable = false;
+            environment.LIBRI_LAYOUT_STATE = "/var/lib/libri-core/layout";
+          };
+          ui.enable = false;
           # Outbound only; each peer's URL and token are in the peers file.
           a2a = {
             enable = false;

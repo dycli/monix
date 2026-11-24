@@ -37,17 +37,26 @@
     }:
     let
       inherit (lib.attrsets)
+        attrValues
         filterAttrs
         genAttrs
+        listToAttrs
         mapAttrs
         mapAttrsToList
+        nameValuePair
         optionalAttrs
         recursiveUpdate
         ;
-      inherit (lib.lists) optionals singleton;
+      inherit (lib.lists)
+        concatMap
+        filter
+        optionals
+        singleton
+        ;
       inherit (lib.meta) getExe getExe';
       inherit (lib.modules) mkForce mkIf;
       inherit (lib.strings)
+        hasSuffix
         readFile
         concatStringsSep
         escapeShellArg
@@ -93,6 +102,8 @@
         "mail"
         "a2a"
         "speech"
+        "layout"
+        "ui"
       ];
       addons =
         config.libri.core.addons |> filterAttrs (name: addon: addon.enable && libriPackages ? ${name});
@@ -121,6 +132,84 @@
       # nginx alone reaches this socket, and the gateway trusts X-Real-IP
       # only from a peer the kernel names as nginx's user; TCP never does.
       gatewayProxySocket = "/run/libri-gateway/proxy.sock";
+      # The gateway's UID, fixed at the one NixOS first allotted Water
+      # (/var/lib/nixos/uid-map), which owns /var/lib/libri-gateway; the
+      # add-ons admit only this peer on their sockets.
+      gatewayUid = 953;
+      gatewayGid = 940;
+
+      # The add-ons the gateway serves to its clients over HTTP, each on its
+      # own Unix socket beside the stdio server the core's sessions get. ui
+      # holds nothing a client reads, so it stays stdio alone.
+      servedAddons =
+        [
+          "boards"
+          "pages"
+          "lists"
+          "files"
+          "speech"
+          "layout"
+        ]
+        |> filter (name: libriPackages ? ${name});
+      addonSocket = name: "/run/libri-addons/${name}/${name}.sock";
+      # Each add-on's stores are its variables naming a directory or a
+      # state path; a variable naming a token file is a credential the seat
+      # writes, which the unit waits for.
+      addonStores =
+        name:
+        config.libri.core.addons.${name}.environment
+        |> filterAttrs (variable: _: hasSuffix "_DIR" variable || hasSuffix "_STATE" variable)
+        |> attrValues;
+      addonCredentials =
+        name:
+        config.libri.core.addons.${name}.environment
+        |> filterAttrs (variable: _: hasSuffix "_TOKEN_FILE" variable)
+        |> attrValues;
+      # speech alone calls out, to its HTTPS speech service.
+      addonCallsOut = name: name == "speech";
+      addonUnits =
+        servedAddons
+        |> map (
+          name:
+          nameValuePair "libri-addon-${name}" {
+            description = "Libri's ${name} add-on, served to the gateway over HTTP";
+            wantedBy = singleton "multi-user.target";
+            before = singleton "libri-gateway.service";
+            unitConfig = optionalAttrs (addonCredentials name != [ ]) {
+              ConditionPathExists = addonCredentials name;
+            };
+            inherit (config.libri.core.addons.${name}) environment;
+            serviceConfig = lib.ship.hardened.tenant // {
+              User = seat.user;
+              # The gateway's group reaches the 0660 socket; no one else does.
+              Group = "libri-gateway";
+              # SO_PEERCRED must carry the gateway's real UID for --peer-uid.
+              PrivateUsers = false;
+              RuntimeDirectory = "libri-addons/${name}";
+              RuntimeDirectoryMode = "0750";
+              ReadWritePaths = addonStores name;
+              ExecStart = escapeShellArgs [
+                (getExe' libriPackages.${name} "libri-${name}")
+                "serve"
+                "--http-socket"
+                (addonSocket name)
+                "--peer-uid"
+                (toString gatewayUid)
+              ];
+              RestrictAddressFamilies = [
+                "AF_UNIX"
+              ]
+              ++ optionals (addonCallsOut name) [
+                "AF_INET"
+                "AF_INET6"
+              ];
+              IPAddressDeny = if addonCallsOut name then fences.internetOnlyDeny else "any";
+              Restart = "always";
+              RestartSec = 10;
+            };
+          }
+        )
+        |> listToAttrs;
       coreClientsGroup = "libri-clients";
       # Shared by the service and `libri-gateway pair`, `connector` and
       # `revoke`, which must reach the same store and credential.
@@ -145,7 +234,17 @@
           gatewayProxySocket
           "--proxy-uid"
           (toString config.ids.uids.nginx)
+          # Layer 2 beside the tailnet: paired devices reach the gateway over
+          # Iroh QUIC through n0's public relays.
+          "--iroh"
         ]
+        ++ (
+          servedAddons
+          |> concatMap (name: [
+            "--addon"
+            "${name}=${addonSocket name}"
+          ])
+        )
         ++ optionals (gateway.tailnetOwner != null) [
           "--tailnet-whois"
           "--tailnet-owner"
@@ -552,10 +651,11 @@
         # read its store and admin credential nor take over its proxy socket.
         users.users.libri-gateway = mkIf gateway.enable {
           isSystemUser = true;
+          uid = gatewayUid;
           group = "libri-gateway";
           home = gatewayState;
         };
-        users.groups.libri-gateway = mkIf gateway.enable { };
+        users.groups.libri-gateway = mkIf gateway.enable { gid = gatewayGid; };
         # nginx reaches the gateway's proxy socket through its group.
         users.users.nginx.extraGroups = mkIf gateway.enable (singleton "libri-gateway");
         users.groups.${coreClientsGroup} = { };
@@ -585,7 +685,11 @@
           };
 
         environment.etc."libri-core/libri.toml".source = coreSetup;
-        users.users.${seat.user}.packages = coreCommands;
+        users.users.${seat.user} = {
+          packages = coreCommands;
+          # The add-ons run as the seat with the gateway's group.
+          extraGroups = optionals gateway.enable (singleton "libri-gateway");
+        };
         environment.systemPackages = optionals gateway.enable (singleton gatewayCommand);
         # For login shells' own tools; the seat's commands carry the same
         # defaults for shells that read no session.
@@ -594,6 +698,23 @@
         # The gateway's store, there before its first start so an operator
         # can write the credential the unit waits for. StateDirectory= hands
         # a store the seat wrote before to the gateway's user at each start.
+        # The add-ons' stores, the seat's alone, there before each first start.
+        systemd.tmpfiles.settings.libri-addons = mkIf gateway.enable (
+          servedAddons
+          |> concatMap addonStores
+          |> map (
+            store:
+            nameValuePair store {
+              d = {
+                user = seat.user;
+                group = seat.user;
+                mode = "0700";
+              };
+            }
+          )
+          |> listToAttrs
+        );
+
         systemd.tmpfiles.settings.libri-gateway.${gatewayState}.d = mkIf gateway.enable {
           # The unit's own owner, which StateDirectory= would set anyway.
           user = "libri-gateway";
@@ -751,8 +872,8 @@
           libri-gateway = mkIf gateway.enable {
             description = "Libri gateway: the core's /v1 for paired devices and the web view";
             wantedBy = singleton "multi-user.target";
-            after = singleton "libri-core.service";
-            wants = singleton "libri-core.service";
+            after = singleton "libri-core.service" ++ map (name: "libri-addon-${name}.service") servedAddons;
+            wants = singleton "libri-core.service" ++ map (name: "libri-addon-${name}.service") servedAddons;
             unitConfig = {
               ConditionFileIsExecutable = "${seat.libriBuild}/bin/libri-gateway";
               # A build before Libri 0.9.119 carries no web view.
@@ -776,10 +897,13 @@
               RuntimeDirectory = "libri-gateway";
               RuntimeDirectoryMode = "0750";
               ExecStart = gatewayServe;
-              # The core's socket, tailscaled's LocalAPI and the proxy socket;
-              # SocketBindAllow/Deny govern only AF_INET and AF_INET6 binds.
+              # The core's socket, tailscaled's LocalAPI, the proxy and add-on
+              # sockets, and netlink, by which Iroh follows the host's
+              # interfaces; SocketBindAllow/Deny govern only AF_INET and
+              # AF_INET6 binds to a port, so Iroh's ephemeral UDP passes.
               RestrictAddressFamilies = [
                 "AF_UNIX"
+                "AF_NETLINK"
                 "AF_INET"
                 "AF_INET6"
               ];
@@ -891,7 +1015,8 @@
                 BindReadOnlyPaths = singleton "${pkgs.emptyDirectory}:/etc/codex";
               };
           };
-        };
+        }
+        // optionalAttrs gateway.enable addonUnits;
       };
     };
 }
