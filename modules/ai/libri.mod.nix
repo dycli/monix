@@ -733,7 +733,13 @@
               # Keep the holders in this cgroup and stop only the daemon.
               KillMode = "process";
               ExecStart = startCore;
-              ExecStartPost = "${getExe pkgs.curl} --fail --silent --output /dev/null --retry 12 --retry-all-errors --retry-delay 1 --max-time 1 --unix-socket ${coreSocket} http://localhost/v1/host";
+              # systemd re-applies User:Group (bridge:bridge) to RuntimeDirectory
+              # before spawning each ExecStartPost, which overwrote the core's own
+              # chgrp to libri-clients; restore the group as the final post step.
+              ExecStartPost = [
+                "${getExe pkgs.curl} --fail --silent --output /dev/null --retry 12 --retry-all-errors --retry-delay 1 --max-time 1 --unix-socket ${coreSocket} http://localhost/v1/host"
+                "${getExe' pkgs.coreutils "chgrp"} ${coreClientsGroup} ${coreRuntime}"
+              ];
               Type = "exec";
               TimeoutStartSec = 20;
               Restart = "always";
