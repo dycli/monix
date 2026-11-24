@@ -59,6 +59,7 @@
       inherit (lib.strings)
         hasSuffix
         readFile
+        concatMapStringsSep
         concatStringsSep
         escapeShellArg
         escapeShellArgs
@@ -67,6 +68,8 @@
 
       seat = topology.seat;
       core = "${seat.libriBuild}/bin/libri-core";
+      addonsBuild = seat.libriAddonsBuild;
+      addonBinary = name: "${addonsBuild}/${name}/bin/libri-${name}";
       coreRuntime = "/run/libri-core";
       coreState = "/var/lib/libri-core";
       # Today's Libri's state (its unit's StateDirectory), where its wiki
@@ -92,9 +95,9 @@
       };
 
       # STAGE 2: THE CORE'S OWN CLIENTS
-      # The add-ons come from the pinned libri input, built here; the core,
-      # the gateway and its web view run the deployed build. An add-on the
-      # input does not carry yet is left out.
+      # The core, the gateway, its web view and the enabled add-ons all run
+      # from deployed links that deploy_libri.sh moves on release; speech's
+      # local models stay on the pinned libri input as a read-only store path.
       libriPackages = inputs.libri.packages.${pkgs.stdenv.hostPlatform.system} or { };
       addonNames = [
         "files"
@@ -109,8 +112,7 @@
         "layout"
         "ui"
       ];
-      addons =
-        config.libri.core.addons |> filterAttrs (name: addon: addon.enable && libriPackages ? ${name});
+      addons = config.libri.core.addons |> filterAttrs (_: addon: addon.enable);
       # speech runs on the host's own models unless told to use a cloud
       # service; the models are a read-only store path from the same build.
       speechLocal = config.libri.core.addons.speech.provider == "local";
@@ -140,9 +142,9 @@
           // (
             addons
             |> mapAttrs (
-              name: addon:
+              name: _:
               {
-                command = singleton (getExe' libriPackages.${name} "libri-${name}");
+                command = singleton (addonBinary name);
               }
               // optionalAttrs (addonEnvironment name != { }) { env = addonEnvironment name; }
             )
@@ -230,7 +232,7 @@
           "speech"
           "layout"
         ]
-        |> filter (name: libriPackages ? ${name});
+        |> filter (name: addons ? ${name});
       addonSocket = name: "/run/libri-addons/${name}/${name}.sock";
       # Each add-on's stores are the host's variables naming a directory or
       # a state path, not the models the module adds; a variable naming a
@@ -306,7 +308,10 @@
             description = "Libri's ${name} add-on, served to the gateway over HTTP";
             wantedBy = singleton "multi-user.target";
             before = singleton "libri-gateway.service";
-            unitConfig = optionalAttrs (addonCredentials name != [ ]) {
+            unitConfig = {
+              ConditionFileIsExecutable = addonBinary name;
+            }
+            // optionalAttrs (addonCredentials name != [ ]) {
               ConditionPathExists = addonCredentials name;
             };
             environment = addonEnvironment name;
@@ -320,7 +325,7 @@
               RuntimeDirectoryMode = "0750";
               ReadWritePaths = addonStores name;
               ExecStart = escapeShellArgs [
-                (getExe' libriPackages.${name} "libri-${name}")
+                (addonBinary name)
                 "serve"
                 "--http-socket"
                 (addonSocket name)
@@ -428,10 +433,7 @@
       ]
       ++ (
         addons
-        |> mapAttrsToList (
-          name: addon:
-          seatCommand "libri-${name}" (addonEnvironment name) (getExe' libriPackages.${name} "libri-${name}")
-        )
+        |> mapAttrsToList (name: _: seatCommand "libri-${name}" (addonEnvironment name) (addonBinary name))
       );
       # What both configs say alike.
       shared = {
@@ -665,7 +667,7 @@
           enable = mkOption {
             type = types.bool;
             default = false;
-            description = "Give the core's sessions the ${name} add-on, once the libri input carries it.";
+            description = "Give the core's sessions the ${name} add-on.";
           };
           environment = mkOption {
             type = types.attrsOf types.str;
@@ -914,23 +916,44 @@
           };
         };
 
-        # An instance's Libri build link lives in a directory the seat owns,
-        # and the seat restarts its units after rebuilding the link.
-        systemd.tmpfiles.settings.yeoman-builds."/var/lib/libri-build".d = {
-          user = seat.user;
-          group = seat.user;
-          mode = "0755";
+        # An instance's Libri build link and its add-on links live in a
+        # directory the seat owns, and the seat restarts its units after
+        # rebuilding the links.
+        systemd.tmpfiles.settings.yeoman-builds = {
+          "/var/lib/libri-build".d = {
+            user = seat.user;
+            group = seat.user;
+            mode = "0755";
+          };
+          ${addonsBuild}.d = {
+            user = seat.user;
+            group = seat.user;
+            mode = "0755";
+          };
         };
-        security.polkit.extraConfig = ''
-          polkit.addRule(function (action, subject) {
-            if (action.id == "org.freedesktop.systemd1.manage-units" &&
-                ["hippo.service", "libri.service", "libri-core.service", "libri-gateway.service", "suki.service"].indexOf(action.lookup("unit")) >= 0 &&
-                ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
-                subject.user == "${seat.user}") {
-              return polkit.Result.YES;
-            }
-          });
-        '';
+        security.polkit.extraConfig =
+          let
+            managedUnits = [
+              "hippo.service"
+              "libri.service"
+              "libri-core.service"
+              "libri-gateway.service"
+              "suki.service"
+            ]
+            ++ optionals gateway.enable (map (name: "libri-addon-${name}.service") servedAddons);
+          in
+          ''
+            polkit.addRule(function (action, subject) {
+              if (action.id == "org.freedesktop.systemd1.manage-units" &&
+                  [${
+                    concatMapStringsSep ", " (unit: ''"${unit}"'') managedUnits
+                  }].indexOf(action.lookup("unit")) >= 0 &&
+                  ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
+                  subject.user == "${seat.user}") {
+                return polkit.Result.YES;
+              }
+            });
+          '';
 
         systemd.sockets.yeoman-image = {
           description = "Pictures for the household assistants";
@@ -998,6 +1021,11 @@
               # Each turn's claude and what it runs.
               MemoryHigh = "12G";
             };
+          };
+
+          libri-deploy.environment = {
+            DEPLOY_LIBRI_ADDONS = concatStringsSep " " (attrNames addons);
+            DEPLOY_LIBRI_SERVED_ADDONS = concatStringsSep " " (optionals gateway.enable servedAddons);
           };
 
           libri-core = {

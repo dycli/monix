@@ -99,6 +99,7 @@ in
 
           status=0
           DEPLOY_LIBRI_LOG=$log DEPLOY_LIBRI_LINK=${seat.libriBuild} \
+            DEPLOY_LIBRI_ADDONS_DIR=${seat.libriAddonsBuild} \
             sh ${scripts}/deploy_libri.sh "$checkout" || status=$?
           cat "$log"
 

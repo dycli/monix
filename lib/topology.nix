@@ -16,6 +16,8 @@
     # for a change that needs monix and the build together lets a monix rollback
     # return to the build it ran with.
     libriBuild = "/var/lib/libri-build/libri";
+    # Per-add-on GC-root links moved by deploy_libri.sh on each release.
+    libriAddonsBuild = "/var/lib/libri-build/addons";
   };
 
   hostTailnetAddr = "100.102.113.74";

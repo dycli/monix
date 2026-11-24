@@ -22,11 +22,25 @@ def check(what, ok, detail=""):
 
 STUBS = {
     # The build answers as BUILD says, and a good one leaves its out-link,
-    # noted as a GC root. A store path builds to itself, the flake to NEW.
+    # noted as a GC root. A store path builds to itself, `.#default` builds
+    # to NEW, and `.#<addon>` builds to `$ADDON_NEW_DIR/<addon>` (or a
+    # synthetic store path) unless FAIL_ADDON names that add-on.
     "nix": """
 [ "$BUILD" = ok ] || exit 1
 target=${NEW:-/nix/store/new}
-case "$2" in /*) target=$2 ;; esac
+case "$2" in
+  /*) target=$2 ;;
+  .#default) ;;
+  .#*)
+    addon=${2#.#}
+    [ "$addon" != "$FAIL_ADDON" ] || exit 1
+    if [ -n "$ADDON_NEW_DIR" ] && [ -e "$ADDON_NEW_DIR/$addon" ]; then
+      target=$(readlink "$ADDON_NEW_DIR/$addon" 2>/dev/null || echo "$ADDON_NEW_DIR/$addon")
+    else
+      target="/nix/store/new-$addon"
+    fi
+    ;;
+esac
 while [ $# -gt 0 ]; do [ "$1" = -o ] && ln -sfn "$target" "$2" && echo "$2" >> "$STUBS/roots"; shift; done
 exit 0
 """,
@@ -234,6 +248,224 @@ for case, health, cores in (("a good deploy", "200", 1), ("a rolled-back deploy"
         else:
             check(f"{case} leaves a gateway that isn't running", "libri-gateway.service" not in restarts, restarts)
         shutil.rmtree(root)
+
+def addon_build(stubs, name, label, binary_id):
+    """An add-on build whose bin/libri-<name> resolves to a shared binary by
+    binary_id, as nix shares an unchanged add-on binary between builds."""
+    (stubs / "addon-bins").mkdir(exist_ok=True)
+    target = stubs / "addon-bins" / f"{name}-{binary_id}"
+    target.write_text("")
+    target.chmod(0o755)
+    out = stubs / f"addon-{name}-{label}"
+    (out / "bin").mkdir(parents=True)
+    os.symlink(target, out / "bin" / f"libri-{name}")
+    return str(out), str(target)
+
+
+# A failed add-on build cleans up all staged links and leaves live links untouched.
+root, repo, stubs = scratch()
+old, new = build(stubs, "old", "h1", core=True), build(stubs, "new", "h1", core=True)
+(stubs / "link").unlink()
+os.symlink(old, stubs / "link")
+addons_dir = stubs / "addons"
+addons_dir.mkdir()
+old_boards, _ = addon_build(stubs, "boards", "old", "b1")
+old_files, _ = addon_build(stubs, "files", "old", "f1")
+os.symlink(old_boards, addons_dir / "boards")
+os.symlink(old_files, addons_dir / "files")
+code = deploy(
+    repo, stubs, "ok", "200", NEW=new,
+    DEPLOY_LIBRI_ADDONS="boards files",
+    DEPLOY_LIBRI_SERVED_ADDONS="boards files",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    FAIL_ADDON="files",
+)
+check("a failed addon build aborts and leaves all live links untouched",
+      code != 0
+      and os.readlink(stubs / "link") == old
+      and os.readlink(addons_dir / "boards") == old_boards
+      and os.readlink(addons_dir / "files") == old_files
+      and not (stubs / "link.next").is_symlink()
+      and not (addons_dir / "boards.next").is_symlink()
+      and not (addons_dir / "files.next").is_symlink()
+      and not (stubs / "restarts").exists(),
+      f"code {code}, link {os.readlink(stubs / 'link')}")
+shutil.rmtree(root)
+
+# A good deploy swaps each add-on GC-root link, restarts only served add-ons
+# whose binary changed (before the gateway), and handles kill-between-link-and-restart.
+root, repo, stubs = scratch()
+old, new = build(stubs, "old", "h1", core=True), build(stubs, "new", "h1", core=True)
+(stubs / "link").unlink()
+os.symlink(old, stubs / "link")
+(stubs / "link.hippo").write_text(str(stubs / "hippos" / "h1") + "\n")
+addons_dir = stubs / "addons"
+addons_dir.mkdir()
+old_boards, b1 = addon_build(stubs, "boards", "old", "b1")
+new_boards, b2 = addon_build(stubs, "boards", "new", "b2")
+old_files, f1 = addon_build(stubs, "files", "old", "f1")
+new_files, _ = addon_build(stubs, "files", "new", "f1")
+old_ui, _ = addon_build(stubs, "ui", "old", "u1")
+new_ui, _ = addon_build(stubs, "ui", "new", "u2")
+os.symlink(old_boards, addons_dir / "boards")
+os.symlink(old_files, addons_dir / "files")
+os.symlink(old_ui, addons_dir / "ui")
+(addons_dir / ".boards.ran").write_text(b1 + "\n")
+(addons_dir / ".files.ran").write_text(f1 + "\n")
+new_dir = stubs / "new-addons"
+new_dir.mkdir()
+os.symlink(new_boards, new_dir / "boards")
+os.symlink(new_files, new_dir / "files")
+os.symlink(new_ui, new_dir / "ui")
+code = deploy(
+    repo, stubs, "ok", "200", NEW=new, ACTIVE="libri-gateway.service",
+    DEPLOY_LIBRI_ADDONS="boards files ui",
+    DEPLOY_LIBRI_SERVED_ADDONS="boards files",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    ADDON_NEW_DIR=str(new_dir),
+)
+restarts = (stubs / "restarts").read_text().splitlines()
+roots = (stubs / "roots").read_text().splitlines()
+check("a good deploy updates all addon links as GC roots and restarts only changed served addons before gateway",
+      code == 0
+      and os.readlink(addons_dir / "boards") == new_boards
+      and os.readlink(addons_dir / "files") == new_files
+      and os.readlink(addons_dir / "ui") == new_ui
+      and all(str(addons_dir / a) in roots for a in ("boards", "files", "ui"))
+      and not any((addons_dir / f"{a}.next").is_symlink() for a in ("boards", "files", "ui"))
+      and restarts == ["libri-core.service", "libri-addon-boards.service", "libri-gateway.service", "libri.service", "suki.service"]
+      and (addons_dir / ".boards.ran").read_text().strip() == b2,
+      f"code {code}, restarts {restarts}")
+(stubs / "restarts").unlink()
+# Second deploy with same binaries restarts no add-ons.
+deploy(
+    repo, stubs, "ok", "200", NEW=new, ACTIVE="libri-gateway.service",
+    DEPLOY_LIBRI_ADDONS="boards files ui",
+    DEPLOY_LIBRI_SERVED_ADDONS="boards files",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    ADDON_NEW_DIR=str(new_dir),
+)
+restarts = (stubs / "restarts").read_text().splitlines()
+check("a repeat deploy with unchanged addon binaries restarts no served addons",
+      "libri-addon-boards.service" not in restarts and "libri-addon-files.service" not in restarts,
+      restarts)
+(stubs / "restarts").unlink()
+# Simulate kill between moving link and restarting: .boards.ran still holds b1.
+(addons_dir / ".boards.ran").write_text(b1 + "\n")
+deploy(
+    repo, stubs, "ok", "200", NEW=new,
+    DEPLOY_LIBRI_ADDONS="boards files ui",
+    DEPLOY_LIBRI_SERVED_ADDONS="boards files",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    ADDON_NEW_DIR=str(new_dir),
+)
+restarts = (stubs / "restarts").read_text().splitlines()
+check("a rerun after a kill between addon link move and restart restarts the addon",
+      "libri-addon-boards.service" in restarts and "libri-addon-files.service" not in restarts
+      and (addons_dir / ".boards.ran").read_text().strip() == b2,
+      restarts)
+shutil.rmtree(root)
+
+# Rollback on health failure restores previous addon links, removes newly added
+# links, and restarts only served add-ons that were moved.
+root, repo, stubs = scratch()
+old, new = build(stubs, "old", "h1", core=True), build(stubs, "new", "h1", core=True)
+(stubs / "link").unlink()
+os.symlink(old, stubs / "link")
+(stubs / "link.hippo").write_text(str(stubs / "hippos" / "h1") + "\n")
+addons_dir = stubs / "addons"
+addons_dir.mkdir()
+old_boards, b1 = addon_build(stubs, "boards", "old", "b1")
+new_boards, _ = addon_build(stubs, "boards", "new", "b2")
+old_files, f1 = addon_build(stubs, "files", "old", "f1")
+new_files, _ = addon_build(stubs, "files", "new", "f1")
+new_search, _ = addon_build(stubs, "search", "new", "s1")
+os.symlink(old_boards, addons_dir / "boards")
+os.symlink(old_files, addons_dir / "files")
+(addons_dir / ".boards.ran").write_text(b1 + "\n")
+(addons_dir / ".files.ran").write_text(f1 + "\n")
+new_dir = stubs / "new-addons"
+new_dir.mkdir()
+os.symlink(new_boards, new_dir / "boards")
+os.symlink(new_files, new_dir / "files")
+os.symlink(new_search, new_dir / "search")
+code = deploy(
+    repo, stubs, "ok", "500", NEW=new,
+    DEPLOY_LIBRI_ADDONS="boards files search",
+    DEPLOY_LIBRI_SERVED_ADDONS="boards files",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    ADDON_NEW_DIR=str(new_dir),
+)
+restarts = (stubs / "restarts").read_text().splitlines()
+check("rollback on health failure restores addon links and restarts only changed served addons",
+      code != 0
+      and os.readlink(addons_dir / "boards") == old_boards
+      and os.readlink(addons_dir / "files") == old_files
+      and not (addons_dir / "search").is_symlink()
+      and restarts.count("libri-addon-boards.service") == 2
+      and "libri-addon-files.service" not in restarts
+      and (addons_dir / ".boards.ran").read_text().strip() == b1,
+      f"code {code}, restarts {restarts}")
+shutil.rmtree(root)
+
+# Rollback when libri-core fails to start restores addon links without
+# needlessly restarting served add-ons that were never switched.
+root, repo, stubs = scratch()
+old, new = build(stubs, "old", "h1", core=True), build(stubs, "new", "h1", core=True)
+(stubs / "link").unlink()
+os.symlink(old, stubs / "link")
+(stubs / "link.hippo").write_text(str(stubs / "hippos" / "h1") + "\n")
+addons_dir = stubs / "addons"
+addons_dir.mkdir()
+old_boards, b1 = addon_build(stubs, "boards", "old", "b1")
+new_boards, _ = addon_build(stubs, "boards", "new", "b2")
+os.symlink(old_boards, addons_dir / "boards")
+(addons_dir / ".boards.ran").write_text(b1 + "\n")
+new_dir = stubs / "new-addons"
+new_dir.mkdir()
+os.symlink(new_boards, new_dir / "boards")
+code = deploy(
+    repo, stubs, "ok", "200", NEW=new, FAIL_CORE_BUILD=new,
+    DEPLOY_LIBRI_ADDONS="boards",
+    DEPLOY_LIBRI_SERVED_ADDONS="boards",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    ADDON_NEW_DIR=str(new_dir),
+)
+restarts = (stubs / "restarts").read_text().splitlines()
+check("rollback on libri-core failure restores addon links without restarting untouched served addons",
+      code != 0
+      and os.readlink(addons_dir / "boards") == old_boards
+      and "libri-addon-boards.service" not in restarts
+      and (addons_dir / ".boards.ran").read_text().strip() == b1,
+      f"code {code}, restarts {restarts}")
+shutil.rmtree(root)
+
+# A failed served add-on restart leaves its .ran record unchanged.
+root, repo, stubs = scratch()
+old, new = build(stubs, "old", "h1", core=True), build(stubs, "new", "h1", core=True)
+(stubs / "link").unlink()
+os.symlink(old, stubs / "link")
+(stubs / "link.hippo").write_text(str(stubs / "hippos" / "h1") + "\n")
+addons_dir = stubs / "addons"
+addons_dir.mkdir()
+old_boards, b1 = addon_build(stubs, "boards", "old", "b1")
+new_boards, _ = addon_build(stubs, "boards", "new", "b2")
+os.symlink(old_boards, addons_dir / "boards")
+(addons_dir / ".boards.ran").write_text(b1 + "\n")
+new_dir = stubs / "new-addons"
+new_dir.mkdir()
+os.symlink(new_boards, new_dir / "boards")
+code = deploy(
+    repo, stubs, "ok", "200", NEW=new, FAIL_UNIT="libri-addon-boards.service",
+    DEPLOY_LIBRI_ADDONS="boards",
+    DEPLOY_LIBRI_SERVED_ADDONS="boards",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    ADDON_NEW_DIR=str(new_dir),
+)
+check("a failed served addon restart leaves its .ran record unchanged",
+      code == 0 and (addons_dir / ".boards.ran").read_text().strip() == b1,
+      f"code {code}, ran {(addons_dir / '.boards.ran').read_text().strip()}")
+shutil.rmtree(root)
 
 if failures:
     sys.exit(f"{len(failures)} failed")
