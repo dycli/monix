@@ -107,6 +107,22 @@
       ];
       addons =
         config.libri.core.addons |> filterAttrs (name: addon: addon.enable && libriPackages ? ${name});
+      # speech runs on the host's own models unless told to use a cloud
+      # service; the models are a read-only store path from the same build.
+      speechLocal = config.libri.core.addons.speech.provider == "local";
+      # Each add-on's variables: the host's, and for speech the provider
+      # and, run locally, its models.
+      addonEnvironment =
+        name:
+        config.libri.core.addons.${name}.environment
+        // optionalAttrs (name == "speech") (
+          {
+            LIBRI_SPEECH_PROVIDER = config.libri.core.addons.speech.provider;
+          }
+          // optionalAttrs (speechLocal && libriPackages ? speech-models) {
+            LIBRI_SPEECH_MODELS_DIR = "${libriPackages.speech-models}";
+          }
+        );
       coreSetup = (pkgs.formats.toml { }).generate "libri-core.toml" {
         # client.sock admits the libri-clients group, so a client running
         # as its own user (the gateway) reaches the core; owner.sock stays
@@ -122,7 +138,7 @@
             {
               command = singleton (getExe' libriPackages.${name} "libri-${name}");
             }
-            // optionalAttrs (addon.environment != { }) { env = addon.environment; }
+            // optionalAttrs (addonEnvironment name != { }) { env = addonEnvironment name; }
           );
       };
 
@@ -152,9 +168,9 @@
         ]
         |> filter (name: libriPackages ? ${name});
       addonSocket = name: "/run/libri-addons/${name}/${name}.sock";
-      # Each add-on's stores are its variables naming a directory or a
-      # state path; a variable naming a token file is a credential the seat
-      # writes, which the unit waits for.
+      # Each add-on's stores are the host's variables naming a directory or
+      # a state path, not the models the module adds; a variable naming a
+      # token file is a credential the seat writes, which the unit waits for.
       addonStores =
         name:
         config.libri.core.addons.${name}.environment
@@ -165,8 +181,9 @@
         config.libri.core.addons.${name}.environment
         |> filterAttrs (variable: _: hasSuffix "_TOKEN_FILE" variable)
         |> attrValues;
-      # speech alone calls out, to its HTTPS speech service.
-      addonCallsOut = name: name == "speech";
+      # speech alone calls out, to its HTTPS speech service, and only when
+      # it does not run on the host's own models.
+      addonCallsOut = name: name == "speech" && !speechLocal;
       addonUnits =
         servedAddons
         |> map (
@@ -178,7 +195,7 @@
             unitConfig = optionalAttrs (addonCredentials name != [ ]) {
               ConditionPathExists = addonCredentials name;
             };
-            inherit (config.libri.core.addons.${name}) environment;
+            environment = addonEnvironment name;
             serviceConfig = lib.ship.hardened.tenant // {
               User = seat.user;
               # The gateway's group reaches the 0660 socket; no one else does.
@@ -296,7 +313,7 @@
         addons
         |> mapAttrsToList (
           name: addon:
-          seatCommand "libri-${name}" addon.environment (getExe' libriPackages.${name} "libri-${name}")
+          seatCommand "libri-${name}" (addonEnvironment name) (getExe' libriPackages.${name} "libri-${name}")
         )
       );
       # What both configs say alike.
@@ -525,18 +542,34 @@
       # The Stage 2 add-ons (Libri's addons/NAME), each its flake package
       # serving MCP on stdio, given to every session of the seat's core from
       # its deployment layer, /etc/libri-core/libri.toml.
-      options.libri.core.addons = genAttrs addonNames (name: {
-        enable = mkOption {
-          type = types.bool;
-          default = false;
-          description = "Give the core's sessions the ${name} add-on, once the libri input carries it.";
+      options.libri.core.addons =
+        genAttrs addonNames (name: {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Give the core's sessions the ${name} add-on, once the libri input carries it.";
+          };
+          environment = mkOption {
+            type = types.attrsOf types.str;
+            default = { };
+            description = "Variables for libri-${name}, also the defaults of the seat's `libri-${name}` command.";
+          };
+        })
+        |> recursiveUpdate {
+          speech.provider = mkOption {
+            type = types.enum [
+              "local"
+              "openai"
+            ];
+            default = "local";
+            description = ''
+              Where speech runs: `local` on the host's own models (Nemotron
+              speech to text, Kokoro text to speech), with no network and no
+              key; `openai` on an OpenAI-compatible service, whose key file
+              LIBRI_SPEECH_TOKEN_FILE names.
+            '';
+          };
         };
-        environment = mkOption {
-          type = types.attrsOf types.str;
-          default = { };
-          description = "Variables for libri-${name}, also the defaults of the seat's `libri-${name}` command.";
-        };
-      });
 
       # The core's network clients: paired devices, the Android app and the
       # web view, on `/v1` beside today's site.

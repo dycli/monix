@@ -178,12 +178,14 @@
               LIBRI_IMAGE_TOKEN_FILE = "/var/lib/libri-core/image.token";
             };
           };
+          # On Water's own models, as today's Libri speaks and listens: no
+          # key, no network.
           speech = {
             enable = false;
+            provider = "local";
             environment = {
               LIBRI_SPEECH_DIR = "/var/lib/libri-core/speech";
               LIBRI_SPEECH_INPUT_DIR = "/var/lib/libri/files";
-              LIBRI_SPEECH_TOKEN_FILE = "/var/lib/libri-core/speech.token";
             };
           };
           # Sends wait on the person's approval through the core, on the
