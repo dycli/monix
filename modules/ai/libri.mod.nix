@@ -69,6 +69,9 @@
       core = "${seat.libriBuild}/bin/libri-core";
       coreRuntime = "/run/libri-core";
       coreState = "/var/lib/libri-core";
+      # Today's Libri's state (its unit's StateDirectory), where its wiki
+      # and its connections' logins live.
+      libriState = "/var/lib/libri";
       coreSocket = "${coreRuntime}/owner.sock";
       coreClients = "${coreRuntime}/client.sock";
       seatPath = concatStringsSep ":" [
@@ -133,15 +136,72 @@
           group = coreClientsGroup;
         };
         mcp =
-          addons
-          |> mapAttrs (
-            name: addon:
-            {
-              command = singleton (getExe' libriPackages.${name} "libri-${name}");
-            }
-            // optionalAttrs (addonEnvironment name != { }) { env = addonEnvironment name; }
+          coreServers
+          // (
+            addons
+            |> mapAttrs (
+              name: addon:
+              {
+                command = singleton (getExe' libriPackages.${name} "libri-${name}");
+              }
+              // optionalAttrs (addonEnvironment name != { }) { env = addonEnvironment name; }
+            )
           );
       };
+      # The servers every turn of today's Libri holds beside its own tools
+      # (servers.rs, list_asking), for every session the core starts itself:
+      # triggers, the web view's chats and `libri session start`. Each keeps
+      # today's name, so the setup of a turn today's Libri forwards, which
+      # names its own, replaces the entry rather than doubling it.
+      coreServers =
+        (
+          seatServers
+          |> mapAttrs (
+            name: server:
+            if server ? url then
+              { inherit (server) url; } // optionalAttrs (server ? headers) { inherit (server) headers; }
+            else
+              {
+                command = singleton server.command ++ server.args or [ ];
+              }
+              // optionalAttrs (server ? env) { inherit (server) env; }
+          )
+        )
+        // {
+          # The memory, as today's Libri hands it (memory.command), on the
+          # seat's hippo2 and the record hippo keeps.
+          hippo2 = {
+            command = [
+              (getExe config.services.hippo2.finalPackage)
+              "mcp"
+            ];
+            env.HIPPO_DIR = seat.hippo;
+          };
+          # Dylan's wiki, writable as on his own turns today: the deployment
+          # layer is one set for every session, so the core's workers write
+          # too, where today's Libri gives a worker's turn --read-only.
+          wiki.command = [
+            "${seat.libriBuild}/bin/wiki"
+            "serve"
+            "${libriState}/wiki"
+          ];
+          # Today's Libri's relay to Fastmail (connections.rs) on the login it
+          # renews in ${libriState}/connections, until the core's requests
+          # carry approvals: a tool set to ask first is refused with a
+          # message rather than asking in a chat the core cannot reach.
+          fastmail = {
+            command = [
+              "${seat.libriBuild}/bin/libri"
+              "connection"
+              libriState
+              "fastmail"
+            ];
+            env = {
+              STATE_DIRECTORY = libriState;
+              LIBRI_ASK = "none";
+            };
+          };
+        };
 
       gateway = config.libri.gateway;
       gatewayState = "/var/lib/libri-gateway";
@@ -227,7 +287,10 @@
         search = [
           "web_search"
           "web_fetch"
-        ];
+        ]
+        # x_search answers from the add-on only on the host's xAI login.
+        ++ optionals (config.libri.core.addons.search.environment ? LIBRI_XAI_CONNECTION) [ "x_search" ];
+        image = singleton "make_image";
         mail = singleton "draft_mail";
         a2a = singleton "message_peer";
       };
@@ -457,21 +520,22 @@
       # harness, with its retries. Not hippo2: Libri hands every turn its
       # memory itself (memory.command), naming the memory a turn is in.
       seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
-        mcpServers =
-          removeAttrs config.seat.mcpServers [
-            "web"
-            "hippo2"
-          ]
-          # The house (hob.mod.nix): its cameras, weather, air and calendar,
-          # and the cards Libri draws for them.
-          // optionalAttrs (config.services ? hob && config.services.hob.enable) {
-            hob = {
-              type = "http";
-              url = "http://127.0.0.1:${toString config.services.hob.port}/mcp";
-            };
-          }
-          // moneyMcp;
+        mcpServers = seatServers;
       };
+      seatServers =
+        removeAttrs config.seat.mcpServers [
+          "web"
+          "hippo2"
+        ]
+        # The house (hob.mod.nix): its cameras, weather, air and calendar,
+        # and the cards Libri draws for them.
+        // optionalAttrs (config.services ? hob && config.services.hob.enable) {
+          hob = {
+            type = "http";
+            url = "http://127.0.0.1:${toString config.services.hob.port}/mcp";
+          };
+        }
+        // moneyMcp;
       # The household's money (money.mod.nix): its reads and the page's four
       # changes, for both assistants.
       moneyMcp = optionalAttrs (config.systemd.services ? money) {

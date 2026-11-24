@@ -173,8 +173,13 @@
               LIBRI_PAGES_DATA_DIR = "/var/lib/libri-core/page-data";
             };
           };
-          # The key proxy's sockets: credentials.nix.
-          search.enable = true;
+          # The key proxy's sockets: credentials.nix. x_search on the xAI
+          # login today's Libri keeps and renews; the add-on renews it under
+          # the same lock file beside it.
+          search = {
+            enable = true;
+            environment.LIBRI_XAI_CONNECTION = "/var/lib/libri/connections/xai.json";
+          };
           # Each provider key is a file the seat writes before enabling:
           # these clients take an HTTPS endpoint, not the key proxy's sockets.
           image = {
