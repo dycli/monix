@@ -139,36 +139,42 @@
             IOWeight = 1000;
           };
         };
-        # Stage 2 beside today's Libri: the gateway at core.su.is, and the
-        # add-ons that need no key Water lacks, each with its own store under
-        # the core's state. The add-ons stay off while today's Libri forwards
-        # chats to the core: the core's layer reaches those chats too, which
-        # would then hold two of each tool on two stores.
-        libri.gateway.enable = true;
-        libri.gateway.tailnetOwner = "ddcleary1@gmail.com";
+        # Stage 2 serves Dylan's address: the gateway and its web view at
+        # si.su.is, and still at core.su.is for what was paired there. Today's
+        # Libri stays at legacy.su.is and on its tailnet port, and withholds
+        # its own tools the add-ons take over (libri.mod.nix). The add-ons
+        # that need no key Water lacks run, each with its own store under the
+        # core's state.
+        libri.site.subdomain = "legacy";
+        libri.gateway = {
+          enable = true;
+          subdomain = "si";
+          aliases = lib.lists.singleton "core";
+          tailnetOwner = "ddcleary1@gmail.com";
+        };
         libri.core.addons = {
           files = {
-            enable = false;
+            enable = true;
             # Today's Libri's own store, shared until the cutover.
             environment.LIBRI_FILES_DIR = "/var/lib/libri/files";
           };
           lists = {
-            enable = false;
+            enable = true;
             environment.LIBRI_LISTS_DIR = "/var/lib/libri-core/lists";
           };
           boards = {
-            enable = false;
+            enable = true;
             environment.LIBRI_BOARDS_DIR = "/var/lib/libri-core/boards";
           };
           pages = {
-            enable = false;
+            enable = true;
             environment = {
               LIBRI_PAGES_DIR = "/var/lib/libri-core/pages";
               LIBRI_PAGES_DATA_DIR = "/var/lib/libri-core/page-data";
             };
           };
           # The key proxy's sockets: credentials.nix.
-          search.enable = false;
+          search.enable = true;
           # Each provider key is a file the seat writes before enabling:
           # these clients take an HTTPS endpoint, not the key proxy's sockets.
           image = {
@@ -181,7 +187,7 @@
           # On Water's own models, as today's Libri speaks and listens: no
           # key, no network.
           speech = {
-            enable = false;
+            enable = true;
             provider = "local";
             environment = {
               LIBRI_SPEECH_DIR = "/var/lib/libri-core/speech";
@@ -198,10 +204,10 @@
             };
           };
           layout = {
-            enable = false;
+            enable = true;
             environment.LIBRI_LAYOUT_STATE = "/var/lib/libri-core/layout";
           };
-          ui.enable = false;
+          ui.enable = true;
           # Outbound only; each peer's URL and token are in the peers file.
           a2a = {
             enable = false;

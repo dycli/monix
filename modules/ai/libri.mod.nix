@@ -37,6 +37,7 @@
     }:
     let
       inherit (lib.attrsets)
+        attrNames
         attrValues
         filterAttrs
         genAttrs
@@ -184,6 +185,53 @@
       # speech alone calls out, to its HTTPS speech service, and only when
       # it does not run on the host's own models.
       addonCallsOut = name: name == "speech" && !speechLocal;
+      # Today's Libri's own tools that each add-on takes over (Libri's
+      # tools.rs). A turn today's Libri forwards to the core would otherwise
+      # hold both, each on its own store, so today's Libri withholds its own
+      # for every add-on the core runs. send_file, draft_mail and the rest
+      # have no add-on yet and stay.
+      supersededTools = {
+        files = [
+          "files"
+          "read_file"
+        ];
+        lists = [
+          "lists"
+          "list_add"
+          "list_remove"
+        ];
+        boards = [
+          "boards_list"
+          "board_read"
+          "board_note"
+          "board_edit"
+        ];
+        pages = [
+          "pages"
+          "page_data"
+          "page_data_change"
+        ];
+        # The tiles today's Libri moves are those of its own site, which the
+        # gateway's web view replaces.
+        layout = [
+          "layout"
+          "layout_change"
+          "tile_open"
+          "layout_undo"
+        ];
+        ui = [
+          "offer_replies"
+          "show_card"
+          "show_page"
+        ];
+        search = [
+          "web_search"
+          "web_fetch"
+        ];
+        mail = singleton "draft_mail";
+        a2a = singleton "message_peer";
+      };
+      withheldTools = addons |> attrNames |> concatMap (name: supersededTools.${name} or [ ]);
       addonUnits =
         servedAddons
         |> map (
@@ -221,6 +269,9 @@
                 "AF_INET6"
               ];
               IPAddressDeny = if addonCallsOut name then fences.internetOnlyDeny else "any";
+              # ONNX Runtime reads /proc/cpuinfo to size its threads to the
+              # host's cores; the tenant default hides it.
+              ProcSubset = if name == "speech" && speechLocal then "all" else lib.ship.hardened.tenant.ProcSubset;
               Restart = "always";
               RestartSec = 10;
             };
@@ -571,6 +622,12 @@
           };
         };
 
+      options.libri.site.subdomain = mkOption {
+        type = types.str;
+        default = "si";
+        description = "Name under the proxy's domain today's Libri, the seat's web chat, is served at.";
+      };
+
       # The core's network clients: paired devices, the Android app and the
       # web view, on `/v1` beside today's site.
       options.libri.gateway = {
@@ -593,6 +650,15 @@
           type = types.str;
           default = "core";
           description = "Name under the proxy's domain the gateway is served at.";
+        };
+        aliases = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = ''
+            Further names under the proxy's domain that also serve the
+            gateway, so a browser or device paired at an earlier name keeps
+            its credential, which its origin holds.
+          '';
         };
         tailnetOwner = mkOption {
           type = types.nullOr types.str;
@@ -621,7 +687,7 @@
             # One address for the household: Dylan's Libri answers on the
             # tailnet port and passes Gab's devices on to hers, by tailscaled's
             # word on who is calling.
-            daemon = site "libri" "si" "ddcleary1@gmail.com" // {
+            daemon = site "libri" config.libri.site.subdomain "ddcleary1@gmail.com" // {
               forward = "gabcaminiti10@gmail.com=http://127.0.0.1:${toString ports.suki}";
             };
             hippo = {
@@ -638,6 +704,10 @@
               efforts = "low,medium,high,xhigh,max";
               # llm-agents installs OpenCode 2 under this name (agent-clis.mod.nix).
               opencode.command = "opencode2";
+            };
+            # Merged with shared's tools.usage.
+            tools = optionalAttrs (withheldTools != [ ]) {
+              withheld = concatStringsSep "," withheldTools;
             };
           };
         };
@@ -698,7 +768,7 @@
         shipProxy.routes =
           (
             {
-              libri = "si";
+              libri = config.libri.site.subdomain;
               suki = "suki";
             }
             |> mapAttrs (
@@ -709,13 +779,21 @@
               }
             )
           )
-          // optionalAttrs gateway.enable {
-            libri-gateway = {
-              inherit (gateway) subdomain port;
-              upstream = "http://unix:${gatewayProxySocket}";
-              inherit proxyExtra;
-            };
-          };
+          // optionalAttrs gateway.enable (
+            singleton gateway.subdomain ++ gateway.aliases
+            |> map (
+              subdomain:
+              nameValuePair
+                (if subdomain == gateway.subdomain then "libri-gateway" else "libri-gateway-${subdomain}")
+                {
+                  inherit subdomain;
+                  inherit (gateway) port;
+                  upstream = "http://unix:${gatewayProxySocket}";
+                  inherit proxyExtra;
+                }
+            )
+            |> listToAttrs
+          );
 
         environment.etc."libri-core/libri.toml".source = coreSetup;
         users.users.${seat.user}.packages = coreCommands;
