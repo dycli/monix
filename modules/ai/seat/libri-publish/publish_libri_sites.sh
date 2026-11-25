@@ -14,7 +14,7 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 ANDROID_DIR=${LIBRI_ANDROID_DIR:-/var/lib/libri-android}
 WEBSITE_DIR=${LIBRI_WEBSITE_DIR:-/var/lib/libri-website}
-SITE=${LIBRI_PUBLISH_SITE:-/var/lib/libri-build/libri/site}
+SITE=${LIBRI_PUBLISH_SITE:-/var/lib/libri-build/libri/web}
 WORK=${LIBRI_PUBLISH_DIR:?LIBRI_PUBLISH_DIR names the staging folder}
 TOKEN_FILE=${LIBRI_PUBLISH_TOKEN:-${CREDENTIALS_DIRECTORY:-/nonexistent}/cloudflare}
 : "${CLOUDFLARE_ACCOUNT_ID:?}"
@@ -49,9 +49,7 @@ stage libri-app
 cp -rL "$SITE" "$WORK/libri-app/site"
 chmod -R u+w "$WORK/libri-app/site"
 mv "$WORK/libri-app/_headers" "$WORK/libri-app/site/_headers"
-# The daemon serves its manifest itself (site.rs); the hosted copy needs a
-# file. Removed once the site build carries public/manifest.webmanifest
-# (Libri's hosted-app branch).
+# Keep the fallback manifest if a web build ever omits public/manifest.webmanifest.
 [ -e "$WORK/libri-app/site/manifest.webmanifest" ] ||
   cp "$WORK/libri-app/manifest.webmanifest" "$WORK/libri-app/site/"
 rm -f "$WORK/libri-app/manifest.webmanifest"

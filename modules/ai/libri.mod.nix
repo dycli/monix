@@ -56,31 +56,14 @@
         splitString
         ;
       inherit (lib) types;
-      inherit (lib.ship) fences computers topology;
+      inherit (lib.ship) fences topology;
 
       seat = topology.seat;
       core = "${seat.libriBuild}/bin/libri-core";
       addonsBuild = seat.libriAddonsBuild;
       addonBinary = name: "${addonsBuild}/${name}/bin/libri-${name}";
-      # Today's Libri's state (its unit's StateDirectory), where its wiki
-      # and its connections' logins live.
-      libriState = "/var/lib/libri";
-      seatPath = concatStringsSep ":" [
-        "/etc/profiles/per-user/${seat.user}/bin"
-        "/run/wrappers/bin"
-        "/run/current-system/sw/bin"
-      ];
-      # Server-sent events stream as they come; uploads may be as big as the
-      # chat takes (UPLOAD_MAX in site.rs).
+      # Server-sent events stream as they come; uploads match the web view's cap.
       proxyExtra = "proxy_buffering off; client_max_body_size 100m;";
-      # The assistants' sites: a directory each, read by nginx as its group.
-      pages = "/var/lib/yeoman-pages";
-      host = sub: "https://${sub}.${config.shipProxy.domain}";
-
-      ports = {
-        libri = 8951;
-        suki = 8952;
-      };
 
       tomlFormat = pkgs.formats.toml { };
       libriPackages = inputs.libri.packages.${pkgs.stdenv.hostPlatform.system} or { };
@@ -936,10 +919,6 @@
             ++ optionals (
               assistant.addons.computer.enable && assistant.addons.computer.environment ? LIBRI_OUTBOX_DIR
             ) (singleton assistant.addons.computer.environment.LIBRI_OUTBOX_DIR);
-
-          # Ready check runs for Stage 2 assistants; for Bridge while legacy.enable
-          # is true, the legacy libri-ready unit runs instead.
-          emitReady = !(prefix == "libri" && legacy.enable);
         in
         {
           assertions = [
@@ -1133,8 +1112,7 @@
               // optionalAttrs (loadCredentials != [ ]) { LoadCredential = loadCredentials; }
               // assistant.core.extraServiceConfig;
             };
-          }
-          // optionalAttrs emitReady {
+
             "${prefix}-ready" = {
               description =
                 if prefix == "libri" then
@@ -1468,100 +1446,7 @@
           ++ optionals assistant.a2a.enable (singleton "${prefix}-addon-a2a.service")
         );
 
-      # LEGACY BRIDGE AND SUKI
-
-      legacy = config.libri.legacy;
-      legacySuki = config.libri.legacySuki;
-      bridgeAssistant = enabledAssistants.bridge or null;
-      bridgeAddons =
-        if bridgeAssistant != null then
-          bridgeAssistant.addons |> filterAttrs (n: a: elem n stdAddonNames && a.enable)
-        else
-          { };
-      bridgeSocket =
-        if bridgeAssistant != null then bridgeAssistant.socketPath else "/run/libri-core/owner.sock";
-      bridgeGatewayEnabled = bridgeAssistant != null && bridgeAssistant.gateway.enable;
-
-      supersededTools = {
-        files = [
-          "files"
-          "read_file"
-        ];
-        lists = [
-          "lists"
-          "list_add"
-          "list_remove"
-        ];
-        boards = [
-          "boards_list"
-          "board_read"
-          "board_note"
-          "board_edit"
-        ];
-        pages = [
-          "pages"
-          "page_data"
-          "page_data_change"
-        ];
-        layout = [
-          "layout"
-          "layout_change"
-          "tile_open"
-          "layout_undo"
-        ];
-        ui = [
-          "offer_replies"
-          "show_card"
-          "show_page"
-        ];
-        search = [
-          "web_search"
-          "web_fetch"
-        ]
-        ++ optionals (
-          bridgeAssistant != null && bridgeAssistant.addons.search.environment ? LIBRI_XAI_CONNECTION
-        ) [ "x_search" ];
-        image = singleton "make_image";
-        mail = singleton "draft_mail";
-        a2a = singleton "message_peer";
-      };
-      withheldTools = bridgeAddons |> attrNames |> concatMap (name: supersededTools.${name} or [ ]);
-
-      shared = {
-        harness = {
-          default = "claude";
-          model = "opus";
-        };
-        tools.usage = "/run/usage.sock";
-        system = {
-          services = [
-            "frigate"
-            "hob"
-            "immich-server"
-            "nix-daemon"
-          ]
-          ++ (
-            if legacy.enable then
-              singleton "libri"
-            else
-              singleton "libri-core" ++ optionals bridgeGatewayEnabled (singleton "libri-gateway")
-          )
-          ++ singleton "hippo2";
-          mounts = [
-            "/"
-            "/nix"
-            "/srv/storage"
-          ];
-        };
-      };
-      site = unit: subdomain: login: {
-        listen = "0.0.0.0:${toString ports.${unit}}";
-        url = host subdomain;
-        pages = "${pages}/${unit}";
-        pages_url = "https://app.libri.is";
-        tailnet = login;
-        origins = "https://app.libri.is,http://app.libri.is";
-      };
+      # HOUSEHOLD IMAGE GENERATION
 
       image = pkgs.writers.writePython3Bin "yeoman-image-mcp" {
         libraries = singleton pkgs.python3Packages.mcp;
@@ -1600,72 +1485,8 @@
           exit 1
         '';
       };
-
-      seatMcp = (pkgs.formats.json { }).generate "seat-libri-mcp.json" {
-        mcpServers = seatServers;
-      };
-      keys = {
-        keyFile = config.secrets.opencode-key.path;
-        deepseekKeyFile = config.secrets.deepseek-key.path;
-        abliterationKeyFile = config.secrets.abliteration-key.path;
-      };
-      openCodeConfig = pkgs.writeText "libri-opencode.json" (
-        lib.strings.toJSON {
-          "$schema" = "https://opencode.ai/config.json";
-          provider = lib.ship.opencode.providers keys;
-        }
-      );
-      suki = "/var/lib/suki";
-      sukiDesk = "${computers.desks}/suki";
-      sukiMcp = (pkgs.formats.json { }).generate "suki-mcp.json" {
-        mcpServers = {
-          image = {
-            type = "stdio";
-            command = getExe image;
-            args = singleton "${suki}/outbox";
-          };
-          home = {
-            type = "http";
-            url = "http://127.0.0.1:${toString config.shipProxy.routes.ha.port}/api/mcp";
-            headers.Authorization = "Bearer @HOME_TOKEN@";
-          };
-        }
-        // moneyMcp;
-      };
-      claudeKey = pkgs.writeShellScript "claude-key" ''
-        umask 077
-        printf 'ANTHROPIC_API_KEY=%s\n' "$(< "$CREDENTIALS_DIRECTORY/claude-key")" > "$RUNTIME_DIRECTORY/claude.env"
-      '';
-      claudeToken = pkgs.writeShellScript "claude-token" ''
-        umask 077
-        printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$(< "$CREDENTIALS_DIRECTORY/claude-token")" > "$RUNTIME_DIRECTORY/claude.env"
-      '';
-      sukiMcpTokens = pkgs.writeShellScript "suki-mcp-tokens" ''
-        umask 077
-        ${getExe pkgs.gnused} \
-          -e "s|@HOME_TOKEN@|$(${getExe' pkgs.coreutils "tr"} -d '\r\n' < "$CREDENTIALS_DIRECTORY/home")|" \
-          ${sukiMcp} > "$RUNTIME_DIRECTORY/mcp.json"
-      '';
-      sukiSandbox = lib.ship.hardened.tenant // {
-        User = "suki";
-        Group = "suki";
-        SupplementaryGroups = [
-          "yeoman-image"
-          "usage"
-          computers.deskGroup
-        ];
-        RestrictAddressFamilies = [
-          "AF_UNIX"
-          "AF_INET"
-          "AF_INET6"
-        ];
-        EnvironmentFile = "-%t/%N/claude.env";
-      };
-      limits = config.libri.limits;
     in
     {
-      imports = singleton inputs.libri.nixosModules.default;
-
       options.libri = {
         assistants = mkOption {
           type = types.attrsOf (types.submodule assistantModule);
@@ -1678,43 +1499,6 @@
           default = [ ];
           description = "Additional flake add-on names built and linked by `deploy_libri.sh` even when no assistant currently enables them.";
         };
-
-        # Legacy daemon options; drop once `libri/` is removed from the Libri flake.
-        limits = {
-          server = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "Limits for the legacy daemon's `server` leaf (LIBRI_SERVER_CGROUP).";
-          };
-          harness = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "Limits for the legacy `harness` cgroup (LIBRI_HARNESS_CGROUP).";
-          };
-          browser = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "Limits for the legacy `browser` cgroup (LIBRI_BROWSER_CGROUP).";
-          };
-        };
-
-        legacy.enable = mkOption {
-          type = types.bool;
-          default = true;
-          description = "Run Dylan's legacy libri.service web chat beside Stage 2.";
-        };
-
-        legacySuki.enable = mkOption {
-          type = types.bool;
-          default = true;
-          description = "Run Gab's legacy suki.service web chat.";
-        };
-
-        site.subdomain = mkOption {
-          type = types.str;
-          default = "si";
-          description = "Subdomain under `shipProxy.domain` for legacy libri.service.";
-        };
       };
 
       config =
@@ -1722,63 +1506,7 @@
           builtAssistants = enabledAssistants |> mapAttrsToList mkAssistant;
         in
         {
-          assertions =
-            pairAssertions
-            ++ concatMap (a: a.assertions) builtAssistants
-            ++ singleton {
-              assertion = !(legacySuki.enable && enabledAssistants ? suki);
-              message = "libri: legacySuki.enable and libri.assistants.suki cannot both be enabled.";
-            };
-
-          services.libri.instances =
-            optionalAttrs legacy.enable {
-              libri = {
-                package = seat.libriBuild;
-                inherit (seat) user;
-                agentBrowser.enable = true;
-                settings = recursiveUpdate shared {
-                  name = "Bridge";
-                  person = "Dylan";
-                  daemon = site "libri" config.libri.site.subdomain "ddcleary1@gmail.com" // {
-                    forward = "gabcaminiti10@gmail.com=http://127.0.0.1:${toString ports.suki}";
-                  };
-                  hippo = {
-                    dir = seat.hippo;
-                    shared = "Bridge";
-                  };
-                  memory.command = "${lib.meta.getExe config.services.hippo2.finalPackage} mcp";
-                  harness = {
-                    mcp = toString seatMcp;
-                    efforts = "low,medium,high,xhigh,max";
-                    opencode.command = "opencode2";
-                  };
-                  tools = optionalAttrs (withheldTools != [ ]) {
-                    withheld = concatStringsSep "," withheldTools;
-                  };
-                };
-              };
-            }
-            // optionalAttrs legacySuki.enable {
-              suki = {
-                package = seat.libriBuild;
-                harnesses = singleton pkgs.claude-code;
-                settings = recursiveUpdate shared {
-                  name = "Suki";
-                  person = "Gab";
-                  style = "Gab likes a slightly warmer tone.";
-                  daemon = site "suki" "suki" "gabcaminiti10@gmail.com,ddcleary1@gmail.com/metal";
-                  memory.command = "";
-                  harness = {
-                    mcp = "/run/suki/mcp.json";
-                    coding = "0";
-                  };
-                  computer = {
-                    run = "http://${computers.addr computers.indexes.suki}:${toString computers.runPort}";
-                    runs = sukiDesk;
-                  };
-                };
-              };
-            };
+          assertions = pairAssertions ++ concatMap (a: a.assertions) builtAssistants;
 
           users.users = mkMerge (
             (builtAssistants |> map (a: a.users.users))
@@ -1802,86 +1530,38 @@
           environment.systemPackages = concatMap (a: a.environment.systemPackages) builtAssistants;
           environment.sessionVariables = mkMerge (builtAssistants |> map (a: a.environment.sessionVariables));
 
-          shipProxy.routes = mkMerge (
-            (builtAssistants |> map (a: a.shipProxy.routes))
-            ++ singleton (
-              (
-                optionalAttrs legacy.enable { libri = config.libri.site.subdomain; }
-                // optionalAttrs legacySuki.enable { suki = "suki"; }
-              )
-              |> mapAttrs (
-                n: subdomain: {
-                  inherit subdomain;
-                  port = ports.${n};
-                  inherit proxyExtra;
-                }
-              )
-            )
-          );
+          shipProxy.routes = mkMerge (builtAssistants |> map (a: a.shipProxy.routes));
 
           systemd.tmpfiles.settings = mkMerge (
             (builtAssistants |> map (a: a.systemd.tmpfiles.settings))
-            ++ singleton (
-              optionalAttrs (legacy.enable || legacySuki.enable) {
-                yeoman-pages = {
-                  ${pages}.d = {
-                    user = "root";
-                    group = "root";
-                    mode = "0751";
-                  };
-                }
-                // optionalAttrs legacySuki.enable {
-                  "${pages}/suki".d = {
-                    user = "suki";
-                    group = "nginx";
-                    mode = "2750";
-                  };
-                }
-                // optionalAttrs legacy.enable {
-                  "${pages}/libri".d = {
-                    user = seat.user;
-                    group = "nginx";
-                    mode = "2750";
-                  };
+            ++ singleton {
+              yeoman-builds = {
+                "/var/lib/libri-build".d = {
+                  user = seat.user;
+                  group = seat.user;
+                  mode = "0755";
                 };
-              }
-              // {
-                yeoman-builds = {
-                  "/var/lib/libri-build".d = {
-                    user = seat.user;
-                    group = seat.user;
-                    mode = "0755";
-                  };
-                  ${addonsBuild}.d = {
-                    user = seat.user;
-                    group = seat.user;
-                    mode = "0755";
-                  };
+                ${addonsBuild}.d = {
+                  user = seat.user;
+                  group = seat.user;
+                  mode = "0755";
                 };
-              }
-            )
+              };
+            }
           );
 
-          security.polkit.extraConfig =
-            let
-              managedUnits =
-                optionals config.seat.hippo.enable (singleton "hippo.service")
-                ++ optionals legacy.enable (singleton "libri.service")
-                ++ optionals legacySuki.enable (singleton "suki.service")
-                ++ stage2ManagedUnits;
-            in
-            ''
-              polkit.addRule(function (action, subject) {
-                if (action.id == "org.freedesktop.systemd1.manage-units" &&
-                    [${
-                      concatMapStringsSep ", " (unit: ''"${unit}"'') managedUnits
-                    }].indexOf(action.lookup("unit")) >= 0 &&
-                    ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
-                    subject.user == "${seat.user}") {
-                  return polkit.Result.YES;
-                }
-              });
-            '';
+          security.polkit.extraConfig = ''
+            polkit.addRule(function (action, subject) {
+              if (action.id == "org.freedesktop.systemd1.manage-units" &&
+                  [${
+                    concatMapStringsSep ", " (unit: ''"${unit}"'') stage2ManagedUnits
+                  }].indexOf(action.lookup("unit")) >= 0 &&
+                  ["start", "stop", "restart"].indexOf(action.lookup("verb")) >= 0 &&
+                  subject.user == "${seat.user}") {
+                return polkit.Result.YES;
+              }
+            });
+          '';
 
           systemd.sockets.yeoman-image = {
             description = "Pictures for the household assistants";
@@ -1899,144 +1579,36 @@
 
           systemd.services = mkMerge (
             (builtAssistants |> map (a: a.systemd.services))
-            ++ singleton (
-              {
-                libri-deploy.environment = {
-                  DEPLOY_LIBRI_CORES = concatStringsSep " " deployCores;
-                  DEPLOY_LIBRI_GATEWAYS = concatStringsSep " " deployGateways;
-                  DEPLOY_LIBRI_ADDONS = concatStringsSep " " deployAddons;
-                  DEPLOY_LIBRI_SERVED_ADDONS = concatStringsSep " " deployServedAddons;
-                  DEPLOY_LIBRI_INSTANCES = concatStringsSep " " (
-                    optionals legacy.enable (singleton "libri:${toString ports.libri}")
-                    ++ optionals legacySuki.enable (singleton "suki:${toString ports.suki}")
-                  );
-                  DEPLOY_LIBRI_HIPPOS = concatStringsSep " " (optionals config.seat.hippo.enable (singleton "hippo"));
-                };
+            ++ singleton {
+              libri-deploy.environment = {
+                DEPLOY_LIBRI_CORES = concatStringsSep " " deployCores;
+                DEPLOY_LIBRI_GATEWAYS = concatStringsSep " " deployGateways;
+                DEPLOY_LIBRI_ADDONS = concatStringsSep " " deployAddons;
+                DEPLOY_LIBRI_SERVED_ADDONS = concatStringsSep " " deployServedAddons;
+              };
 
-                "yeoman-image@" = {
-                  description = "One picture for a household assistant";
-                  environment = {
-                    HOME = "/var/lib/yeoman-image";
-                    CODEX_HOME = "/var/lib/yeoman-image";
-                  };
-                  serviceConfig =
-                    lib.ship.hardened.tenant
-                    // fence
-                    // {
-                      User = "yeoman-image";
-                      Group = "yeoman-image";
-                      StateDirectory = "yeoman-image";
-                      StateDirectoryMode = "0700";
-                      ExecStart = getExe draw;
-                      StandardInput = "socket";
-                      StandardOutput = "socket";
-                      StandardError = "journal";
-                      BindReadOnlyPaths = singleton "${pkgs.emptyDirectory}:/etc/codex";
-                    };
+              "yeoman-image@" = {
+                description = "One picture for a household assistant";
+                environment = {
+                  HOME = "/var/lib/yeoman-image";
+                  CODEX_HOME = "/var/lib/yeoman-image";
                 };
-              }
-              // optionalAttrs legacySuki.enable {
-                suki = {
-                  description = "Suki, Gab's household assistant";
-                  restartIfChanged = false;
-                  serviceConfig = sukiSandbox // {
-                    SupplementaryGroups = sukiSandbox.SupplementaryGroups ++ singleton computers.deskGroup;
-                    LoadCredential = [
-                      "claude-key:${config.secrets.suki-claude-key.path}"
-                      "home:${config.secrets.yeoman-home-token.path}"
-                    ];
-                    RuntimeDirectory = "suki";
-                    RuntimeDirectoryMode = "0700";
-                    ExecStartPre = [
-                      claudeKey
-                      sukiMcpTokens
-                    ];
-                    Restart = "always";
-                    RestartSec = 10;
-                    ReadWritePaths = [
-                      "${pages}/suki"
-                      sukiDesk
-                    ];
-                    SocketBindAllow = "tcp:${toString ports.suki}";
+                serviceConfig =
+                  lib.ship.hardened.tenant
+                  // fence
+                  // {
+                    User = "yeoman-image";
+                    Group = "yeoman-image";
+                    StateDirectory = "yeoman-image";
+                    StateDirectoryMode = "0700";
+                    ExecStart = getExe draw;
+                    StandardInput = "socket";
+                    StandardOutput = "socket";
+                    StandardError = "journal";
+                    BindReadOnlyPaths = singleton "${pkgs.emptyDirectory}:/etc/codex";
                   };
-                };
-              }
-              // optionalAttrs legacy.enable {
-                libri-ready = {
-                  description = "Proves Bridge's Libri answers";
-                  wantedBy = singleton "multi-user.target";
-                  after = singleton "libri.service" ++ optionals config.seat.hippo.enable (singleton "hippo.service");
-                  restartTriggers =
-                    singleton config.systemd.units."libri.service".unit
-                    ++ optionals config.seat.hippo.enable (singleton config.systemd.units."hippo.service".unit);
-                  unitConfig.RequiresMountsFor = seat.hippo;
-                  environment.HIPPO_DIR = seat.hippo;
-                  path = [
-                    pkgs.coreutils
-                    pkgs.curl
-                    pkgs.jq
-                  ];
-                  serviceConfig = {
-                    Type = "oneshot";
-                    RemainAfterExit = true;
-                    User = seat.user;
-                    TimeoutStartSec = 180;
-                  };
-                  script = ''
-                    site=http://127.0.0.1:${toString ports.libri}/api/host
-                    for _ in $(seq 85); do
-                      curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null && break
-                      sleep 1
-                    done
-                    curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null
-                    ${optionalString config.seat.hippo.enable ''
-                      for _ in $(seq 40); do
-                        timeout 5 ${seat.libriBuild}/bin/hippo status >/dev/null && break
-                        sleep 1
-                      done
-                      timeout 30 ${seat.libriBuild}/bin/hippo status >/dev/null
-                    ''}
-                  '';
-                };
-
-                libri = {
-                  description = "Bridge in Dylan's web chat";
-                  restartIfChanged = false;
-                  after =
-                    optionals config.seat.hippo.enable (singleton "hippo.service") ++ singleton "libri-core.service";
-                  wants =
-                    optionals config.seat.hippo.enable (singleton "hippo.service") ++ singleton "libri-core.service";
-                  environment =
-                    optionalAttrs (limits.server != null) { LIBRI_SERVER_CGROUP = limits.server; }
-                    // optionalAttrs (limits.harness != null) { LIBRI_HARNESS_CGROUP = limits.harness; }
-                    // optionalAttrs (limits.browser != null) { LIBRI_BROWSER_CGROUP = limits.browser; }
-                    // {
-                      PATH = mkForce seatPath;
-                      LIBRI_CORE_SOCKET = bridgeSocket;
-                      OPENCODE_CONFIG = toString openCodeConfig;
-                    };
-                  serviceConfig = {
-                    LimitCORE = 0;
-                    SupplementaryGroups = [
-                      "usage"
-                      "opencode-auth"
-                    ];
-                    LoadCredential = "claude-token:${config.secrets.agent-claude-token.path}";
-                    RuntimeDirectory = "libri";
-                    RuntimeDirectoryMode = "0700";
-                    ExecStartPre = claudeToken;
-                    EnvironmentFile = "-%t/%N/claude.env";
-                    WorkingDirectory = seat.home;
-                    NoNewPrivileges = false;
-                    ProtectSystem = false;
-                    PrivateTmp = false;
-                    Restart = "always";
-                    RestartSec = 10;
-                    MemoryHigh = "12G";
-                  };
-                };
-              }
-            )
+              };
+            }
           );
         };
     };

@@ -14,21 +14,6 @@ inputs.nixpkgs.lib.extend (
       keys = import ../keys.nix;
       opencode = import ./opencode.nix final;
       rustTool = import ./rust-tool.nix final inputs.crate2nix;
-      # hippo as Libri's deploy last built it at `build`, with `env` set: the
-      # repository that holds it isn't on GitHub, so this host's flake can't
-      # fetch it.
-      libriHippo =
-        pkgs: build: env:
-        pkgs.writeShellApplication {
-          name = "hippo";
-          text =
-            (
-              env
-              |> final.attrsets.mapAttrsToList (k: v: "export ${k}=\"\${${k}:-${v}}\"\n")
-              |> final.strings.concatStrings
-            )
-            + "exec ${build}/bin/hippo \"$@\"\n";
-        };
 
       # `ship.host "name" module` is a flake-parts module defining
       # nixosConfigurations.name. Every host gets the `default` bundle.

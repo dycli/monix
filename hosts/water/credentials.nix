@@ -125,9 +125,6 @@ in
     tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
     frigate.restartTriggers = singleton ./secrets/frigate.env.age;
     go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
-  }
-  // lib.attrsets.optionalAttrs config.libri.legacy.enable {
-    libri.environment = searchSockets;
   };
   libri.assistants.bridge.addons.search.environment = searchSockets;
   libri.assistants.suki.addons.search.environment = searchSockets;

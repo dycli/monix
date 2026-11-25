@@ -1,7 +1,7 @@
 # libri-deploy: put pushed Libri main live on the seat's Libri, as a unit of
 # its own.
 #
-# Libri's workers run inside libri.service, and a deploy restarts it, so a
+# Libri's workers run inside libri-core.service, and a deploy restarts it, so a
 # deploy a worker ran itself died with it, before its health check and
 # rollback (11-03 16:16). Here the deploy runs in its own cgroup, which the
 # restart leaves alone, the way switcharoo runs outside what it switches.
@@ -11,8 +11,8 @@
 #   the push to main on the checks for its change scope.
 # - The source is the NAS mirror of GitHub, refreshed first, so only pushed
 #   main deploys and nobody's checkout is touched.
-# - It runs as the seat, whose polkit rule already lets it restart hippo and
-#   Libri; polkit lets the seat start this unit and do nothing else to it.
+# - It runs as the seat, whose polkit rule already lets it restart the Libri
+#   services; polkit lets the seat start this unit and do nothing else to it.
 #   systemd runs one start at a time; a start while one runs joins it.
 # - `libri-start-deploy` starts it and returns. Interrupted turns resume
 #   after the services restart.

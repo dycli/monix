@@ -91,6 +91,9 @@
     {
       imports = singleton inputs.hippo2.nixosModules.default;
 
+      # hippo2 is the only memory: Codex's own stays off.
+      seat.codexConfig.features.memories = false;
+
       services.hippo2 = {
         enable = true;
         inherit (seat) user;
