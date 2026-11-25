@@ -15,8 +15,8 @@
 # to pass on; the app shows the changelog entry itself as What's new.
 #
 # The changelog entry for the new version may be written by hand beforehand,
-# left uncommitted in libri/CHANGELOG.md; without one, set_version.sh drafts
-# it from the commit subjects since the last tag.
+# left uncommitted in CHANGELOG.md (or libri/CHANGELOG.md); without one,
+# set_version.sh drafts it from the commit subjects since the last tag.
 #
 # The deploy runs in its own unit. Its result is in /var/lib/libri-deploy/status.
 # It doesn't move monix's Libri pin, which carries only the NixOS module; the
@@ -39,10 +39,12 @@ git fetch --quiet origin
 [[ $(git branch --show-current) == main ]] || { echo "not on main"; exit 1; }
 [[ $(git rev-parse HEAD) == $(git rev-parse origin/main) ]] ||
   { echo "main differs from origin/main: merge first"; exit 1; }
-dirty=$(git status --porcelain | grep -v ' libri/CHANGELOG.md$' || true)
+dirty=$(git status --porcelain | grep -Ev ' (libri/)?CHANGELOG\.md$' || true)
 [[ -z $dirty ]] || { echo "uncommitted changes besides the changelog:"; echo "$dirty"; exit 1; }
 
-current=$(sed -n '0,/^version = /s/^version = "\(.*\)"/\1/p' libri/Cargo.toml)
+version_file=libri/Cargo.toml
+[[ -f core/Cargo.toml ]] && version_file=core/Cargo.toml
+current=$(sed -n '0,/^version = /s/^version = "\(.*\)"/\1/p' "$version_file")
 version=${1:-${current%.*}.$((${current##*.} + 1))}
 echo "$current -> $version"
 git rev-parse -q --verify "refs/tags/v$version" >/dev/null && { echo "v$version is already tagged"; exit 1; }
@@ -73,7 +75,13 @@ fi
 needs() { grep -qx "$1" <<< "$slow"; }
 
 # Puts the version files back if anything below fails before the commit.
-undo() { git checkout --quiet -- libri/Cargo.toml libri/Cargo.lock; }
+undo() {
+  local files=() f
+  for f in core/Cargo.toml core/Cargo.lock libri/Cargo.toml libri/Cargo.lock CHANGELOG.md libri/CHANGELOG.md; do
+    [[ -e $f ]] && git ls-files --error-unmatch "$f" >/dev/null 2>&1 && files+=("$f")
+  done
+  ((${#files[@]})) && git checkout --quiet -- "${files[@]}"
+}
 trap undo ERR
 
 # Locks: the browser checks and the gate take Libri's timing lock themselves
@@ -140,7 +148,9 @@ mkdir -p "$(dirname "$notes")"
 {
   echo "# Libri $version"
   echo
-  awk -v head="## $version " 'index($0, head) == 1 { on = 1; next } on && /^## / { exit } on' libri/CHANGELOG.md
+  changelog=libri/CHANGELOG.md
+  [[ -f CHANGELOG.md ]] && changelog=CHANGELOG.md
+  awk -v head="## $version " 'index($0, head) == 1 { on = 1; next } on && /^## / { exit } on' "$changelog"
   echo "$parity"
 } > "$notes"
 cat "$notes"

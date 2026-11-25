@@ -1,8 +1,9 @@
 # Dylan's Fastmail (mail, calendar, contacts) for the seat, through
-# Fastmail's own MCP server, so Bridge's daily chat (Libri) reads mail and
-# calendar. Libri holds the sign-in (Settings > Connections, by Fastmail's
-# OAuth), renews it, and relays the server to each harness with the current
-# token, so no config here holds a secret. Sending is denied in the managed
+# Fastmail's own MCP server, so Bridge's daily chat reads mail and calendar.
+# `libri-connect` holds the OAuth sign-in in `/var/lib/libri/connections`,
+# `libri-connect-renew.timer` renews it, and `libri-connect serve fastmail`
+# relays the server under the MCP name `fastmail` with core approval prompts,
+# so no config here holds a secret. Sending is denied in the managed
 # settings: the seat drafts, Dylan sends.
 { self, ... }:
 {

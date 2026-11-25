@@ -8,13 +8,19 @@
 {
   imports = lib.lists.singleton (
     lib.ship.host "water" (
-      { pkgs, ... }:
+      { config, pkgs, ... }:
       let
+        inherit (lib.ship.topology) seat;
         harnessMemory = {
           high = "44G";
           maximum = "48G";
           swap = "12G";
         };
+        seatPath = lib.strings.concatStringsSep ":" [
+          "/etc/profiles/per-user/${seat.user}/bin"
+          "/run/wrappers/bin"
+          "/run/current-system/sw/bin"
+        ];
       in
       {
         imports = [
@@ -117,94 +123,150 @@
         # at 74G, with zram behind both.
         libri.legacy.enable = false;
         seat.hippo.enable = false;
-        # Stage 2 serves Dylan's address: the gateway and its web view at
-        # si.su.is, and at core.su.is for what was paired there.
-        libri.gateway = {
-          enable = true;
-          subdomain = "si";
-          aliases = lib.lists.singleton "core";
-          tailnetOwner = "ddcleary1@gmail.com";
-        };
-        libri.core.addons = {
-          files = {
-            enable = true;
-            environment.LIBRI_FILES_DIR = "/var/lib/libri/files";
-          };
-          lists = {
-            enable = true;
-            environment.LIBRI_LISTS_DIR = "/var/lib/libri-core/lists";
-          };
-          boards = {
-            enable = true;
-            environment.LIBRI_BOARDS_DIR = "/var/lib/libri-core/boards";
-          };
-          pages = {
-            enable = true;
-            environment = {
-              LIBRI_PAGES_DIR = "/var/lib/libri-core/pages";
-              LIBRI_PAGES_DATA_DIR = "/var/lib/libri-core/page-data";
+        # Pre-link the computer add-on beside Bridge's own so Wave 3 Suki finds
+        # it already built under /var/lib/libri-build/addons/computer.
+        libri.deploy.extraAddons = lib.lists.singleton "computer";
+
+        # Stage 2 serves Dylan's address: Bridge's core, gateway (si.su.is and
+        # core.su.is), and add-ons on the seat's account.
+        libri.assistants.bridge = {
+          unitPrefix = "libri";
+          description = "Libri core for the seat";
+          inherit (seat) user home;
+          group = seat.user;
+          hippo2Unit = "hippo2.service";
+          setSessionVariables = true;
+
+          core = {
+            includeSeatMcp = true;
+            path = seatPath;
+            supplementaryGroups = lib.lists.singleton "usage";
+            envCredentials.CLAUDE_CODE_OAUTH_TOKEN = {
+              credentialName = "claude-token";
+              path = config.secrets.agent-claude-token.path;
+            };
+            # Mode a child session gets when its parent runs on a different
+            # harness: each built-in harness's autonomous widening mode.
+            harnesses = {
+              claude.child_mode = "bypassPermissions";
+              codex.child_mode = "never";
+              agy.child_mode = "full-access";
+              muse.child_mode = "allowAll";
+              omp.child_mode = "full-access";
+              opencode.child_mode = "full-access";
+              pi.child_mode = "full-access";
+            };
+            # Workers' processes slow past 44G and are killed past 48G. At 32G,
+            # some twenty agents (0.4-1.8G each) with two Gradle builds filled it;
+            # 12G of swap takes cold Claude Code heaps and costs at most 3.4G of
+            # RAM in zram, staying inside the slice's 16G.
+            extraServiceConfig = {
+              Slice = "work.slice";
+              MemoryHigh = harnessMemory.high;
+              MemoryMax = harnessMemory.maximum;
+              MemorySwapMax = harnessMemory.swap;
             };
           };
-          # The key proxy's sockets: credentials.nix. x_search shares the xAI
-          # login under /var/lib/libri/connections and renews it under its lock.
-          search = {
+
+          gateway = {
             enable = true;
-            environment.LIBRI_XAI_CONNECTION = "/var/lib/libri/connections/xai.json";
+            port = 8953;
+            subdomain = "si";
+            domain = "si.${config.shipProxy.domain}";
+            aliases = lib.lists.singleton "core";
+            tailnetOwners = lib.lists.singleton "ddcleary1@gmail.com";
+            assistantName = "Bridge";
+            # Fixed at the UID/GID NixOS first allotted Water (/var/lib/nixos/uid-map),
+            # which owns /var/lib/libri-gateway; served add-ons enforce --peer-uid.
+            uid = 953;
+            gid = 940;
           };
-          # Grok Imagine on the same xAI login as x_search, into the files
-          # add-on's folder, so each picture shows in Files and at its raw URL.
-          image = {
-            enable = true;
-            environment = {
-              LIBRI_IMAGE_DIR = "/var/lib/libri/files";
-              LIBRI_XAI_CONNECTION = "/var/lib/libri/connections/xai.json";
-            };
-          };
-          # On Water's own models: no key, no network.
-          speech = {
-            enable = true;
-            provider = "local";
-            environment = {
-              LIBRI_SPEECH_DIR = "/var/lib/libri-core/speech";
-              LIBRI_SPEECH_INPUT_DIR = "/var/lib/libri/files";
-            };
-          };
-          # Sends wait on the person's approval through the core, on the
-          # session's own LIBRI_SOCKET, LIBRI_TOKEN and LIBRI_SESSION. Its key
-          # is a file the seat writes before enabling.
-          mail = {
-            enable = false;
-            environment = {
-              LIBRI_MAIL_JMAP_URL = "https://api.fastmail.com/jmap/session";
-              LIBRI_MAIL_TOKEN_FILE = "/var/lib/libri-core/mail.token";
-            };
-          };
-          layout = {
-            enable = true;
-            environment.LIBRI_LAYOUT_STATE = "/var/lib/libri-core/layout";
-          };
-          ui.enable = true;
-          # Outbound MCP and loopback inbound receiver on :8951 so Suki's peer
-          # entry delivers straight into the core's role=main session.
+
           a2a = {
             enable = true;
-            listen = "127.0.0.1:8951";
+            port = 8951;
+            peersFile = "/var/lib/libri-core/a2a-peers.json";
+            tokenFile = "/var/lib/libri-core/a2a.token";
+            name = "Bridge";
             person = "Dylan";
-            environment = {
-              LIBRI_A2A_NAME = "Bridge";
-              LIBRI_A2A_PEERS_FILE = "/var/lib/libri-core/a2a-peers.json";
+          };
+
+          addons = {
+            wiki = {
+              enable = true;
+              dir = "/var/lib/libri/wiki";
+            };
+            connect = {
+              enable = true;
+              dir = "/var/lib/libri/connections";
+              servers = lib.lists.singleton "fastmail";
+            };
+            files = {
+              enable = true;
+              environment.LIBRI_FILES_DIR = "/var/lib/libri/files";
+            };
+            lists = {
+              enable = true;
+              environment.LIBRI_LISTS_DIR = "/var/lib/libri-core/lists";
+            };
+            boards = {
+              enable = true;
+              environment.LIBRI_BOARDS_DIR = "/var/lib/libri-core/boards";
+            };
+            pages = {
+              enable = true;
+              environment = {
+                LIBRI_PAGES_DIR = "/var/lib/libri-core/pages";
+                LIBRI_PAGES_DATA_DIR = "/var/lib/libri-core/page-data";
+              };
+            };
+            # The key proxy's sockets: credentials.nix. x_search shares the xAI
+            # login under /var/lib/libri/connections and renews it under its lock.
+            search = {
+              enable = true;
+              environment.LIBRI_XAI_CONNECTION = "/var/lib/libri/connections/xai.json";
+            };
+            # Grok Imagine on the same xAI login as x_search, into the files
+            # add-on's folder, so each picture shows in Files and at its raw URL.
+            image = {
+              enable = true;
+              environment = {
+                LIBRI_IMAGE_DIR = "/var/lib/libri/files";
+                LIBRI_XAI_CONNECTION = "/var/lib/libri/connections/xai.json";
+              };
+            };
+            # On Water's own models: no key, no network.
+            speech = {
+              enable = true;
+              provider = "local";
+              environment = {
+                LIBRI_SPEECH_DIR = "/var/lib/libri-core/speech";
+                LIBRI_SPEECH_INPUT_DIR = "/var/lib/libri/files";
+              };
+            };
+            # Sends wait on the person's approval through the core, on the
+            # session's own LIBRI_SOCKET, LIBRI_TOKEN and LIBRI_SESSION. Its key
+            # is a file the seat writes before enabling.
+            mail = {
+              enable = false;
+              environment = {
+                LIBRI_MAIL_JMAP_URL = "https://api.fastmail.com/jmap/session";
+                LIBRI_MAIL_TOKEN_FILE = "/var/lib/libri-core/mail.token";
+              };
+            };
+            layout = {
+              enable = true;
+              environment.LIBRI_LAYOUT_STATE = "/var/lib/libri-core/layout";
+            };
+            ui.enable = true;
+            a2a = {
+              enable = true;
+              environment = {
+                LIBRI_A2A_NAME = "Bridge";
+                LIBRI_A2A_PEERS_FILE = "/var/lib/libri-core/a2a-peers.json";
+              };
             };
           };
-        };
-        # Workers' processes slow past 44G and are killed past 48G. At 32G,
-        # some twenty agents (0.4-1.8G each) with two Gradle builds filled it;
-        # 12G of swap takes cold Claude Code heaps and costs at most 3.4G of
-        # RAM in zram, staying inside the slice's 16G.
-        systemd.services.libri-core.serviceConfig = {
-          Slice = "work.slice";
-          MemoryHigh = harnessMemory.high;
-          MemoryMax = harnessMemory.maximum;
-          MemorySwapMax = harnessMemory.swap;
         };
         # Large cores are logged, not kept, and old ones go past 2G in all.
         systemd.coredump.settings.Coredump = {

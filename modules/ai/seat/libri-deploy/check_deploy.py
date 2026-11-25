@@ -49,10 +49,12 @@ exit 0
 if [ "$1" = is-active ]; then case " $ACTIVE " in *" $3 "*) exit 0 ;; esac; exit 3; fi
 if [ "$1" = stop ]; then echo "$2" >> "$STUBS/stops"; exit 0; fi
 if [ "$1" = restart ]; then shift; echo "$*" >> "$STUBS/restarts"
-  if [ "$1" = libri-core.service ]; then
-    readlink "$LINK_UNDER_TEST" >> "$STUBS/core_builds"
-    [ "$(readlink "$LINK_UNDER_TEST")" != "$FAIL_CORE_BUILD" ] || exit 1
-  fi
+  case "$1" in
+    *-core.service)
+      readlink "$LINK_UNDER_TEST" >> "$STUBS/core_builds"
+      [ "$(readlink "$LINK_UNDER_TEST")" != "$FAIL_CORE_BUILD" ] || exit 1
+      ;;
+  esac
   case " $* " in *" $FAIL_UNIT "*) exit 1 ;; esac
 fi
 """,
@@ -63,6 +65,7 @@ case "$*" in
   *8951/api/host) printf '%s' "$HEALTH" ;;
   *8952/api/host) printf '%s' "${SUKI_HEALTH:-$HEALTH}" ;;
   *8953/) printf '%s' "${GATEWAY_HEALTH:-$HEALTH}" ;;
+  *8954/) printf '%s' "${SUKI_GATEWAY_HEALTH:-$HEALTH}" ;;
   *) exit 1 ;;
 esac
 """,
@@ -560,6 +563,146 @@ check("Stage 2-only gateway health failure rolls back core, a2a, gateway, and Su
           "libri-core.service", "libri-addon-a2a.service", "libri-gateway.service", "suki.service",
       ]
       and (addons_dir / ".a2a.ran").read_text().strip() == a1,
+      f"code {code}, restarts {restarts}")
+shutil.rmtree(root)
+
+# Multi-assistant Stage 2 deploy: two cores (libri-core, suki-core), shared
+# connect + computer add-on links, per-assistant unit:addon served add-ons,
+# and two active gateways (libri-gateway:8953, suki-gateway:8954).
+root, repo, stubs = scratch()
+old, new = build(stubs, "old", "h1", core=True), build(stubs, "new", "h2", core=True)
+(stubs / "link").unlink()
+os.symlink(old, stubs / "link")
+addons_dir = stubs / "addons"
+addons_dir.mkdir()
+old_boards, b1 = addon_build(stubs, "boards", "old", "b1")
+new_boards, b2 = addon_build(stubs, "boards", "new", "b2")
+old_connect, _ = addon_build(stubs, "connect", "old", "c1")
+new_connect, _ = addon_build(stubs, "connect", "new", "c2")
+old_computer, _ = addon_build(stubs, "computer", "old", "m1")
+new_computer, _ = addon_build(stubs, "computer", "new", "m2")
+os.symlink(old_boards, addons_dir / "boards")
+os.symlink(old_connect, addons_dir / "connect")
+os.symlink(old_computer, addons_dir / "computer")
+(addons_dir / ".boards.ran").write_text(b1 + "\n")
+(addons_dir / ".suki-addon-boards.ran").write_text(b1 + "\n")
+new_dir = stubs / "new-addons"
+new_dir.mkdir()
+os.symlink(new_boards, new_dir / "boards")
+os.symlink(new_connect, new_dir / "connect")
+os.symlink(new_computer, new_dir / "computer")
+code = deploy(
+    repo, stubs, "ok", "200", NEW=new,
+    ACTIVE="libri-gateway.service suki-gateway.service",
+    DEPLOY_LIBRI_CORES="libri-core suki-core",
+    DEPLOY_LIBRI_GATEWAYS="libri-gateway:8953 suki-gateway:8954",
+    DEPLOY_LIBRI_INSTANCES="",
+    DEPLOY_LIBRI_HIPPOS="",
+    DEPLOY_LIBRI_ADDONS="boards computer connect",
+    DEPLOY_LIBRI_SERVED_ADDONS="libri-addon-boards:boards suki-addon-boards:boards",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    ADDON_NEW_DIR=str(new_dir),
+)
+restarts = (stubs / "restarts").read_text().splitlines()
+requests = [line.split()[-1] for line in (stubs / "requests").read_text().splitlines()]
+check("multi-assistant deploy updates connect+computer links and restarts both cores, per-assistant addons, and both gateways",
+      code == 0
+      and os.readlink(addons_dir / "connect") == new_connect
+      and os.readlink(addons_dir / "computer") == new_computer
+      and restarts == [
+          "libri-core.service",
+          "suki-core.service",
+          "libri-addon-boards.service",
+          "suki-addon-boards.service",
+          "libri-gateway.service",
+          "suki-gateway.service",
+      ]
+      and requests == ["http://127.0.0.1:8953/", "http://127.0.0.1:8954/"]
+      and (addons_dir / ".boards.ran").read_text().strip() == b2
+      and (addons_dir / ".suki-addon-boards.ran").read_text().strip() == b2,
+      f"code {code}, restarts {restarts}, requests {requests}")
+(stubs / "restarts").unlink()
+(stubs / "requests").unlink()
+# Repeat deploy with unchanged binaries skips both per-assistant served add-ons.
+code = deploy(
+    repo, stubs, "ok", "200", NEW=new,
+    ACTIVE="libri-gateway.service suki-gateway.service",
+    DEPLOY_LIBRI_CORES="libri-core suki-core",
+    DEPLOY_LIBRI_GATEWAYS="libri-gateway:8953 suki-gateway:8954",
+    DEPLOY_LIBRI_INSTANCES="",
+    DEPLOY_LIBRI_HIPPOS="",
+    DEPLOY_LIBRI_ADDONS="boards computer connect",
+    DEPLOY_LIBRI_SERVED_ADDONS="libri-addon-boards:boards suki-addon-boards:boards",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    ADDON_NEW_DIR=str(new_dir),
+)
+restarts = (stubs / "restarts").read_text().splitlines()
+check("multi-assistant repeat deploy skips unchanged per-assistant served addons",
+      code == 0
+      and restarts == [
+          "libri-core.service",
+          "suki-core.service",
+          "libri-gateway.service",
+          "suki-gateway.service",
+      ],
+      f"code {code}, restarts {restarts}")
+shutil.rmtree(root)
+
+# Multi-assistant second-gateway health failure rolls back both cores, both
+# per-assistant served add-ons, both gateways, and connect+computer links.
+root, repo, stubs = scratch()
+old, new = build(stubs, "old", "h1", core=True), build(stubs, "new", "h2", core=True)
+(stubs / "link").unlink()
+os.symlink(old, stubs / "link")
+addons_dir = stubs / "addons"
+addons_dir.mkdir()
+old_boards, b1 = addon_build(stubs, "boards", "old", "b1")
+new_boards, _ = addon_build(stubs, "boards", "new", "b2")
+old_connect, _ = addon_build(stubs, "connect", "old", "c1")
+new_connect, _ = addon_build(stubs, "connect", "new", "c2")
+os.symlink(old_boards, addons_dir / "boards")
+os.symlink(old_connect, addons_dir / "connect")
+(addons_dir / ".boards.ran").write_text(b1 + "\n")
+(addons_dir / ".suki-addon-boards.ran").write_text(b1 + "\n")
+new_dir = stubs / "new-addons"
+new_dir.mkdir()
+os.symlink(new_boards, new_dir / "boards")
+os.symlink(new_connect, new_dir / "connect")
+code = deploy(
+    repo, stubs, "ok", "200", NEW=new,
+    ACTIVE="libri-gateway.service suki-gateway.service",
+    SUKI_GATEWAY_HEALTH="500",
+    DEPLOY_LIBRI_CORES="libri-core suki-core",
+    DEPLOY_LIBRI_GATEWAYS="libri-gateway:8953 suki-gateway:8954",
+    DEPLOY_LIBRI_INSTANCES="",
+    DEPLOY_LIBRI_HIPPOS="",
+    DEPLOY_LIBRI_ADDONS="boards connect",
+    DEPLOY_LIBRI_SERVED_ADDONS="libri-addon-boards:boards suki-addon-boards:boards",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    ADDON_NEW_DIR=str(new_dir),
+)
+restarts = (stubs / "restarts").read_text().splitlines()
+check("multi-assistant gateway health failure rolls back all cores, addons, and gateways",
+      code != 0
+      and os.readlink(stubs / "link") == old
+      and os.readlink(addons_dir / "boards") == old_boards
+      and os.readlink(addons_dir / "connect") == old_connect
+      and restarts == [
+          "libri-core.service",
+          "suki-core.service",
+          "libri-addon-boards.service",
+          "suki-addon-boards.service",
+          "libri-gateway.service",
+          "suki-gateway.service",
+          "libri-core.service",
+          "suki-core.service",
+          "libri-addon-boards.service",
+          "suki-addon-boards.service",
+          "libri-gateway.service",
+          "suki-gateway.service",
+      ]
+      and (addons_dir / ".boards.ran").read_text().strip() == b1
+      and (addons_dir / ".suki-addon-boards.ran").read_text().strip() == b1,
       f"code {code}, restarts {restarts}")
 shutil.rmtree(root)
 

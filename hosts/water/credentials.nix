@@ -129,5 +129,5 @@ in
   // lib.attrsets.optionalAttrs config.libri.legacy.enable {
     libri.environment = searchSockets;
   };
-  libri.core.addons.search.environment = searchSockets;
+  libri.assistants.bridge.addons.search.environment = searchSockets;
 }

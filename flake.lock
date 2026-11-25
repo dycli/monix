@@ -433,11 +433,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1795199437,
-        "narHash": "sha256-ssnOQrydLIibwJgENgQcz2DegDfEknmbQS8N1XqmwsI=",
+        "lastModified": 1795576110,
+        "narHash": "sha256-HFgVMaazpqMSvGXoWZDRgNJOek0jJ4vE25qsPwLYvg8=",
         "ref": "main",
-        "rev": "ab3b51e6e76e1dfbd6b6e2def118608976e5cf64",
-        "revCount": 25,
+        "rev": "ad33a89d17992f025bbd80e0d3eac200f353e938",
+        "revCount": 26,
         "type": "git",
         "url": "https://github.com/dycli/hippo2"
       },
@@ -698,11 +698,11 @@
         "rust-overlay": "rust-overlay_2"
       },
       "locked": {
-        "lastModified": 1795541814,
-        "narHash": "sha256-EYHK0IhvOrsgEw9uWCoXqFd6OiisQ5uMQCPfg+Rj7f0=",
+        "lastModified": 1795577319,
+        "narHash": "sha256-VO6cI+tXZMN6JtLCumHQXBn/mh9m03Ca8CvDQ0wbHf8=",
         "ref": "main",
-        "rev": "a8dc7de768f9804569d35c74893345d64be3b40e",
-        "revCount": 2096,
+        "rev": "af44a6a4937b56ac471017fd0d466e621a618292",
+        "revCount": 2169,
         "type": "git",
         "url": "https://github.com/dycli/libri"
       },
