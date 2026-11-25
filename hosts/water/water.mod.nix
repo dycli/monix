@@ -374,10 +374,17 @@
               strict_mcp = true;
             };
             mcpServers = {
-              hippo2.command = [
-                (lib.meta.getExe config.services.hippo2.instances.suki.finalPackage)
-                "mcp"
-              ];
+              hippo2 = {
+                command = [
+                  (lib.meta.getExe config.services.hippo2.instances.suki.finalPackage)
+                  "mcp"
+                ];
+                env = {
+                  LIBRI_SOCKET.session = "socket";
+                  LIBRI_TOKEN.session = "token";
+                  LIBRI_SESSION.session = "id";
+                };
+              };
               home = {
                 url = "http://127.0.0.1:${toString config.shipProxy.routes.ha.port}/api/mcp";
                 headers.Authorization.file = "/run/suki-core/home-auth";

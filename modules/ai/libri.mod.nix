@@ -153,7 +153,12 @@
               (getExe config.services.hippo2.finalPackage)
               "mcp"
             ];
-            env.HIPPO_DIR = seat.hippo;
+            env = {
+              HIPPO_DIR = seat.hippo;
+              LIBRI_SOCKET.session = "socket";
+              LIBRI_TOKEN.session = "token";
+              LIBRI_SESSION.session = "id";
+            };
           };
         };
 

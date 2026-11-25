@@ -433,11 +433,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1795576110,
-        "narHash": "sha256-HFgVMaazpqMSvGXoWZDRgNJOek0jJ4vE25qsPwLYvg8=",
+        "lastModified": 1795624513,
+        "narHash": "sha256-tvpYVIpRA64icGOsoqodKHxdcs2qB3ynI9xFHDXmhlA=",
         "ref": "main",
-        "rev": "ad33a89d17992f025bbd80e0d3eac200f353e938",
-        "revCount": 26,
+        "rev": "86c7690069bb144947778821a343c6f10b4a64fc",
+        "revCount": 28,
         "type": "git",
         "url": "https://github.com/dycli/hippo2"
       },
