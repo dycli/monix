@@ -517,6 +517,8 @@
             "libri-gateway.service"
             "libri-addon-a2a.service"
             "suki-core.service"
+            "suki-gateway.service"
+            "suki-addon-a2a.service"
             "nginx.service"
             "tuwunel.service"
           ];
