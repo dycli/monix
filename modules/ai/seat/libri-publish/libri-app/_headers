@@ -1,6 +1,12 @@
 /index.html
   Cache-Control: no-cache
+/board.html
+  Cache-Control: no-cache
+/markdown.html
+  Cache-Control: no-cache
+/boot.js
+  Cache-Control: no-cache
 /sw.js
   Cache-Control: no-cache
-/_site/*
+/assets/*
   Cache-Control: public, max-age=31536000, immutable

@@ -22,7 +22,8 @@
 set -uo pipefail
 since=$1
 cd "${2:-$HOME/ark/libri}" || exit 1
-web=libri/site/src
+web=web/src
+[[ -d $web ]] || web=libri/site/src
 android=android/app/src/main
 desktop=desktop/src
 

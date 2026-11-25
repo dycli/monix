@@ -19,7 +19,7 @@
 # set_version.sh drafts it from the commit subjects since the last tag.
 #
 # The deploy runs in its own unit. Its result is in /var/lib/libri-deploy/status.
-# It doesn't move monix's Libri pin, which carries only the NixOS module; the
+# It doesn't move monix's Libri pin, which carries only the speech models; the
 # routine flake update moves it.
 #
 # UI latency (Libri's 400 ms check) runs after the deploy, in a unit of its
@@ -42,8 +42,8 @@ git fetch --quiet origin
 dirty=$(git status --porcelain | grep -Ev ' (libri/)?CHANGELOG\.md$' || true)
 [[ -z $dirty ]] || { echo "uncommitted changes besides the changelog:"; echo "$dirty"; exit 1; }
 
-version_file=libri/Cargo.toml
-[[ -f core/Cargo.toml ]] && version_file=core/Cargo.toml
+version_file=core/Cargo.toml
+[[ -f $version_file ]] || version_file=libri/Cargo.toml
 current=$(sed -n '0,/^version = /s/^version = "\(.*\)"/\1/p' "$version_file")
 version=${1:-${current%.*}.$((${current##*.} + 1))}
 echo "$current -> $version"
@@ -74,8 +74,8 @@ if ! grep -q -- '--release-checks' check_changes.sh || ! slow=$(./check_changes.
 fi
 needs() { grep -qx "$1" <<< "$slow"; }
 
-changelog=libri/CHANGELOG.md
-[[ -f CHANGELOG.md ]] && changelog=CHANGELOG.md
+changelog=CHANGELOG.md
+[[ -f $changelog ]] || changelog=libri/CHANGELOG.md
 changelog_backup=
 cleanup_backup() { [[ -n $changelog_backup ]] && rm -f "$changelog_backup"; }
 trap cleanup_backup EXIT

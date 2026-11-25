@@ -75,39 +75,38 @@ Map you can open it and see each file, sized by its lines."""
 
 [[tour]]
 id = "hippo"
-title = "How hippo remembers"
-summary = "The memory every assistant shares: a log, a tree of summaries and a view."
+title = "How hippo2 remembers"
+summary = "The memory daemon each assistant reads from: session logs, SQLite FTS5, and MCP recall."
 
 [[tour.step]]
-title = "The log"
+title = "The store"
 view = "map"
-focus = ["libri:hippo/src/memory/store.rs"]
+focus = ["hippo2:src/store.rs"]
 text = """
-Every message is kept word for word, append-only, one line each. Nothing is
-ever rewritten."""
+Every message is filed word for word into one SQLite database per named
+memory, indexed with FTS5 and porter stemming. No model is called on ingest."""
 
 [[tour.step]]
-title = "The tree"
+title = "The readers"
 view = "map"
-focus = ["libri:hippo/src/memory/tree.rs", "libri:hippo/src/memory/compactor.rs"]
+focus = ["hippo2:src/ingest.rs", "hippo2:src/libri_core.rs"]
 text = """
-A model writes a one-line summary of each message, then of each pair, each
-four, and so on up. The compactor runs those calls in message order, a few
-at a time."""
+The daemon tails every harness's session logs and each assistant's Libri core
+event log past a saved cursor, keeping turns and tool traffic while dropping
+injected prompts."""
 
 [[tour.step]]
-title = "The view"
+title = "Recall over MCP"
 view = "map"
-focus = ["libri:hippo/src/memory/view.rs"]
+focus = ["hippo2:src/search.rs", "hippo2:src/mcp.rs"]
 text = """
-The view tiles the whole history with summaries: recent messages close up,
-older ones folded into wider lines. It stays under a byte budget and only
-grows at its end, so the model's prompt cache keeps working."""
+BM25 search with spelling repair answers recall, open, around, timeline, day,
+and grep queries over stdio MCP without sending history to a summariser."""
 
 [[tour.step]]
 title = "Who uses it"
 view = "wiring"
-focus = ["monix:modules/ai/seat/hippo.mod.nix", "monix:modules/ai/libri.mod.nix"]
+focus = ["monix:modules/ai/seat/hippo2.mod.nix", "monix:modules/ai/libri.mod.nix"]
 text = """
-The coding seat runs one hippo over every coding chat; each assistant runs
-its own. They are the same binary."""
+The seat runs hippo2 over Bridge's Libri core and terminal harnesses; each
+isolated assistant runs its own hippo2 instance over its own core socket."""

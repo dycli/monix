@@ -78,13 +78,11 @@ in
 
   flake.nixosModules.seat =
     {
-      config,
       lib,
       pkgs,
       ...
     }:
     let
-      inherit (lib.attrsets) optionalAttrs;
       inherit (lib.lists) singleton;
       inherit (lib.ship.topology) seat hostTailnetAddr;
 
@@ -123,9 +121,6 @@ in
             ProtectHome = true;
           };
         };
-      }
-      // optionalAttrs (config.libri.legacy.enable or false) {
-        libri = session;
       };
 
       systemd.sockets.seat-vnc = {

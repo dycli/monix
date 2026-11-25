@@ -158,13 +158,6 @@
           serviceConfig.Slice = "work.slice";
           restartIfChanged = false;
         };
-        # Libri's workers run cargo, Gradle and QEMU, so they share that budget:
-        # of its 93.7G the slice's 80G leaves the desktop and services 13.7G at
-        # the least (4G is what they hold today) and starts slowing the slice
-        # at 74G, with zram behind both.
-        libri.legacy.enable = false;
-        libri.legacySuki.enable = false;
-        seat.hippo.enable = false;
 
         keyProxy.users = [
           seat.user

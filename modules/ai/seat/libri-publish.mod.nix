@@ -97,7 +97,7 @@
           LIBRI_PUBLISH_DIR = "${state}/stage";
           LIBRI_ANDROID_DIR = "/var/lib/libri-android";
           LIBRI_WEBSITE_DIR = website;
-          LIBRI_PUBLISH_SITE = "${seat.libriBuild}/site";
+          LIBRI_PUBLISH_SITE = "${seat.libriBuild}/web";
           # Not a secret: the account the Workers belong to.
           CLOUDFLARE_ACCOUNT_ID = "fd36658954c6a4df540bc3975d993ba2";
         };
