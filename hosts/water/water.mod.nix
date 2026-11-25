@@ -400,8 +400,10 @@
                 "AF_INET6"
               ];
               ReadWritePaths = lib.lists.singleton "${computers.desks}/suki";
-              # ONNX Runtime in local libri-speech reads /proc/cpuinfo.
+              # ONNX Runtime in local libri-speech reads /proc/cpuinfo; owner.sock walks
+              # /proc/<pid>/stat up to PID 1 (and sudo/runuser parents) to verify callers.
               ProcSubset = "all";
+              ProtectProc = "default";
               IPAddressAllow =
                 fences.loopback ++ lib.lists.singleton "${computers.addr computers.indexes.suki}/32";
               IPAddressDeny = fences.internetOnlyDeny ++ lib.lists.singleton "127.0.0.0/8";
