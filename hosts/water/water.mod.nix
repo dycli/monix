@@ -114,38 +114,11 @@
         # Libri's workers run cargo, Gradle and QEMU, so they share that budget:
         # of its 93.7G the slice's 80G leaves the desktop and services 13.7G at
         # the least (4G is what they hold today) and starts slowing the slice
-        # at 74G, with zram behind both. The legacy and core harnesses each
-        # have their own cap, with the work.slice limit bounding the total.
-        # Inside it, the chat comes first. Libri gets its cgroup delegated:
-        # the daemon (112 MB) runs in the `server` leaf and every harness,
-        # with all it starts, in `harness` beside it (Libri's cgroup.rs). The
-        # server's memory is protected and its CPU and IO weigh fifty times
-        # the harnesses', and the service outweighs the builds beside it, so
-        # under load the agents and their compiles slow first, not the page.
-        systemd.services.libri = {
-          serviceConfig = {
-            Slice = "work.slice";
-            Delegate = true;
-            DelegateSubgroup = "server";
-            # The daemon's guarantee reaches it only through every ancestor:
-            # the slice's and the unit's minimum carry the server leaf's.
-            MemoryMin = "1G";
-            MemoryLow = "1G";
-            # The libri module bounds the whole unit at 12G, which once the
-            # harnesses filled it throttled the daemon with them; the bound
-            # is the harness cgroup's here.
-            MemoryHigh = lib.modules.mkForce "infinity";
-            CPUWeight = 1000;
-            IOWeight = 1000;
-          };
-        };
+        # at 74G, with zram behind both.
+        libri.legacy.enable = false;
+        seat.hippo.enable = false;
         # Stage 2 serves Dylan's address: the gateway and its web view at
-        # si.su.is, and still at core.su.is for what was paired there. Today's
-        # Libri stays at legacy.su.is and on its tailnet port, and withholds
-        # its own tools the add-ons take over (libri.mod.nix). The add-ons
-        # that need no key Water lacks run, each with its own store under the
-        # core's state.
-        libri.site.subdomain = "legacy";
+        # si.su.is, and at core.su.is for what was paired there.
         libri.gateway = {
           enable = true;
           subdomain = "si";
@@ -155,7 +128,6 @@
         libri.core.addons = {
           files = {
             enable = true;
-            # Today's Libri's own store, shared until the cutover.
             environment.LIBRI_FILES_DIR = "/var/lib/libri/files";
           };
           lists = {
@@ -173,9 +145,8 @@
               LIBRI_PAGES_DATA_DIR = "/var/lib/libri-core/page-data";
             };
           };
-          # The key proxy's sockets: credentials.nix. x_search on the xAI
-          # login today's Libri keeps and renews; the add-on renews it under
-          # the same lock file beside it.
+          # The key proxy's sockets: credentials.nix. x_search shares the xAI
+          # login under /var/lib/libri/connections and renews it under its lock.
           search = {
             enable = true;
             environment.LIBRI_XAI_CONNECTION = "/var/lib/libri/connections/xai.json";
@@ -189,8 +160,7 @@
               LIBRI_XAI_CONNECTION = "/var/lib/libri/connections/xai.json";
             };
           };
-          # On Water's own models, as today's Libri speaks and listens: no
-          # key, no network.
+          # On Water's own models: no key, no network.
           speech = {
             enable = true;
             provider = "local";
@@ -214,37 +184,27 @@
             environment.LIBRI_LAYOUT_STATE = "/var/lib/libri-core/layout";
           };
           ui.enable = true;
-          # Outbound only; each peer's URL and token are in the peers file,
-          # written from today's Libri's pairings (peers.json), never in git.
+          # Outbound MCP and loopback inbound receiver on :8951 so Suki's peer
+          # entry delivers straight into the core's role=main session.
           a2a = {
             enable = true;
+            listen = "127.0.0.1:8951";
+            person = "Dylan";
             environment = {
               LIBRI_A2A_NAME = "Bridge";
               LIBRI_A2A_PEERS_FILE = "/var/lib/libri-core/a2a-peers.json";
             };
           };
         };
+        # Workers' processes slow past 44G and are killed past 48G. At 32G,
+        # some twenty agents (0.4-1.8G each) with two Gradle builds filled it;
+        # 12G of swap takes cold Claude Code heaps and costs at most 3.4G of
+        # RAM in zram, staying inside the slice's 16G.
         systemd.services.libri-core.serviceConfig = {
           Slice = "work.slice";
           MemoryHigh = harnessMemory.high;
           MemoryMax = harnessMemory.maximum;
           MemorySwapMax = harnessMemory.swap;
-        };
-        # Inside Libri's cgroup: the daemon's memory is guaranteed; the
-        # workers' processes slow past 44G and are killed past 48G; the
-        # agents' browser stays under 4G. At 32G, some twenty agents
-        # (0.4-1.8G each) with two Gradle builds filled it and the kernel
-        # killed both builds and two agents (Nov 15). The workers' swap
-        # takes the Claude Code heap their processes leave cold: at 48G
-        # with 2G of swap, 19 of them at 2.0-2.3G each (most of it inactive)
-        # filled the cgroup, the kernel was refused swap 591202 times, and
-        # it killed five agents, a Kotlin daemon and the browser (Nov 15,
-        # 16:15). 12G of swap costs at most 3.4G of RAM in zram and stays
-        # inside the slice's 16G.
-        libri.limits = {
-          server = "memory.min=1G memory.low=1G";
-          harness = "cpu.weight=20 io.weight=20 memory.high=${harnessMemory.high} memory.max=${harnessMemory.maximum} memory.swap.max=${harnessMemory.swap}";
-          browser = "cpu.weight=20 memory.high=3G memory.max=4G memory.swap.max=512M memory.oom.group=1 pids.max=2048";
         };
         # Large cores are logged, not kept, and old ones go past 2G in all.
         systemd.coredump.settings.Coredump = {
@@ -261,8 +221,9 @@
           source = "/srv/storage/git/dycli/monix.git";
           refresh = "git-mirror@dycli-monix.service";
           mustRun = [
-            "hippo.service"
-            "libri.service"
+            "hippo2.service"
+            "libri-core.service"
+            "libri-gateway.service"
             "suki.service"
             "nginx.service"
             "tuwunel.service"

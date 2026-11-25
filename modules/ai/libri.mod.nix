@@ -51,6 +51,7 @@
       inherit (lib.lists)
         concatMap
         filter
+        last
         optionals
         singleton
         ;
@@ -58,11 +59,13 @@
       inherit (lib.modules) mkForce mkIf;
       inherit (lib.strings)
         hasSuffix
+        optionalString
         readFile
         concatMapStringsSep
         concatStringsSep
         escapeShellArg
         escapeShellArgs
+        splitString
         ;
       inherit (lib.ship) fences computers topology;
 
@@ -207,6 +210,13 @@
             };
           };
         };
+
+      legacy = config.libri.legacy;
+      a2aCfg = config.libri.core.addons.a2a;
+      a2aServe = addons ? a2a && a2aCfg.listen != null;
+      a2aPort = last (splitString ":" a2aCfg.listen);
+      a2aPeersFile = a2aCfg.environment.LIBRI_A2A_PEERS_FILE or "${coreState}/a2a-peers.json";
+      a2aName = a2aCfg.environment.LIBRI_A2A_NAME or null;
 
       gateway = config.libri.gateway;
       gatewayState = "/var/lib/libri-gateway";
@@ -450,9 +460,14 @@
             "hob"
             "immich-server"
             "nix-daemon"
-            "libri"
-            "hippo2"
-          ];
+          ]
+          ++ (
+            if legacy.enable then
+              singleton "libri"
+            else
+              singleton "libri-core" ++ optionals gateway.enable (singleton "libri-gateway")
+          )
+          ++ singleton "hippo2";
           mounts = [
             "/"
             "/nix"
@@ -689,7 +704,30 @@
               LIBRI_SPEECH_TOKEN_FILE names.
             '';
           };
+          a2a = {
+            listen = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Loopback address and port for the inbound A2A HTTP receiver (`libri-a2a serve`); null keeps a2a outbound-only.";
+            };
+            person = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              description = "Person name advertised in the inbound A2A Agent Card.";
+            };
+            coreTokenFile = mkOption {
+              type = types.str;
+              default = "${coreState}/a2a.token";
+              description = "File holding the non-approve core credential (`read,operate`, `reach: all`) for inbound A2A delivery.";
+            };
+          };
         };
+
+      options.libri.legacy.enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Run Dylan's legacy libri.service web chat beside Stage 2 libri-core and libri-gateway.";
+      };
 
       options.libri.site.subdomain = mkOption {
         type = types.str;
@@ -745,67 +783,71 @@
 
       config = {
 
-        services.libri.instances.libri = {
-          package = seat.libriBuild;
-          inherit (seat) user;
-          # One browser for agents: logged out until Dylan allows a site's logins.
-          agentBrowser.enable = true;
-          settings = recursiveUpdate shared {
-            name = "Bridge";
-            person = "Dylan";
-            # One address for the household: Dylan's Libri answers on the
-            # tailnet port and passes Gab's devices on to hers, by tailscaled's
-            # word on who is calling.
-            daemon = site "libri" config.libri.site.subdomain "ddcleary1@gmail.com" // {
-              forward = "gabcaminiti10@gmail.com=http://127.0.0.1:${toString ports.suki}";
+        services.libri.instances =
+          optionalAttrs legacy.enable {
+            libri = {
+              package = seat.libriBuild;
+              inherit (seat) user;
+              # One browser for agents: logged out until Dylan allows a site's logins.
+              agentBrowser.enable = true;
+              settings = recursiveUpdate shared {
+                name = "Bridge";
+                person = "Dylan";
+                # One address for the household: Dylan's Libri answers on the
+                # tailnet port and passes Gab's devices on to hers, by tailscaled's
+                # word on who is calling.
+                daemon = site "libri" config.libri.site.subdomain "ddcleary1@gmail.com" // {
+                  forward = "gabcaminiti10@gmail.com=http://127.0.0.1:${toString ports.suki}";
+                };
+                hippo = {
+                  dir = seat.hippo;
+                  # The seat's hippo (seat/hippo.mod.nix serves it); the title its
+                  # history already goes under.
+                  shared = "Bridge";
+                };
+                # The memory every turn recalls from: the seat's hippo2
+                # (seat/hippo2.mod.nix), the program that finds its memories.
+                memory.command = "${lib.meta.getExe config.services.hippo2.finalPackage} mcp";
+                harness = {
+                  mcp = toString seatMcp;
+                  efforts = "low,medium,high,xhigh,max";
+                  # llm-agents installs OpenCode 2 under this name (agent-clis.mod.nix).
+                  opencode.command = "opencode2";
+                };
+                # Merged with shared's tools.usage.
+                tools = optionalAttrs (withheldTools != [ ]) {
+                  withheld = concatStringsSep "," withheldTools;
+                };
+              };
             };
-            hippo = {
-              dir = seat.hippo;
-              # The seat's hippo (seat/hippo.mod.nix serves it); the title its
-              # history already goes under.
-              shared = "Bridge";
-            };
-            # The memory every turn recalls from: the seat's hippo2
-            # (seat/hippo2.mod.nix), the program that finds its memories.
-            memory.command = "${lib.meta.getExe config.services.hippo2.finalPackage} mcp";
-            harness = {
-              mcp = toString seatMcp;
-              efforts = "low,medium,high,xhigh,max";
-              # llm-agents installs OpenCode 2 under this name (agent-clis.mod.nix).
-              opencode.command = "opencode2";
-            };
-            # Merged with shared's tools.usage.
-            tools = optionalAttrs (withheldTools != [ ]) {
-              withheld = concatStringsSep "," withheldTools;
+          }
+          // {
+            suki = {
+              package = seat.libriBuild;
+              harnesses = singleton pkgs.claude-code;
+              settings = recursiveUpdate shared {
+                name = "Suki";
+                person = "Gab";
+                style = "Gab likes a slightly warmer tone.";
+                # Gab's devices reach Suki through Dylan's Libri; the shared Mac,
+                # on the tailnet as Dylan's device metal, reaches it on its own
+                # port, where only Gab and that one device get in.
+                daemon = site "suki" "suki" "gabcaminiti10@gmail.com,ddcleary1@gmail.com/metal";
+                # Gab's assistant reaches no memory of Dylan's: hippo2 on the
+                # seat holds Dylan's.
+                memory.command = "";
+                harness = {
+                  mcp = "/run/suki/mcp.json";
+                  # An assistant: Libri's tools only, no shell or files.
+                  coding = "0";
+                };
+                computer = {
+                  run = "http://${computers.addr computers.indexes.suki}:${toString computers.runPort}";
+                  runs = sukiDesk;
+                };
+              };
             };
           };
-        };
-
-        services.libri.instances.suki = {
-          package = seat.libriBuild;
-          harnesses = singleton pkgs.claude-code;
-          settings = recursiveUpdate shared {
-            name = "Suki";
-            person = "Gab";
-            style = "Gab likes a slightly warmer tone.";
-            # Gab's devices reach Suki through Dylan's Libri; the shared Mac,
-            # on the tailnet as Dylan's device metal, reaches it on its own
-            # port, where only Gab and that one device get in.
-            daemon = site "suki" "suki" "gabcaminiti10@gmail.com,ddcleary1@gmail.com/metal";
-            # Gab's assistant reaches no memory of Dylan's: hippo2 on the
-            # seat holds Dylan's.
-            memory.command = "";
-            harness = {
-              mcp = "/run/suki/mcp.json";
-              # An assistant: Libri's tools only, no shell or files.
-              coding = "0";
-            };
-            computer = {
-              run = "http://${computers.addr computers.indexes.suki}:${toString computers.runPort}";
-              runs = sukiDesk;
-            };
-          };
-        };
 
         # yeoman-image holds the household's one Codex login, on the ChatGPT
         # subscription; the assistants reach only its socket. Log in once,
@@ -836,10 +878,7 @@
         # it; the gateway serves `/v1` and the web view.
         shipProxy.routes =
           (
-            {
-              libri = config.libri.site.subdomain;
-              suki = "suki";
-            }
+            (optionalAttrs legacy.enable { libri = config.libri.site.subdomain; } // { suki = "suki"; })
             |> mapAttrs (
               n: subdomain: {
                 inherit subdomain;
@@ -904,13 +943,15 @@
             group = "root";
             mode = "0751";
           };
-          "${pages}/libri".d = {
-            user = seat.user;
+          "${pages}/suki".d = {
+            user = "suki";
             group = "nginx";
             mode = "2750";
           };
-          "${pages}/suki".d = {
-            user = "suki";
+        }
+        // optionalAttrs legacy.enable {
+          "${pages}/libri".d = {
+            user = seat.user;
             group = "nginx";
             mode = "2750";
           };
@@ -933,14 +974,17 @@
         };
         security.polkit.extraConfig =
           let
-            managedUnits = [
-              "hippo.service"
-              "libri.service"
-              "libri-core.service"
-              "libri-gateway.service"
-              "suki.service"
-            ]
-            ++ optionals gateway.enable (map (name: "libri-addon-${name}.service") servedAddons);
+            managedUnits =
+              optionals config.seat.hippo.enable (singleton "hippo.service")
+              ++ optionals legacy.enable (singleton "libri.service")
+              ++ [
+                "libri-core.service"
+                "suki.service"
+              ]
+              ++ optionals gateway.enable (
+                singleton "libri-gateway.service" ++ map (name: "libri-addon-${name}.service") servedAddons
+              )
+              ++ optionals a2aServe (singleton "libri-addon-a2a.service");
           in
           ''
             polkit.addRule(function (action, subject) {
@@ -968,64 +1012,19 @@
         };
 
         systemd.services = {
-          # The seat itself behind Libri's site: Bridge, on the seat's logins
-          # and privileges, so none of the service's defaults apply.
-          libri = {
-            description = "Bridge in Dylan's web chat";
-            # A restart ends every turn and worker under way, so a switch
-            # leaves Libri running until libri-release restarts it with the
-            # new unit configuration (seat/libri-deploy.mod.nix). Store
-            # paths such as Chromium's change on nixpkgs updates.
-            restartIfChanged = false;
-            after = [
-              "hippo.service"
-              "libri-core.service"
-            ];
-            wants = [
-              "hippo.service"
-              "libri-core.service"
-            ];
-            environment =
-              optionalAttrs (limits.server != null) { LIBRI_SERVER_CGROUP = limits.server; }
-              // optionalAttrs (limits.harness != null) { LIBRI_HARNESS_CGROUP = limits.harness; }
-              // optionalAttrs (limits.browser != null) { LIBRI_BROWSER_CGROUP = limits.browser; }
-              // {
-                # The seat's home-manager packages, its claude among them.
-                PATH = mkForce seatPath;
-                LIBRI_CORE_SOCKET = coreSocket;
-                OPENCODE_CONFIG = toString openCodeConfig;
-              };
-            serviceConfig = {
-              # No core dumps from what the workers run: a test browser that
-              # crash-loops at start (13 Chromium dumps in six minutes, Nov 13)
-              # sends each through systemd-coredump, whose slice peaked at 37 GB
-              # beside the builds. Children inherit the limit.
-              LimitCORE = 0;
-              SupplementaryGroups = [
-                "usage"
-                "opencode-auth"
-              ];
-              LoadCredential = "claude-token:${config.secrets.agent-claude-token.path}";
-              RuntimeDirectory = "libri";
-              RuntimeDirectoryMode = "0700";
-              ExecStartPre = claudeToken;
-              EnvironmentFile = "-%t/%N/claude.env";
-              WorkingDirectory = seat.home;
-              NoNewPrivileges = false;
-              ProtectSystem = false;
-              PrivateTmp = false;
-              # A restart ends the turn under way; the next message starts
-              # afresh from the memory.
-              Restart = "always";
-              RestartSec = 10;
-              # Each turn's claude and what it runs.
-              MemoryHigh = "12G";
-            };
-          };
-
           libri-deploy.environment = {
             DEPLOY_LIBRI_ADDONS = concatStringsSep " " (attrNames addons);
-            DEPLOY_LIBRI_SERVED_ADDONS = concatStringsSep " " (optionals gateway.enable servedAddons);
+            DEPLOY_LIBRI_SERVED_ADDONS = concatStringsSep " " (
+              optionals gateway.enable servedAddons ++ optionals a2aServe (singleton "a2a")
+            );
+            DEPLOY_LIBRI_INSTANCES = concatStringsSep " " (
+              optionals legacy.enable (singleton "libri:${toString ports.libri}")
+              ++ singleton "suki:${toString ports.suki}"
+            );
+            DEPLOY_LIBRI_HIPPOS = concatStringsSep " " (optionals config.seat.hippo.enable (singleton "hippo"));
+          }
+          // optionalAttrs gateway.enable {
+            DEPLOY_LIBRI_GATEWAY_PORT = toString gateway.port;
           };
 
           libri-core = {
@@ -1071,106 +1070,99 @@
             };
           };
 
-          libri-gateway = mkIf gateway.enable {
-            description = "Libri gateway: the core's /v1 for paired devices and the web view";
-            wantedBy = singleton "multi-user.target";
-            after = singleton "libri-core.service" ++ map (name: "libri-addon-${name}.service") servedAddons;
-            wants = singleton "libri-core.service" ++ map (name: "libri-addon-${name}.service") servedAddons;
-            unitConfig = {
-              ConditionFileIsExecutable = "${seat.libriBuild}/bin/libri-gateway";
-              # A build before Libri 0.9.119 carries no web view.
-              ConditionPathExists = [
-                gatewayToken
-                "${gatewayWeb}/index.html"
-              ];
-            };
-            environment = gatewayEnvironment;
-            serviceConfig = lib.ship.hardened.tenant // {
-              User = "libri-gateway";
-              # Its own group, not nginx's, which can read the proxy's TLS
-              # keys; nginx joins this one to reach the 0660 proxy socket.
-              Group = "libri-gateway";
-              SupplementaryGroups = singleton coreClientsGroup;
-              # The proxy's SO_PEERCRED must carry nginx's real UID for
-              # --proxy-uid to match.
-              PrivateUsers = false;
-              StateDirectory = "libri-gateway";
-              StateDirectoryMode = "0700";
-              RuntimeDirectory = "libri-gateway";
-              RuntimeDirectoryMode = "0750";
-              ExecStart = gatewayServe;
-              # The core's socket, tailscaled's LocalAPI, the proxy and add-on
-              # sockets, and netlink, by which Iroh follows the host's
-              # interfaces.
-              RestrictAddressFamilies = [
-                "AF_UNIX"
-                "AF_NETLINK"
-                "AF_INET"
-                "AF_INET6"
-              ];
-              # Iroh's QUIC binds UDP; any UDP port, since Iroh picks its own.
-              SocketBindAllow = [
-                "tcp:${toString gateway.port}"
-                "udp"
-              ];
-              # The proxy and the tailnet in, and the internet out for pushes;
-              # not the LAN or the seat's loopback addresses.
-              IPAddressAllow = fences.loopback ++ singleton fences.tailnet;
-              IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
-              Restart = "always";
-              RestartSec = 10;
-            };
-          };
-
-          # An up unit isn't a working Libri. This proves its site, its tool
-          # server and its hippo; a failure here makes switcharoo roll the
-          # deploy back.
-          libri-ready = {
-            description = "Proves Bridge's Libri answers";
-            wantedBy = singleton "multi-user.target";
-            after = [
-              "libri.service"
-              "hippo.service"
-            ];
-            restartTriggers = [
-              config.systemd.units."libri.service".unit
-              config.systemd.units."hippo.service".unit
-            ];
-            unitConfig.RequiresMountsFor = seat.hippo;
-            environment.HIPPO_DIR = seat.hippo;
-            path = [
-              pkgs.coreutils
-              pkgs.curl
-              pkgs.jq
-            ];
-            serviceConfig = {
-              Type = "oneshot";
-              RemainAfterExit = true;
-              User = seat.user;
-              TimeoutStartSec = 180;
-            };
-            script = ''
-              site=http://127.0.0.1:${toString ports.libri}/api/host
-              # Wait until Libri answers and its tool server is up. The tool
-              # server: the daemon checks it itself, as its credentials are in
-              # its own unit; tools is null while that runs, and a build older
-              # than the check has no such field and passes. A refused
-              # connection counts as not yet: a switch can restart Libri after
-              # the first answer, and a probe that stopped there rolled back
-              # healthy deploys.
-              for _ in $(seq 85); do
-                curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null && break
-                sleep 1
-              done
-              curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null
-              # hippo is Type=simple: "started" comes seconds before its socket.
-              for _ in $(seq 40); do
-                timeout 5 ${seat.libriBuild}/bin/hippo status >/dev/null && break
-                sleep 1
-              done
-              timeout 30 ${seat.libriBuild}/bin/hippo status >/dev/null
-            '';
-          };
+          # An up unit isn't a working Libri. This proves the active stack and
+          # its memory; a failure here makes switcharoo roll the deploy back.
+          libri-ready =
+            if legacy.enable then
+              {
+                description = "Proves Bridge's Libri answers";
+                wantedBy = singleton "multi-user.target";
+                after = singleton "libri.service" ++ optionals config.seat.hippo.enable (singleton "hippo.service");
+                restartTriggers =
+                  singleton config.systemd.units."libri.service".unit
+                  ++ optionals config.seat.hippo.enable (singleton config.systemd.units."hippo.service".unit);
+                unitConfig.RequiresMountsFor = seat.hippo;
+                environment.HIPPO_DIR = seat.hippo;
+                path = [
+                  pkgs.coreutils
+                  pkgs.curl
+                  pkgs.jq
+                ];
+                serviceConfig = {
+                  Type = "oneshot";
+                  RemainAfterExit = true;
+                  User = seat.user;
+                  TimeoutStartSec = 180;
+                };
+                script = ''
+                  site=http://127.0.0.1:${toString ports.libri}/api/host
+                  # Wait until Libri answers and its tool server is up. The tool
+                  # server: the daemon checks it itself, as its credentials are in
+                  # its own unit; tools is null while that runs, and a build older
+                  # than the check has no such field and passes. A refused
+                  # connection counts as not yet: a switch can restart Libri after
+                  # the first answer, and a probe that stopped there rolled back
+                  # healthy deploys.
+                  for _ in $(seq 85); do
+                    curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null && break
+                    sleep 1
+                  done
+                  curl -fsS -m3 "$site" | jq -e '(has("tools") | not) or .tools == true' >/dev/null
+                  ${optionalString config.seat.hippo.enable ''
+                    # hippo is Type=simple: "started" comes seconds before its socket.
+                    for _ in $(seq 40); do
+                      timeout 5 ${seat.libriBuild}/bin/hippo status >/dev/null && break
+                      sleep 1
+                    done
+                    timeout 30 ${seat.libriBuild}/bin/hippo status >/dev/null
+                  ''}
+                '';
+              }
+            else
+              {
+                description = "Proves Bridge's Stage 2 Libri core, gateway and hippo2 answer";
+                wantedBy = singleton "multi-user.target";
+                after = [
+                  "libri-core.service"
+                  "hippo2.service"
+                ]
+                ++ optionals gateway.enable (singleton "libri-gateway.service");
+                restartTriggers = [
+                  config.systemd.units."libri-core.service".unit
+                  config.systemd.units."hippo2.service".unit
+                ]
+                ++ optionals gateway.enable (singleton config.systemd.units."libri-gateway.service".unit);
+                path = [
+                  config.systemd.package
+                  pkgs.coreutils
+                  pkgs.curl
+                ];
+                serviceConfig = {
+                  Type = "oneshot";
+                  RemainAfterExit = true;
+                  User = seat.user;
+                  TimeoutStartSec = 180;
+                };
+                script = ''
+                  for _ in $(seq 85); do
+                    curl -fsS -m3 --unix-socket ${coreSocket} http://localhost/v1/host >/dev/null && break
+                    sleep 1
+                  done
+                  curl -fsS -m3 --unix-socket ${coreSocket} http://localhost/v1/host >/dev/null
+                  ${optionalString gateway.enable ''
+                    for _ in $(seq 40); do
+                      curl -fsS -m3 http://127.0.0.1:${toString gateway.port}/ >/dev/null && break
+                      sleep 1
+                    done
+                    curl -fsS -m3 http://127.0.0.1:${toString gateway.port}/ >/dev/null
+                  ''}
+                  for _ in $(seq 40); do
+                    systemctl is-active --quiet hippo2.service && break
+                    sleep 1
+                  done
+                  systemctl is-active --quiet hippo2.service
+                '';
+              };
 
           suki = {
             description = "Suki, Gab's household assistant";
@@ -1221,7 +1213,170 @@
               };
           };
         }
-        // optionalAttrs gateway.enable addonUnits;
+        // optionalAttrs legacy.enable {
+          # The seat itself behind Libri's site: Bridge, on the seat's logins
+          # and privileges, so none of the service's defaults apply.
+          libri = {
+            description = "Bridge in Dylan's web chat";
+            # A restart ends every turn and worker under way, so a switch
+            # leaves Libri running until libri-release restarts it with the
+            # new unit configuration (seat/libri-deploy.mod.nix). Store
+            # paths such as Chromium's change on nixpkgs updates.
+            restartIfChanged = false;
+            after =
+              optionals config.seat.hippo.enable (singleton "hippo.service") ++ singleton "libri-core.service";
+            wants =
+              optionals config.seat.hippo.enable (singleton "hippo.service") ++ singleton "libri-core.service";
+            environment =
+              optionalAttrs (limits.server != null) { LIBRI_SERVER_CGROUP = limits.server; }
+              // optionalAttrs (limits.harness != null) { LIBRI_HARNESS_CGROUP = limits.harness; }
+              // optionalAttrs (limits.browser != null) { LIBRI_BROWSER_CGROUP = limits.browser; }
+              // {
+                # The seat's home-manager packages, its claude among them.
+                PATH = mkForce seatPath;
+                LIBRI_CORE_SOCKET = coreSocket;
+                OPENCODE_CONFIG = toString openCodeConfig;
+              };
+            serviceConfig = {
+              # No core dumps from what the workers run: a test browser that
+              # crash-loops at start (13 Chromium dumps in six minutes, Nov 13)
+              # sends each through systemd-coredump, whose slice peaked at 37 GB
+              # beside the builds. Children inherit the limit.
+              LimitCORE = 0;
+              SupplementaryGroups = [
+                "usage"
+                "opencode-auth"
+              ];
+              LoadCredential = "claude-token:${config.secrets.agent-claude-token.path}";
+              RuntimeDirectory = "libri";
+              RuntimeDirectoryMode = "0700";
+              ExecStartPre = claudeToken;
+              EnvironmentFile = "-%t/%N/claude.env";
+              WorkingDirectory = seat.home;
+              NoNewPrivileges = false;
+              ProtectSystem = false;
+              PrivateTmp = false;
+              # A restart ends the turn under way; the next message starts
+              # afresh from the memory.
+              Restart = "always";
+              RestartSec = 10;
+              # Each turn's claude and what it runs.
+              MemoryHigh = "12G";
+            };
+          };
+        }
+        // optionalAttrs gateway.enable (
+          addonUnits
+          // {
+            libri-gateway = {
+              description = "Libri gateway: the core's /v1 for paired devices and the web view";
+              wantedBy = singleton "multi-user.target";
+              after = singleton "libri-core.service" ++ map (name: "libri-addon-${name}.service") servedAddons;
+              wants = singleton "libri-core.service" ++ map (name: "libri-addon-${name}.service") servedAddons;
+              unitConfig = {
+                ConditionFileIsExecutable = "${seat.libriBuild}/bin/libri-gateway";
+                # A build before Libri 0.9.119 carries no web view.
+                ConditionPathExists = [
+                  gatewayToken
+                  "${gatewayWeb}/index.html"
+                ];
+              };
+              environment = gatewayEnvironment;
+              serviceConfig = lib.ship.hardened.tenant // {
+                User = "libri-gateway";
+                # Its own group, not nginx's, which can read the proxy's TLS
+                # keys; nginx joins this one to reach the 0660 proxy socket.
+                Group = "libri-gateway";
+                SupplementaryGroups = singleton coreClientsGroup;
+                # The proxy's SO_PEERCRED must carry nginx's real UID for
+                # --proxy-uid to match.
+                PrivateUsers = false;
+                StateDirectory = "libri-gateway";
+                StateDirectoryMode = "0700";
+                RuntimeDirectory = "libri-gateway";
+                RuntimeDirectoryMode = "0750";
+                ExecStart = gatewayServe;
+                # The core's socket, tailscaled's LocalAPI, the proxy and add-on
+                # sockets, and netlink, by which Iroh follows the host's
+                # interfaces.
+                RestrictAddressFamilies = [
+                  "AF_UNIX"
+                  "AF_NETLINK"
+                  "AF_INET"
+                  "AF_INET6"
+                ];
+                # Iroh's QUIC binds UDP; any UDP port, since Iroh picks its own.
+                SocketBindAllow = [
+                  "tcp:${toString gateway.port}"
+                  "udp"
+                ];
+                # The proxy and the tailnet in, and the internet out for pushes;
+                # not the LAN or the seat's loopback addresses.
+                IPAddressAllow = fences.loopback ++ singleton fences.tailnet;
+                IPAddressDeny = fences.internetOnlyDeny ++ singleton "127.0.0.0/8";
+                Restart = "always";
+                RestartSec = 10;
+              };
+            };
+          }
+        )
+        // optionalAttrs a2aServe {
+          libri-addon-a2a = {
+            description = "Libri's inbound A2A peer receiver";
+            wantedBy = singleton "multi-user.target";
+            after = singleton "libri-core.service";
+            wants = singleton "libri-core.service";
+            unitConfig = {
+              ConditionFileIsExecutable = addonBinary "a2a";
+              ConditionPathExists = [
+                a2aPeersFile
+                a2aCfg.coreTokenFile
+              ];
+            };
+            serviceConfig = lib.ship.hardened.tenant // {
+              User = seat.user;
+              Group = seat.user;
+              SupplementaryGroups = singleton coreClientsGroup;
+              PrivateUsers = false;
+              ReadOnlyPaths = [
+                a2aPeersFile
+                a2aCfg.coreTokenFile
+              ];
+              ExecStart = escapeShellArgs (
+                [
+                  (addonBinary "a2a")
+                  "serve"
+                  "--listen"
+                  a2aCfg.listen
+                  "--peers-file"
+                  a2aPeersFile
+                  "--core-socket"
+                  coreClients
+                  "--core-token-file"
+                  a2aCfg.coreTokenFile
+                ]
+                ++ optionals (a2aName != null) [
+                  "--name"
+                  a2aName
+                ]
+                ++ optionals (a2aCfg.person != null) [
+                  "--person"
+                  a2aCfg.person
+                ]
+              );
+              RestrictAddressFamilies = [
+                "AF_UNIX"
+                "AF_INET"
+                "AF_INET6"
+              ];
+              SocketBindAllow = "tcp:${a2aPort}";
+              IPAddressAllow = fences.loopback;
+              IPAddressDeny = "any";
+              Restart = "always";
+              RestartSec = 10;
+            };
+          };
+        };
       };
     };
 }

@@ -112,18 +112,22 @@ in
 
   # This agenix pin has no restartUnits, so each encrypted source is an
   # explicit trigger on its long-running consumer; oneshots need none.
-  systemd.services.matrix-tunnel.restartTriggers = singleton ./secrets/matrix-cloudflare-tunnel-token.age;
-  systemd.services.immich-tunnel.restartTriggers = singleton ./secrets/immich-cloudflare-tunnel-token.age;
-  systemd.services.endgrain-tunnel.restartTriggers = singleton ./secrets/endgrain-cloudflare-tunnel-token.age;
-  systemd.services.hob.restartTriggers = [
-    ./secrets/frame-immich-key.age
-    ./secrets/frame-caldav.json.age
-  ];
-  systemd.services.money.restartTriggers = singleton ./secrets/plaid.env.age;
-  systemd.services.sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
-  systemd.services.tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
-  systemd.services.libri.environment = searchSockets;
+  systemd.services = {
+    matrix-tunnel.restartTriggers = singleton ./secrets/matrix-cloudflare-tunnel-token.age;
+    immich-tunnel.restartTriggers = singleton ./secrets/immich-cloudflare-tunnel-token.age;
+    endgrain-tunnel.restartTriggers = singleton ./secrets/endgrain-cloudflare-tunnel-token.age;
+    hob.restartTriggers = [
+      ./secrets/frame-immich-key.age
+      ./secrets/frame-caldav.json.age
+    ];
+    money.restartTriggers = singleton ./secrets/plaid.env.age;
+    sabnzbd.restartTriggers = singleton ./secrets/sabnzbd-secrets.ini.age;
+    tuwunel.restartTriggers = singleton ./secrets/matrix-registration.env.age;
+    frigate.restartTriggers = singleton ./secrets/frigate.env.age;
+    go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
+  }
+  // lib.attrsets.optionalAttrs config.libri.legacy.enable {
+    libri.environment = searchSockets;
+  };
   libri.core.addons.search.environment = searchSockets;
-  systemd.services.frigate.restartTriggers = singleton ./secrets/frigate.env.age;
-  systemd.services.go2rtc.restartTriggers = singleton ./secrets/frigate.env.age;
 }

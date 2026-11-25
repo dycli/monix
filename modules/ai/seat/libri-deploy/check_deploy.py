@@ -56,12 +56,13 @@ if [ "$1" = restart ]; then shift; echo "$*" >> "$STUBS/restarts"
   case " $* " in *" $FAIL_UNIT "*) exit 1 ;; esac
 fi
 """,
-    # Record requests so the successful deploy checks both health endpoints.
+    # Record requests so the successful deploy checks every health endpoint.
     "curl": """
 echo "$*" >> "$STUBS/requests"
 case "$*" in
   *8951/api/host) printf '%s' "$HEALTH" ;;
   *8952/api/host) printf '%s' "${SUKI_HEALTH:-$HEALTH}" ;;
+  *8953/) printf '%s' "${GATEWAY_HEALTH:-$HEALTH}" ;;
   *) exit 1 ;;
 esac
 """,
@@ -465,6 +466,101 @@ code = deploy(
 check("a failed served addon restart leaves its .ran record unchanged",
       code == 0 and (addons_dir / ".boards.ran").read_text().strip() == b1,
       f"code {code}, ran {(addons_dir / '.boards.ran').read_text().strip()}")
+shutil.rmtree(root)
+
+# Stage 2-only mode: legacy libri and hippo are retired (DEPLOY_LIBRI_INSTANCES="suki:8952",
+# DEPLOY_LIBRI_HIPPOS="", DEPLOY_LIBRI_GATEWAY_PORT="8953"), with a2a among served add-ons.
+root, repo, stubs = scratch()
+old, new = build(stubs, "old", "h1", core=True), build(stubs, "new", "h2", core=True)
+(stubs / "link").unlink()
+os.symlink(old, stubs / "link")
+addons_dir = stubs / "addons"
+addons_dir.mkdir()
+old_boards, b1 = addon_build(stubs, "boards", "old", "b1")
+new_boards, _ = addon_build(stubs, "boards", "new", "b1")
+old_a2a, a1 = addon_build(stubs, "a2a", "old", "a1")
+new_a2a, a2 = addon_build(stubs, "a2a", "new", "a2")
+os.symlink(old_boards, addons_dir / "boards")
+os.symlink(old_a2a, addons_dir / "a2a")
+(addons_dir / ".boards.ran").write_text(b1 + "\n")
+(addons_dir / ".a2a.ran").write_text(a1 + "\n")
+new_dir = stubs / "new-addons"
+new_dir.mkdir()
+os.symlink(new_boards, new_dir / "boards")
+os.symlink(new_a2a, new_dir / "a2a")
+code = deploy(
+    repo, stubs, "ok", "200", NEW=new, ACTIVE="libri-gateway.service",
+    DEPLOY_LIBRI_INSTANCES="suki:8952",
+    DEPLOY_LIBRI_HIPPOS="",
+    DEPLOY_LIBRI_GATEWAY_PORT="8953",
+    DEPLOY_LIBRI_ADDONS="boards a2a",
+    DEPLOY_LIBRI_SERVED_ADDONS="boards a2a",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    ADDON_NEW_DIR=str(new_dir),
+)
+restarts = (stubs / "restarts").read_text().splitlines()
+requests = [line.split()[-1] for line in (stubs / "requests").read_text().splitlines()]
+check("Stage 2-only deploy restarts core, changed a2a addon, gateway, and Suki without legacy libri or hippo",
+      code == 0
+      and restarts == ["libri-core.service", "libri-addon-a2a.service", "libri-gateway.service", "suki.service"]
+      and requests == ["http://127.0.0.1:8953/", "http://127.0.0.1:8952/api/host"]
+      and (addons_dir / ".a2a.ran").read_text().strip() == a2,
+      f"code {code}, restarts {restarts}, requests {requests}")
+(stubs / "restarts").unlink()
+(stubs / "requests").unlink()
+# Repeat deploy with unchanged a2a binary leaves libri-addon-a2a alone.
+code = deploy(
+    repo, stubs, "ok", "200", NEW=new, ACTIVE="libri-gateway.service",
+    DEPLOY_LIBRI_INSTANCES="suki:8952",
+    DEPLOY_LIBRI_HIPPOS="",
+    DEPLOY_LIBRI_GATEWAY_PORT="8953",
+    DEPLOY_LIBRI_ADDONS="boards a2a",
+    DEPLOY_LIBRI_SERVED_ADDONS="boards a2a",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    ADDON_NEW_DIR=str(new_dir),
+)
+restarts = (stubs / "restarts").read_text().splitlines()
+check("Stage 2-only repeat deploy with unchanged a2a skips libri-addon-a2a",
+      code == 0 and restarts == ["libri-core.service", "libri-gateway.service", "suki.service"],
+      f"code {code}, restarts {restarts}")
+shutil.rmtree(root)
+
+# Stage 2-only gateway health failure rolls back link, a2a add-on, gateway, and Suki.
+root, repo, stubs = scratch()
+old, new = build(stubs, "old", "h1", core=True), build(stubs, "new", "h2", core=True)
+(stubs / "link").unlink()
+os.symlink(old, stubs / "link")
+addons_dir = stubs / "addons"
+addons_dir.mkdir()
+old_a2a, a1 = addon_build(stubs, "a2a", "old", "a1")
+new_a2a, _ = addon_build(stubs, "a2a", "new", "a2")
+os.symlink(old_a2a, addons_dir / "a2a")
+(addons_dir / ".a2a.ran").write_text(a1 + "\n")
+new_dir = stubs / "new-addons"
+new_dir.mkdir()
+os.symlink(new_a2a, new_dir / "a2a")
+code = deploy(
+    repo, stubs, "ok", "200", NEW=new, ACTIVE="libri-gateway.service",
+    GATEWAY_HEALTH="500",
+    DEPLOY_LIBRI_INSTANCES="suki:8952",
+    DEPLOY_LIBRI_HIPPOS="",
+    DEPLOY_LIBRI_GATEWAY_PORT="8953",
+    DEPLOY_LIBRI_ADDONS="a2a",
+    DEPLOY_LIBRI_SERVED_ADDONS="a2a",
+    DEPLOY_LIBRI_ADDONS_DIR=str(addons_dir),
+    ADDON_NEW_DIR=str(new_dir),
+)
+restarts = (stubs / "restarts").read_text().splitlines()
+check("Stage 2-only gateway health failure rolls back core, a2a, gateway, and Suki without legacy units",
+      code != 0
+      and os.readlink(stubs / "link") == old
+      and os.readlink(addons_dir / "a2a") == old_a2a
+      and restarts == [
+          "libri-core.service", "libri-addon-a2a.service", "libri-gateway.service", "suki.service",
+          "libri-core.service", "libri-addon-a2a.service", "libri-gateway.service", "suki.service",
+      ]
+      and (addons_dir / ".a2a.ran").read_text().strip() == a1,
+      f"code {code}, restarts {restarts}")
 shutil.rmtree(root)
 
 if failures:

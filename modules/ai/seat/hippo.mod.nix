@@ -24,13 +24,29 @@ in
 
   flake.nixosModules.seat = self.nixosModules.hippo;
   flake.nixosModules.hippo =
-    { lib, pkgs, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     let
       inherit (lib.lists) singleton;
+      inherit (lib.modules) mkIf;
+      inherit (lib.options) mkOption;
       inherit (lib.ship) topology;
       inherit (topology) seat;
+      inherit (lib) types;
+
+      cfg = config.seat.hippo;
     in
     {
+      options.seat.hippo.enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Run the legacy hippo service over Bridge's chat record; disabling it keeps the store on disk for hippo2.";
+      };
+
       config = {
         # hippo is the only memory: Codex's own stays off.
         seat.codexConfig.features.memories = false;
@@ -39,44 +55,48 @@ in
 
         # A store is bootstrapped by `hippo import` (every past chat) before anything live enters it; the service starts once the
         # import has written its record.
-        systemd.paths.hippo = {
-          wantedBy = singleton "paths.target";
-          pathConfig.PathExists = "${seat.hippo}/import.json";
+        systemd.paths = mkIf cfg.enable {
+          hippo = {
+            wantedBy = singleton "paths.target";
+            pathConfig.PathExists = "${seat.hippo}/import.json";
+          };
         };
 
-        systemd.services.hippo = {
-          description = "hippo, the AI seat's episodic memory";
-          wantedBy = singleton "multi-user.target";
-          unitConfig.ConditionPathExists = "${seat.hippo}/import.json";
-          # A switch restarts it after the reload: stopped first, hippo.path
-          # would start it again on the old unit before the new one loads.
-          stopIfChanged = false;
-          after = singleton "network-online.target";
-          wants = singleton "network-online.target";
-          unitConfig.RequiresMountsFor = [
-            "/srv/storage"
-            seat.home
-          ];
-          environment = {
-            # It writes no summaries: it keeps Libri's record alone, and
-            # hippo2 (hippo2.mod.nix) is the memory every turn recalls from.
-            HIPPO_BACKEND = "none";
-            HOME = seat.home;
-            HIPPO_AGENT = "Bridge";
-          };
-          serviceConfig = lib.ship.hardened.tenant // {
-            User = seat.user;
-            Group = seat.user;
-            ExecStart = "${lib.meta.getExe (package lib pkgs)} serve chat";
-            WorkingDirectory = seat.hippo;
-            Restart = "always";
-            RestartSec = 5;
-            # It writes only its own store.
-            ProtectHome = "read-only";
-            ReadWritePaths = singleton seat.hippo;
-            RestrictAddressFamilies = singleton "AF_UNIX";
-            # The primary user reads the store through the seat's group.
-            UMask = "0027";
+        systemd.services = mkIf cfg.enable {
+          hippo = {
+            description = "hippo, the AI seat's episodic memory";
+            wantedBy = singleton "multi-user.target";
+            unitConfig.ConditionPathExists = "${seat.hippo}/import.json";
+            # A switch restarts it after the reload: stopped first, hippo.path
+            # would start it again on the old unit before the new one loads.
+            stopIfChanged = false;
+            after = singleton "network-online.target";
+            wants = singleton "network-online.target";
+            unitConfig.RequiresMountsFor = [
+              "/srv/storage"
+              seat.home
+            ];
+            environment = {
+              # It writes no summaries: it keeps Libri's record alone, and
+              # hippo2 (hippo2.mod.nix) is the memory every turn recalls from.
+              HIPPO_BACKEND = "none";
+              HOME = seat.home;
+              HIPPO_AGENT = "Bridge";
+            };
+            serviceConfig = lib.ship.hardened.tenant // {
+              User = seat.user;
+              Group = seat.user;
+              ExecStart = "${lib.meta.getExe (package lib pkgs)} serve chat";
+              WorkingDirectory = seat.hippo;
+              Restart = "always";
+              RestartSec = 5;
+              # It writes only its own store.
+              ProtectHome = "read-only";
+              ReadWritePaths = singleton seat.hippo;
+              RestrictAddressFamilies = singleton "AF_UNIX";
+              # The primary user reads the store through the seat's group.
+              UMask = "0027";
+            };
           };
         };
       };

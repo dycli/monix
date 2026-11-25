@@ -17,10 +17,10 @@ ADDONS_DIR=${DEPLOY_LIBRI_ADDONS_DIR:-/var/lib/libri-build/addons}
 ADDONS=${DEPLOY_LIBRI_ADDONS:-}
 SERVED_ADDONS=${DEPLOY_LIBRI_SERVED_ADDONS:-}
 # Each instance's unit and port. Suki's hippo is her daemon's child, as on
-# any install; the seat's is a unit of its own, as it keeps the cockpit's
-# chats too.
-INSTANCES=${DEPLOY_LIBRI_INSTANCES:-libri:8951 suki:8952}
-HIPPOS=${DEPLOY_LIBRI_HIPPOS:-hippo}
+# any install; the seat's is a unit of its own when enabled.
+INSTANCES=${DEPLOY_LIBRI_INSTANCES-libri:8951 suki:8952}
+HIPPOS=${DEPLOY_LIBRI_HIPPOS-hippo}
+GATEWAY_PORT=${DEPLOY_LIBRI_GATEWAY_PORT:-}
 
 exec > "$LOG" 2>&1
 cd "${1:?usage: deploy_libri.sh CHECKOUT}" || exit 1
@@ -130,16 +130,22 @@ restart_addons() {
   done
 }
 
+had_gateway=
 restart_core() {
   if [ -x "$LINK/bin/libri-core" ]; then
     # The unit's post-start check waits for the new daemon's owner socket.
     systemctl restart libri-core.service || return 1
     restart_addons
     # The gateway runs the same build. One not running stays off: it waits
-    # for its credential, and a host without it has no such unit. It runs
-    # beside today's Libri, so a failure here rolls nothing back.
-    if systemctl is-active -q libri-gateway.service; then
-      systemctl restart libri-gateway.service || echo "libri-gateway did not restart"
+    # for its credential, and a host without it has no such unit. When
+    # GATEWAY_PORT is set, a restart failure rolls the deploy back.
+    if [ -n "$had_gateway" ] || systemctl is-active -q libri-gateway.service; then
+      had_gateway=1
+      if [ -n "$GATEWAY_PORT" ]; then
+        systemctl restart libri-gateway.service || return 1
+      else
+        systemctl restart libri-gateway.service || echo "libri-gateway did not restart"
+      fi
     fi
   elif [ -x "$built/bin/libri-core" ]; then
     # A rollback to a release before the core was packaged.
@@ -148,20 +154,34 @@ restart_core() {
 }
 
 restart() {
-  hippo=$(readlink -f "$LINK/bin/hippo")
-  if [ "$(cat "$HIPPO_RAN" 2>/dev/null)" != "$hippo" ]; then
-    ok=1
-    for h in $HIPPOS; do
-      systemctl restart "$h.service" || ok=
-    done
-    [ -z "$ok" ] || echo "$hippo" > "$HIPPO_RAN"
+  if [ -n "$HIPPOS" ]; then
+    hippo=$(readlink -f "$LINK/bin/hippo")
+    if [ "$(cat "$HIPPO_RAN" 2>/dev/null)" != "$hippo" ]; then
+      ok=1
+      for h in $HIPPOS; do
+        systemctl restart "$h.service" || ok=
+      done
+      [ -z "$ok" ] || echo "$hippo" > "$HIPPO_RAN"
+    fi
   fi
   for i in $INSTANCES; do
     systemctl restart "${i%%:*}.service"
   done
 }
-# Whether every instance answers within 30 seconds.
+# Whether the gateway (when configured and active) and every instance answer within 30 seconds.
 answers() {
+  if [ -n "$GATEWAY_PORT" ] && [ -n "$had_gateway" ]; then
+    gw="http://127.0.0.1:$GATEWAY_PORT/"
+    up=
+    for _ in $(seq 30); do
+      if [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' "$gw")" = "200" ]; then
+        up=1
+        break
+      fi
+      sleep 1
+    done
+    [ -n "$up" ] || { echo "libri-gateway did not answer"; return 1; }
+  fi
   for i in $INSTANCES; do
     host="http://127.0.0.1:${i##*:}/api/host"
     up=

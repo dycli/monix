@@ -77,8 +77,14 @@ in
     };
 
   flake.nixosModules.seat =
-    { lib, pkgs, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     let
+      inherit (lib.attrsets) optionalAttrs;
       inherit (lib.lists) singleton;
       inherit (lib.ship.topology) seat hostTailnetAddr;
 
@@ -98,9 +104,29 @@ in
       # The user manager, and with it the session, runs from boot.
       users.users.${seat.user}.linger = true;
 
-      systemd.services.libri = session;
-      systemd.services.tern-remote = session;
-      systemd.services.paseo = session;
+      systemd.services = {
+        libri-core = session;
+        tern-remote = session;
+        paseo = session;
+
+        seat-vnc = {
+          description = "VNC to the seat's session, on the tailnet";
+          requires = singleton "seat-vnc.socket";
+          after = singleton "seat-vnc.socket";
+          serviceConfig = {
+            # The seat's own runtime directory is readable only by the seat.
+            User = seat.user;
+            ExecStart = "${lib.meta.getExe' pkgs.systemd "systemd-socket-proxyd"} /run/user/${toString seat.uid}/${vncSocket}";
+            PrivateNetwork = true;
+            NoNewPrivileges = true;
+            ProtectSystem = "strict";
+            ProtectHome = true;
+          };
+        };
+      }
+      // optionalAttrs (config.libri.legacy.enable or false) {
+        libri = session;
+      };
 
       systemd.sockets.seat-vnc = {
         description = "VNC to the seat's session, on the tailnet";
@@ -111,20 +137,6 @@ in
           FreeBind = true;
           IPAddressAllow = lib.ship.fences.tailnet;
           IPAddressDeny = "any";
-        };
-      };
-      systemd.services.seat-vnc = {
-        description = "VNC to the seat's session, on the tailnet";
-        requires = singleton "seat-vnc.socket";
-        after = singleton "seat-vnc.socket";
-        serviceConfig = {
-          # The seat's own runtime directory is readable only by the seat.
-          User = seat.user;
-          ExecStart = "${lib.meta.getExe' pkgs.systemd "systemd-socket-proxyd"} /run/user/${toString seat.uid}/${vncSocket}";
-          PrivateNetwork = true;
-          NoNewPrivileges = true;
-          ProtectSystem = "strict";
-          ProtectHome = true;
         };
       };
     };
