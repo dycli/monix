@@ -70,7 +70,12 @@ for filename, text in all_files.items():
         ", ".join(hits),
     )
 
-# Suki's Claude harness must enforce narrow built-in tools and strict MCP.
+# Suki's deployment layer must be locked and enforce narrow Claude tools + strict MCP.
+check(
+    "libri.toml locks deployment layer",
+    toml_data.get("locked") is True,
+    repr(toml_data.get("locked")),
+)
 claude = toml_data.get("harness", {}).get("claude", {})
 check(
     "libri.toml restricts claude tools to AskUserQuestion",

@@ -351,6 +351,7 @@
           hippo2Unit = "hippo2-suki.service";
 
           core = {
+            locked = true;
             includeSeatMcp = false;
             path = lib.strings.makeBinPath [
               pkgs.claude-code

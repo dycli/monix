@@ -286,6 +286,11 @@
             };
 
             core = {
+              locked = mkOption {
+                type = types.bool;
+                default = false;
+                description = "Lock the deployment layer in `libri.toml` so the person layer cannot widen capabilities, override `mcp`/`clients`, or replace deployment skills.";
+              };
               includeSeatMcp = mkOption {
                 type = types.bool;
                 default = false;
@@ -710,7 +715,8 @@
             );
 
           coreSetup = tomlFormat.generate "${coreUnit}.toml" (
-            {
+            optionalAttrs assistant.core.locked { locked = true; }
+            // {
               clients = {
                 mode = "0660";
                 group = assistant.clientsGroup;
