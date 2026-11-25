@@ -68,9 +68,10 @@ in
       home-manager.users.${config.primaryUser}.home.packages = tools pkgs;
     };
 
-  # DISCORD AND FIREFOX
+  # DISCORD, FIREFOX, AND LADYBIRD
   # macOS takes each one's own signed app as a cask, as home.mod.nix explains.
-  # Firefox sits beside the elected browser (Brave) without taking its URLs.
+  # Firefox and Ladybird sit beside the elected browser (Brave) without taking
+  # its URLs.
   flake.darwinModules.desktop = self.darwinModules.packages-desktop-darwin;
   flake.darwinModules.packages-desktop-darwin =
     { lib, ... }:
@@ -78,6 +79,7 @@ in
       homebrew.casks = [
         "discord"
         "firefox"
+        "ladybird"
       ];
     };
 
@@ -98,8 +100,9 @@ in
     {
       home.packages = [
         pkgs.discord
-        # A second browser beside the elected one; it handles no URLs.
+        # Secondary browsers beside the elected one; they handle no URLs.
         pkgs.firefox
+        pkgs.ladybird
 
         # Elected applications (default-apps.mod.nix); referencing the options
         # installs whatever a host overrides them to.
