@@ -140,6 +140,17 @@
           mode = "0660";
           group = coreClientsGroup;
         };
+        # Mode a child session gets when its parent runs on a different harness:
+        # each built-in harness's autonomous widening mode.
+        harness = {
+          claude.child_mode = "bypassPermissions";
+          codex.child_mode = "never";
+          agy.child_mode = "full-access";
+          muse.child_mode = "allowAll";
+          omp.child_mode = "full-access";
+          opencode.child_mode = "full-access";
+          pi.child_mode = "full-access";
+        };
         mcp =
           coreServers
           // (
@@ -1338,10 +1349,8 @@
               Group = seat.user;
               SupplementaryGroups = singleton coreClientsGroup;
               PrivateUsers = false;
-              ReadOnlyPaths = [
-                a2aPeersFile
-                a2aCfg.coreTokenFile
-              ];
+              # ProtectSystem=strict already keeps /var/lib/libri-core read-only
+              # without bind-mounting individual files across atomic renames.
               ExecStart = escapeShellArgs (
                 [
                   (addonBinary "a2a")
