@@ -130,4 +130,5 @@ in
     libri.environment = searchSockets;
   };
   libri.assistants.bridge.addons.search.environment = searchSockets;
+  libri.assistants.suki.addons.search.environment = searchSockets;
 }

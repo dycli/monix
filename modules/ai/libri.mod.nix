@@ -5,11 +5,48 @@
 #
 # Each assistant keeps every word of its prompts on disk in its person layer
 # (`~/.config/libri-core/AGENTS.md` or `configDir`), never in monix.
-#
-# Legacy Suki (`suki.service`, `yeoman-image@`) runs beside Stage 2 until
-# Suki moves onto `libri.assistants`.
 { inputs, self, ... }:
 {
+  perSystem =
+    { lib, pkgs, ... }:
+    let
+      inherit (lib.attrsets) genAttrs;
+      inherit (lib.lists) singleton;
+      inherit (lib.strings) toJSON;
+
+      water = self.nixosConfigurations.water.config;
+      checkedUnits = [
+        "suki-core.service"
+        "suki-gateway.service"
+        "suki-addon-a2a.service"
+        "suki-addon-boards.service"
+        "suki-addon-files.service"
+        "suki-addon-layout.service"
+        "suki-addon-lists.service"
+        "suki-addon-pages.service"
+        "suki-addon-speech.service"
+        "suki-ready.service"
+        "hippo2-suki.service"
+      ];
+      manifest = pkgs.writeText "suki-isolation-manifest.json" (toJSON {
+        libri_toml = "${water.environment.etc."libri-suki/libri.toml".source}";
+        units = genAttrs checkedUnits (u: "${water.systemd.units.${u}.unit}/${u}");
+        has_legacy_suki = water.systemd.services ? suki;
+        suki_config_tmpfile = water.systemd.tmpfiles.settings.suki-config."/var/lib/suki-config".d or null;
+      });
+    in
+    {
+      checks.suki-isolation =
+        pkgs.runCommand "suki-isolation-check"
+          {
+            nativeBuildInputs = singleton pkgs.python3;
+          }
+          ''
+            python3 -I ${./libri/check_suki_isolation.py} ${manifest}
+            touch $out
+          '';
+    };
+
   flake.nixosModules.lab = self.nixosModules.libri;
   flake.nixosModules.libri =
     {
@@ -32,6 +69,7 @@
         recursiveUpdate
         ;
       inherit (lib.lists)
+        any
         concatLists
         concatMap
         elem
@@ -221,6 +259,26 @@
               default = acfg.user;
               description = "Unix group for the core daemon and its add-ons.";
             };
+            createUser = mkOption {
+              type = types.bool;
+              default = false;
+              description = "Declare `users.users.<user>` and `users.groups.<group>` as a system account for this assistant.";
+            };
+            uid = mkOption {
+              type = types.nullOr types.int;
+              default = null;
+              description = "Optional static numeric UID when `createUser` is enabled.";
+            };
+            gid = mkOption {
+              type = types.nullOr types.int;
+              default = null;
+              description = "Optional static numeric GID when `createUser` is enabled.";
+            };
+            userHome = mkOption {
+              type = types.str;
+              default = acfg.home;
+              description = "Home directory recorded in `/etc/passwd` when `createUser` is enabled.";
+            };
             home = mkOption {
               type = types.str;
               default = acfg.dataDir;
@@ -347,6 +405,29 @@
                 );
                 default = { };
                 description = "Secrets loaded via systemd `LoadCredential` and exported as environment variables before exec'ing `libri-core`.";
+              };
+              authHeaderFiles = mkOption {
+                type = types.attrsOf (
+                  types.submodule {
+                    options = {
+                      credentialName = mkOption {
+                        type = types.str;
+                        description = "Name under `$CREDENTIALS_DIRECTORY` (systemd `LoadCredential`).";
+                      };
+                      path = mkOption {
+                        type = types.str;
+                        description = "Host secret file path passed to systemd `LoadCredential`.";
+                      };
+                      prefix = mkOption {
+                        type = types.str;
+                        default = "Bearer ";
+                        description = "Prefix written before the trimmed secret value.";
+                      };
+                    };
+                  }
+                );
+                default = { };
+                description = "Secrets loaded via systemd `LoadCredential` and rendered as mode-0600 files under `runtimeDir` for `libri.toml` `{ file = ... }` headers.";
               };
               extraLoadCredentials = mkOption {
                 type = types.listOf types.str;
@@ -510,6 +591,18 @@
                     description = "Pass `--read-only` to `wiki serve`.";
                   };
                 };
+                yeomanImage = {
+                  enable = mkOption {
+                    type = types.bool;
+                    default = false;
+                    description = "Give this assistant's sessions the household `yeoman-image-mcp` server backed by `/run/yeoman-image.sock`.";
+                  };
+                  dir = mkOption {
+                    type = types.nullOr types.str;
+                    default = null;
+                    description = "Directory where generated PNG images are saved.";
+                  };
+                };
                 connect = {
                   enable = mkOption {
                     type = types.bool;
@@ -566,6 +659,7 @@
           speechLocal = assistant.addons.speech.provider == "local";
           connectCfg = assistant.addons.connect;
           wikiCfg = assistant.addons.wiki;
+          yeomanImageCfg = assistant.addons.yeomanImage;
           connectDir =
             if connectCfg.dir != null then connectCfg.dir else connectCfg.environment.LIBRI_CONNECT_DIR or null;
 
@@ -650,6 +744,13 @@
             ++ optionals wikiCfg.readOnly (singleton "--read-only");
           };
 
+          yeomanImageMcpServer = optionalAttrs (yeomanImageCfg.enable && yeomanImageCfg.dir != null) {
+            image.command = [
+              (getExe image)
+              yeomanImageCfg.dir
+            ];
+          };
+
           stdAddonMcpServers =
             enabledStdAddons
             |> mapAttrs (
@@ -672,6 +773,7 @@
               mcp =
                 optionalAttrs assistant.core.includeSeatMcp seatCoreServers
                 // wikiMcpServer
+                // yeomanImageMcpServer
                 // connectMcpServers
                 // stdAddonMcpServers
                 // assistant.core.mcpServers;
@@ -699,12 +801,24 @@
             )
             |> concatStringsSep "";
 
+          authHeaderLines =
+            assistant.core.authHeaderFiles
+            |> mapAttrsToList (
+              fileName: cred: ''
+                (umask 077 && printf '%s%s\n' ${escapeShellArg cred.prefix} "$(${getExe' pkgs.coreutils "tr"} -d '\r\n' < "$CREDENTIALS_DIRECTORY/${cred.credentialName}")" > "$RUNTIME_DIRECTORY/${fileName}") || exit 1
+              ''
+            )
+            |> concatStringsSep "";
+
           startCore = pkgs.writeShellScript "start-${coreUnit}" ''
-            ${credLines}exec ${core} --runtime-dir "$RUNTIME_DIRECTORY" --data-dir "$STATE_DIRECTORY" daemon --no-holder-scope
+            ${credLines}${authHeaderLines}exec ${core} --runtime-dir "$RUNTIME_DIRECTORY" --data-dir "$STATE_DIRECTORY" daemon --no-holder-scope
           '';
 
           loadCredentials =
             (assistant.core.envCredentials |> mapAttrsToList (_: cred: "${cred.credentialName}:${cred.path}"))
+            ++ (
+              assistant.core.authHeaderFiles |> mapAttrsToList (_: cred: "${cred.credentialName}:${cred.path}")
+            )
             ++ assistant.core.extraLoadCredentials;
 
           gatewayEnvironment = {
@@ -836,6 +950,33 @@
           stateDirRel = removePrefix "/var/lib/" assistant.dataDir;
           runtimeDirRel = removePrefix "/run/" assistant.runtimeDir;
 
+          restrictedHarness = any (h: h.strict_mcp == true || h.tools != null) (
+            attrValues assistant.core.harnesses
+          );
+          rootOwnedConfigDir = assistant.configDir != null && !(hasPrefix "/etc/" assistant.configDir);
+          pathInside = outer: inner: inner == outer || hasPrefix "${outer}/" inner;
+
+          assistantUserAttrs =
+            optionalAttrs assistant.createUser (
+              {
+                isSystemUser = true;
+                inherit (assistant) group;
+                home = assistant.userHome;
+              }
+              // optionalAttrs (assistant.uid != null) { inherit (assistant) uid; }
+            )
+            // optionalAttrs assistant.installUserCommands {
+              packages = coreCommands;
+            };
+
+          extraStateStores =
+            optionals (wikiCfg.enable && wikiCfg.dir != null && hasPrefix "${assistant.dataDir}/" wikiCfg.dir) (
+              singleton wikiCfg.dir
+            )
+            ++ optionals (
+              assistant.addons.computer.enable && assistant.addons.computer.environment ? LIBRI_OUTBOX_DIR
+            ) (singleton assistant.addons.computer.environment.LIBRI_OUTBOX_DIR);
+
           # Ready check runs for Stage 2 assistants; for Bridge while legacy.enable
           # is true, the legacy libri-ready unit runs instead.
           emitReady = !(prefix == "libri" && legacy.enable);
@@ -855,6 +996,24 @@
               message = "libri.assistants.${name}.systemConfigDir must live under /etc/.";
             }
             {
+              assertion =
+                assistant.configDir == null
+                || hasPrefix "/etc/" assistant.configDir
+                || hasPrefix "/var/lib/" assistant.configDir;
+              message = "libri.assistants.${name}.configDir must live under /etc/ or /var/lib/.";
+            }
+            {
+              assertion =
+                !restrictedHarness
+                || (
+                  assistant.configDir != null
+                  && !(pathInside assistant.dataDir assistant.configDir)
+                  && !(pathInside assistant.home assistant.configDir)
+                  && !(pathInside assistant.userHome assistant.configDir)
+                );
+              message = "libri.assistants.${name}: restricted harnesses require a root-owned configDir outside dataDir and home so the assistant cannot write person-layer libri.toml.";
+            }
+            {
               assertion = !(gw.enable && servedAddons != [ ] && gw.uid == null);
               message = "libri.assistants.${name}.gateway.uid must be set when served add-ons enforce --peer-uid.";
             }
@@ -866,10 +1025,17 @@
               assertion = !(connectCfg.enable && connectDir == null);
               message = "libri.assistants.${name}.addons.connect requires `dir` or `environment.LIBRI_CONNECT_DIR` when enabled.";
             }
+            {
+              assertion = !(yeomanImageCfg.enable && yeomanImageCfg.dir == null);
+              message = "libri.assistants.${name}.addons.yeomanImage requires `dir` when enabled.";
+            }
           ];
 
           users.groups = {
             ${assistant.clientsGroup} = { };
+          }
+          // optionalAttrs assistant.createUser {
+            ${assistant.group} = optionalAttrs (assistant.gid != null) { inherit (assistant) gid; };
           }
           // optionalAttrs gw.enable {
             ${gw.group} = optionalAttrs (gw.gid != null) { inherit (gw) gid; };
@@ -885,8 +1051,8 @@
               // optionalAttrs (gw.uid != null) { inherit (gw) uid; };
               nginx.extraGroups = singleton gw.group;
             }
-            // optionalAttrs assistant.installUserCommands {
-              ${assistant.user}.packages = coreCommands;
+            // optionalAttrs (assistantUserAttrs != { }) {
+              ${assistant.user} = assistantUserAttrs;
             };
 
           environment.etc.${etcRelPath}.source = coreSetup;
@@ -908,10 +1074,14 @@
           );
 
           systemd.tmpfiles.settings =
-            optionalAttrs (gw.enable && servedAddons != [ ]) {
+            optionalAttrs ((gw.enable && servedAddons != [ ]) || extraStateStores != [ ]) {
               "${prefix}-addons" =
-                servedAddons
-                |> concatMap addonStores
+                (
+                  singleton assistant.dataDir
+                  ++ optionals gw.enable (servedAddons |> concatMap addonStores)
+                  ++ extraStateStores
+                )
+                |> unique
                 |> map (
                   store:
                   nameValuePair store {
@@ -922,6 +1092,13 @@
                   }
                 )
                 |> listToAttrs;
+            }
+            // optionalAttrs rootOwnedConfigDir {
+              "${prefix}-config".${assistant.configDir}.d = {
+                user = "root";
+                group = assistant.group;
+                mode = "0750";
+              };
             }
             // optionalAttrs gw.enable {
               ${gatewayUnit}.${gwState}.d = {
@@ -965,7 +1142,10 @@
                 User = assistant.user;
                 Group = assistant.group;
                 WorkingDirectory = assistant.home;
-                SupplementaryGroups = assistant.core.supplementaryGroups ++ singleton assistant.clientsGroup;
+                SupplementaryGroups =
+                  assistant.core.supplementaryGroups
+                  ++ optionals yeomanImageCfg.enable (singleton "yeoman-image")
+                  ++ singleton assistant.clientsGroup;
                 StateDirectory = stateDirRel;
                 StateDirectoryMode = "0700";
                 RuntimeDirectory = runtimeDirRel;
@@ -1005,13 +1185,15 @@
               after =
                 singleton "${coreUnit}.service"
                 ++ optionals (assistant.hippo2Unit != null) (singleton assistant.hippo2Unit)
-                ++ optionals gw.enable (singleton "${gatewayUnit}.service");
+                ++ optionals gw.enable (singleton "${gatewayUnit}.service")
+                ++ optionals a2aServe (singleton "${prefix}-addon-a2a.service");
               restartTriggers =
                 singleton config.systemd.units."${coreUnit}.service".unit
                 ++ optionals (assistant.hippo2Unit != null) (
                   singleton config.systemd.units.${assistant.hippo2Unit}.unit
                 )
-                ++ optionals gw.enable (singleton config.systemd.units."${gatewayUnit}.service".unit);
+                ++ optionals gw.enable (singleton config.systemd.units."${gatewayUnit}.service".unit)
+                ++ optionals a2aServe (singleton config.systemd.units."${prefix}-addon-a2a.service".unit);
               path = [
                 config.systemd.package
                 pkgs.coreutils
@@ -1035,6 +1217,13 @@
                     sleep 1
                   done
                   curl -fsS -m3 http://127.0.0.1:${toString gw.port}/ >/dev/null
+                ''}
+                ${optionalString a2aServe ''
+                  for _ in $(seq 40); do
+                    systemctl is-active --quiet ${prefix}-addon-a2a.service && break
+                    sleep 1
+                  done
+                  systemctl is-active --quiet ${prefix}-addon-a2a.service
                 ''}
                 ${optionalString (assistant.hippo2Unit != null) ''
                   for _ in $(seq 40); do
@@ -1300,6 +1489,7 @@
       # LEGACY BRIDGE AND SUKI
 
       legacy = config.libri.legacy;
+      legacySuki = config.libri.legacySuki;
       bridgeAssistant = enabledAssistants.bridge or null;
       bridgeAddons =
         if bridgeAssistant != null then
@@ -1532,6 +1722,12 @@
           description = "Run Dylan's legacy libri.service web chat beside Stage 2.";
         };
 
+        legacySuki.enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Run Gab's legacy suki.service web chat.";
+        };
+
         site.subdomain = mkOption {
           type = types.str;
           default = "si";
@@ -1544,7 +1740,13 @@
           builtAssistants = enabledAssistants |> mapAttrsToList mkAssistant;
         in
         {
-          assertions = pairAssertions ++ concatMap (a: a.assertions) builtAssistants;
+          assertions =
+            pairAssertions
+            ++ concatMap (a: a.assertions) builtAssistants
+            ++ singleton {
+              assertion = !(legacySuki.enable && enabledAssistants ? suki);
+              message = "libri: legacySuki.enable and libri.assistants.suki cannot both be enabled.";
+            };
 
           services.libri.instances =
             optionalAttrs legacy.enable {
@@ -1574,7 +1776,7 @@
                 };
               };
             }
-            // {
+            // optionalAttrs legacySuki.enable {
               suki = {
                 package = seat.libriBuild;
                 harnesses = singleton pkgs.claude-code;
@@ -1621,7 +1823,10 @@
           shipProxy.routes = mkMerge (
             (builtAssistants |> map (a: a.shipProxy.routes))
             ++ singleton (
-              (optionalAttrs legacy.enable { libri = config.libri.site.subdomain; } // { suki = "suki"; })
+              (
+                optionalAttrs legacy.enable { libri = config.libri.site.subdomain; }
+                // optionalAttrs legacySuki.enable { suki = "suki"; }
+              )
               |> mapAttrs (
                 n: subdomain: {
                   inherit subdomain;
@@ -1634,40 +1839,45 @@
 
           systemd.tmpfiles.settings = mkMerge (
             (builtAssistants |> map (a: a.systemd.tmpfiles.settings))
-            ++ singleton {
-              yeoman-pages = {
-                ${pages}.d = {
-                  user = "root";
-                  group = "root";
-                  mode = "0751";
-                };
-                "${pages}/suki".d = {
-                  user = "suki";
-                  group = "nginx";
-                  mode = "2750";
+            ++ singleton (
+              optionalAttrs (legacy.enable || legacySuki.enable) {
+                yeoman-pages = {
+                  ${pages}.d = {
+                    user = "root";
+                    group = "root";
+                    mode = "0751";
+                  };
+                }
+                // optionalAttrs legacySuki.enable {
+                  "${pages}/suki".d = {
+                    user = "suki";
+                    group = "nginx";
+                    mode = "2750";
+                  };
+                }
+                // optionalAttrs legacy.enable {
+                  "${pages}/libri".d = {
+                    user = seat.user;
+                    group = "nginx";
+                    mode = "2750";
+                  };
                 };
               }
-              // optionalAttrs legacy.enable {
-                "${pages}/libri".d = {
-                  user = seat.user;
-                  group = "nginx";
-                  mode = "2750";
+              // {
+                yeoman-builds = {
+                  "/var/lib/libri-build".d = {
+                    user = seat.user;
+                    group = seat.user;
+                    mode = "0755";
+                  };
+                  ${addonsBuild}.d = {
+                    user = seat.user;
+                    group = seat.user;
+                    mode = "0755";
+                  };
                 };
-              };
-
-              yeoman-builds = {
-                "/var/lib/libri-build".d = {
-                  user = seat.user;
-                  group = seat.user;
-                  mode = "0755";
-                };
-                ${addonsBuild}.d = {
-                  user = seat.user;
-                  group = seat.user;
-                  mode = "0755";
-                };
-              };
-            }
+              }
+            )
           );
 
           security.polkit.extraConfig =
@@ -1675,7 +1885,7 @@
               managedUnits =
                 optionals config.seat.hippo.enable (singleton "hippo.service")
                 ++ optionals legacy.enable (singleton "libri.service")
-                ++ singleton "suki.service"
+                ++ optionals legacySuki.enable (singleton "suki.service")
                 ++ stage2ManagedUnits;
             in
             ''
@@ -1716,11 +1926,34 @@
                   DEPLOY_LIBRI_SERVED_ADDONS = concatStringsSep " " deployServedAddons;
                   DEPLOY_LIBRI_INSTANCES = concatStringsSep " " (
                     optionals legacy.enable (singleton "libri:${toString ports.libri}")
-                    ++ singleton "suki:${toString ports.suki}"
+                    ++ optionals legacySuki.enable (singleton "suki:${toString ports.suki}")
                   );
                   DEPLOY_LIBRI_HIPPOS = concatStringsSep " " (optionals config.seat.hippo.enable (singleton "hippo"));
                 };
 
+                "yeoman-image@" = {
+                  description = "One picture for a household assistant";
+                  environment = {
+                    HOME = "/var/lib/yeoman-image";
+                    CODEX_HOME = "/var/lib/yeoman-image";
+                  };
+                  serviceConfig =
+                    lib.ship.hardened.tenant
+                    // fence
+                    // {
+                      User = "yeoman-image";
+                      Group = "yeoman-image";
+                      StateDirectory = "yeoman-image";
+                      StateDirectoryMode = "0700";
+                      ExecStart = getExe draw;
+                      StandardInput = "socket";
+                      StandardOutput = "socket";
+                      StandardError = "journal";
+                      BindReadOnlyPaths = singleton "${pkgs.emptyDirectory}:/etc/codex";
+                    };
+                };
+              }
+              // optionalAttrs legacySuki.enable {
                 suki = {
                   description = "Suki, Gab's household assistant";
                   restartIfChanged = false;
@@ -1744,28 +1977,6 @@
                     ];
                     SocketBindAllow = "tcp:${toString ports.suki}";
                   };
-                };
-
-                "yeoman-image@" = {
-                  description = "One picture for a household assistant";
-                  environment = {
-                    HOME = "/var/lib/yeoman-image";
-                    CODEX_HOME = "/var/lib/yeoman-image";
-                  };
-                  serviceConfig =
-                    lib.ship.hardened.tenant
-                    // fence
-                    // {
-                      User = "yeoman-image";
-                      Group = "yeoman-image";
-                      StateDirectory = "yeoman-image";
-                      StateDirectoryMode = "0700";
-                      ExecStart = getExe draw;
-                      StandardInput = "socket";
-                      StandardOutput = "socket";
-                      StandardError = "journal";
-                      BindReadOnlyPaths = singleton "${pkgs.emptyDirectory}:/etc/codex";
-                    };
                 };
               }
               // optionalAttrs legacy.enable {

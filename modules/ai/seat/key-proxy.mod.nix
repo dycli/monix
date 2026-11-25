@@ -15,7 +15,7 @@
     }:
     let
       inherit (lib.attrsets) attrValues mapAttrsToList;
-      inherit (lib.lists) singleton;
+      inherit (lib.lists) singleton unique;
       inherit (lib.meta) getExe;
       inherit (lib.modules) mkBefore mkIf;
       inherit (lib.options) mkOption;
@@ -44,9 +44,9 @@
               fi
             '') routes
           )}
-          # An entry, not chgrp: systemd puts a runtime directory back to the unit's
-          # owner before each later start step, and an access entry stays through that.
-          setfacl -m u:${seat.user}:x ${directory}
+          # Entries, not chgrp: systemd puts a runtime directory back to the unit's
+          # owner before each later start step, and access entries stay through that.
+          ${concatMapStrings (user: "setfacl -m u:${user}:x ${directory}\n") (unique config.keyProxy.users)}
         '';
       };
 
@@ -85,40 +85,47 @@
       '';
     in
     {
-      options.keyProxy.routes = mkOption {
-        default = { };
-        description = "Upstream APIs reached through a key root holds, one socket each at ${directory}/<name>.sock.";
-        type = types.attrsOf (
-          types.submodule {
-            options = {
-              host = mkOption {
-                type = types.str;
-                description = "The upstream's host name, reached over HTTPS.";
+      options.keyProxy = {
+        users = mkOption {
+          type = types.listOf types.str;
+          default = singleton seat.user;
+          description = "Accounts granted execute access on ${directory} to reach the key-proxy sockets.";
+        };
+        routes = mkOption {
+          default = { };
+          description = "Upstream APIs reached through a key root holds, one socket each at ${directory}/<name>.sock.";
+          type = types.attrsOf (
+            types.submodule {
+              options = {
+                host = mkOption {
+                  type = types.str;
+                  description = "The upstream's host name, reached over HTTPS.";
+                };
+                secret = mkOption {
+                  type = types.str;
+                  description = "The name under `secrets` of the file holding the bare key.";
+                };
+                header = mkOption {
+                  type = types.str;
+                  default = "Authorization";
+                  description = "The header the key goes in.";
+                };
+                prefix = mkOption {
+                  type = types.str;
+                  default = "Bearer ";
+                  description = "What precedes the key in the header.";
+                };
+                allow = mkOption {
+                  type = types.listOf types.str;
+                  description = ''
+                    The calls allowed, as nginx map keys over "$request_method $request_uri":
+                    a literal, or a regex starting with ~.
+                  '';
+                };
               };
-              secret = mkOption {
-                type = types.str;
-                description = "The name under `secrets` of the file holding the bare key.";
-              };
-              header = mkOption {
-                type = types.str;
-                default = "Authorization";
-                description = "The header the key goes in.";
-              };
-              prefix = mkOption {
-                type = types.str;
-                default = "Bearer ";
-                description = "What precedes the key in the header.";
-              };
-              allow = mkOption {
-                type = types.listOf types.str;
-                description = ''
-                  The calls allowed, as nginx map keys over "$request_method $request_uri":
-                  a literal, or a regex starting with ~.
-                '';
-              };
-            };
-          }
-        );
+            }
+          );
+        };
       };
 
       config = mkIf (routes != { }) {

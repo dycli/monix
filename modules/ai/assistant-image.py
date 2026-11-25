@@ -52,7 +52,7 @@ def make_image(description: str) -> str:
     with open(name + ".part", "wb") as f:
         f.write(data)
     os.rename(name + ".part", name)
-    return "Done; it goes out with your answer."
+    return f"Saved {os.path.basename(name)} in your files."
 
 
 if __name__ == "__main__":
