@@ -7,46 +7,6 @@
 # (`~/.config/libri-core/AGENTS.md` or `configDir`), never in monix.
 { inputs, self, ... }:
 {
-  perSystem =
-    { lib, pkgs, ... }:
-    let
-      inherit (lib.attrsets) genAttrs;
-      inherit (lib.lists) singleton;
-      inherit (lib.strings) toJSON;
-
-      water = self.nixosConfigurations.water.config;
-      checkedUnits = [
-        "suki-core.service"
-        "suki-gateway.service"
-        "suki-addon-a2a.service"
-        "suki-addon-boards.service"
-        "suki-addon-files.service"
-        "suki-addon-layout.service"
-        "suki-addon-lists.service"
-        "suki-addon-pages.service"
-        "suki-addon-speech.service"
-        "suki-ready.service"
-        "hippo2-suki.service"
-      ];
-      manifest = pkgs.writeText "suki-isolation-manifest.json" (toJSON {
-        libri_toml = "${water.environment.etc."libri-suki/libri.toml".source}";
-        units = genAttrs checkedUnits (u: "${water.systemd.units.${u}.unit}/${u}");
-        has_legacy_suki = water.systemd.services ? suki;
-        suki_config_tmpfile = water.systemd.tmpfiles.settings.suki-config."/var/lib/suki-config".d or null;
-      });
-    in
-    {
-      checks.suki-isolation =
-        pkgs.runCommand "suki-isolation-check"
-          {
-            nativeBuildInputs = singleton pkgs.python3;
-          }
-          ''
-            python3 -I ${./libri/check_suki_isolation.py} ${manifest}
-            touch $out
-          '';
-    };
-
   flake.nixosModules.lab = self.nixosModules.libri;
   flake.nixosModules.libri =
     {
@@ -1185,14 +1145,19 @@
               after =
                 singleton "${coreUnit}.service"
                 ++ optionals (assistant.hippo2Unit != null) (singleton assistant.hippo2Unit)
-                ++ optionals gw.enable (singleton "${gatewayUnit}.service")
+                ++ optionals gw.enable (
+                  singleton "${gatewayUnit}.service" ++ map (n: "${prefix}-addon-${n}.service") servedAddons
+                )
                 ++ optionals a2aServe (singleton "${prefix}-addon-a2a.service");
               restartTriggers =
                 singleton config.systemd.units."${coreUnit}.service".unit
                 ++ optionals (assistant.hippo2Unit != null) (
                   singleton config.systemd.units.${assistant.hippo2Unit}.unit
                 )
-                ++ optionals gw.enable (singleton config.systemd.units."${gatewayUnit}.service".unit)
+                ++ optionals gw.enable (
+                  singleton config.systemd.units."${gatewayUnit}.service".unit
+                  ++ map (n: config.systemd.units."${prefix}-addon-${n}.service".unit) servedAddons
+                )
                 ++ optionals a2aServe (singleton config.systemd.units."${prefix}-addon-a2a.service".unit);
               path = [
                 config.systemd.package
@@ -1211,19 +1176,36 @@
                   sleep 1
                 done
                 curl -fsS -m3 --unix-socket ${assistant.socketPath} http://localhost/v1/host >/dev/null
+                ${optionalString (gw.enable && servedAddons != [ ]) (
+                  servedAddons
+                  |> map (n: ''
+                    for _ in $(seq 40); do
+                      systemctl is-active --quiet ${prefix}-addon-${n}.service && break
+                      sleep 1
+                    done
+                    systemctl is-active --quiet ${prefix}-addon-${n}.service
+                  '')
+                  |> concatStringsSep "\n"
+                )}
                 ${optionalString gw.enable ''
-                  for _ in $(seq 40); do
-                    curl -fsS -m3 http://127.0.0.1:${toString gw.port}/ >/dev/null && break
-                    sleep 1
-                  done
-                  curl -fsS -m3 http://127.0.0.1:${toString gw.port}/ >/dev/null
+                  # Gateway state is 0700 to its own user, so check systemd's root-evaluated
+                  # ConditionPathExists (admin.token + web assets) before probing the port.
+                  if [ "$(systemctl show -P ConditionResult ${gatewayUnit}.service)" = "yes" ]; then
+                    for _ in $(seq 40); do
+                      curl -fsS -m3 http://127.0.0.1:${toString gw.port}/ >/dev/null && break
+                      sleep 1
+                    done
+                    curl -fsS -m3 http://127.0.0.1:${toString gw.port}/ >/dev/null
+                  fi
                 ''}
                 ${optionalString a2aServe ''
-                  for _ in $(seq 40); do
-                    systemctl is-active --quiet ${prefix}-addon-a2a.service && break
-                    sleep 1
-                  done
-                  systemctl is-active --quiet ${prefix}-addon-a2a.service
+                  if [ -s ${a2aCfg.tokenFile} ] && [ -s ${a2aCfg.peersFile} ]; then
+                    for _ in $(seq 40); do
+                      systemctl is-active --quiet ${prefix}-addon-a2a.service && break
+                      sleep 1
+                    done
+                    systemctl is-active --quiet ${prefix}-addon-a2a.service
+                  fi
                 ''}
                 ${optionalString (assistant.hippo2Unit != null) ''
                   for _ in $(seq 40); do

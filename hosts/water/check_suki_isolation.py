@@ -4,7 +4,6 @@ Usage: check_suki_isolation.py MANIFEST_JSON
 """
 
 import json
-import os
 import re
 import sys
 import tomllib
@@ -20,6 +19,19 @@ def check(name, condition, detail=""):
     else:
         print(f"FAIL {name}" + (f": {detail}" if detail else ""))
         failures.append(name)
+
+
+def unit_values(unit_text, key):
+    prefix = f"{key}="
+    return [line[len(prefix):] for line in unit_text.splitlines() if line.startswith(prefix)]
+
+
+def unit_env(unit_text, var):
+    for raw in unit_values(unit_text, "Environment"):
+        value = raw[1:-1] if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"' else raw
+        if value.startswith(f"{var}="):
+            return value[len(var) + 1 :]
+    return None
 
 
 toml_path = Path(manifest["libri_toml"])
@@ -149,17 +161,42 @@ check(
 )
 check(
     "suki-gateway sets assistant name Suki",
-    "LIBRI_GATEWAY_ASSISTANT_NAME=Suki" in gw or 'LIBRI_GATEWAY_ASSISTANT_NAME="Suki"' in gw,
+    unit_env(gw, "LIBRI_GATEWAY_ASSISTANT_NAME") == "Suki",
 )
 check("suki-gateway listens on 127.0.0.1:8954", "127.0.0.1:8954" in gw)
 
 # Core uses isolated system/person config dirs and tenant hardening.
 core = unit_texts["suki-core.service"]
-check("suki-core sets LIBRI_SYSTEM_CONFIG_DIR=/etc/libri-suki", "LIBRI_SYSTEM_CONFIG_DIR=/etc/libri-suki" in core)
-check("suki-core sets LIBRI_CONFIG_DIR=/var/lib/suki-config", "LIBRI_CONFIG_DIR=/var/lib/suki-config" in core)
+check("suki-core sets LIBRI_SYSTEM_CONFIG_DIR=/etc/libri-suki", unit_env(core, "LIBRI_SYSTEM_CONFIG_DIR") == "/etc/libri-suki")
+check("suki-core sets LIBRI_CONFIG_DIR=/var/lib/suki-config", unit_env(core, "LIBRI_CONFIG_DIR") == "/var/lib/suki-config")
 check("suki-core protects /home", "ProtectHome=true" in core)
 check("suki-core uses ProtectSystem=strict", "ProtectSystem=strict" in core)
 check("suki-core runs as suki", "User=suki" in core)
+
+denied_ips = set(unit_values(core, "IPAddressDeny"))
+required_denied = {
+    "10.0.0.0/8",
+    "100.64.0.0/10",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+}
+missing_denied = sorted(required_denied - denied_ips)
+check(
+    "suki-core IPAddressDeny blocks LAN and tailnet",
+    not missing_denied,
+    f"missing {missing_denied}; got {sorted(denied_ips)}",
+)
+
+rw_paths = [
+    path
+    for entry in unit_values(core, "ReadWritePaths")
+    for path in entry.split()
+]
+check(
+    "suki-core ReadWritePaths only includes Suki's desk",
+    rw_paths == ["/var/lib/yeoman-desks/suki"],
+    repr(rw_paths),
+)
 
 # Inbound A2A keeps 127.0.0.1:8952 on Suki's core socket.
 a2a = unit_texts["suki-addon-a2a.service"]
@@ -169,9 +206,14 @@ check("suki-addon-a2a connects to /run/suki-core/client.sock", "/run/suki-core/c
 # hippo2-suki is isolated on /var/lib/hippo2-suki and disables legacy libri reader.
 hippo = unit_texts["hippo2-suki.service"]
 check("hippo2-suki runs as hippo2-suki", "User=hippo2-suki" in hippo)
-check("hippo2-suki sets HIPPO2_HOME=/var/lib/hippo2-suki", "HIPPO2_HOME=/var/lib/hippo2-suki" in hippo)
-check("hippo2-suki reads /run/suki-core/client.sock", "HIPPO2_LIBRI_CORE_SOCKET=/run/suki-core/client.sock" in hippo)
-check("hippo2-suki disables legacy libri reader", re.search(r"HIPPO2_OFF=.*\blibri\b", hippo) is not None, hippo)
+check("hippo2-suki sets HIPPO2_HOME=/var/lib/hippo2-suki", unit_env(hippo, "HIPPO2_HOME") == "/var/lib/hippo2-suki")
+check("hippo2-suki reads /run/suki-core/client.sock", unit_env(hippo, "HIPPO2_LIBRI_CORE_SOCKET") == "/run/suki-core/client.sock")
+hippo_off = unit_env(hippo, "HIPPO2_OFF") or ""
+check(
+    "hippo2-suki disables legacy libri reader",
+    re.search(r"(^|,)libri(,|$)", hippo_off) is not None,
+    repr(hippo_off),
+)
 
 # Legacy suki.service is absent on Water.
 check("legacy suki.service is absent on Water", not manifest["has_legacy_suki"])

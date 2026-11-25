@@ -6,6 +6,46 @@
   ...
 }:
 {
+  perSystem =
+    { lib, pkgs, ... }:
+    let
+      inherit (lib.attrsets) genAttrs;
+      inherit (lib.lists) singleton;
+      inherit (lib.strings) toJSON;
+
+      water = self.nixosConfigurations.water.config;
+      checkedUnits = [
+        "suki-core.service"
+        "suki-gateway.service"
+        "suki-addon-a2a.service"
+        "suki-addon-boards.service"
+        "suki-addon-files.service"
+        "suki-addon-layout.service"
+        "suki-addon-lists.service"
+        "suki-addon-pages.service"
+        "suki-addon-speech.service"
+        "suki-ready.service"
+        "hippo2-suki.service"
+      ];
+      manifest = pkgs.writeText "suki-isolation-manifest.json" (toJSON {
+        libri_toml = "${water.environment.etc."libri-suki/libri.toml".source}";
+        units = genAttrs checkedUnits (u: "${water.systemd.units.${u}.unit}/${u}");
+        has_legacy_suki = water.systemd.services ? suki;
+        suki_config_tmpfile = water.systemd.tmpfiles.settings.suki-config."/var/lib/suki-config".d or null;
+      });
+    in
+    {
+      checks.suki-isolation =
+        pkgs.runCommand "suki-isolation-check"
+          {
+            nativeBuildInputs = singleton pkgs.python3;
+          }
+          ''
+            python3 -I ${./check_suki_isolation.py} ${manifest}
+            touch $out
+          '';
+    };
+
   imports = lib.lists.singleton (
     lib.ship.host "water" (
       { config, pkgs, ... }:
@@ -273,7 +313,6 @@
           };
         };
 
-        # Dedicated hippo2 memory daemon for Suki, reading only Suki's core event log.
         services.hippo2.instances.suki = {
           enable = true;
           user = "hippo2-suki";
@@ -476,8 +515,6 @@
             "libri-gateway.service"
             "libri-addon-a2a.service"
             "suki-core.service"
-            "suki-gateway.service"
-            "suki-addon-a2a.service"
             "nginx.service"
             "tuwunel.service"
           ];
