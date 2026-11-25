@@ -74,14 +74,28 @@ if ! grep -q -- '--release-checks' check_changes.sh || ! slow=$(./check_changes.
 fi
 needs() { grep -qx "$1" <<< "$slow"; }
 
-# Puts the version files back if anything below fails before the commit.
+changelog=libri/CHANGELOG.md
+[[ -f CHANGELOG.md ]] && changelog=CHANGELOG.md
+changelog_backup=
+cleanup_backup() { [[ -n $changelog_backup ]] && rm -f "$changelog_backup"; }
+trap cleanup_backup EXIT
+
+# Puts the version files and changelog back if anything below fails before
+# the commit, preserving any hand-written changelog entry left uncommitted.
 undo() {
   local files=() f
-  for f in core/Cargo.toml core/Cargo.lock libri/Cargo.toml libri/Cargo.lock CHANGELOG.md libri/CHANGELOG.md; do
+  for f in core/Cargo.toml core/Cargo.lock libri/Cargo.toml libri/Cargo.lock; do
     [[ -e $f ]] && git ls-files --error-unmatch "$f" >/dev/null 2>&1 && files+=("$f")
   done
   ((${#files[@]})) && git checkout --quiet -- "${files[@]}"
+  if [[ -n $changelog_backup && -f $changelog_backup ]]; then
+    cp "$changelog_backup" "$changelog"
+  fi
 }
+if [[ -f $changelog ]]; then
+  changelog_backup=$(mktemp)
+  cp "$changelog" "$changelog_backup"
+fi
 trap undo ERR
 
 # Locks: the browser checks and the gate take Libri's timing lock themselves
@@ -148,8 +162,6 @@ mkdir -p "$(dirname "$notes")"
 {
   echo "# Libri $version"
   echo
-  changelog=libri/CHANGELOG.md
-  [[ -f CHANGELOG.md ]] && changelog=CHANGELOG.md
   awk -v head="## $version " 'index($0, head) == 1 { on = 1; next } on && /^## / { exit } on' "$changelog"
   echo "$parity"
 } > "$notes"

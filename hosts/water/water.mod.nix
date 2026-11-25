@@ -123,8 +123,8 @@
         # at 74G, with zram behind both.
         libri.legacy.enable = false;
         seat.hippo.enable = false;
-        # Pre-link the computer add-on beside Bridge's own so Wave 3 Suki finds
-        # it already built under /var/lib/libri-build/addons/computer.
+        # Pre-link the computer add-on under /var/lib/libri-build/addons/computer
+        # so additional assistants on this host can use it without a fresh deploy.
         libri.deploy.extraAddons = lib.lists.singleton "computer";
 
         # Stage 2 serves Dylan's address: Bridge's core, gateway (si.su.is and

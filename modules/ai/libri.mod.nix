@@ -6,8 +6,8 @@
 # Each assistant keeps every word of its prompts on disk in its person layer
 # (`~/.config/libri-core/AGENTS.md` or `configDir`), never in monix.
 #
-# Legacy Suki (`suki.service`, `yeoman-image@`) stays beside Stage 2 until
-# Suki's Wave 3 cutover.
+# Legacy Suki (`suki.service`, `yeoman-image@`) runs beside Stage 2 until
+# Suki moves onto `libri.assistants`.
 { inputs, self, ... }:
 {
   flake.nixosModules.lab = self.nixosModules.libri;
@@ -1297,7 +1297,7 @@
           ++ optionals assistant.a2a.enable (singleton "${prefix}-addon-a2a.service")
         );
 
-      # LEGACY BRIDGE AND SUKI (kept until Wave 3/4 cutover)
+      # LEGACY BRIDGE AND SUKI
 
       legacy = config.libri.legacy;
       bridgeAssistant = enabledAssistants.bridge or null;
@@ -1507,7 +1507,7 @@
           description = "Additional flake add-on names built and linked by `deploy_libri.sh` even when no assistant currently enables them.";
         };
 
-        # Legacy options kept until Wave 4 deletion.
+        # Legacy daemon options; drop once `libri/` is removed from the Libri flake.
         limits = {
           server = mkOption {
             type = types.nullOr types.str;
