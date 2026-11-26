@@ -198,9 +198,13 @@ rw_paths = [
     for path in entry.split()
 ]
 check(
-    "suki-core ReadWritePaths only includes Suki's desk",
-    rw_paths == ["/var/lib/yeoman-desks/suki"],
+    "suki-core ReadWritePaths only includes Suki's desk and runtime dir",
+    sorted(rw_paths) == ["/run/suki-core", "/var/lib/yeoman-desks/suki"],
     repr(rw_paths),
+)
+check(
+    "suki-core does not use RuntimeDirectory= (avoids systemd recursive chown of client.sock)",
+    "RuntimeDirectory=" not in core,
 )
 
 # Inbound A2A keeps 127.0.0.1:8952 on Suki's core socket.
@@ -231,6 +235,15 @@ check(
     and config_tmpfile.get("group") == "suki"
     and config_tmpfile.get("mode") == "0750",
     repr(config_tmpfile),
+)
+
+runtime_tmpfile = manifest["suki_runtime_tmpfile"] or {}
+check(
+    "/run/suki-core tmpfile is suki:suki-clients 0710",
+    runtime_tmpfile.get("user") == "suki"
+    and runtime_tmpfile.get("group") == "suki-clients"
+    and runtime_tmpfile.get("mode") == "0710",
+    repr(runtime_tmpfile),
 )
 
 if failures:

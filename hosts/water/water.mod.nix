@@ -32,6 +32,8 @@
         units = genAttrs checkedUnits (u: "${water.systemd.units.${u}.unit}/${u}");
         has_legacy_suki = water.systemd.services ? suki;
         suki_config_tmpfile = water.systemd.tmpfiles.settings.suki-config."/var/lib/suki-config".d or null;
+        suki_runtime_tmpfile =
+          water.systemd.tmpfiles.settings."suki-core-runtime"."/run/suki-core".d or null;
       });
     in
     {

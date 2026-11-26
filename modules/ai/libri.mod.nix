@@ -38,6 +38,7 @@
         optionals
         singleton
         sort
+        toList
         unique
         ;
       inherit (lib.meta) getExe getExe';
@@ -759,13 +760,13 @@
             assistant.core.authHeaderFiles
             |> mapAttrsToList (
               fileName: cred: ''
-                (umask 077 && printf '%s%s\n' ${escapeShellArg cred.prefix} "$(${getExe' pkgs.coreutils "tr"} -d '\r\n' < "$CREDENTIALS_DIRECTORY/${cred.credentialName}")" > "$RUNTIME_DIRECTORY/${fileName}") || exit 1
+                (umask 077 && printf '%s%s\n' ${escapeShellArg cred.prefix} "$(${getExe' pkgs.coreutils "tr"} -d '\r\n' < "$CREDENTIALS_DIRECTORY/${cred.credentialName}")" > ${escapeShellArg "${assistant.runtimeDir}/${fileName}"}) || exit 1
               ''
             )
             |> concatStringsSep "";
 
           startCore = pkgs.writeShellScript "start-${coreUnit}" ''
-            ${credLines}${authHeaderLines}exec ${core} --runtime-dir "$RUNTIME_DIRECTORY" --data-dir "$STATE_DIRECTORY" daemon --no-holder-scope
+            ${credLines}${authHeaderLines}exec ${core} --runtime-dir ${escapeShellArg assistant.runtimeDir} --data-dir "$STATE_DIRECTORY" daemon --no-holder-scope
           '';
 
           loadCredentials =
@@ -902,7 +903,13 @@
 
           etcRelPath = "${removePrefix "/etc/" assistant.systemConfigDir}/libri.toml";
           stateDirRel = removePrefix "/var/lib/" assistant.dataDir;
-          runtimeDirRel = removePrefix "/run/" assistant.runtimeDir;
+
+          coreExtraServiceConfig =
+            assistant.core.extraServiceConfig
+            // optionalAttrs ((assistant.core.extraServiceConfig.ProtectSystem or null) != null) {
+              ReadWritePaths =
+                toList (assistant.core.extraServiceConfig.ReadWritePaths or [ ]) ++ singleton assistant.runtimeDir;
+            };
 
           restrictedHarness = any (h: h.strict_mcp == true || h.tools != null) (
             attrValues assistant.core.harnesses
@@ -1050,6 +1057,17 @@
                 mode = "0750";
               };
             }
+            // {
+              # Managed by tmpfiles rather than RuntimeDirectory=: systemd
+              # recursively chowns RuntimeDirectory (including client.sock) back
+              # to User:Group before spawning ExecStartPost whenever the dir's
+              # group differs from Group=.
+              "${coreUnit}-runtime".${assistant.runtimeDir}.d = {
+                inherit (assistant) user;
+                group = assistant.clientsGroup;
+                mode = "0710";
+              };
+            }
             // optionalAttrs gw.enable {
               ${gatewayUnit}.${gwState}.d = {
                 user = gw.user;
@@ -1098,22 +1116,10 @@
                   ++ singleton assistant.clientsGroup;
                 StateDirectory = stateDirRel;
                 StateDirectoryMode = "0700";
-                RuntimeDirectory = runtimeDirRel;
-                # Search for clientsGroup, whose group the core gives the
-                # directory; it reaches client.sock alone, not owner.sock.
-                RuntimeDirectoryMode = "0710";
-                # Detached holders keep their sockets across a daemon stop and start.
-                RuntimeDirectoryPreserve = true;
                 # Keep the holders in this cgroup and stop only the daemon.
                 KillMode = "process";
                 ExecStart = startCore;
-                # systemd re-applies User:Group to RuntimeDirectory before
-                # spawning each ExecStartPost, which overwrote the core's
-                # chgrp to clientsGroup; restore it as the final post step.
-                ExecStartPost = [
-                  "${getExe pkgs.curl} --fail --silent --output /dev/null --retry 12 --retry-all-errors --retry-delay 1 --max-time 1 --unix-socket ${assistant.socketPath} http://localhost/v1/host"
-                  "${getExe' pkgs.coreutils "chgrp"} ${assistant.clientsGroup} ${assistant.runtimeDir}"
-                ];
+                ExecStartPost = "${getExe pkgs.curl} --fail --silent --output /dev/null --retry 12 --retry-all-errors --retry-delay 1 --max-time 1 --unix-socket ${assistant.socketPath} http://localhost/v1/host";
                 Type = "exec";
                 TimeoutStartSec = 20;
                 Restart = "always";
@@ -1121,7 +1127,7 @@
                 LimitCORE = 0;
               }
               // optionalAttrs (loadCredentials != [ ]) { LoadCredential = loadCredentials; }
-              // assistant.core.extraServiceConfig;
+              // coreExtraServiceConfig;
             };
 
             "${prefix}-ready" = {
@@ -1165,6 +1171,9 @@
                   sleep 1
                 done
                 curl -fsS -m3 --unix-socket ${assistant.socketPath} http://localhost/v1/host >/dev/null
+                # Verify clientsGroup can traverse runtimeDir and connect to client.sock.
+                [ "$(stat -c '%G %a' ${escapeShellArg assistant.runtimeDir})" = "${assistant.clientsGroup} 710" ]
+                [ "$(stat -c '%G %a' ${escapeShellArg assistant.clientSocketPath})" = "${assistant.clientsGroup} 660" ]
                 ${optionalString (gw.enable && servedAddons != [ ]) (
                   servedAddons
                   |> map (n: ''
