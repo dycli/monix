@@ -393,10 +393,55 @@
                 default = [ ];
                 description = "Extra supplementary groups for the core service (besides `clientsGroup`).";
               };
+              keepHoldersAcrossRestart = mkOption {
+                type = types.bool;
+                default = true;
+                description = "Keep session holder processes alive across core daemon restarts (`KillMode=process`); set false for `KillMode=control-group`.";
+              };
               extraServiceConfig = mkOption {
                 type = types.attrsOf types.anything;
                 default = { };
                 description = "Additional systemd `serviceConfig` settings merged onto the core service.";
+              };
+            };
+
+            bootstrap = {
+              enable = mkOption {
+                type = types.bool;
+                default = false;
+                description = "Run `<prefix>-bootstrap.service` to mint missing core credentials and ensure an open main session.";
+              };
+              hippo2TokenFile = mkOption {
+                type = types.nullOr types.str;
+                default = null;
+                description = "Optional token file minted with `read` scope (`reach: all`) for this assistant's hippo2 instance.";
+              };
+              hippo2Owner = mkOption {
+                type = types.nullOr types.str;
+                default = null;
+                description = "Ownership (`user:group`) applied to `hippo2TokenFile` when minted.";
+              };
+              mainSession = mkOption {
+                type = types.nullOr (
+                  types.submodule {
+                    options = {
+                      harness = mkOption {
+                        type = types.str;
+                        description = "Harness for the default `role=main` session.";
+                      };
+                      cwd = mkOption {
+                        type = types.str;
+                        description = "Working directory for the default `role=main` session.";
+                      };
+                      mode = mkOption {
+                        type = types.str;
+                        description = "Permission mode for the default `role=main` session.";
+                      };
+                    };
+                  }
+                );
+                default = null;
+                description = "When set, ensure an open `role=main` session exists during bootstrap.";
               };
             };
 
@@ -440,6 +485,19 @@
                 type = types.nullOr types.str;
                 default = null;
                 description = "Assistant name injected into served `index.html` via `<meta name=\"assistant\">` (`LIBRI_GATEWAY_ASSISTANT_NAME`).";
+              };
+              uiMode = mkOption {
+                type = types.enum [
+                  "full"
+                  "simple"
+                ];
+                default = "full";
+                description = "Web UI presentation mode (`LIBRI_GATEWAY_UI_MODE=simple` when `simple`; omitted for `full`).";
+              };
+              iroh = mkOption {
+                type = types.bool;
+                default = true;
+                description = "Pass `--iroh` to `libri-gateway serve` for Iroh QUIC relay access beside the tailnet.";
               };
               user = mkOption {
                 type = types.str;
@@ -795,10 +853,10 @@
               gwProxySocket
               "--proxy-uid"
               (toString config.ids.uids.nginx)
-              # Layer 2 beside the tailnet: paired devices reach the gateway over
-              # Iroh QUIC through n0's public relays.
-              "--iroh"
             ]
+            # Layer 2 beside the tailnet: paired devices reach the gateway over
+            # Iroh QUIC through n0's public relays.
+            ++ optionals gw.iroh (singleton "--iroh")
             ++ (
               servedAddons
               |> concatMap (addonName: [
@@ -986,6 +1044,15 @@
               assertion = !(yeomanImageCfg.enable && yeomanImageCfg.dir == null);
               message = "libri.assistants.${name}.addons.yeomanImage requires `dir` when enabled.";
             }
+            {
+              assertion =
+                !(
+                  assistant.bootstrap.enable
+                  && assistant.bootstrap.hippo2TokenFile != null
+                  && assistant.bootstrap.hippo2Owner == null
+                );
+              message = "libri.assistants.${name}.bootstrap.hippo2Owner must be set when hippo2TokenFile is set.";
+            }
           ];
 
           users.groups = {
@@ -1116,8 +1183,8 @@
                   ++ singleton assistant.clientsGroup;
                 StateDirectory = stateDirRel;
                 StateDirectoryMode = "0700";
-                # Keep the holders in this cgroup and stop only the daemon.
-                KillMode = "process";
+                # Keep the holders in this cgroup and stop only the daemon when enabled.
+                KillMode = if assistant.core.keepHoldersAcrossRestart then "process" else "control-group";
                 ExecStart = startCore;
                 ExecStartPost = "${getExe pkgs.curl} --fail --silent --output /dev/null --retry 12 --retry-all-errors --retry-delay 1 --max-time 1 --unix-socket ${assistant.socketPath} http://localhost/v1/host";
                 Type = "exec";
@@ -1245,6 +1312,9 @@
                   gatewayEnvironment
                   // optionalAttrs (gw.assistantName != null) {
                     LIBRI_GATEWAY_ASSISTANT_NAME = gw.assistantName;
+                  }
+                  // optionalAttrs (gw.uiMode == "simple") {
+                    LIBRI_GATEWAY_UI_MODE = "simple";
                   };
                 serviceConfig = lib.ship.hardened.tenant // {
                   User = gw.user;
@@ -1371,7 +1441,111 @@
                   TimeoutStartSec = 60;
                 };
             };
-          };
+          }
+          // optionalAttrs assistant.bootstrap.enable (
+            let
+              bs = assistant.bootstrap;
+              ms = bs.mainSession;
+              runuser = getExe' pkgs.util-linux "runuser";
+              curl = getExe pkgs.curl;
+              jq = getExe pkgs.jq;
+              basename = getExe' pkgs.coreutils "basename";
+              chmod = getExe' pkgs.coreutils "chmod";
+              chown = getExe' pkgs.coreutils "chown";
+              dirname = getExe' pkgs.coreutils "dirname";
+              install = getExe' pkgs.coreutils "install";
+              mktemp = getExe' pkgs.coreutils "mktemp";
+              mv = getExe' pkgs.coreutils "mv";
+              rm = getExe' pkgs.coreutils "rm";
+              seq = getExe' pkgs.coreutils "seq";
+              sleep = getExe' pkgs.coreutils "sleep";
+            in
+            {
+              "${prefix}-bootstrap" = {
+                description = "Bootstrap credentials and main session for ${name}";
+                wantedBy = singleton "multi-user.target";
+                after = singleton "${coreUnit}.service";
+                wants = singleton "${coreUnit}.service";
+                before =
+                  optionals gw.enable (singleton "${gatewayUnit}.service")
+                  ++ optionals a2aServe (singleton "${prefix}-addon-a2a.service")
+                  ++ singleton "${prefix}-ready.service"
+                  ++ optionals (assistant.hippo2Unit != null) (singleton assistant.hippo2Unit);
+                unitConfig.ConditionFileIsExecutable = core;
+                serviceConfig = {
+                  Type = "oneshot";
+                  RemainAfterExit = true;
+                };
+                script = ''
+                  set -euo pipefail
+
+                  run_core() {
+                    ${runuser} -u ${escapeShellArg assistant.user} -- \
+                      ${core} \
+                      --runtime-dir ${escapeShellArg assistant.runtimeDir} \
+                      --data-dir ${escapeShellArg assistant.dataDir} \
+                      "$@"
+                  }
+
+                  mint_token() {
+                    local cred_name=$1 scope=$2 reach=$3 path=$4 owner=$5
+                    if [ -s "$path" ]; then
+                      return 0
+                    fi
+                    local dir tmp token
+                    dir=$(${dirname} "$path")
+                    if [ ! -d "$dir" ]; then
+                      ${install} -d -m 0700 -o "''${owner%%:*}" -g "''${owner#*:}" "$dir"
+                    fi
+                    run_core credential revoke "$cred_name" >/dev/null 2>&1 || true
+                    token=$(run_core --json credential add "$cred_name" --scope "$scope" --reach "$reach" | ${jq} -er .token)
+                    tmp=$(${mktemp} "$dir/.$(${basename} "$path").XXXXXX")
+                    if ! (
+                      umask 077
+                      printf '%s\n' "$token" > "$tmp"
+                      ${chown} "$owner" "$tmp"
+                      ${chmod} 0600 "$tmp"
+                      ${mv} -f "$tmp" "$path"
+                    ); then
+                      ${rm} -f "$tmp"
+                      return 1
+                    fi
+                  }
+
+                  for _ in $(${seq} 30); do
+                    if ${runuser} -u ${escapeShellArg assistant.user} -- \
+                      ${curl} -fsS -m2 --unix-socket ${escapeShellArg assistant.socketPath} http://localhost/v1/host >/dev/null 2>&1; then
+                      break
+                    fi
+                    ${sleep} 1
+                  done
+                  ${runuser} -u ${escapeShellArg assistant.user} -- \
+                    ${curl} -fsS -m2 --unix-socket ${escapeShellArg assistant.socketPath} http://localhost/v1/host >/dev/null
+
+                  ${optionalString gw.enable ''
+                    mint_token gateway admin,read,operate,approve all ${escapeShellArg gwToken} ${escapeShellArg "${gw.user}:${gw.group}"}
+                  ''}
+                  ${optionalString a2aServe ''
+                    mint_token a2a read,operate all ${escapeShellArg a2aCfg.tokenFile} ${escapeShellArg "${assistant.user}:${assistant.group}"}
+                  ''}
+                  ${optionalString (bs.hippo2TokenFile != null) ''
+                    mint_token hippo2 read all ${escapeShellArg bs.hippo2TokenFile} ${escapeShellArg bs.hippo2Owner}
+                  ''}
+                  ${optionalString (ms != null) ''
+                    sessions=$(run_core --json session list)
+                    if ! printf '%s\n' "$sessions" | ${jq} -se 'any(.[]; .state != "closed" and (.labels.role // null) == "main")' >/dev/null; then
+                      run_core session start \
+                        --harness ${escapeShellArg ms.harness} \
+                        --cwd ${escapeShellArg ms.cwd} \
+                        --mode ${escapeShellArg ms.mode} \
+                        --label role=main \
+                        --label title=Main >/dev/null
+                    fi
+                  ''}
+                '';
+              };
+            }
+          );
         };
 
       # Cross-assistant isolation assertions: no two enabled assistants share a

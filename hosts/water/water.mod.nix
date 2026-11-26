@@ -16,6 +16,7 @@
       water = self.nixosConfigurations.water.config;
       checkedUnits = [
         "suki-core.service"
+        "suki-bootstrap.service"
         "suki-gateway.service"
         "suki-addon-a2a.service"
         "suki-addon-boards.service"
@@ -355,6 +356,7 @@
           core = {
             locked = true;
             includeSeatMcp = false;
+            keepHoldersAcrossRestart = false;
             path = lib.strings.makeBinPath [
               pkgs.claude-code
               pkgs.coreutils
@@ -426,8 +428,21 @@
               "ddcleary1@gmail.com/metal"
             ];
             assistantName = "Suki";
+            uiMode = "simple";
+            iroh = false;
             uid = 952;
             gid = 939;
+          };
+
+          bootstrap = {
+            enable = true;
+            hippo2TokenFile = "/var/lib/hippo2-suki/libri-core.token";
+            hippo2Owner = "hippo2-suki:hippo2-suki";
+            mainSession = {
+              harness = "claude";
+              cwd = "/var/lib/suki-core";
+              mode = "bypassPermissions";
+            };
           };
 
           a2a = {

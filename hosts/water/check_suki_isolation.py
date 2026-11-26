@@ -58,6 +58,16 @@ forbidden_patterns = [
 ]
 
 all_files = {"/etc/libri-suki/libri.toml": toml_text, **unit_texts}
+bootstrap = unit_texts["suki-bootstrap.service"]
+bootstrap_exec = unit_values(bootstrap, "ExecStart")
+bootstrap_script = (
+    Path(bootstrap_exec[0].strip().split()[0]).read_text()
+    if bootstrap_exec
+    else ""
+)
+if bootstrap_script:
+    all_files["suki-bootstrap.service ExecStart script"] = bootstrap_script
+
 for filename, text in all_files.items():
     hits = [
         f"{label} ({match.group(0)!r})"
@@ -168,6 +178,16 @@ check(
     "suki-gateway sets assistant name Suki",
     unit_env(gw, "LIBRI_GATEWAY_ASSISTANT_NAME") == "Suki",
 )
+check(
+    "suki-gateway sets LIBRI_GATEWAY_UI_MODE=simple",
+    unit_env(gw, "LIBRI_GATEWAY_UI_MODE") == "simple",
+    repr(unit_env(gw, "LIBRI_GATEWAY_UI_MODE")),
+)
+check(
+    "suki-gateway does not pass --iroh",
+    re.search(r"(?:^|\s)--iroh(?:\s|$)", gw) is None,
+    gw,
+)
 check("suki-gateway listens on 127.0.0.1:8954", "127.0.0.1:8954" in gw)
 
 # Core uses isolated system/person config dirs and tenant hardening.
@@ -177,6 +197,18 @@ check("suki-core sets LIBRI_CONFIG_DIR=/var/lib/suki-config", unit_env(core, "LI
 check("suki-core protects /home", "ProtectHome=true" in core)
 check("suki-core uses ProtectSystem=strict", "ProtectSystem=strict" in core)
 check("suki-core runs as suki", "User=suki" in core)
+check(
+    "suki-core sets KillMode=control-group",
+    unit_values(core, "KillMode") == ["control-group"],
+    repr(unit_values(core, "KillMode")),
+)
+
+# Bootstrap runs libri-core as suki via runuser without touching Bridge.
+check(
+    "suki-bootstrap runs runuser -u suki",
+    re.search(r"\brunuser\s+-u\s+'?suki'?(?:\s|$)", bootstrap_script) is not None,
+    bootstrap_script,
+)
 
 denied_ips = set(unit_values(core, "IPAddressDeny"))
 required_denied = {
