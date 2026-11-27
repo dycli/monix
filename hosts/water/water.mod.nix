@@ -181,9 +181,19 @@
             includeSeatMcp = true;
             path = seatPath;
             supplementaryGroups = lib.lists.singleton "usage";
-            envCredentials.CLAUDE_CODE_OAUTH_TOKEN = {
-              credentialName = "claude-token";
-              path = config.secrets.agent-claude-token.path;
+            envCredentials = {
+              CLAUDE_CODE_OAUTH_TOKEN = {
+                credentialName = "claude-token";
+                path = config.secrets.agent-claude-token.path;
+              };
+              DEEPSEEK_API_KEY = {
+                credentialName = "deepseek-key";
+                path = config.secrets.deepseek-key.path;
+              };
+            };
+            extraEnv = {
+              DSH_TELEMETRY_MODE = "DISABLED";
+              DSH_TELEMETRY_DISABLED = "1";
             };
             # Mode a child session gets when its parent runs on a different
             # harness: each built-in harness's autonomous widening mode.
@@ -191,6 +201,7 @@
               claude.child_mode = "bypassPermissions";
               codex.child_mode = "never";
               agy.child_mode = "full-access";
+              dsh.child_mode = "full-access";
               muse.child_mode = "allowAll";
               omp.child_mode = "full-access";
               opencode.child_mode = "full-access";

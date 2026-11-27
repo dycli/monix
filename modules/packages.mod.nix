@@ -142,8 +142,30 @@ in
   flake.homeModules.packages-dev-extras =
     { pkgs, ... }:
     {
+      home.sessionVariables = {
+        DSH_TELEMETRY_MODE = "DISABLED";
+        DSH_TELEMETRY_DISABLED = "1";
+      };
+
+      # DeepSeek Harness (dsh): opt out of default session-log upload and pin
+      # the ACP profile default model to a live DeepSeek catalog model.
+      home.file.".dsh/cordis.patch.yml" = {
+        force = true;
+        text = ''
+          - op: patch
+            id: session-log-deepseek
+            disabled: true
+          - op: patch
+            id: acp
+            config:
+              provider: deepseek-official
+              model: deepseek-flash
+        '';
+      };
+
       home.packages = [
         pkgs.antigravity-cli
+        pkgs.dsh
         pkgs.muse-code
         pkgs.cargo
         pkgs.claude-code

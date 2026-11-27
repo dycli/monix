@@ -17,6 +17,7 @@
             antigravity-cli
             claude-code
             codex
+            dsh
             muse-code
             omp
             pi
