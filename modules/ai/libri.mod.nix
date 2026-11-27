@@ -1540,6 +1540,14 @@
                         --mode ${escapeShellArg ms.mode} \
                         --label role=main \
                         --label title=Main >/dev/null
+                    else
+                      for sid in $(
+                        printf '%s\n' "$sessions" \
+                          | ${jq} -sr --arg mode ${escapeShellArg ms.mode} \
+                              '.[] | select(.state == "idle" and ((.labels.role // null) == "main" or .ephemeral == true) and (.mode // "") != $mode) | .id'
+                      ); do
+                        run_core session update "$sid" --mode ${escapeShellArg ms.mode} >/dev/null || true
+                      done
                     fi
                   ''}
                 '';

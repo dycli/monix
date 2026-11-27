@@ -97,6 +97,11 @@ check(
     claude.get("strict_mcp") is True,
     repr(claude.get("strict_mcp")),
 )
+check(
+    "libri.toml sets child_mode = bypassPermissions for claude",
+    claude.get("child_mode") == "bypassPermissions",
+    repr(claude.get("child_mode")),
+)
 
 # Expected MCP servers in /etc/libri-suki/libri.toml.
 mcp = toml_data.get("mcp", {})
@@ -207,6 +212,11 @@ check(
 check(
     "suki-bootstrap runs runuser -u suki",
     re.search(r"\brunuser\s+-u\s+'?suki'?(?:\s|$)", bootstrap_script) is not None,
+    bootstrap_script,
+)
+check(
+    "suki-bootstrap enforces mainSession mode on existing open sessions",
+    "session update" in bootstrap_script and "--mode" in bootstrap_script,
     bootstrap_script,
 )
 

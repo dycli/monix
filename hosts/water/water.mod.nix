@@ -375,6 +375,7 @@
               path = config.secrets.yeoman-home-token.path;
             };
             harnesses.claude = {
+              child_mode = "bypassPermissions";
               tools = lib.lists.singleton "AskUserQuestion";
               strict_mcp = true;
             };
